@@ -6,6 +6,7 @@ use smithay::{
     input::pointer::{AxisFrame, ButtonEvent, MotionEvent},
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::SERIAL_COUNTER,
+    wayland::seat::WaylandFocus,
 };
 
 use crate::state::MeridianState;
@@ -46,17 +47,24 @@ pub fn handle_pointer_button<I: InputBackend>(
             .map(|(w, l)| (w.clone(), l))
         {
             state.workspaces.active_space_mut().raise_element(&window, true);
-            let surface = window.toplevel().unwrap().wl_surface().clone();
-            keyboard.set_focus(state, Some(surface), serial);
+            if let Some(surface) = window.wl_surface() {
+                keyboard.set_focus(state, Some(surface.into_owned()), serial);
+            }
             state
                 .workspaces
                 .active_space()
                 .elements()
-                .for_each(|w| { w.toplevel().unwrap().send_pending_configure(); });
+                .for_each(|w| {
+                    if let Some(t) = w.toplevel() {
+                        t.send_pending_configure();
+                    }
+                });
         } else {
             state.workspaces.active_space().elements().for_each(|w| {
                 w.set_activated(false);
-                w.toplevel().unwrap().send_pending_configure();
+                if let Some(t) = w.toplevel() {
+                    t.send_pending_configure();
+                }
             });
             keyboard.set_focus(state, Option::<WlSurface>::None, serial);
         }

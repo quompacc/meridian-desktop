@@ -4,10 +4,14 @@ use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
     delegate_dispatch2,
     desktop::{PopupKind, PopupManager, Window, WindowSurfaceType},
-    input::{Seat, SeatHandler, SeatState, pointer::{CursorImageStatus, Focus, GrabStartData as PointerGrabStartData}},
+    input::{
+        Seat, SeatHandler, SeatState,
+        dnd::DndGrabHandler,
+        pointer::{CursorImageStatus, Focus, GrabStartData as PointerGrabStartData},
+    },
     output::Output,
     reexports::{
-        calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction, generic::Generic},
+        calloop::{EventLoop, Interest, LoopHandle, LoopSignal, Mode, PostAction, generic::Generic},
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{
             Client, Display, DisplayHandle, Resource,
@@ -23,16 +27,23 @@ use smithay::{
             is_sync_subsurface,
         },
         output::{OutputHandler, OutputManagerState},
+        selection::{
+            SelectionHandler,
+            data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler},
+        },
         shell::xdg::{
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
         },
         shm::{ShmHandler, ShmState},
         socket::ListeningSocketSource,
+        xwayland_shell::XWaylandShellState,
     },
+    xwayland::{X11Wm, XWaylandClientData},
 };
 
 use meridian_config::ThemeManager;
 use meridian_wm::{WmWorkspace, WorkspaceMode};
+use smithay::wayland::seat::WaylandFocus;
 
 use crate::{
     backend::drm::DrmBackend,
@@ -145,7 +156,7 @@ impl MeridianState {
         };
         let window = self.workspaces.active_space()
             .elements()
-            .find(|w| w.toplevel().unwrap().wl_surface() == &surface)
+            .find(|w| w.toplevel().map_or(false, |t| t.wl_surface() == &surface))
             .cloned();
         if let Some(window) = window {
             let serial = SERIAL_COUNTER.next_serial();
@@ -158,6 +169,7 @@ impl MeridianState {
 pub struct MeridianState {
     pub start_time: Instant,
     pub display_handle: DisplayHandle,
+    pub loop_handle: LoopHandle<'static, Self>,
     pub loop_signal: LoopSignal,
     pub socket_name: OsString,
     pub seat: Seat<Self>,
@@ -172,29 +184,36 @@ pub struct MeridianState {
     pub shm_state: ShmState,
     pub seat_state: SeatState<Self>,
     pub output_manager_state: OutputManagerState,
+    pub data_device_state: DataDeviceState,
+    pub xwayland_shell_state: XWaylandShellState,
+    pub xwm: Option<X11Wm>,
     pub drm_backend: Option<DrmBackend>,
 }
 
 impl MeridianState {
-    pub fn new(event_loop: &mut EventLoop<Self>, display: Display<Self>) -> Self {
+    pub fn new(event_loop: &mut EventLoop<'static, Self>, display: Display<Self>) -> Self {
         let dh = display.handle();
 
         let compositor_state = CompositorState::new::<Self>(&dh);
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
+        let data_device_state = DataDeviceState::new::<Self>(&dh);
+        let xwayland_shell_state = XWaylandShellState::new::<Self>(&dh);
 
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&dh, "seat-0");
         seat.add_keyboard(Default::default(), 200, 25).unwrap();
         seat.add_pointer();
 
+        let loop_handle = event_loop.handle();
         let socket_name = Self::init_wayland_listener(display, event_loop);
         let loop_signal = event_loop.get_signal();
 
         Self {
             start_time: Instant::now(),
             display_handle: dh,
+            loop_handle,
             loop_signal,
             socket_name,
             seat,
@@ -208,6 +227,9 @@ impl MeridianState {
             shm_state,
             seat_state,
             output_manager_state,
+            data_device_state,
+            xwayland_shell_state,
+            xwm: None,
             drm_backend: None,
         }
     }
@@ -257,6 +279,9 @@ impl CompositorHandler for MeridianState {
     }
 
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
+        if let Some(state) = client.get_data::<XWaylandClientData>() {
+            return &state.compositor_state;
+        }
         &client.get_data::<ClientState>().unwrap().compositor_state
     }
 
@@ -268,11 +293,12 @@ impl CompositorHandler for MeridianState {
             while let Some(parent) = get_parent(&root) {
                 root = parent;
             }
+            // Use wl_surface() so X11 windows (no toplevel) are also covered.
             if let Some(window) = self
                 .workspaces
                 .active_space()
                 .elements()
-                .find(|w| w.toplevel().unwrap().wl_surface() == &root)
+                .find(|w| w.wl_surface().map_or(false, |s| *s == root))
             {
                 window.on_commit();
             }
@@ -349,13 +375,16 @@ impl XdgShellHandler for MeridianState {
         let seat = Seat::from_resource(&seat).unwrap();
         let wl_surface = surface.wl_surface();
         if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
-            let window = self
+            let window = match self
                 .workspaces
                 .active_space()
                 .elements()
-                .find(|w| w.toplevel().unwrap().wl_surface() == wl_surface)
-                .unwrap()
-                .clone();
+                .find(|w| w.toplevel().map_or(false, |t| t.wl_surface() == wl_surface))
+                .cloned()
+            {
+                Some(w) => w,
+                None => return,
+            };
             let initial_window_location = self.workspaces.active_space().element_location(&window).unwrap();
             let grab = MoveSurfaceGrab { start_data, window, initial_window_location };
             seat.get_pointer().unwrap().set_grab(self, grab, serial, Focus::Clear);
@@ -372,13 +401,16 @@ impl XdgShellHandler for MeridianState {
         let seat = Seat::from_resource(&seat).unwrap();
         let wl_surface = surface.wl_surface();
         if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
-            let window = self
+            let window = match self
                 .workspaces
                 .active_space()
                 .elements()
-                .find(|w| w.toplevel().unwrap().wl_surface() == wl_surface)
-                .unwrap()
-                .clone();
+                .find(|w| w.toplevel().map_or(false, |t| t.wl_surface() == wl_surface))
+                .cloned()
+            {
+                Some(w) => w,
+                None => return,
+            };
             let initial_window_location = self.workspaces.active_space().element_location(&window).unwrap();
             let initial_window_size = window.geometry().size;
             surface.with_pending_state(|state| {
@@ -407,7 +439,7 @@ impl XdgShellHandler for MeridianState {
                 .workspaces
                 .active_space()
                 .elements()
-                .find(|w| w.toplevel().unwrap().wl_surface() == surface.wl_surface())
+                .find(|w| w.toplevel().map_or(false, |t| t.wl_surface() == surface.wl_surface()))
                 .cloned();
             if let Some(window) = window {
                 self.workspaces.active_space_mut().map_element(window, geo.loc, true);
@@ -436,7 +468,7 @@ impl XdgShellHandler for MeridianState {
                 .workspaces
                 .active_space()
                 .elements()
-                .find(|w| w.toplevel().unwrap().wl_surface() == surface.wl_surface())
+                .find(|w| w.toplevel().map_or(false, |t| t.wl_surface() == surface.wl_surface()))
                 .cloned();
             if let Some(window) = window {
                 self.workspaces.active_space_mut().map_element(window, geo.loc, true);
@@ -483,6 +515,22 @@ impl smithay::reexports::wayland_server::backend::ClientData for ClientState {
     fn initialized(&self, _client_id: ClientId) {}
     fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
 }
+
+// ── Selection / DataDevice ────────────────────────────────────────────────────
+
+impl SelectionHandler for MeridianState {
+    type SelectionUserData = ();
+}
+
+impl WaylandDndGrabHandler for MeridianState {}
+
+impl DataDeviceHandler for MeridianState {
+    fn data_device_state(&mut self) -> &mut DataDeviceState {
+        &mut self.data_device_state
+    }
+}
+
+impl DndGrabHandler for MeridianState {}
 
 // ── Delegation ────────────────────────────────────────────────────────────────
 

@@ -10,12 +10,16 @@ use smithay::{
 /// Sendet den initialen Configure und tracked Popup-Commits.
 /// Muss aus `CompositorHandler::commit` aufgerufen werden.
 pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: &WlSurface) {
-    // Initialen configure an neue Toplevels senden
+    // Initialen configure an neue Toplevels senden (Wayland only — X11 windows have no toplevel)
     if let Some(window) = space
         .elements()
-        .find(|w| w.toplevel().unwrap().wl_surface() == surface)
+        .find(|w| w.toplevel().map_or(false, |t| t.wl_surface() == surface))
         .cloned()
     {
+        let toplevel = match window.toplevel() {
+            Some(t) => t,
+            None => return,
+        };
         let initial_configure_sent = with_states(surface, |states| {
             states
                 .data_map
@@ -26,7 +30,7 @@ pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: 
                 .initial_configure_sent
         });
         if !initial_configure_sent {
-            window.toplevel().unwrap().send_configure();
+            toplevel.send_configure();
         }
     }
 

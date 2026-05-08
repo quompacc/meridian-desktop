@@ -21,6 +21,7 @@ smithay = { git = "https://github.com/Smithay/smithay.git", features = [
     "renderer_gl",
     "wayland_frontend",
     "desktop",
+    "xwayland",
 ] }
 tracing = "0.1"
 tracing-subscriber = "0.3"

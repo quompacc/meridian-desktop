@@ -1,5 +1,6 @@
 use meridian_compositor::{
     backend::{drm::init_drm, winit::init_winit},
+    protocols::xwayland::start_xwayland,
     state::MeridianState,
 };
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
@@ -8,7 +9,7 @@ use tracing::{info, warn};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
-    let mut event_loop: EventLoop<MeridianState> = EventLoop::try_new()?;
+    let mut event_loop: EventLoop<'static, MeridianState> = EventLoop::try_new()?;
     let display: Display<MeridianState> = Display::new()?;
     let mut state = MeridianState::new(&mut event_loop, display);
 
@@ -33,6 +34,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Meridian running on socket: {:?}", state.socket_name);
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &state.socket_name) };
+
+    start_xwayland(&mut state);
 
     event_loop.run(None, &mut state, move |_| {})?;
     Ok(())
