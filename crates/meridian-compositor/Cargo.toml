@@ -5,7 +5,9 @@ edition = "2021"
 
 [dependencies]
 bitflags = { workspace = true }
+libc = "0.2"
 meridian-config = { path = "../meridian-config" }
+meridian-ipc = { path = "../meridian-ipc" }
 meridian-wm = { path = "../meridian-wm" }
 smithay = { workspace = true }
 tracing = { workspace = true }

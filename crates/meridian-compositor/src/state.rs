@@ -1,38 +1,62 @@
-use std::{ffi::OsString, sync::Arc, time::Instant};
+use std::{
+    ffi::OsString,
+    fs,
+    io::{self, Read, Write},
+    net::Shutdown,
+    os::unix::net::{UnixListener, UnixStream},
+    process::Command,
+    sync::Arc,
+    time::Instant,
+};
 
+use meridian_ipc::{ShellCommand, ShellEvent};
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
     delegate_dispatch2,
-    desktop::{PopupKind, PopupManager, Window, WindowSurfaceType},
+    desktop::{
+        layer_map_for_output, LayerSurface as DesktopLayerSurface, PopupKind, PopupManager, Window,
+        WindowSurfaceType,
+    },
     input::{
-        Seat, SeatHandler, SeatState,
         dnd::DndGrabHandler,
         pointer::{CursorImageStatus, Focus, GrabStartData as PointerGrabStartData},
+        Seat, SeatHandler, SeatState,
     },
     output::Output,
     reexports::{
-        calloop::{EventLoop, Interest, LoopHandle, LoopSignal, Mode, PostAction, generic::Generic},
+        calloop::{
+            generic::Generic, EventLoop, Interest, LoopHandle, LoopSignal, Mode, PostAction,
+        },
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::{
-            Client, Display, DisplayHandle, Resource,
             backend::{ClientId, DisconnectReason},
-            protocol::{wl_buffer::WlBuffer, wl_output::WlOutput, wl_seat::WlSeat, wl_surface::WlSurface},
+            protocol::{
+                wl_buffer::WlBuffer, wl_output::WlOutput, wl_seat::WlSeat, wl_surface::WlSurface,
+            },
+            Client, Display, DisplayHandle, Resource,
         },
     },
     utils::{Logical, Point, Rectangle, Serial, SERIAL_COUNTER},
     wayland::{
         buffer::BufferHandler,
         compositor::{
-            CompositorClientState, CompositorHandler, CompositorState, get_parent,
-            is_sync_subsurface,
+            get_parent, is_sync_subsurface, with_states, CompositorClientState, CompositorHandler,
+            CompositorState,
         },
         output::{OutputHandler, OutputManagerState},
         selection::{
-            SelectionHandler,
             data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler},
+            SelectionHandler,
         },
-        shell::xdg::{
-            PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
+        shell::{
+            wlr_layer::{
+                Layer as WlrLayer, LayerSurface as WlrLayerSurface, LayerSurfaceData,
+                WlrLayerShellHandler, WlrLayerShellState,
+            },
+            xdg::{
+                PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
+                XdgToplevelSurfaceData,
+            },
         },
         shm::{ShmHandler, ShmState},
         socket::ListeningSocketSource,
@@ -41,7 +65,7 @@ use smithay::{
     xwayland::{X11Wm, XWaylandClientData},
 };
 
-use meridian_config::ThemeManager;
+use meridian_config::{KeybindConfig, MeridianConfig, ThemeManager};
 use meridian_wm::{WmWorkspace, WorkspaceMode};
 use smithay::wayland::seat::WaylandFocus;
 
@@ -72,7 +96,9 @@ impl MeridianState {
     /// Removes stale windows from the tree, sends configure events, and
     /// repositions tiles.
     pub fn tile_workspace(&mut self, idx: usize) {
-        let output_rect = self.outputs.first()
+        let output_rect = self
+            .outputs
+            .first()
             .and_then(|o| self.workspaces.space_at(idx).output_geometry(o))
             .unwrap_or_else(|| Rectangle::new((0, 0).into(), (1920, 1080).into()));
         let gap = self.theme_manager.current().config.decorations.gap as i32;
@@ -113,8 +139,7 @@ impl MeridianState {
         let new_mode = self.wm_workspaces[active].toggle_mode();
         if new_mode == WorkspaceMode::Tiling {
             // Rebuild BSP tree from currently mapped windows
-            let windows: Vec<Window> =
-                self.workspaces.active_space().elements().cloned().collect();
+            let windows: Vec<Window> = self.workspaces.active_space().elements().cloned().collect();
             self.wm_workspaces[active].rebuild_tiling_from(windows.into_iter());
             self.tile_workspace(active);
         }
@@ -127,11 +152,65 @@ impl MeridianState {
         &self,
         pos: Point<f64, Logical>,
     ) -> Option<(WlSurface, Point<f64, Logical>)> {
-        self.workspaces.active_space().element_under(pos).and_then(|(window, location)| {
-            window
-                .surface_under(pos - location.to_f64(), WindowSurfaceType::ALL)
-                .map(|(s, p)| (s, (p + location).to_f64()))
-        })
+        let output = self
+            .outputs
+            .iter()
+            .find(|output| {
+                self.workspaces
+                    .active_space()
+                    .output_geometry(output)
+                    .map(|geo| geo.to_f64().contains(pos))
+                    .unwrap_or(false)
+            })
+            .or_else(|| self.outputs.first());
+
+        if let Some(output) = output {
+            let output_geo = self.workspaces.active_space().output_geometry(output)?;
+            let layer_map = layer_map_for_output(output);
+            let local = pos - output_geo.loc.to_f64();
+
+            for layer in [WlrLayer::Overlay, WlrLayer::Top] {
+                if let Some(surface) = layer_map.layer_under(layer, local) {
+                    if let Some(geo) = layer_map.layer_geometry(surface) {
+                        return surface
+                            .surface_under(local - geo.loc.to_f64(), WindowSurfaceType::ALL)
+                            .map(|(s, p)| (s, (p + output_geo.loc + geo.loc).to_f64()));
+                    }
+                }
+            }
+        }
+
+        let window_surface =
+            self.workspaces
+                .active_space()
+                .element_under(pos)
+                .and_then(|(window, location)| {
+                    window
+                        .surface_under(pos - location.to_f64(), WindowSurfaceType::ALL)
+                        .map(|(s, p)| (s, (p + location).to_f64()))
+                });
+
+        if window_surface.is_some() {
+            return window_surface;
+        }
+
+        if let Some(output) = output {
+            let output_geo = self.workspaces.active_space().output_geometry(output)?;
+            let layer_map = layer_map_for_output(output);
+            let local = pos - output_geo.loc.to_f64();
+
+            for layer in [WlrLayer::Bottom, WlrLayer::Background] {
+                if let Some(surface) = layer_map.layer_under(layer, local) {
+                    if let Some(geo) = layer_map.layer_geometry(surface) {
+                        return surface
+                            .surface_under(local - geo.loc.to_f64(), WindowSurfaceType::ALL)
+                            .map(|(s, p)| (s, (p + output_geo.loc + geo.loc).to_f64()));
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     pub fn switch_workspace(&mut self, idx: usize) {
@@ -142,6 +221,8 @@ impl MeridianState {
             if let Some(kbd) = self.seat.get_keyboard() {
                 kbd.set_focus(self, Option::<WlSurface>::None, serial);
             }
+            self.broadcast_workspace();
+            self.broadcast_window_snapshot();
         }
     }
 
@@ -154,7 +235,9 @@ impl MeridianState {
             Some(s) => s,
             None => return,
         };
-        let window = self.workspaces.active_space()
+        let window = self
+            .workspaces
+            .active_space()
             .elements()
             .find(|w| w.toplevel().map_or(false, |t| t.wl_surface() == &surface))
             .cloned();
@@ -162,8 +245,357 @@ impl MeridianState {
             let serial = SERIAL_COUNTER.next_serial();
             kbd.set_focus(self, Option::<WlSurface>::None, serial);
             self.workspaces.move_window_to(window, target);
+            self.broadcast_window_snapshot();
         }
     }
+
+    pub fn poll_ipc(&mut self) {
+        let poll = self.ipc.poll();
+
+        if poll.accepted_clients > 0 {
+            tracing::info!("accepted {} shell IPC client(s)", poll.accepted_clients);
+            self.broadcast_workspace();
+            self.broadcast_window_snapshot();
+        }
+
+        for command in poll.commands {
+            tracing::info!("received shell IPC command: {:?}", command);
+            match command {
+                ShellCommand::SwitchWorkspace { workspace } => {
+                    let idx = usize::from(workspace.saturating_sub(1).min(8));
+                    self.switch_workspace(idx);
+                }
+                ShellCommand::FocusWindow { id } => {
+                    self.focus_window_by_id(&id);
+                }
+                ShellCommand::LaunchApp { command, terminal } => {
+                    let Some(command) = launch_command(&command, terminal) else {
+                        tracing::warn!(
+                            "cannot launch terminal app {:?}: no terminal emulator found",
+                            command
+                        );
+                        continue;
+                    };
+
+                    tracing::info!("launching app from shell: {}", command);
+                    if let Err(err) = Command::new("sh")
+                        .arg("-c")
+                        .arg(&command)
+                        .env(
+                            "WAYLAND_DISPLAY",
+                            self.socket_name.to_string_lossy().as_ref(),
+                        )
+                        .env(
+                            "XDG_RUNTIME_DIR",
+                            std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+                                format!("/run/user/{}", unsafe { libc::geteuid() })
+                            }),
+                        )
+                        .spawn()
+                    {
+                        tracing::warn!(
+                            "failed to launch app from shell command {:?}: {}",
+                            command,
+                            err
+                        );
+                    }
+                }
+                ShellCommand::ReloadConfig => {
+                    self.reload_keybinds();
+                }
+            }
+        }
+    }
+
+    pub fn broadcast_workspace(&mut self) {
+        self.ipc.broadcast(&ShellEvent::WorkspaceChanged {
+            workspace: (self.workspaces.active + 1) as u8,
+        });
+    }
+
+    pub fn broadcast_window_snapshot(&mut self) {
+        let windows: Vec<(String, String)> = self
+            .workspaces
+            .active_space()
+            .elements()
+            .filter_map(|window| {
+                let toplevel = window.toplevel()?;
+                Some((window_id(toplevel.wl_surface()), toplevel_title(&toplevel)))
+            })
+            .collect();
+
+        for (id, title) in windows {
+            self.ipc.broadcast(&ShellEvent::WindowOpened { id, title });
+        }
+    }
+
+    pub fn broadcast_toplevel_opened(&mut self, surface: &ToplevelSurface) {
+        self.ipc.broadcast(&ShellEvent::WindowOpened {
+            id: window_id(surface.wl_surface()),
+            title: toplevel_title(surface),
+        });
+    }
+
+    pub fn broadcast_toplevel_closed(&mut self, surface: &ToplevelSurface) {
+        self.ipc.broadcast(&ShellEvent::WindowClosed {
+            id: window_id(surface.wl_surface()),
+        });
+    }
+
+    pub fn broadcast_toplevel_focused(&mut self, surface: &WlSurface) {
+        self.ipc.broadcast(&ShellEvent::WindowFocused {
+            id: window_id(surface),
+        });
+    }
+
+    pub fn broadcast_toggle_launcher(&mut self) {
+        self.ipc.broadcast(&ShellEvent::ToggleLauncher);
+    }
+
+    pub fn reload_keybinds(&mut self) {
+        let mut config = MeridianConfig::default();
+        if let Err(err) = config.reload() {
+            tracing::warn!("failed to reload keybinds: {}", err);
+            return;
+        }
+        self.keybind_config = config.keybinds;
+        tracing::info!("keybinds reloaded");
+    }
+
+    pub fn focus_window_by_id(&mut self, id: &str) {
+        let Some(window) = self
+            .workspaces
+            .active_space()
+            .elements()
+            .find(|window| {
+                window
+                    .toplevel()
+                    .map(|toplevel| window_id(toplevel.wl_surface()) == id)
+                    .unwrap_or(false)
+            })
+            .cloned()
+        else {
+            tracing::warn!("focus-window requested unknown id: {}", id);
+            return;
+        };
+
+        self.workspaces
+            .active_space_mut()
+            .raise_element(&window, true);
+
+        if let Some(surface) = window.wl_surface().map(|surface| surface.into_owned()) {
+            let serial = SERIAL_COUNTER.next_serial();
+            if let Some(keyboard) = self.seat.get_keyboard() {
+                keyboard.set_focus(self, Some(surface.clone()), serial);
+            }
+            self.broadcast_toplevel_focused(&surface);
+        }
+
+        self.workspaces
+            .active_space()
+            .elements()
+            .for_each(|window| {
+                if let Some(toplevel) = window.toplevel() {
+                    toplevel.send_pending_configure();
+                }
+            });
+    }
+}
+
+pub struct IpcServer {
+    listener: Option<UnixListener>,
+    clients: Vec<IpcClient>,
+}
+
+pub struct IpcPoll {
+    pub accepted_clients: usize,
+    pub commands: Vec<ShellCommand>,
+}
+
+struct IpcClient {
+    stream: UnixStream,
+    buffer: Vec<u8>,
+    alive: bool,
+}
+
+impl IpcServer {
+    fn new() -> Self {
+        let path = meridian_ipc::socket_path();
+        if path.exists() {
+            if let Err(err) = fs::remove_file(&path) {
+                tracing::warn!("failed to remove stale IPC socket {:?}: {}", path, err);
+            }
+        }
+
+        let listener = match UnixListener::bind(&path) {
+            Ok(listener) => {
+                if let Err(err) = listener.set_nonblocking(true) {
+                    tracing::warn!("failed to set IPC socket nonblocking: {}", err);
+                }
+                tracing::info!("Meridian IPC listening on {:?}", path);
+                Some(listener)
+            }
+            Err(err) => {
+                tracing::warn!("failed to bind IPC socket {:?}: {}", path, err);
+                None
+            }
+        };
+
+        Self {
+            listener,
+            clients: Vec::new(),
+        }
+    }
+
+    pub fn poll(&mut self) -> IpcPoll {
+        let mut accepted_clients = 0;
+        let mut commands = Vec::new();
+
+        if let Some(listener) = &self.listener {
+            loop {
+                match listener.accept() {
+                    Ok((stream, _addr)) => {
+                        if let Err(err) = stream.set_nonblocking(true) {
+                            tracing::warn!("failed to set IPC client nonblocking: {}", err);
+                        }
+                        self.clients.push(IpcClient {
+                            stream,
+                            buffer: Vec::new(),
+                            alive: true,
+                        });
+                        accepted_clients += 1;
+                    }
+                    Err(err) if err.kind() == io::ErrorKind::WouldBlock => break,
+                    Err(err) => {
+                        tracing::warn!("failed to accept IPC client: {}", err);
+                        break;
+                    }
+                }
+            }
+        }
+
+        let mut tmp = [0_u8; 4096];
+        for client in &mut self.clients {
+            loop {
+                match client.stream.read(&mut tmp) {
+                    Ok(0) => {
+                        client.alive = false;
+                        break;
+                    }
+                    Ok(n) => client.buffer.extend_from_slice(&tmp[..n]),
+                    Err(err) if err.kind() == io::ErrorKind::WouldBlock => break,
+                    Err(err) => {
+                        tracing::warn!("IPC client read failed: {}", err);
+                        client.alive = false;
+                        break;
+                    }
+                }
+            }
+
+            while let Some(pos) = client.buffer.iter().position(|byte| *byte == b'\n') {
+                let line = client.buffer.drain(..=pos).collect::<Vec<_>>();
+                let line = String::from_utf8_lossy(&line);
+                match meridian_ipc::decode_command(line.trim()) {
+                    Ok(command) => commands.push(command),
+                    Err(err) => tracing::warn!("invalid IPC command {:?}: {}", line.trim(), err),
+                }
+            }
+        }
+
+        self.retain_alive();
+
+        IpcPoll {
+            accepted_clients,
+            commands,
+        }
+    }
+
+    pub fn broadcast(&mut self, event: &ShellEvent) {
+        let Ok(bytes) = meridian_ipc::encode_event(event) else {
+            return;
+        };
+
+        for client in &mut self.clients {
+            if let Err(err) = client.stream.write_all(&bytes) {
+                tracing::debug!("IPC client write failed: {}", err);
+                client.alive = false;
+            }
+        }
+
+        self.retain_alive();
+    }
+
+    fn retain_alive(&mut self) {
+        self.clients.retain_mut(|client| {
+            if !client.alive {
+                let _ = client.stream.shutdown(Shutdown::Both);
+            }
+            client.alive
+        });
+    }
+}
+
+fn window_id(surface: &WlSurface) -> String {
+    surface.id().to_string()
+}
+
+fn toplevel_title(surface: &ToplevelSurface) -> String {
+    with_states(surface.wl_surface(), |states| {
+        let data = states
+            .data_map
+            .get::<XdgToplevelSurfaceData>()
+            .unwrap()
+            .lock()
+            .unwrap();
+
+        data.title
+            .clone()
+            .or_else(|| data.app_id.clone())
+            .unwrap_or_else(|| "Window".to_string())
+    })
+}
+
+fn launch_command(command: &str, terminal: bool) -> Option<String> {
+    if !terminal {
+        return Some(command.to_string());
+    }
+
+    let terminal = std::env::var("TERMINAL")
+        .ok()
+        .filter(|terminal| !terminal.trim().is_empty())
+        .or_else(|| {
+            [
+                "foot",
+                "alacritty",
+                "kitty",
+                "wezterm",
+                "ghostty",
+                "kgx",
+                "konsole",
+                "xterm",
+            ]
+            .into_iter()
+            .find(|candidate| command_exists(candidate))
+            .map(str::to_string)
+        })?;
+
+    Some(format!(
+        "{} -e sh -lc {}",
+        shell_quote(&terminal),
+        shell_quote(command)
+    ))
+}
+
+fn command_exists(command: &str) -> bool {
+    let Some(path) = std::env::var_os("PATH") else {
+        return false;
+    };
+
+    std::env::split_paths(&path).any(|dir| dir.join(command).is_file())
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 pub struct MeridianState {
@@ -178,9 +610,12 @@ pub struct MeridianState {
     pub popups: PopupManager,
     pub theme_manager: ThemeManager,
     pub wm_workspaces: Vec<WmWorkspace>,
+    pub ipc: IpcServer,
+    pub keybind_config: KeybindConfig,
 
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
+    pub layer_shell_state: WlrLayerShellState,
     pub shm_state: ShmState,
     pub seat_state: SeatState<Self>,
     pub output_manager_state: OutputManagerState,
@@ -196,6 +631,7 @@ impl MeridianState {
 
         let compositor_state = CompositorState::new::<Self>(&dh);
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
+        let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let data_device_state = DataDeviceState::new::<Self>(&dh);
@@ -210,6 +646,9 @@ impl MeridianState {
         let socket_name = Self::init_wayland_listener(display, event_loop);
         let loop_signal = event_loop.get_signal();
 
+        let theme_manager = ThemeManager::new();
+        let meridian_config = MeridianConfig::load();
+
         Self {
             start_time: Instant::now(),
             display_handle: dh,
@@ -220,10 +659,13 @@ impl MeridianState {
             workspaces: WorkspaceManager::new(),
             outputs: Vec::new(),
             popups: PopupManager::default(),
-            theme_manager: ThemeManager::new(),
+            theme_manager,
             wm_workspaces: (0..9).map(|_| WmWorkspace::new()).collect(),
+            ipc: IpcServer::new(),
+            keybind_config: meridian_config.keybinds,
             compositor_state,
             xdg_shell_state,
+            layer_shell_state,
             shm_state,
             seat_state,
             output_manager_state,
@@ -234,10 +676,7 @@ impl MeridianState {
         }
     }
 
-    fn init_wayland_listener(
-        display: Display<Self>,
-        event_loop: &mut EventLoop<Self>,
-    ) -> OsString {
+    fn init_wayland_listener(display: Display<Self>, event_loop: &mut EventLoop<Self>) -> OsString {
         let listening_socket = ListeningSocketSource::new_auto().unwrap();
         let socket_name = listening_socket.socket_name().to_os_string();
         let loop_handle = event_loop.handle();
@@ -307,9 +746,88 @@ impl CompositorHandler for MeridianState {
         handle_commit(&mut self.popups, self.workspaces.active_space(), surface);
         crate::grabs::resize_grab::handle_commit(self.workspaces.active_space_mut(), surface);
 
+        if let Some(output) = self.outputs.iter().find(|output| {
+            let map = layer_map_for_output(output);
+            map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
+                .is_some()
+        }) {
+            let initial_configure_sent = with_states(surface, |states| {
+                states
+                    .data_map
+                    .get::<LayerSurfaceData>()
+                    .unwrap()
+                    .lock()
+                    .unwrap()
+                    .initial_configure_sent
+            });
+
+            let mut map = layer_map_for_output(output);
+            map.arrange();
+
+            if !initial_configure_sent {
+                if let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL) {
+                    layer.layer_surface().send_configure();
+                }
+            }
+        }
+
         let active = self.workspaces.active;
         if self.wm_workspaces[active].mode == WorkspaceMode::Tiling {
             self.tile_workspace(active);
+        }
+    }
+}
+
+impl WlrLayerShellHandler for MeridianState {
+    fn shell_state(&mut self) -> &mut WlrLayerShellState {
+        &mut self.layer_shell_state
+    }
+
+    fn new_layer_surface(
+        &mut self,
+        surface: WlrLayerSurface,
+        output: Option<WlOutput>,
+        _layer: WlrLayer,
+        namespace: String,
+    ) {
+        let output = output
+            .as_ref()
+            .and_then(Output::from_resource)
+            .or_else(|| self.outputs.first().cloned());
+
+        let Some(output) = output else {
+            surface.send_close();
+            return;
+        };
+
+        let layer = DesktopLayerSurface::new(surface, namespace);
+        let map_result = {
+            let mut map = layer_map_for_output(&output);
+            map.map_layer(&layer)
+        };
+
+        if let Err(err) = map_result {
+            tracing::warn!("failed to map layer surface: {}", err);
+            layer.layer_surface().send_close();
+        }
+    }
+
+    fn new_popup(&mut self, _parent: WlrLayerSurface, popup: PopupSurface) {
+        let _ = self.popups.track_popup(PopupKind::Xdg(popup));
+    }
+
+    fn layer_destroyed(&mut self, surface: WlrLayerSurface) {
+        for output in &self.outputs {
+            let mut map = layer_map_for_output(output);
+            let layer = map
+                .layers()
+                .find(|layer| layer.layer_surface() == &surface)
+                .cloned();
+
+            if let Some(layer) = layer {
+                map.unmap_layer(&layer);
+                break;
+            }
         }
     }
 }
@@ -347,9 +865,19 @@ impl XdgShellHandler for MeridianState {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
+        tracing::info!("new xdg toplevel: {}", toplevel_title(&surface));
+        self.broadcast_toplevel_opened(&surface);
+        let wl_surface = surface.wl_surface().clone();
         let window = Window::new_wayland_window(surface);
         let active = self.workspaces.active;
-        self.workspaces.active_space_mut().map_element(window.clone(), (0, 0), true);
+        self.workspaces
+            .active_space_mut()
+            .map_element(window.clone(), (0, 0), true);
+        let serial = SERIAL_COUNTER.next_serial();
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            keyboard.set_focus(self, Some(wl_surface.clone()), serial);
+            self.broadcast_toplevel_focused(&wl_surface);
+        }
         if self.wm_workspaces[active].mode == WorkspaceMode::Tiling {
             let focused = self.focused_window();
             self.wm_workspaces[active].add_tiled(window, focused.as_ref());
@@ -359,6 +887,18 @@ impl XdgShellHandler for MeridianState {
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
         let _ = self.popups.track_popup(PopupKind::Xdg(surface));
+    }
+
+    fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        self.broadcast_toplevel_closed(&surface);
+    }
+
+    fn app_id_changed(&mut self, surface: ToplevelSurface) {
+        self.broadcast_toplevel_opened(&surface);
+    }
+
+    fn title_changed(&mut self, surface: ToplevelSurface) {
+        self.broadcast_toplevel_opened(&surface);
     }
 
     fn grab(&mut self, _surface: PopupSurface, _seat: WlSeat, _serial: Serial) {}
@@ -385,9 +925,19 @@ impl XdgShellHandler for MeridianState {
                 Some(w) => w,
                 None => return,
             };
-            let initial_window_location = self.workspaces.active_space().element_location(&window).unwrap();
-            let grab = MoveSurfaceGrab { start_data, window, initial_window_location };
-            seat.get_pointer().unwrap().set_grab(self, grab, serial, Focus::Clear);
+            let initial_window_location = self
+                .workspaces
+                .active_space()
+                .element_location(&window)
+                .unwrap();
+            let grab = MoveSurfaceGrab {
+                start_data,
+                window,
+                initial_window_location,
+            };
+            seat.get_pointer()
+                .unwrap()
+                .set_grab(self, grab, serial, Focus::Clear);
         }
     }
 
@@ -411,7 +961,11 @@ impl XdgShellHandler for MeridianState {
                 Some(w) => w,
                 None => return,
             };
-            let initial_window_location = self.workspaces.active_space().element_location(&window).unwrap();
+            let initial_window_location = self
+                .workspaces
+                .active_space()
+                .element_location(&window)
+                .unwrap();
             let initial_window_size = window.geometry().size;
             surface.with_pending_state(|state| {
                 state.states.set(xdg_toplevel::State::Resizing);
@@ -423,12 +977,16 @@ impl XdgShellHandler for MeridianState {
                 ResizeEdge::from(edges),
                 Rectangle::new(initial_window_location, initial_window_size),
             );
-            seat.get_pointer().unwrap().set_grab(self, grab, serial, Focus::Clear);
+            seat.get_pointer()
+                .unwrap()
+                .set_grab(self, grab, serial, Focus::Clear);
         }
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
-        let output_geo = self.outputs.first()
+        let output_geo = self
+            .outputs
+            .first()
             .and_then(|o| self.workspaces.active_space().output_geometry(o));
         if let Some(geo) = output_geo {
             surface.with_pending_state(|state| {
@@ -439,10 +997,15 @@ impl XdgShellHandler for MeridianState {
                 .workspaces
                 .active_space()
                 .elements()
-                .find(|w| w.toplevel().map_or(false, |t| t.wl_surface() == surface.wl_surface()))
+                .find(|w| {
+                    w.toplevel()
+                        .map_or(false, |t| t.wl_surface() == surface.wl_surface())
+                })
                 .cloned();
             if let Some(window) = window {
-                self.workspaces.active_space_mut().map_element(window, geo.loc, true);
+                self.workspaces
+                    .active_space_mut()
+                    .map_element(window, geo.loc, true);
             }
         }
         surface.send_pending_configure();
@@ -457,7 +1020,9 @@ impl XdgShellHandler for MeridianState {
     }
 
     fn fullscreen_request(&mut self, surface: ToplevelSurface, _output: Option<WlOutput>) {
-        let output_geo = self.outputs.first()
+        let output_geo = self
+            .outputs
+            .first()
             .and_then(|o| self.workspaces.active_space().output_geometry(o));
         if let Some(geo) = output_geo {
             surface.with_pending_state(|state| {
@@ -468,10 +1033,15 @@ impl XdgShellHandler for MeridianState {
                 .workspaces
                 .active_space()
                 .elements()
-                .find(|w| w.toplevel().map_or(false, |t| t.wl_surface() == surface.wl_surface()))
+                .find(|w| {
+                    w.toplevel()
+                        .map_or(false, |t| t.wl_surface() == surface.wl_surface())
+                })
                 .cloned();
             if let Some(window) = window {
-                self.workspaces.active_space_mut().map_element(window, geo.loc, true);
+                self.workspaces
+                    .active_space_mut()
+                    .map_element(window, geo.loc, true);
             }
         }
         surface.send_pending_configure();

@@ -1,7 +1,7 @@
 use smithay::{
     backend::input::{
-        AbsolutePositionEvent, Axis, AxisSource, ButtonState, InputBackend,
-        PointerAxisEvent, PointerButtonEvent,
+        AbsolutePositionEvent, Axis, AxisSource, ButtonState, InputBackend, PointerAxisEvent,
+        PointerButtonEvent,
     },
     input::pointer::{AxisFrame, ButtonEvent, MotionEvent},
     reexports::wayland_server::protocol::wl_surface::WlSurface,
@@ -19,13 +19,25 @@ pub fn handle_pointer_motion_absolute<I: InputBackend>(
         Some(o) => o,
         None => return,
     };
-    let output_geo = state.workspaces.active_space().output_geometry(&output).unwrap();
+    let output_geo = state
+        .workspaces
+        .active_space()
+        .output_geometry(&output)
+        .unwrap();
     let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
     let serial = SERIAL_COUNTER.next_serial();
     let pointer = state.seat.get_pointer().unwrap();
     let under = state.surface_under(pos);
 
-    pointer.motion(state, under, &MotionEvent { location: pos, serial, time: event.time_msec() });
+    pointer.motion(
+        state,
+        under,
+        &MotionEvent {
+            location: pos,
+            serial,
+            time: event.time_msec(),
+        },
+    );
     pointer.frame(state);
 }
 
@@ -40,25 +52,40 @@ pub fn handle_pointer_button<I: InputBackend>(
     let button_state = event.state();
 
     if ButtonState::Pressed == button_state && !pointer.is_grabbed() {
-        if let Some((window, _)) = state
+        let location = pointer.current_location();
+        let under = state.surface_under(location);
+        let window_under = state
             .workspaces
             .active_space()
-            .element_under(pointer.current_location())
-            .map(|(w, l)| (w.clone(), l))
-        {
-            state.workspaces.active_space_mut().raise_element(&window, true);
-            if let Some(surface) = window.wl_surface() {
-                keyboard.set_focus(state, Some(surface.into_owned()), serial);
-            }
+            .element_under(location)
+            .and_then(|(window, window_location)| {
+                let (surface, _) = under.as_ref()?;
+                let local = location - window_location.to_f64();
+                let window_surface = window
+                    .surface_under(local, smithay::desktop::WindowSurfaceType::ALL)?
+                    .0;
+
+                (window_surface == *surface).then(|| window.clone())
+            });
+
+        if let Some(window) = window_under {
             state
                 .workspaces
-                .active_space()
-                .elements()
-                .for_each(|w| {
-                    if let Some(t) = w.toplevel() {
-                        t.send_pending_configure();
-                    }
-                });
+                .active_space_mut()
+                .raise_element(&window, true);
+            if let Some(surface) = window.wl_surface() {
+                let surface = surface.into_owned();
+                keyboard.set_focus(state, Some(surface.clone()), serial);
+                state.broadcast_toplevel_focused(&surface);
+            }
+            state.workspaces.active_space().elements().for_each(|w| {
+                if let Some(t) = w.toplevel() {
+                    t.send_pending_configure();
+                }
+            });
+        } else if let Some((surface, _)) = under {
+            keyboard.set_focus(state, Some(surface.clone()), serial);
+            state.broadcast_toplevel_focused(&surface);
         } else {
             state.workspaces.active_space().elements().for_each(|w| {
                 w.set_activated(false);
@@ -70,7 +97,15 @@ pub fn handle_pointer_button<I: InputBackend>(
         }
     }
 
-    pointer.button(state, &ButtonEvent { button, state: button_state, serial, time: event.time_msec() });
+    pointer.button(
+        state,
+        &ButtonEvent {
+            button,
+            state: button_state,
+            serial,
+            time: event.time_msec(),
+        },
+    );
     pointer.frame(state);
 }
 

@@ -1,4 +1,4 @@
-use meridian_wm::SplitDir;
+use meridian_config::{Action, Modifiers, SplitDir};
 use smithay::{
     backend::input::{Event, InputBackend, KeyboardKeyEvent, KeyState},
     input::keyboard::FilterResult,
@@ -7,12 +7,9 @@ use smithay::{
 
 use crate::state::MeridianState;
 
-enum WsAction {
-    Switch(usize),
-    MoveWindow(usize),
-    ToggleTiling,
-    ForceSplit(SplitDir),
-    ResizeTile(SplitDir, f32),
+struct KeyMatch {
+    modifiers: Modifiers,
+    keysym: u32,
 }
 
 pub fn handle_keyboard<I: InputBackend>(
@@ -24,65 +21,83 @@ pub fn handle_keyboard<I: InputBackend>(
     let key_state = event.state();
     let keyboard = state.seat.get_keyboard().unwrap();
 
-    let action = keyboard.input::<WsAction, _>(
+    let match_result = keyboard.input::<KeyMatch, _>(
         state,
         event.key_code(),
         key_state,
         serial,
         time,
         |_data, modifiers, handle| {
-            if key_state == KeyState::Pressed && modifiers.logo {
-                if let Some(&sym) = handle.raw_syms().iter().next() {
-                    let raw = sym.raw();
-                    // Super+1…9  workspace switch / window move
-                    if raw >= 0x31 && raw <= 0x39 {
-                        let idx = (raw - 0x31) as usize;
-                        return if modifiers.shift {
-                            FilterResult::Intercept(WsAction::MoveWindow(idx))
-                        } else {
-                            FilterResult::Intercept(WsAction::Switch(idx))
-                        };
-                    }
-                    // Super+T  toggle tiling mode
-                    if raw == 0x74 {
-                        return FilterResult::Intercept(WsAction::ToggleTiling);
-                    }
-                    // Super+H / Super+V  force split direction
-                    if raw == 0x68 {
-                        return FilterResult::Intercept(WsAction::ForceSplit(SplitDir::Horizontal));
-                    }
-                    if raw == 0x76 {
-                        return FilterResult::Intercept(WsAction::ForceSplit(SplitDir::Vertical));
-                    }
-                    // Super+Arrows  resize tile
-                    match raw {
-                        0xff51 => return FilterResult::Intercept(WsAction::ResizeTile(SplitDir::Horizontal, -0.05)),
-                        0xff53 => return FilterResult::Intercept(WsAction::ResizeTile(SplitDir::Horizontal,  0.05)),
-                        0xff52 => return FilterResult::Intercept(WsAction::ResizeTile(SplitDir::Vertical,   -0.05)),
-                        0xff54 => return FilterResult::Intercept(WsAction::ResizeTile(SplitDir::Vertical,    0.05)),
-                        _ => {}
-                    }
-                }
+            if key_state != KeyState::Pressed {
+                return FilterResult::Forward;
             }
+
+            let mut mods = Modifiers::empty();
+            if modifiers.logo {
+                mods |= Modifiers::SUPER;
+            }
+            if modifiers.shift {
+                mods |= Modifiers::SHIFT;
+            }
+            if modifiers.ctrl {
+                mods |= Modifiers::CTRL;
+            }
+            if modifiers.alt {
+                mods |= Modifiers::ALT;
+            }
+
+            if let Some(&sym) = handle.raw_syms().iter().next() {
+                return FilterResult::Intercept(KeyMatch {
+                    modifiers: mods,
+                    keysym: sym.raw(),
+                });
+            }
+
             FilterResult::Forward
         },
     );
 
+    let Some(km) = match_result else { return };
+
+    let action = match state.keybind_config.find_action(km.modifiers, km.keysym) {
+        Some(a) => a.clone(),
+        None => return,
+    };
+
     match action {
-        Some(WsAction::Switch(idx)) => state.switch_workspace(idx),
-        Some(WsAction::MoveWindow(idx)) => state.move_focused_window_to_workspace(idx),
-        Some(WsAction::ToggleTiling) => state.toggle_tiling(),
-        Some(WsAction::ForceSplit(dir)) => {
+        Action::SwitchWorkspace(idx) => state.switch_workspace(idx),
+        Action::MoveToWorkspace(idx) => state.move_focused_window_to_workspace(idx),
+        Action::ToggleTiling => state.toggle_tiling(),
+        Action::ForceSplit(dir) => {
             let active = state.workspaces.active;
-            state.wm_workspaces[active].force_split(dir);
+            state.wm_workspaces[active].force_split(match dir {
+                SplitDir::Horizontal => meridian_wm::SplitDir::Horizontal,
+                SplitDir::Vertical => meridian_wm::SplitDir::Vertical,
+            });
         }
-        Some(WsAction::ResizeTile(dir, delta)) => {
+        Action::ResizeTile { dir, delta } => {
             if let Some(window) = state.focused_window() {
                 let active = state.workspaces.active;
-                state.wm_workspaces[active].resize_focused(&window, dir, delta);
+                let wm_dir = match dir {
+                    SplitDir::Horizontal => meridian_wm::SplitDir::Horizontal,
+                    SplitDir::Vertical => meridian_wm::SplitDir::Vertical,
+                };
+                state.wm_workspaces[active].resize_focused(&window, wm_dir, delta);
                 state.tile_workspace(active);
             }
         }
-        None => {}
+        Action::CloseWindow => {
+            if let Some(window) = state.focused_window() {
+                if let Some(toplevel) = window.toplevel() {
+                    toplevel.send_close();
+                }
+            }
+        }
+        Action::ToggleLauncher => {
+            state.broadcast_toggle_launcher();
+        }
+        Action::Quit => {
+            state.loop_signal.stop();
+        }
     }
 }
