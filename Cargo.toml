@@ -1,0 +1,37 @@
+[workspace]
+members = [
+    ".",
+    "crates/meridian-compositor",
+    "crates/meridian-wm",
+    "crates/meridian-shell",
+    "crates/meridian-ipc",
+    "crates/meridian-config",
+]
+
+[workspace.dependencies]
+bitflags = "2"
+smithay = { git = "https://github.com/Smithay/smithay.git", features = [
+    "backend_drm",
+    "backend_gbm",
+    "backend_egl",
+    "backend_winit",
+    "backend_libinput",
+    "backend_udev",
+    "backend_session_libseat",
+    "renderer_gl",
+    "wayland_frontend",
+    "desktop",
+] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[package]
+name = "meridian"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+meridian-compositor = { path = "crates/meridian-compositor" }
+smithay = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

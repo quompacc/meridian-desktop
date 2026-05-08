@@ -1,0 +1,11 @@
+[package]
+name = "meridian-compositor"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitflags = { workspace = true }
+meridian-config = { path = "../meridian-config" }
+meridian-wm = { path = "../meridian-wm" }
+smithay = { workspace = true }
+tracing = { workspace = true }

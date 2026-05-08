@@ -1,0 +1,45 @@
+use smithay::{
+    desktop::{PopupKind, PopupManager, Space, Window},
+    reexports::wayland_server::protocol::wl_surface::WlSurface,
+    wayland::{
+        compositor::with_states,
+        shell::xdg::XdgToplevelSurfaceData,
+    },
+};
+
+/// Sendet den initialen Configure und tracked Popup-Commits.
+/// Muss aus `CompositorHandler::commit` aufgerufen werden.
+pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: &WlSurface) {
+    // Initialen configure an neue Toplevels senden
+    if let Some(window) = space
+        .elements()
+        .find(|w| w.toplevel().unwrap().wl_surface() == surface)
+        .cloned()
+    {
+        let initial_configure_sent = with_states(surface, |states| {
+            states
+                .data_map
+                .get::<XdgToplevelSurfaceData>()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .initial_configure_sent
+        });
+        if !initial_configure_sent {
+            window.toplevel().unwrap().send_configure();
+        }
+    }
+
+    // Popup commits und initialer configure
+    popups.commit(surface);
+    if let Some(popup) = popups.find_popup(surface) {
+        match popup {
+            PopupKind::Xdg(ref xdg) => {
+                if !xdg.is_initial_configure_sent() {
+                    xdg.send_configure().expect("initial popup configure failed");
+                }
+            }
+            PopupKind::InputMethod(_) => {}
+        }
+    }
+}
