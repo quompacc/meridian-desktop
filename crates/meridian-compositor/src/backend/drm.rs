@@ -13,7 +13,10 @@ use smithay::{
         },
         egl::{EGLContext, EGLDisplay},
         libinput::{LibinputInputBackend, LibinputSessionInterface},
-        renderer::gles::GlesRenderer,
+        renderer::{
+            element::solid::SolidColorRenderElement,
+            gles::GlesRenderer,
+        },
         session::{Event as SessionEvent, Session, libseat::LibSeatSession},
         udev::{all_gpus, primary_gpu},
     },
@@ -32,8 +35,10 @@ use smithay::{
         },
         input::Libinput,
     },
-    utils::{DeviceFd, Transform},
+    utils::{DeviceFd, Scale, Transform},
 };
+use smithay::backend::renderer::element::{render_elements, surface::WaylandSurfaceRenderElement};
+use smithay::wayland::seat::WaylandFocus;
 use tracing::{error, info, warn};
 
 use crate::state::MeridianState;
@@ -217,6 +222,12 @@ pub fn init_drm(
     Ok(())
 }
 
+render_elements! {
+    pub MeridianRenderElements<=GlesRenderer>;
+    Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
+    Decoration=SolidColorRenderElement,
+}
+
 fn render_outputs(state: &mut MeridianState) {
     let mut drm = match state.drm_backend.take() {
         Some(d) => d,
@@ -226,17 +237,49 @@ fn render_outputs(state: &mut MeridianState) {
     let DrmBackend { ref mut renderer, ref mut outputs } = drm;
 
     for out in outputs.iter_mut() {
-        let elements = space_render_elements::<GlesRenderer, Window, _>(
+        let space_elements = space_render_elements::<GlesRenderer, Window, _>(
             renderer,
             [state.workspaces.active_space()],
             &out.output,
             1.0,
         ).unwrap_or_default();
 
+        let space = state.workspaces.active_space();
+        let theme = &state.theme_manager.current().config;
+        let scale = Scale::from(1.0f64);
+
+        let mut deco_elements: Vec<SolidColorRenderElement> = Vec::new();
+        let windows: Vec<_> = space.elements().cloned().collect();
+        for window in &windows {
+            let wl_surf = match window.wl_surface().map(|s| s.into_owned()) {
+                Some(s) => s,
+                None => continue,
+            };
+            let loc = match space.element_location(window) {
+                Some(l) => l,
+                None => continue,
+            };
+            let geo = window.geometry();
+            deco_elements.extend(state.decoration_manager.render_elements(
+                &wl_surf,
+                loc,
+                geo.size,
+                &theme.decorations,
+                &theme.colors,
+                scale,
+            ));
+        }
+
+        let elements: Vec<MeridianRenderElements> = space_elements
+            .into_iter()
+            .map(MeridianRenderElements::Space)
+            .chain(deco_elements.into_iter().map(MeridianRenderElements::Decoration))
+            .collect();
+
         let n_elements = elements.len();
 
         let bg = state.theme_manager.current().config.colors.background.as_f32_array();
-        match out.compositor.render_frame::<GlesRenderer, SpaceRenderElements<GlesRenderer, _>>(
+        match out.compositor.render_frame::<GlesRenderer, MeridianRenderElements>(
             renderer,
             &elements,
             bg,

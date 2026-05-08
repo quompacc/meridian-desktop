@@ -4,7 +4,7 @@ use smithay::{
     backend::{
         renderer::{
             damage::OutputDamageTracker,
-            element::surface::WaylandSurfaceRenderElement,
+            element::solid::SolidColorRenderElement,
             gles::GlesRenderer,
         },
         winit::{self, WinitEvent},
@@ -12,7 +12,8 @@ use smithay::{
     desktop::space::render_output,
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::EventLoop,
-    utils::{Rectangle, Transform},
+    utils::{Rectangle, Scale, Transform},
+    wayland::seat::WaylandFocus,
 };
 
 use crate::state::MeridianState;
@@ -71,14 +72,39 @@ pub fn init_winit(
                 {
                     let (renderer, mut framebuffer) = backend.bind().unwrap();
                     let bg = state.theme_manager.current().config.colors.background.as_f32_array();
-                    render_output::<_, WaylandSurfaceRenderElement<GlesRenderer>, _, _>(
+
+                    let space = state.workspaces.active_space();
+                    let theme = &state.theme_manager.current().config;
+                    let scale = Scale::from(1.0f64);
+                    let mut deco_elements: Vec<SolidColorRenderElement> = Vec::new();
+                    for window in space.elements().cloned().collect::<Vec<_>>() {
+                        let wl_surf = match window.wl_surface().map(|s| s.into_owned()) {
+                            Some(s) => s,
+                            None => continue,
+                        };
+                        let loc = match space.element_location(&window) {
+                            Some(l) => l,
+                            None => continue,
+                        };
+                        let geo = window.geometry();
+                        deco_elements.extend(state.decoration_manager.render_elements(
+                            &wl_surf,
+                            loc,
+                            geo.size,
+                            &theme.decorations,
+                            &theme.colors,
+                            scale,
+                        ));
+                    }
+
+                    render_output::<_, SolidColorRenderElement, _, _>(
                         &output,
                         renderer,
                         &mut framebuffer,
                         1.0,
                         age,
                         [state.workspaces.active_space()],
-                        &[],
+                        &deco_elements,
                         &mut damage_tracker,
                         bg,
                     )

@@ -71,12 +71,17 @@ use smithay::wayland::seat::WaylandFocus;
 
 use crate::{
     backend::drm::DrmBackend,
+    decoration::DecorationManager,
     grabs::{
         move_grab::MoveSurfaceGrab,
         resize_grab::{ResizeEdge, ResizeSurfaceGrab},
     },
     protocols::xdg_shell::handle_commit,
     workspace::WorkspaceManager,
+};
+use smithay::{
+    wayland::shell::xdg::decoration::{XdgDecorationHandler, XdgDecorationState},
+    reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
 };
 
 impl MeridianState {
@@ -612,9 +617,11 @@ pub struct MeridianState {
     pub wm_workspaces: Vec<WmWorkspace>,
     pub ipc: IpcServer,
     pub keybind_config: KeybindConfig,
+    pub decoration_manager: DecorationManager,
 
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
+    pub decoration_state: XdgDecorationState,
     pub layer_shell_state: WlrLayerShellState,
     pub shm_state: ShmState,
     pub seat_state: SeatState<Self>,
@@ -631,6 +638,7 @@ impl MeridianState {
 
         let compositor_state = CompositorState::new::<Self>(&dh);
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
+        let decoration_state = XdgDecorationState::new::<Self>(&dh);
         let layer_shell_state = WlrLayerShellState::new::<Self>(&dh);
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
@@ -663,8 +671,10 @@ impl MeridianState {
             wm_workspaces: (0..9).map(|_| WmWorkspace::new()).collect(),
             ipc: IpcServer::new(),
             keybind_config: meridian_config.keybinds,
+            decoration_manager: DecorationManager::new(),
             compositor_state,
             xdg_shell_state,
+            decoration_state,
             layer_shell_state,
             shm_state,
             seat_state,
@@ -868,20 +878,32 @@ impl XdgShellHandler for MeridianState {
         tracing::info!("new xdg toplevel: {}", toplevel_title(&surface));
         self.broadcast_toplevel_opened(&surface);
         let wl_surface = surface.wl_surface().clone();
-        let window = Window::new_wayland_window(surface);
+        let window = Window::new_wayland_window(surface.clone());
+
+        self.decoration_manager.set_ssd(&wl_surface, true);
+
         let active = self.workspaces.active;
-        self.workspaces
-            .active_space_mut()
-            .map_element(window.clone(), (0, 0), true);
-        let serial = SERIAL_COUNTER.next_serial();
-        if let Some(keyboard) = self.seat.get_keyboard() {
-            keyboard.set_focus(self, Some(wl_surface.clone()), serial);
-            self.broadcast_toplevel_focused(&wl_surface);
-        }
         if self.wm_workspaces[active].mode == WorkspaceMode::Tiling {
+            self.workspaces
+                .active_space_mut()
+                .map_element(window.clone(), (0, 0), true);
+            self.decoration_manager.set_tiled(&wl_surface, true);
             let focused = self.focused_window();
             self.wm_workspaces[active].add_tiled(window, focused.as_ref());
             self.tile_workspace(active);
+        } else {
+            let theme = &self.theme_manager.current().config.decorations;
+            let (ox, oy) = self.decoration_manager.decoration_offset(&wl_surface, theme);
+            self.workspaces
+                .active_space_mut()
+                .map_element(window, (ox, oy), true);
+        }
+
+        let serial = SERIAL_COUNTER.next_serial();
+        if let Some(keyboard) = self.seat.get_keyboard() {
+            self.update_focus_decoration(None, Some(&wl_surface));
+            keyboard.set_focus(self, Some(wl_surface.clone()), serial);
+            self.broadcast_toplevel_focused(&wl_surface);
         }
     }
 
@@ -890,6 +912,7 @@ impl XdgShellHandler for MeridianState {
     }
 
     fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        self.decoration_manager.remove(surface.wl_surface());
         self.broadcast_toplevel_closed(&surface);
     }
 
@@ -993,6 +1016,7 @@ impl XdgShellHandler for MeridianState {
                 state.states.set(xdg_toplevel::State::Maximized);
                 state.size = Some(geo.size);
             });
+            self.decoration_manager.set_maximized(surface.wl_surface(), true);
             let window = self
                 .workspaces
                 .active_space()
@@ -1012,6 +1036,7 @@ impl XdgShellHandler for MeridianState {
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
+        self.decoration_manager.set_maximized(surface.wl_surface(), false);
         surface.with_pending_state(|state| {
             state.states.unset(xdg_toplevel::State::Maximized);
             state.size = None;
@@ -1029,6 +1054,7 @@ impl XdgShellHandler for MeridianState {
                 state.states.set(xdg_toplevel::State::Fullscreen);
                 state.size = Some(geo.size);
             });
+            self.decoration_manager.set_fullscreen(surface.wl_surface(), true);
             let window = self
                 .workspaces
                 .active_space()
@@ -1048,6 +1074,7 @@ impl XdgShellHandler for MeridianState {
     }
 
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        self.decoration_manager.set_fullscreen(surface.wl_surface(), false);
         surface.with_pending_state(|state| {
             state.states.unset(xdg_toplevel::State::Fullscreen);
             state.size = None;
@@ -1101,6 +1128,46 @@ impl DataDeviceHandler for MeridianState {
 }
 
 impl DndGrabHandler for MeridianState {}
+
+// ── XDG Decoration ────────────────────────────────────────────────────────────
+
+impl XdgDecorationHandler for MeridianState {
+    fn new_decoration(&mut self, toplevel: ToplevelSurface) {
+        toplevel.with_pending_state(|state| {
+            state.decoration_mode = Some(DecorationMode::ServerSide);
+        });
+        toplevel.send_configure();
+        self.decoration_manager.set_ssd(toplevel.wl_surface(), true);
+    }
+
+    fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
+        let ssd = mode == DecorationMode::ServerSide;
+        toplevel.with_pending_state(|state| {
+            state.decoration_mode = Some(mode);
+        });
+        self.decoration_manager.set_ssd(toplevel.wl_surface(), ssd);
+        toplevel.send_configure();
+    }
+
+    fn unset_mode(&mut self, toplevel: ToplevelSurface) {
+        toplevel.with_pending_state(|state| {
+            state.decoration_mode = Some(DecorationMode::ServerSide);
+        });
+        self.decoration_manager.set_ssd(toplevel.wl_surface(), true);
+        toplevel.send_configure();
+    }
+}
+
+impl MeridianState {
+    pub fn update_focus_decoration(&mut self, old: Option<&WlSurface>, new: Option<&WlSurface>) {
+        if let Some(old_surf) = old {
+            self.decoration_manager.set_focused(old_surf, false);
+        }
+        if let Some(new_surf) = new {
+            self.decoration_manager.set_focused(new_surf, true);
+        }
+    }
+}
 
 // ── Delegation ────────────────────────────────────────────────────────────────
 

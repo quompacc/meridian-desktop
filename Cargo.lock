@@ -884,6 +884,7 @@ dependencies = [
  "meridian-config",
  "meridian-ipc",
  "meridian-wm",
+ "smallvec",
  "smithay",
  "tracing",
 ]
