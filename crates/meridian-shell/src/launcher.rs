@@ -21,6 +21,10 @@ const INNER_PAD: i32 = 12;
 const ROW_GAP: i32 = 4;
 const LIST_TOP_GAP: i32 = 10;
 const SECTION_LABEL_H: i32 = 16;
+const PINNED_GRID_COLS: usize = 2;
+const PINNED_CARD_H: i32 = 36;
+const PINNED_GRID_COL_GAP: i32 = 8;
+const PINNED_GRID_ROW_GAP: i32 = 6;
 const MAX_RESULTS: usize = 9;
 const MAX_PINNED_RESULTS: usize = 4;
 const PINNED_CANDIDATES: &[&str] = &[
@@ -751,16 +755,8 @@ pub fn draw_launcher(
         "Launcher",
         header_rect.x,
         header_rect.y + 16,
-        header_rect.w / 2 - 8,
+        header_rect.w - 120,
         colors.text,
-    );
-    painter.text_clipped(
-        font,
-        "Enter launch · Esc close",
-        header_rect.x + header_rect.w / 2,
-        header_rect.y + 16,
-        header_rect.w / 2,
-        colors.border,
     );
     let count_text = if results_total == 1 {
         "1 result".to_string()
@@ -828,6 +824,7 @@ pub fn draw_launcher(
         return;
     }
 
+    let mut list_start = 0;
     if launcher_state.query.is_empty() && pinned_count > 0 {
         painter.text_clipped(
             font,
@@ -838,22 +835,73 @@ pub fn draw_launcher(
             colors.border,
         );
         y += SECTION_LABEL_H;
-    }
 
-    for (index, app) in apps.iter().enumerate() {
-        if launcher_state.query.is_empty() && pinned_count > 0 && index == pinned_count {
-            y += 2;
+        let card_w = ((width as i32 - PAD * 2) - PINNED_GRID_COL_GAP) / PINNED_GRID_COLS as i32;
+        for (index, app) in apps.iter().take(pinned_count).enumerate() {
+            let row = index / PINNED_GRID_COLS;
+            let col = index % PINNED_GRID_COLS;
+            let rect = Rect {
+                x: PAD + col as i32 * (card_w + PINNED_GRID_COL_GAP),
+                y: y + row as i32 * (PINNED_CARD_H + PINNED_GRID_ROW_GAP),
+                w: card_w,
+                h: PINNED_CARD_H,
+            };
+            let is_selected = index == selected_idx;
+            painter.roundish_rect(
+                rect,
+                if is_selected {
+                    colors.accent
+                } else {
+                    colors.surface
+                },
+            );
+            painter.stroke_rect(rect, colors.border);
+            if is_selected {
+                painter.rect(
+                    Rect {
+                        x: rect.x + 2,
+                        y: rect.y + 2,
+                        w: 3,
+                        h: rect.h - 4,
+                    },
+                    colors.text,
+                );
+            }
             painter.text_clipped(
                 font,
-                "All apps",
-                PAD,
-                y + 12,
-                width as i32 - PAD * 2,
-                colors.border,
+                &app.name,
+                rect.x + INNER_PAD,
+                rect.y + 21,
+                rect.w - INNER_PAD * 2,
+                if is_selected {
+                    Color::rgb(0x1e, 0x1e, 0x2e)
+                } else {
+                    colors.text
+                },
             );
-            y += SECTION_LABEL_H;
+            launcher_state.clicks.push(ClickZone {
+                rect,
+                action: ClickAction::LaunchApp(index),
+            });
         }
 
+        let pinned_rows = pinned_count.div_ceil(PINNED_GRID_COLS) as i32;
+        y += pinned_rows * PINNED_CARD_H + (pinned_rows.saturating_sub(1)) * PINNED_GRID_ROW_GAP;
+        y += 6;
+
+        painter.text_clipped(
+            font,
+            "All apps",
+            PAD,
+            y + 12,
+            width as i32 - PAD * 2,
+            colors.border,
+        );
+        y += SECTION_LABEL_H;
+        list_start = pinned_count;
+    }
+
+    for (index, app) in apps.iter().enumerate().skip(list_start) {
         let is_selected = index == selected_idx;
         let rect = Rect {
             x: PAD,
