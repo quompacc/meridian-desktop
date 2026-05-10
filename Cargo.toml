@@ -6,6 +6,7 @@ members = [
     "crates/meridian-shell",
     "crates/meridian-ipc",
     "crates/meridian-config",
+    "crates/meridian-portal",
 ]
 
 [workspace.dependencies]

@@ -1,0 +1,10 @@
+[package]
+name = "meridian-portal"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+meridian-ipc = { path = "../meridian-ipc" }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+zbus = "5"
