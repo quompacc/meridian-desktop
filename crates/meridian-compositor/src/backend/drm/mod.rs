@@ -322,7 +322,9 @@ impl DrmTimingStats {
                 "drm timing aggregation enabled: report_interval_ms={}",
                 stats.report_interval.as_millis()
             );
-            tracing::info!("drm render schedule: timer-driven interval_ms=16");
+            tracing::info!(
+                "drm render schedule diagnostics enabled: timer-driven scheduling (interval configured in drm init)"
+            );
         }
         stats
     }
