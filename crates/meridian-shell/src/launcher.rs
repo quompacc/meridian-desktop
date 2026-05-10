@@ -25,6 +25,8 @@ const PINNED_GRID_COLS: usize = 2;
 const PINNED_CARD_H: i32 = 36;
 const PINNED_GRID_COL_GAP: i32 = 8;
 const PINNED_GRID_ROW_GAP: i32 = 6;
+const APP_BADGE_SIZE: i32 = 18;
+const APP_BADGE_GAP: i32 = 8;
 const MAX_RESULTS: usize = 9;
 const MAX_PINNED_RESULTS: usize = 4;
 const PINNED_CANDIDATES: &[&str] = &[
@@ -839,6 +841,10 @@ pub fn draw_launcher(
                 h: PINNED_CARD_H,
             };
             let is_selected = index == selected_idx;
+            let badge_x = rect.x + INNER_PAD - 1;
+            let badge_y = rect.y + (rect.h - APP_BADGE_SIZE) / 2;
+            let text_x = badge_x + APP_BADGE_SIZE + APP_BADGE_GAP;
+            let initial = app_initial(&app.name);
             painter.roundish_rect(
                 rect,
                 if is_selected {
@@ -859,12 +865,38 @@ pub fn draw_launcher(
                     colors.text,
                 );
             }
+            let badge_rect = Rect {
+                x: badge_x,
+                y: badge_y,
+                w: APP_BADGE_SIZE,
+                h: APP_BADGE_SIZE,
+            };
+            painter.roundish_rect(
+                badge_rect,
+                if is_selected {
+                    Color::rgb(0x1e, 0x1e, 0x2e)
+                } else {
+                    colors.border
+                },
+            );
+            painter.text_clipped(
+                font,
+                &initial,
+                badge_rect.x + 5,
+                badge_rect.y + 14,
+                badge_rect.w - 6,
+                if is_selected {
+                    colors.accent
+                } else {
+                    colors.text
+                },
+            );
             painter.text_clipped(
                 font,
                 &app.name,
-                rect.x + INNER_PAD,
+                text_x,
                 rect.y + 21,
-                rect.w - INNER_PAD * 2,
+                rect.w - (text_x - rect.x) - INNER_PAD,
                 if is_selected {
                     Color::rgb(0x1e, 0x1e, 0x2e)
                 } else {
@@ -924,6 +956,36 @@ pub fn draw_launcher(
         } else {
             colors.text
         };
+        let badge_x = rect.x + INNER_PAD - 1;
+        let badge_y = rect.y + (rect.h - APP_BADGE_SIZE) / 2;
+        let text_x = badge_x + APP_BADGE_SIZE + APP_BADGE_GAP;
+        let initial = app_initial(&app.name);
+        let badge_rect = Rect {
+            x: badge_x,
+            y: badge_y,
+            w: APP_BADGE_SIZE,
+            h: APP_BADGE_SIZE,
+        };
+        painter.roundish_rect(
+            badge_rect,
+            if is_selected {
+                Color::rgb(0x1e, 0x1e, 0x2e)
+            } else {
+                colors.border
+            },
+        );
+        painter.text_clipped(
+            font,
+            &initial,
+            badge_rect.x + 5,
+            badge_rect.y + 14,
+            badge_rect.w - 6,
+            if is_selected {
+                colors.accent
+            } else {
+                colors.text
+            },
+        );
         let exec_hint = Path::new(&app.program)
             .file_name()
             .and_then(|name| name.to_str())
@@ -931,17 +993,17 @@ pub fn draw_launcher(
         painter.text_clipped(
             font,
             &app.name,
-            rect.x + INNER_PAD + 2,
+            text_x,
             rect.y + 17,
-            rect.w - INNER_PAD * 2,
+            rect.w - (text_x - rect.x) - INNER_PAD,
             text_color,
         );
         painter.text_clipped(
             font,
             exec_hint,
-            rect.x + INNER_PAD + 2,
+            text_x,
             rect.y + 32,
-            rect.w - INNER_PAD * 2,
+            rect.w - (text_x - rect.x) - INNER_PAD,
             if is_selected {
                 Color::rgb(0x3a, 0x3a, 0x44)
             } else {
@@ -954,6 +1016,14 @@ pub fn draw_launcher(
         });
         y += APP_ROW_H + ROW_GAP;
     }
+}
+
+fn app_initial(name: &str) -> String {
+    name.chars()
+        .find(|ch| !ch.is_whitespace())
+        .and_then(|ch| ch.to_uppercase().next())
+        .map(|ch| ch.to_string())
+        .unwrap_or_else(|| "?".to_string())
 }
 
 fn app_exec_basename(program: &str) -> String {
@@ -980,8 +1050,8 @@ mod tests {
     };
 
     use super::{
-        desktop_app_dirs, is_executable_available, parse_exec_argv, ClickAction, ClickZone,
-        DesktopApp, LauncherInputResult, LauncherState, Rect, XDG_DATA_DIRS_DEFAULT,
+        app_initial, desktop_app_dirs, is_executable_available, parse_exec_argv, ClickAction,
+        ClickZone, DesktopApp, LauncherInputResult, LauncherState, Rect, XDG_DATA_DIRS_DEFAULT,
     };
 
     static TEST_ID: AtomicU64 = AtomicU64::new(1);
@@ -1564,5 +1634,20 @@ Exec=viewer %U
         state.selected_index = 2;
         let result = state.handle_key(None, false, true, false, false, false);
         assert!(matches!(result, LauncherInputResult::Launch(2)));
+    }
+
+    #[test]
+    fn app_initial_uses_first_uppercase_char() {
+        assert_eq!(app_initial("firefox"), "F");
+    }
+
+    #[test]
+    fn app_initial_skips_leading_whitespace() {
+        assert_eq!(app_initial("   terminal"), "T");
+    }
+
+    #[test]
+    fn app_initial_empty_falls_back_to_question_mark() {
+        assert_eq!(app_initial(""), "?");
     }
 }
