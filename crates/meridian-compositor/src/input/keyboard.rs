@@ -28,7 +28,7 @@ pub fn handle_keyboard<I: InputBackend>(
         key_state,
         serial,
         time,
-        |_data, modifiers, handle| {
+        |data, modifiers, handle| {
             if key_state != KeyState::Pressed {
                 return FilterResult::Forward;
             }
@@ -48,9 +48,16 @@ pub fn handle_keyboard<I: InputBackend>(
             }
 
             if let Some(&sym) = handle.raw_syms().iter().next() {
+                let keysym = sym.raw();
+                let is_global_shortcut = data.keybind_config.find_action(mods, keysym).is_some()
+                    || is_workspace_fallback_shortcut(mods, keysym);
+                if !is_global_shortcut {
+                    return FilterResult::Forward;
+                }
+
                 return FilterResult::Intercept(KeyMatch {
                     modifiers: mods,
-                    keysym: sym.raw(),
+                    keysym,
                 });
             }
 
@@ -187,4 +194,9 @@ fn workspace_idx_from_digit_keysym(keysym: u32) -> Option<usize> {
         0x39 => Some(8),
         _ => None,
     }
+}
+
+fn is_workspace_fallback_shortcut(modifiers: Modifiers, keysym: u32) -> bool {
+    workspace_idx_from_digit_keysym(keysym).is_some()
+        && (modifiers == Modifiers::SUPER || modifiers == (Modifiers::SUPER | Modifiers::SHIFT))
 }
