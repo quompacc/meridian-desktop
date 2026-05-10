@@ -8,8 +8,8 @@ use smithay::{
         xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
     },
     xwayland::{
-        X11Surface, X11Wm, XWayland, XWaylandEvent, XwmHandler,
         xwm::{Reorder, ResizeEdge as X11ResizeEdge, XwmId},
+        X11Surface, X11Wm, XWayland, XWaylandEvent, XwmHandler,
     },
 };
 use tracing::{error, info, warn};
@@ -43,12 +43,7 @@ pub fn start_xwayland(state: &mut MeridianState) {
                 x11_socket,
                 display_number,
             } => {
-                match X11Wm::start_wm(
-                    handle.clone(),
-                    &display_handle,
-                    x11_socket,
-                    client.clone(),
-                ) {
+                match X11Wm::start_wm(handle.clone(), &display_handle, x11_socket, client.clone()) {
                     Ok(wm) => {
                         unsafe {
                             std::env::set_var("DISPLAY", format!(":{}", display_number));
@@ -74,7 +69,9 @@ impl XWaylandShellHandler for MeridianState {
 
 impl XwmHandler for MeridianState {
     fn xwm_state(&mut self, _xwm: XwmId) -> &mut X11Wm {
-        self.xwm.as_mut().expect("xwm_state called but X11Wm is not initialised")
+        self.xwm
+            .as_mut()
+            .expect("xwm_state called but X11Wm is not initialised")
     }
 
     fn new_window(&mut self, _xwm: XwmId, _window: X11Surface) {}
@@ -94,7 +91,9 @@ impl XwmHandler for MeridianState {
         };
         let win = Window::new_x11_window(window);
         let active = self.workspaces.active;
-        self.workspaces.space_at_mut(active).map_element(win, loc, true);
+        self.workspaces
+            .space_at_mut(active)
+            .map_element(win, loc, true);
     }
 
     fn mapped_override_redirect_window(&mut self, _xwm: XwmId, window: X11Surface) {
@@ -106,7 +105,9 @@ impl XwmHandler for MeridianState {
         };
         let win = Window::new_x11_window(window);
         let active = self.workspaces.active;
-        self.workspaces.space_at_mut(active).map_element(win, loc, true);
+        self.workspaces
+            .space_at_mut(active)
+            .map_element(win, loc, true);
     }
 
     fn unmapped_window(&mut self, _xwm: XwmId, window: X11Surface) {

@@ -1,10 +1,7 @@
 use smithay::{
     desktop::{PopupKind, PopupManager, Space, Window},
     reexports::wayland_server::protocol::wl_surface::WlSurface,
-    wayland::{
-        compositor::with_states,
-        shell::xdg::XdgToplevelSurfaceData,
-    },
+    wayland::{compositor::with_states, shell::xdg::XdgToplevelSurfaceData},
 };
 
 /// Sendet den initialen Configure und tracked Popup-Commits.
@@ -40,7 +37,8 @@ pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: 
         match popup {
             PopupKind::Xdg(ref xdg) => {
                 if !xdg.is_initial_configure_sent() {
-                    xdg.send_configure().expect("initial popup configure failed");
+                    xdg.send_configure()
+                        .expect("initial popup configure failed");
                 }
             }
             PopupKind::InputMethod(_) => {}

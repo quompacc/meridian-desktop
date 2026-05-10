@@ -1,0 +1,230 @@
+use smithay::{
+    desktop::{layer_map_for_output, WindowSurfaceType},
+    reexports::wayland_server::protocol::wl_surface::WlSurface,
+    utils::{Logical, Point},
+};
+use tracing::debug;
+
+use super::super::MeridianState;
+use crate::state::OutputInfo;
+
+fn select_surface_output_info<'a>(
+    infos: &'a [OutputInfo],
+    point: Option<Point<f64, Logical>>,
+) -> (Option<&'a OutputInfo>, &'static str) {
+    if let Some(pos) = point {
+        if let Some(output) = infos
+            .iter()
+            .find(|info| info.geometry.contains(pos.x, pos.y))
+        {
+            return (Some(output), "point-match");
+        }
+    }
+
+    if let Some(output) = infos.iter().find(|info| info.primary) {
+        return (Some(output), "fallback-primary");
+    }
+
+    if let Some(output) = infos.first() {
+        return (Some(output), "fallback-first");
+    }
+
+    (None, "empty-registry")
+}
+
+impl MeridianState {
+    pub fn surface_under(
+        &self,
+        pos: Point<f64, Logical>,
+    ) -> Option<(WlSurface, Point<f64, Logical>)> {
+        let (selected_info, fallback_reason) =
+            select_surface_output_info(self.output_registry.list(), Some(pos));
+        if let Some(info) = selected_info {
+            debug!(
+                "surface output selection requested: x={:.2} y={:.2} selected_output_id={} name={} fallback_reason={}",
+                pos.x, pos.y, info.id.0, info.name, fallback_reason
+            );
+        } else {
+            debug!(
+                "surface output selection requested: x={:.2} y={:.2} selected_output=none fallback_reason={}",
+                pos.x, pos.y, fallback_reason
+            );
+        }
+
+        let output = selected_info.and_then(|info| {
+            let mapped = self
+                .outputs
+                .iter()
+                .find(|candidate| candidate.name() == info.name);
+            if mapped.is_none() {
+                debug!(
+                    "surface output selection fallback: registry output '{}' not present in active output list",
+                    info.name
+                );
+            }
+            mapped
+        });
+
+        if let Some(output) = output {
+            let output_geo = self.workspaces.active_space().output_geometry(output)?;
+            let layer_map = layer_map_for_output(output);
+            let local = pos - output_geo.loc.to_f64();
+
+            for layer in [
+                smithay::wayland::shell::wlr_layer::Layer::Overlay,
+                smithay::wayland::shell::wlr_layer::Layer::Top,
+            ] {
+                if let Some(surface) = layer_map.layer_under(layer, local) {
+                    if let Some(geo) = layer_map.layer_geometry(surface) {
+                        return surface
+                            .surface_under(local - geo.loc.to_f64(), WindowSurfaceType::ALL)
+                            .map(|(surface, point)| {
+                                (surface, (point + output_geo.loc + geo.loc).to_f64())
+                            });
+                    }
+                }
+            }
+        }
+
+        let window_surface =
+            self.workspaces
+                .active_space()
+                .element_under(pos)
+                .and_then(|(window, location)| {
+                    window
+                        .surface_under(pos - location.to_f64(), WindowSurfaceType::ALL)
+                        .map(|(surface, point)| (surface, (point + location).to_f64()))
+                });
+
+        if window_surface.is_some() {
+            return window_surface;
+        }
+
+        if let Some(output) = output {
+            let output_geo = self.workspaces.active_space().output_geometry(output)?;
+            let layer_map = layer_map_for_output(output);
+            let local = pos - output_geo.loc.to_f64();
+
+            for layer in [
+                smithay::wayland::shell::wlr_layer::Layer::Bottom,
+                smithay::wayland::shell::wlr_layer::Layer::Background,
+            ] {
+                if let Some(surface) = layer_map.layer_under(layer, local) {
+                    if let Some(geo) = layer_map.layer_geometry(surface) {
+                        return surface
+                            .surface_under(local - geo.loc.to_f64(), WindowSurfaceType::ALL)
+                            .map(|(surface, point)| {
+                                (surface, (point + output_geo.loc + geo.loc).to_f64())
+                            });
+                    }
+                }
+            }
+        }
+
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use smithay::utils::{Logical, Point, Transform};
+
+    use crate::state::{OutputGeometry, OutputId, OutputInfo, OutputRegistration, OutputRegistry};
+
+    fn reg(name: &str, x: i32, y: i32, width: i32, height: i32) -> OutputRegistration {
+        OutputRegistration {
+            name: name.to_string(),
+            geometry: OutputGeometry {
+                x,
+                y,
+                width,
+                height,
+            },
+            scale: 1.0,
+            transform: Transform::Normal,
+            refresh_millihz: Some(60_000),
+        }
+    }
+
+    #[test]
+    fn point_on_output_one_is_selected() {
+        let mut registry = OutputRegistry::new();
+        registry.upsert(reg("left", 0, 0, 1920, 1080));
+        registry.upsert(reg("right", 1920, 0, 2560, 1440));
+
+        let point: Point<f64, Logical> = (100.0, 100.0).into();
+        let (selected, reason) = super::select_surface_output_info(registry.list(), Some(point));
+        assert_eq!(selected.map(|output| output.name.as_str()), Some("left"));
+        assert_eq!(reason, "point-match");
+    }
+
+    #[test]
+    fn point_on_output_two_is_selected() {
+        let mut registry = OutputRegistry::new();
+        registry.upsert(reg("left", 0, 0, 1920, 1080));
+        registry.upsert(reg("right", 1920, 0, 2560, 1440));
+
+        let point: Point<f64, Logical> = (2300.0, 300.0).into();
+        let (selected, reason) = super::select_surface_output_info(registry.list(), Some(point));
+        assert_eq!(selected.map(|output| output.name.as_str()), Some("right"));
+        assert_eq!(reason, "point-match");
+    }
+
+    #[test]
+    fn outside_point_uses_primary_fallback() {
+        let mut registry = OutputRegistry::new();
+        registry.upsert(reg("primary", 0, 0, 1920, 1080));
+        registry.upsert(reg("other", 1920, 0, 1920, 1080));
+
+        let point: Point<f64, Logical> = (-100.0, -100.0).into();
+        let (selected, reason) = super::select_surface_output_info(registry.list(), Some(point));
+        assert_eq!(selected.map(|output| output.name.as_str()), Some("primary"));
+        assert_eq!(reason, "fallback-primary");
+    }
+
+    #[test]
+    fn first_fallback_is_used_when_no_primary_exists() {
+        let infos = vec![
+            OutputInfo {
+                id: OutputId(1),
+                name: "first".to_string(),
+                geometry: OutputGeometry {
+                    x: 0,
+                    y: 0,
+                    width: 1280,
+                    height: 720,
+                },
+                scale: 1.0,
+                transform: Transform::Normal,
+                refresh_millihz: Some(60_000),
+                primary: false,
+            },
+            OutputInfo {
+                id: OutputId(2),
+                name: "second".to_string(),
+                geometry: OutputGeometry {
+                    x: 1280,
+                    y: 0,
+                    width: 1280,
+                    height: 720,
+                },
+                scale: 1.0,
+                transform: Transform::Normal,
+                refresh_millihz: Some(60_000),
+                primary: false,
+            },
+        ];
+
+        let (selected, reason) = super::select_surface_output_info(&infos, None);
+        assert_eq!(selected.map(|output| output.name.as_str()), Some("first"));
+        assert_eq!(reason, "fallback-first");
+    }
+
+    #[test]
+    fn empty_registry_is_safe() {
+        let registry = OutputRegistry::new();
+        let (selected, reason) = super::select_surface_output_info(registry.list(), None);
+        assert!(selected.is_none());
+        assert_eq!(reason, "empty-registry");
+    }
+}

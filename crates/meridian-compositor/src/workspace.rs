@@ -37,9 +37,13 @@ impl WorkspaceManager {
         &mut self.spaces[idx]
     }
 
+    fn can_target_workspace(&self, idx: usize) -> bool {
+        idx < self.spaces.len() && idx != self.active
+    }
+
     /// Switch active workspace. Returns (old, new) if a switch occurred.
     pub fn try_switch(&mut self, idx: usize) -> Option<(usize, usize)> {
-        if idx >= self.spaces.len() || idx == self.active {
+        if !self.can_target_workspace(idx) {
             return None;
         }
         let old = self.active;
@@ -49,7 +53,7 @@ impl WorkspaceManager {
 
     /// Move a window from the active workspace to `target`.
     pub fn move_window_to(&mut self, window: Window, target: usize) {
-        if target >= self.spaces.len() || target == self.active {
+        if !self.can_target_workspace(target) {
             return;
         }
         let active = self.active;
@@ -66,5 +70,42 @@ impl WorkspaceManager {
             self.spaces[old].unmap_output(output);
             self.spaces[new].map_output(output, (0, 0));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WorkspaceManager;
+
+    #[test]
+    fn try_switch_ignores_invalid_target() {
+        let mut manager = WorkspaceManager::new();
+        let old = manager.active;
+        assert_eq!(manager.try_switch(99), None);
+        assert_eq!(manager.active, old);
+    }
+
+    #[test]
+    fn try_switch_ignores_current_workspace() {
+        let mut manager = WorkspaceManager::new();
+        let old = manager.active;
+        assert_eq!(manager.try_switch(old), None);
+        assert_eq!(manager.active, old);
+    }
+
+    #[test]
+    fn try_switch_updates_active_workspace_on_valid_target() {
+        let mut manager = WorkspaceManager::new();
+        assert_eq!(manager.active, 0);
+        assert_eq!(manager.try_switch(2), Some((0, 2)));
+        assert_eq!(manager.active, 2);
+    }
+
+    #[test]
+    fn move_guards_share_same_target_validation() {
+        let manager = WorkspaceManager::new();
+        assert!(!manager.can_target_workspace(0));
+        assert!(!manager.can_target_workspace(99));
+        assert!(manager.can_target_workspace(1));
     }
 }
