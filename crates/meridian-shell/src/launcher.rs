@@ -488,6 +488,15 @@ impl LauncherState {
         }
     }
 
+    fn selected_launch_index(&self) -> Option<usize> {
+        let visible_len = self.filtered_visible_count();
+        if visible_len == 0 {
+            None
+        } else {
+            Some(self.selected_index_clamped(visible_len))
+        }
+    }
+
     pub fn set_selected_index(&mut self, index: usize) -> bool {
         let visible_len = self.filtered_visible_count();
         let next = if visible_len == 0 {
@@ -585,7 +594,10 @@ impl LauncherState {
         }
 
         if is_enter {
-            return LauncherInputResult::Launch(self.selected_index);
+            return self
+                .selected_launch_index()
+                .map(LauncherInputResult::Launch)
+                .unwrap_or(LauncherInputResult::None);
         }
 
         if is_up {
@@ -597,11 +609,11 @@ impl LauncherState {
         }
 
         if is_down {
-            let visible = self.filtered_apps();
-            if visible.is_empty() {
+            let visible_len = self.filtered_visible_count();
+            if visible_len == 0 {
                 return LauncherInputResult::None;
             }
-            let max_idx = visible.len().saturating_sub(1);
+            let max_idx = visible_len.saturating_sub(1);
             if self.selected_index < max_idx {
                 self.selected_index += 1;
                 return LauncherInputResult::Redraw;
@@ -1263,5 +1275,41 @@ Exec=viewer %U
         let moved = state.handle_key(None, false, false, false, false, true);
         assert!(matches!(moved, LauncherInputResult::Redraw));
         assert_eq!(state.selected_index, 2);
+    }
+
+    #[test]
+    fn enter_with_no_visible_results_is_ignored() {
+        let mut state = LauncherState {
+            open: true,
+            query: "zzzz-no-hit".to_string(),
+            selected_index: 5,
+            clicks: Vec::new(),
+            apps: vec![DesktopApp::new(
+                "Terminal".to_string(),
+                vec!["foot".to_string()],
+                false,
+            )],
+        };
+
+        let result = state.handle_key(None, false, true, false, false, false);
+        assert!(matches!(result, LauncherInputResult::None));
+        assert_eq!(state.selected_index, 5);
+    }
+
+    #[test]
+    fn enter_uses_clamped_selected_index_for_visible_results() {
+        let mut state = LauncherState {
+            open: true,
+            query: String::new(),
+            selected_index: 99,
+            clicks: Vec::new(),
+            apps: vec![
+                DesktopApp::new("Alpha".to_string(), vec!["alpha".to_string()], false),
+                DesktopApp::new("Beta".to_string(), vec!["beta".to_string()], false),
+            ],
+        };
+
+        let result = state.handle_key(None, false, true, false, false, false);
+        assert!(matches!(result, LauncherInputResult::Launch(1)));
     }
 }
