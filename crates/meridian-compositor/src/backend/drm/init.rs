@@ -164,7 +164,13 @@ fn scan_drm_connectors_for_h5b(state: &mut MeridianState, source: &str) {
         if modes.is_empty() {
             continue;
         }
-        let mode = modes[0];
+        let Some((mode, _mode_reason)) = select_add_mode(modes) else {
+            tracing::trace!(
+                "drm hotplug scan skipped connector without selectable mode: connector={:?}",
+                conn_handle
+            );
+            continue;
+        };
         let (w, h) = mode.size();
         connected_modes.insert(
             *conn_handle,
