@@ -7,7 +7,7 @@ use wayland_client::QueueHandle;
 
 use crate::{launcher, TextRenderer};
 
-use super::{time, types::WindowInfo, ClickAction, MeridianShell, RepaintReason};
+use super::{time, types::WindowInfo, ClickAction, CommitReason, MeridianShell, RepaintReason};
 
 fn workspace_idx(workspace: u8) -> usize {
     workspace.saturating_sub(1).min(8) as usize
@@ -494,6 +494,15 @@ impl MeridianShell {
             ClickAction::LaunchApp(index) => {
                 self.launcher_state.launch_app(index, &mut self.ipc);
             }
+            ClickAction::ToggleLauncher => {
+                self.toggle_launcher();
+                self.draw_panel(qh, RepaintReason::Pointer);
+                if self.launcher_state.open {
+                    self.draw_launcher(qh, RepaintReason::Pointer);
+                } else {
+                    self.unmap_launcher(CommitReason::Input);
+                }
+            }
         }
     }
 
@@ -505,6 +514,7 @@ impl MeridianShell {
                     .launch_app(self.launcher_state.selected_index, &mut self.ipc);
             }
             ClickAction::SwitchWorkspace(_) => {}
+            ClickAction::ToggleLauncher => {}
         }
     }
 

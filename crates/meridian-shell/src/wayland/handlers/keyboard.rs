@@ -2,6 +2,7 @@ use smithay_client_toolkit::{
     seat::keyboard::{KeyEvent, KeyboardHandler, Keysym, Modifiers},
     shell::WaylandSurface,
 };
+use tracing::debug;
 use wayland_client::{
     protocol::{wl_keyboard, wl_surface},
     Connection, QueueHandle,
@@ -60,14 +61,19 @@ impl KeyboardHandler for MeridianShell {
         let is_escape = event.keysym == Keysym::Escape;
         let is_enter = event.keysym == Keysym::Return || event.keysym == Keysym::KP_Enter;
         let is_backspace = event.keysym == Keysym::BackSpace;
-        let is_up = event.keysym == Keysym::Up;
-        let is_down = event.keysym == Keysym::Down;
+        let is_up = event.keysym == Keysym::Up || event.keysym == Keysym::KP_Up;
+        let is_down = event.keysym == Keysym::Down || event.keysym == Keysym::KP_Down;
         let ch = event.keysym.key_char().filter(|ch| !ch.is_control());
+        debug!(
+            "launcher key event: keysym={:?} utf8={:?} up={} down={} enter={} esc={} backspace={}",
+            event.keysym, ch, is_up, is_down, is_enter, is_escape, is_backspace
+        );
 
-        match self
-            .launcher_state
-            .handle_key(ch, is_backspace, is_enter, is_escape, is_up, is_down)
-        {
+        let result =
+            self.launcher_state
+                .handle_key(ch, is_backspace, is_enter, is_escape, is_up, is_down);
+        debug!("launcher key result: {:?}", std::mem::discriminant(&result));
+        match result {
             launcher::LauncherInputResult::Close => {
                 self.unmap_launcher(CommitReason::Input);
                 self.draw_panel(qh, RepaintReason::Keyboard);

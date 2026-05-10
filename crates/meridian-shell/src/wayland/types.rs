@@ -15,6 +15,7 @@ pub(crate) struct WindowInfo {
 pub enum ClickAction {
     SwitchWorkspace(u8),
     LaunchApp(usize),
+    ToggleLauncher,
 }
 
 #[derive(Debug, Clone)]

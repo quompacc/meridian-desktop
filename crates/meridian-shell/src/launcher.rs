@@ -519,6 +519,7 @@ impl LauncherState {
             .and_then(|zone| match zone.action {
                 ClickAction::LaunchApp(index) => Some(index),
                 ClickAction::SwitchWorkspace(_) => None,
+                ClickAction::ToggleLauncher => None,
             });
 
         match hovered_index {

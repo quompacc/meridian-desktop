@@ -9,6 +9,7 @@ const WS_BTN_H: i32 = 28;
 const WS_BTN_Y: i32 = 4;
 const WS_GAP: i32 = 4;
 const LEFT_PAD: i32 = 8;
+const LAUNCHER_BTN_W: i32 = 58;
 const CLOCK_W: i32 = 170;
 const RIGHT_PAD: i32 = 10;
 
@@ -39,6 +40,21 @@ pub fn draw_panel(
 
     let mut x = LEFT_PAD;
     let height = PANEL_HEIGHT as i32;
+
+    // ── Left: Launcher button ───────────────────────────────────────────────
+    let launcher_rect = Rect {
+        x,
+        y: WS_BTN_Y,
+        w: LAUNCHER_BTN_W,
+        h: WS_BTN_H,
+    };
+    painter.roundish_rect(launcher_rect, colors.background);
+    painter.text_centered(font, "Launcher", launcher_rect, colors.text);
+    panel_state.clicks.push(ClickZone {
+        rect: launcher_rect,
+        action: ClickAction::ToggleLauncher,
+    });
+    x += LAUNCHER_BTN_W + WS_GAP;
 
     // ── Left: Workspace buttons ─────────────────────────────────────────────
     for ws in 1u8..=9 {
