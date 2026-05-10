@@ -115,5 +115,7 @@ impl WmWorkspace {
 }
 
 impl Default for WmWorkspace {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
