@@ -640,6 +640,7 @@ impl LauncherState {
     }
 }
 
+#[derive(Debug)]
 pub enum LauncherInputResult {
     None,
     Redraw,

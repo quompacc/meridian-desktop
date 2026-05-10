@@ -149,17 +149,21 @@ impl MeridianShell {
     }
 
     pub(crate) fn draw_panel(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
-        static DRAW_PANEL_LOGS: std::sync::atomic::AtomicUsize =
-            std::sync::atomic::AtomicUsize::new(0);
-        let draw_log = DRAW_PANEL_LOGS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        if draw_log < 6 {
-            debug!(
-                "draw_panel: configured={}, width={}",
-                self.panel_configured, self.width
-            );
-        }
+        debug!(
+            "draw_panel: reason={:?} configured={} width={} panel_dirty={} launcher_open={} commit_expected={}",
+            reason,
+            self.panel_configured,
+            self.width,
+            self.panel_dirty,
+            self.launcher_state.open,
+            self.panel_configured && self.width > 0
+        );
 
         if !self.panel_configured || self.width == 0 {
+            debug!(
+                "draw_panel skipped: reason={:?} configured={} width={}",
+                reason, self.panel_configured, self.width
+            );
             return;
         }
         self.repaint_stats.record_panel(reason);
@@ -175,6 +179,10 @@ impl MeridianShell {
         let signature = self.panel_render_signature(width, height, panel_active_workspace, &clock);
         if self.panel_last_signature.as_ref() == Some(&signature) {
             self.render_stats.panel.skips += 1;
+            debug!(
+                "draw_panel skipped: reason={:?} commit=no signature_unchanged=true",
+                reason
+            );
             if self.render_stats_enabled {
                 debug!("shell render skip: surface=panel reason=signature-unchanged");
             }
@@ -240,22 +248,51 @@ impl MeridianShell {
             CommitSurfaceKind::Panel,
             Self::commit_reason_from_repaint(reason, true),
         );
+        debug!(
+            "draw_panel committed: reason={:?} width={} height={}",
+            reason, width, height
+        );
         self.panel_last_signature = Some(signature);
         self.panel_dirty = false;
     }
 
     pub(crate) fn draw_launcher(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
+        debug!(
+            "draw_launcher: reason={:?} open={} configured={} launcher_dirty={} commit_expected={}",
+            reason,
+            self.launcher_state.open,
+            self.launcher_configured,
+            self.launcher_dirty,
+            self.launcher_configured && self.launcher_state.open
+        );
         if !self.launcher_configured || !self.launcher_state.open {
+            debug!(
+                "draw_launcher skipped: reason={:?} open={} configured={}",
+                reason, self.launcher_state.open, self.launcher_configured
+            );
             return;
         }
         self.repaint_stats.record_launcher(reason);
 
-        let width = self.launcher_width.max(LAUNCHER_WIDTH);
-        let height = self.launcher_height.max(LAUNCHER_HEIGHT);
+        let width = LAUNCHER_WIDTH;
+        let height = LAUNCHER_HEIGHT;
+        debug!(
+            "draw_launcher size: configured={}x{} effective={}x{} desired={}x{}",
+            self.launcher_width,
+            self.launcher_height,
+            width,
+            height,
+            LAUNCHER_WIDTH,
+            LAUNCHER_HEIGHT
+        );
         let visible_apps = self.launcher_state.filtered_apps();
         let signature = self.launcher_render_signature(width, height, &visible_apps);
         if self.launcher_last_signature.as_ref() == Some(&signature) {
             self.render_stats.launcher.skips += 1;
+            debug!(
+                "draw_launcher skipped: reason={:?} commit=no signature_unchanged=true",
+                reason
+            );
             if self.render_stats_enabled {
                 debug!("shell render skip: surface=launcher reason=signature-unchanged");
             }
@@ -309,11 +346,21 @@ impl MeridianShell {
             CommitSurfaceKind::Launcher,
             Self::commit_reason_from_repaint(reason, false),
         );
+        debug!(
+            "draw_launcher committed: reason={:?} width={} height={}",
+            reason, width, height
+        );
         self.launcher_last_signature = Some(signature);
         self.launcher_dirty = false;
     }
 
     pub(crate) fn unmap_launcher(&mut self, reason: CommitReason) {
+        debug!(
+            "unmap_launcher: reason={:?} open={} configured={} surface=launcher attach_none=true commit=true",
+            reason,
+            self.launcher_state.open,
+            self.launcher_configured
+        );
         self.launcher_layer.wl_surface().attach(None, 0, 0);
         self.commit_surface(CommitSurfaceKind::Launcher, reason);
         self.launcher_last_signature = None;

@@ -10,7 +10,7 @@ use smithay_client_toolkit::{
     shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell},
     shm::{slot::SlotPool, Shm},
 };
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use wayland_client::{globals::registry_queue_init, Connection, QueueHandle};
 
 use crate::{launcher, panel, TextRenderer, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, PANEL_HEIGHT};
@@ -58,8 +58,13 @@ pub(crate) fn initialize(
     launcher_layer.set_margin(0, 0, PANEL_HEIGHT as i32, 8);
     launcher_layer.set_size(LAUNCHER_WIDTH, LAUNCHER_HEIGHT);
     launcher_layer.set_exclusive_zone(0);
-    launcher_layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
-    info!("Launcher surface created");
+    launcher_layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+    debug!(
+        "Launcher surface created: namespace=meridian-launcher layer=Overlay anchor=Bottom|Left size={}x{} margin_bottom={} margin_left=8 exclusive_zone=0 keyboard_interactivity=Exclusive",
+        LAUNCHER_WIDTH,
+        LAUNCHER_HEIGHT,
+        PANEL_HEIGHT
+    );
 
     let meridian_config = MeridianConfig::load();
     let mut theme_manager = ThemeManager::new();

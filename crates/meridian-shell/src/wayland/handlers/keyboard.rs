@@ -33,6 +33,12 @@ impl KeyboardHandler for MeridianShell {
         } else {
             SurfaceKind::None
         };
+        if self.launcher_state.open {
+            debug!(
+                "launcher keyboard focus enter: focus={:?} launcher_open={} launcher_configured={}",
+                self.keyboard_focus, self.launcher_state.open, self.launcher_configured
+            );
+        }
     }
 
     fn leave(
@@ -43,6 +49,12 @@ impl KeyboardHandler for MeridianShell {
         _: &wl_surface::WlSurface,
         _: u32,
     ) {
+        if self.launcher_state.open {
+            debug!(
+                "launcher keyboard focus leave: previous_focus={:?} launcher_open={} launcher_configured={}",
+                self.keyboard_focus, self.launcher_state.open, self.launcher_configured
+            );
+        }
         self.keyboard_focus = SurfaceKind::None;
     }
 
@@ -58,21 +70,44 @@ impl KeyboardHandler for MeridianShell {
             return;
         }
 
+        let keycode = event.raw_code;
         let is_escape = event.keysym == Keysym::Escape;
         let is_enter = event.keysym == Keysym::Return || event.keysym == Keysym::KP_Enter;
         let is_backspace = event.keysym == Keysym::BackSpace;
-        let is_up = event.keysym == Keysym::Up || event.keysym == Keysym::KP_Up;
-        let is_down = event.keysym == Keysym::Down || event.keysym == Keysym::KP_Down;
+        let is_up = event.keysym == Keysym::Up || event.keysym == Keysym::KP_Up || keycode == 103;
+        let is_down =
+            event.keysym == Keysym::Down || event.keysym == Keysym::KP_Down || keycode == 108;
         let ch = event.keysym.key_char().filter(|ch| !ch.is_control());
         debug!(
-            "launcher key event: keysym={:?} utf8={:?} up={} down={} enter={} esc={} backspace={}",
-            event.keysym, ch, is_up, is_down, is_enter, is_escape, is_backspace
+            "launcher key event: keycode={} keysym={:?} utf8={:?} key_char={:?} up={} down={} enter={} esc={} backspace={} focus={:?}",
+            keycode,
+            event.keysym,
+            event.utf8,
+            ch,
+            is_up,
+            is_down,
+            is_enter,
+            is_escape,
+            is_backspace,
+            self.keyboard_focus
         );
 
-        let result =
-            self.launcher_state
-                .handle_key(ch, is_backspace, is_enter, is_escape, is_up, is_down);
-        debug!("launcher key result: {:?}", std::mem::discriminant(&result));
+        let result = self.launcher_state.handle_key(
+            event
+                .utf8
+                .as_deref()
+                .and_then(|text| text.chars().next())
+                .or(ch),
+            is_backspace,
+            is_enter,
+            is_escape,
+            is_up,
+            is_down,
+        );
+        debug!(
+            "launcher key result: {:?} selected_index={}",
+            result, self.launcher_state.selected_index
+        );
         match result {
             launcher::LauncherInputResult::Close => {
                 self.unmap_launcher(CommitReason::Input);
@@ -104,7 +139,7 @@ impl KeyboardHandler for MeridianShell {
         _: &QueueHandle<Self>,
         _: &wl_keyboard::WlKeyboard,
         _serial: u32,
-        _modifiers: Modifiers,
+        _: Modifiers,
         _layout: u32,
     ) {
     }

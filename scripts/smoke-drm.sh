@@ -52,7 +52,7 @@ else
 fi
 
 echo "[smoke-drm] building release..."
-cargo build --release
+cargo build --release --workspace
 
 echo "[smoke-drm] stopping old processes (if any)..."
 pkill -f 'target/release/meridian|meridian-shell|cargo run.*meridian' || true

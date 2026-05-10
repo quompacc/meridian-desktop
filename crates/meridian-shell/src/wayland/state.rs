@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use meridian_config::{MeridianConfig, ThemeConfig, ThemeManager};
 use meridian_ipc::{OutputWorkspaceState, ShellCommand, ShellEvent, WindowSnapshotEntry};
+use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity};
 use tracing::{debug, info};
 use wayland_client::QueueHandle;
 
@@ -472,9 +473,44 @@ impl MeridianShell {
     }
 
     fn toggle_launcher(&mut self) {
+        let open_before = self.launcher_state.open;
         self.launcher_state.toggle();
+        let open_after = self.launcher_state.open;
+        if self.launcher_state.open {
+            self.launcher_layer
+                .set_anchor(Anchor::BOTTOM | Anchor::LEFT);
+            self.launcher_layer
+                .set_margin(0, 0, crate::PANEL_HEIGHT as i32, 8);
+            self.launcher_layer.set_exclusive_zone(0);
+            self.launcher_layer
+                .set_size(crate::LAUNCHER_WIDTH, crate::LAUNCHER_HEIGHT);
+            self.launcher_layer
+                .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+            tracing::debug!("launcher focus request: keyboard_interactivity=Exclusive");
+            self.launcher_last_signature = None;
+            self.launcher_width = crate::LAUNCHER_WIDTH;
+            self.launcher_height = crate::LAUNCHER_HEIGHT;
+        } else {
+            self.launcher_layer
+                .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+            tracing::debug!("launcher focus release: keyboard_interactivity=OnDemand");
+        }
+        // Force a panel re-commit on launcher toggle to avoid stale/missing panel attachment.
+        self.panel_last_signature = None;
         self.launcher_dirty = true;
         self.panel_dirty = true;
+        tracing::debug!(
+            "toggle_launcher: open_before={} open_after={} panel_configured={} launcher_configured={} launcher_size={}x{} panel_dirty={} launcher_dirty={} keyboard_focus={:?}",
+            open_before,
+            open_after,
+            self.panel_configured,
+            self.launcher_configured,
+            self.launcher_width,
+            self.launcher_height,
+            self.panel_dirty,
+            self.launcher_dirty,
+            self.keyboard_focus
+        );
     }
 
     pub(crate) fn handle_panel_click(&mut self, qh: &QueueHandle<Self>, action: ClickAction) {

@@ -1,18 +1,19 @@
 use meridian_wm::WorkspaceMode;
 use smithay::{
-    backend::renderer::utils::on_commit_buffer_handler,
+    backend::renderer::utils::{on_commit_buffer_handler, RendererSurfaceStateUserData},
     desktop::{layer_map_for_output, WindowSurfaceType},
     reexports::wayland_server::{
         protocol::{wl_buffer::WlBuffer, wl_surface::WlSurface},
         Client,
     },
+    utils::SERIAL_COUNTER,
     wayland::{
         buffer::BufferHandler,
         compositor::{
             get_parent, is_sync_subsurface, with_states, CompositorHandler, CompositorState,
         },
         seat::WaylandFocus,
-        shell::wlr_layer::LayerSurfaceData,
+        shell::wlr_layer::{KeyboardInteractivity, Layer as WlrLayer, LayerSurfaceData},
     },
 };
 
@@ -62,7 +63,7 @@ impl CompositorHandler for MeridianState {
             .iter()
             .find(|output| {
                 let map = layer_map_for_output(output);
-                map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
+                map.layer_for_surface(surface, WindowSurfaceType::ALL)
                     .is_some()
             })
             .cloned()
@@ -95,9 +96,120 @@ impl CompositorHandler for MeridianState {
             let mut map = layer_map_for_output(&output);
             map.arrange();
             self.mark_output_dirty_by_name(&output_name, "layer-surface-commit");
+            let focus_target =
+                map.layer_for_surface(surface, WindowSurfaceType::ALL)
+                    .map(|layer| {
+                        let cached = layer.cached_state();
+                        let layer_geometry = map.layer_geometry(layer);
+                        let has_buffer = with_states(surface, |states| {
+                            states
+                                .data_map
+                                .get::<RendererSurfaceStateUserData>()
+                                .map(|renderer_state| {
+                                    renderer_state.lock().unwrap().buffer().is_some()
+                                })
+                                .unwrap_or(false)
+                        });
+                        (
+                            layer.namespace().to_string(),
+                            layer.layer(),
+                            cached.keyboard_interactivity,
+                            cached.anchor,
+                            cached.margin,
+                            cached.exclusive_zone,
+                            cached.size,
+                            layer_geometry.map(|geo| format!("{:?}", geo)),
+                            has_buffer,
+                        )
+                    });
+
+            if let Some((
+                namespace,
+                layer_kind,
+                keyboard_interactivity,
+                anchor,
+                margin,
+                exclusive_zone,
+                requested_size,
+                layer_geometry,
+                has_buffer,
+            )) = focus_target
+            {
+                let wants_focus = namespace == "meridian-launcher"
+                    && keyboard_interactivity != KeyboardInteractivity::None
+                    && has_buffer;
+                if namespace == "meridian-launcher" {
+                    tracing::debug!(
+                        "launcher layer cached state: output={} layer={:?} anchor={:?} margin={:?} exclusive_zone={:?} requested_size={:?} geometry={:?} keyboard_interactivity={:?} has_buffer={}",
+                        output_name,
+                        layer_kind,
+                        anchor,
+                        margin,
+                        exclusive_zone,
+                        requested_size,
+                        layer_geometry,
+                        keyboard_interactivity,
+                        has_buffer
+                    );
+                }
+                if wants_focus && has_buffer {
+                    if matches!(layer_kind, WlrLayer::Background) {
+                        tracing::debug!(
+                            "launcher focus using namespace fallback because cached layer is Background: namespace={} output={} keyboard_interactivity={:?}",
+                            namespace,
+                            output_name,
+                            keyboard_interactivity
+                        );
+                    }
+                    tracing::debug!(
+                        "layer keyboard focus requested: namespace={} layer={:?} output={} keyboard_interactivity={:?}",
+                        namespace,
+                        layer_kind,
+                        output_name,
+                        keyboard_interactivity
+                    );
+                    if let Some(keyboard) = self.seat.get_keyboard() {
+                        let current_focus = keyboard.current_focus();
+                        if current_focus.as_ref() != Some(surface) {
+                            let serial = SERIAL_COUNTER.next_serial();
+                            keyboard.set_focus(self, Some(surface.clone()), serial);
+                            tracing::debug!(
+                                "layer keyboard focus set: namespace={} layer={:?} output={}",
+                                namespace,
+                                layer_kind,
+                                output_name
+                            );
+                        }
+                    }
+                } else if namespace == "meridian-launcher" && !has_buffer {
+                    if let Some(keyboard) = self.seat.get_keyboard() {
+                        let current_focus = keyboard.current_focus();
+                        if current_focus.as_ref() == Some(surface) {
+                            let serial = SERIAL_COUNTER.next_serial();
+                            keyboard.set_focus(self, Option::<WlSurface>::None, serial);
+                            tracing::debug!(
+                                "layer keyboard focus cleared: namespace={} layer={:?} output={} reason=no-buffer-commit",
+                                namespace,
+                                layer_kind,
+                                output_name
+                            );
+                        }
+                    }
+                } else if namespace == "meridian-launcher" {
+                    tracing::debug!(
+                        "layer keyboard focus skipped: namespace={} layer={:?} output={} keyboard_interactivity={:?} has_buffer={} wants_focus={}",
+                        namespace,
+                        layer_kind,
+                        output_name,
+                        keyboard_interactivity,
+                        has_buffer,
+                        wants_focus
+                    );
+                }
+            }
 
             if !initial_configure_sent {
-                if let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL) {
+                if let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::ALL) {
                     tracing::info!("Sending layer surface configure: output={}", output_name);
                     layer.layer_surface().send_configure();
                     self.mark_output_dirty_by_name(&output_name, "layer-surface-configure");

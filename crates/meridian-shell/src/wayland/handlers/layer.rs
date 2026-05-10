@@ -1,15 +1,31 @@
 use smithay_client_toolkit::shell::wlr_layer::{
-    LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
+    Anchor, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
 };
 use tracing::warn;
 use wayland_client::{Connection, QueueHandle};
 
 use crate::wayland::{MeridianShell, RepaintReason};
+use crate::{LAUNCHER_HEIGHT, LAUNCHER_WIDTH};
 
 impl LayerShellHandler for MeridianShell {
-    fn closed(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, _layer: &LayerSurface) {
-        warn!("Layer surface closed by compositor");
-        self.exit = true;
+    fn closed(&mut self, _conn: &Connection, qh: &QueueHandle<Self>, layer: &LayerSurface) {
+        if self.panel == *layer {
+            warn!("Panel layer surface closed by compositor; terminating shell");
+            self.exit = true;
+            return;
+        }
+
+        if self.launcher_layer == *layer {
+            warn!("Launcher layer surface closed by compositor; recovering launcher state");
+            self.launcher_state.open = false;
+            self.launcher_configured = false;
+            self.launcher_last_signature = None;
+            self.launcher_dirty = false;
+            self.draw_panel(qh, RepaintReason::LayerConfigure);
+            return;
+        }
+
+        warn!("Unknown layer surface closed by compositor");
     }
 
     fn configure(
@@ -22,7 +38,7 @@ impl LayerShellHandler for MeridianShell {
     ) {
         if self.panel == *layer {
             tracing::info!(
-                "Panel configure received: {}x{}",
+                "panel configure: size={}x{}",
                 configure.new_size.0,
                 configure.new_size.1
             );
@@ -32,18 +48,37 @@ impl LayerShellHandler for MeridianShell {
             }
             self.draw_panel(qh, RepaintReason::LayerConfigure);
         } else if self.launcher_layer == *layer {
-            tracing::info!(
-                "Launcher configure received: {}x{}",
-                configure.new_size.0,
+            let requested_w = if configure.new_size.0 > 0 {
+                configure.new_size.0
+            } else {
+                LAUNCHER_WIDTH
+            };
+            let requested_h = if configure.new_size.1 > 0 {
                 configure.new_size.1
+            } else {
+                LAUNCHER_HEIGHT
+            };
+            let clamped_w = requested_w.min(LAUNCHER_WIDTH);
+            let clamped_h = requested_h.min(LAUNCHER_HEIGHT);
+            tracing::debug!(
+                "launcher configure: requested={}x{} clamped={}x{} desired={}x{}",
+                requested_w,
+                requested_h,
+                clamped_w,
+                clamped_h,
+                LAUNCHER_WIDTH,
+                LAUNCHER_HEIGHT
             );
+            self.launcher_layer
+                .set_anchor(Anchor::BOTTOM | Anchor::LEFT);
+            self.launcher_layer
+                .set_margin(0, 0, crate::PANEL_HEIGHT as i32, 8);
+            self.launcher_layer.set_exclusive_zone(0);
+            self.launcher_layer
+                .set_size(LAUNCHER_WIDTH, LAUNCHER_HEIGHT);
             self.launcher_configured = true;
-            if configure.new_size.0 > 0 {
-                self.launcher_width = configure.new_size.0;
-            }
-            if configure.new_size.1 > 0 {
-                self.launcher_height = configure.new_size.1;
-            }
+            self.launcher_width = LAUNCHER_WIDTH;
+            self.launcher_height = LAUNCHER_HEIGHT;
             if self.launcher_state.open {
                 self.draw_launcher(qh, RepaintReason::LayerConfigure);
             }
