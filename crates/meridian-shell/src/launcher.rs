@@ -720,12 +720,6 @@ pub fn draw_launcher(
 
     let colors = &theme.colors;
     painter.clear(colors.surface);
-    let outer = Rect {
-        x: 0,
-        y: 0,
-        w: width as i32,
-        h: height as i32,
-    };
     let card = Rect {
         x: PAD / 2,
         y: PAD / 2,
@@ -734,7 +728,6 @@ pub fn draw_launcher(
     };
     painter.roundish_rect(card, colors.background);
     painter.stroke_rect(card, colors.border);
-    painter.stroke_rect(outer, colors.border);
 
     launcher_state.clicks.clear();
 
@@ -779,7 +772,6 @@ pub fn draw_launcher(
         h: SEARCH_H,
     };
     painter.roundish_rect(search_rect, colors.surface);
-    painter.stroke_rect(search_rect, colors.border);
     let query_text = if launcher_state.query.is_empty() {
         "Search apps by name or executable"
     } else {
@@ -799,7 +791,7 @@ pub fn draw_launcher(
         query_color,
     );
 
-    let mut y = search_rect.y + SEARCH_H + LIST_TOP_GAP + 2;
+    let mut y = search_rect.y + SEARCH_H + LIST_TOP_GAP + 6;
     if apps.is_empty() {
         let empty = if launcher_state.query.is_empty() {
             "No applications found"
@@ -812,7 +804,7 @@ pub fn draw_launcher(
             w: width as i32 - PAD * 2,
             h: APP_ROW_H,
         };
-        painter.roundish_rect(empty_rect, colors.background);
+        painter.roundish_rect(empty_rect, colors.surface);
         painter.text_clipped(
             font,
             empty,
@@ -830,11 +822,11 @@ pub fn draw_launcher(
             font,
             "Pinned",
             PAD,
-            y + 12,
+            y + 13,
             width as i32 - PAD * 2,
             colors.border,
         );
-        y += SECTION_LABEL_H;
+        y += SECTION_LABEL_H + 2;
 
         let card_w = ((width as i32 - PAD * 2) - PINNED_GRID_COL_GAP) / PINNED_GRID_COLS as i32;
         for (index, app) in apps.iter().take(pinned_count).enumerate() {
@@ -855,8 +847,8 @@ pub fn draw_launcher(
                     colors.surface
                 },
             );
-            painter.stroke_rect(rect, colors.border);
             if is_selected {
+                painter.stroke_rect(rect, colors.border);
                 painter.rect(
                     Rect {
                         x: rect.x + 2,
@@ -887,17 +879,17 @@ pub fn draw_launcher(
 
         let pinned_rows = pinned_count.div_ceil(PINNED_GRID_COLS) as i32;
         y += pinned_rows * PINNED_CARD_H + (pinned_rows.saturating_sub(1)) * PINNED_GRID_ROW_GAP;
-        y += 6;
+        y += 10;
 
         painter.text_clipped(
             font,
             "All apps",
             PAD,
-            y + 12,
+            y + 13,
             width as i32 - PAD * 2,
             colors.border,
         );
-        y += SECTION_LABEL_H;
+        y += SECTION_LABEL_H + 2;
         list_start = pinned_count;
     }
 
@@ -915,8 +907,8 @@ pub fn draw_launcher(
             colors.surface
         };
         painter.roundish_rect(rect, bg);
-        painter.stroke_rect(rect, colors.border);
         if is_selected {
+            painter.stroke_rect(rect, colors.border);
             painter.rect(
                 Rect {
                     x: rect.x + 2,
