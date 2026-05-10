@@ -138,7 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut event_loop: EventLoop<'static, MeridianState> = EventLoop::try_new()?;
     let display: Display<MeridianState> = Display::new()?;
-    let mut state = MeridianState::new(&mut event_loop, display);
+    let mut state = MeridianState::new(&mut event_loop, display)?;
 
     let in_session = std::env::var("WAYLAND_DISPLAY").is_ok() || std::env::var("DISPLAY").is_ok();
 

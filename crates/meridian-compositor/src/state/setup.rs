@@ -1,4 +1,4 @@
-use std::{ffi::OsString, sync::Arc, time::Instant};
+use std::{ffi::OsString, io::Error, sync::Arc, time::Instant};
 
 use meridian_config::{MeridianConfig, ThemeManager};
 use meridian_wm::WmWorkspace;
@@ -162,7 +162,10 @@ impl MeridianState {
         }
     }
 
-    pub fn new(event_loop: &mut EventLoop<'static, Self>, display: Display<Self>) -> Self {
+    pub fn new(
+        event_loop: &mut EventLoop<'static, Self>,
+        display: Display<Self>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let display_handle = display.handle();
 
         let compositor_state = CompositorState::new::<Self>(&display_handle);
@@ -182,7 +185,7 @@ impl MeridianState {
         seat.add_pointer();
 
         let loop_handle = event_loop.handle();
-        let socket_name = Self::init_wayland_listener(display, event_loop);
+        let socket_name = Self::init_wayland_listener(display, event_loop)?;
         let loop_signal = event_loop.get_signal();
 
         let meridian_config = MeridianConfig::load();
@@ -192,7 +195,7 @@ impl MeridianState {
         let mut wallpaper_manager = WallpaperManager::new();
         wallpaper_manager.apply_theme(theme_manager.current());
 
-        Self {
+        Ok(Self {
             start_time: Instant::now(),
             display_handle,
             loop_handle,
@@ -221,7 +224,7 @@ impl MeridianState {
             xwayland_shell_state,
             xwm: None,
             drm_backend: None,
-        }
+        })
     }
 
     fn post_output_state_change(
@@ -365,30 +368,43 @@ impl MeridianState {
         }
     }
 
-    fn init_wayland_listener(display: Display<Self>, event_loop: &mut EventLoop<Self>) -> OsString {
-        let listening_socket = ListeningSocketSource::new_auto().unwrap();
+    fn init_wayland_listener(
+        display: Display<Self>,
+        event_loop: &mut EventLoop<Self>,
+    ) -> Result<OsString, Box<dyn std::error::Error>> {
+        let listening_socket = ListeningSocketSource::new_auto().map_err(|err| {
+            Error::other(format!("failed to create wayland listening socket: {err}"))
+        })?;
         let socket_name = listening_socket.socket_name().to_os_string();
         let loop_handle = event_loop.handle();
 
         loop_handle
             .insert_source(listening_socket, move |client_stream, _, state| {
-                state
+                if let Err(err) = state
                     .display_handle
                     .insert_client(client_stream, Arc::new(ClientState::default()))
-                    .unwrap();
+                {
+                    tracing::warn!("failed to insert wayland client: {}", err);
+                }
             })
-            .expect("failed to initialize wayland socket");
+            .map_err(|err| {
+                Error::other(format!("failed to initialize wayland socket source: {err}"))
+            })?;
 
         loop_handle
             .insert_source(
                 Generic::new(display, Interest::READ, Mode::Level),
                 |_, display, state| {
-                    unsafe { display.get_mut().dispatch_clients(state).unwrap() };
+                    unsafe { display.get_mut().dispatch_clients(state) }.map_err(|err| {
+                        Error::other(format!("failed to dispatch wayland clients: {err}"))
+                    })?;
                     Ok(PostAction::Continue)
                 },
             )
-            .expect("failed to insert display into event loop");
+            .map_err(|err| {
+                Error::other(format!("failed to insert display into event loop: {err}"))
+            })?;
 
-        socket_name
+        Ok(socket_name)
     }
 }
