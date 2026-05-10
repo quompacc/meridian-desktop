@@ -180,12 +180,14 @@ Ziel: Render-/Event-Loop-Lag gegen Input-Lag trennen.
 Empfohlener Lauf:
 
 ```bash
-MERIDIAN_DRM_TIMING=1 \
-MERIDIAN_DIRTY_STATS=1 \
-MERIDIAN_SHELL_RENDER_STATS=1 \
-RUST_LOG=info \
-timeout 20s cargo run --release -- 2>&1 | tee /tmp/meridian-shell-idle-check.log
+scripts/smoke-drm.sh
 ```
+
+- Default ist Regression/Smoke mit Timeout (`MERIDIAN_SMOKE_TIMEOUT`, Default 20s).
+- Für manuelle Launcher-/UX-Tests ohne Timeout:
+  - `scripts/smoke-drm.sh run`
+  - oder: `MERIDIAN_SMOKE_MODE=run scripts/smoke-drm.sh`
+- Logpfad steuerbar über `MERIDIAN_SMOKE_LOG` (Default `/tmp/meridian-smoke-drm.log`).
 
 ### Guter Zustand
 - Nach Setup im steady-state:

@@ -77,6 +77,14 @@ MERIDIAN_SMOKE_LOG=/tmp/meridian-smoke-drm.log \
 scripts/smoke-drm.sh
 ```
 
+Manueller Lauf für UX-/Launcher-Tests (ohne Timeout):
+
+```bash
+scripts/smoke-drm.sh run
+# oder:
+MERIDIAN_SMOKE_MODE=run scripts/smoke-drm.sh
+```
+
 Der Smoke-Test setzt:
 - `MERIDIAN_DRM_TIMING=1`
 - `MERIDIAN_DIRTY_STATS=1`
@@ -102,6 +110,7 @@ Erwartete Erfolgsindikatoren (nach Setup):
   - `commit_ms=0`
   - `dirty reasons=<none>`
 - Clock-Update erzeugt nur einen einmaligen Frame und kehrt dann in clean idle zurück.
+- Für manuelle UX-Läufe bleibt der Compositor im `run`-Modus aktiv, bis er per `Ctrl+C` oder `pkill` beendet wird.
 
 ## 5) Fehlerdiagnose (Kurzpfad)
 - Kein `/dev/dri`:
