@@ -94,6 +94,7 @@ impl XwmHandler for MeridianState {
         self.workspaces
             .space_at_mut(active)
             .map_element(win, loc, true);
+        self.mark_all_outputs_dirty("xwayland-map-window");
     }
 
     fn mapped_override_redirect_window(&mut self, _xwm: XwmId, window: X11Surface) {
@@ -108,6 +109,7 @@ impl XwmHandler for MeridianState {
         self.workspaces
             .space_at_mut(active)
             .map_element(win, loc, true);
+        self.mark_all_outputs_dirty("xwayland-map-override");
     }
 
     fn unmapped_window(&mut self, _xwm: XwmId, window: X11Surface) {
@@ -120,6 +122,7 @@ impl XwmHandler for MeridianState {
             .cloned();
         if let Some(win) = maybe {
             self.workspaces.space_at_mut(active).unmap_elem(&win);
+            self.mark_all_outputs_dirty("xwayland-unmap-window");
         }
         if !window.is_override_redirect() {
             let _ = window.set_mapped(false);
@@ -147,6 +150,8 @@ impl XwmHandler for MeridianState {
         }
         if let Err(e) = window.configure(geo) {
             error!("configure_request: configure failed: {}", e);
+        } else {
+            self.mark_all_outputs_dirty("xwayland-configure-request");
         }
     }
 
@@ -168,6 +173,7 @@ impl XwmHandler for MeridianState {
             self.workspaces
                 .space_at_mut(active)
                 .map_element(win, geometry.loc, false);
+            self.mark_all_outputs_dirty("xwayland-configure-notify");
         }
     }
 

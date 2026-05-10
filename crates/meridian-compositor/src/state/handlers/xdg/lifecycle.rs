@@ -47,6 +47,7 @@ pub(super) fn handle_new_toplevel(state: &mut MeridianState, surface: ToplevelSu
         state.update_focused_output_from_surface(&wl_surface, "keyboard-focus-new-toplevel");
         state.broadcast_toplevel_focused(&wl_surface);
     }
+    state.mark_all_outputs_dirty("xdg-new-toplevel");
 }
 
 pub(super) fn handle_new_popup(state: &mut MeridianState, surface: PopupSurface) {
@@ -56,8 +57,10 @@ pub(super) fn handle_new_popup(state: &mut MeridianState, surface: PopupSurface)
 pub(super) fn handle_toplevel_destroyed(state: &mut MeridianState, surface: ToplevelSurface) {
     state.decoration_manager.remove(surface.wl_surface());
     state.broadcast_toplevel_closed(&surface);
+    state.mark_all_outputs_dirty("xdg-toplevel-destroyed");
 }
 
 pub(super) fn handle_surface_metadata_changed(state: &mut MeridianState, surface: ToplevelSurface) {
     state.broadcast_toplevel_opened(&surface);
+    state.mark_all_outputs_dirty("xdg-surface-metadata-changed");
 }
