@@ -21,6 +21,7 @@ const INNER_PAD: i32 = 12;
 const ROW_GAP: i32 = 4;
 const LIST_TOP_GAP: i32 = 10;
 const SECTION_LABEL_H: i32 = 16;
+const SIDEBAR_W: i32 = 164;
 const PINNED_GRID_COLS: usize = 2;
 const PINNED_CARD_H: i32 = 36;
 const PINNED_GRID_COL_GAP: i32 = 8;
@@ -757,6 +758,23 @@ pub fn draw_launcher(
     painter.roundish_rect(card, colors.background);
     painter.stroke_rect(card, colors.border);
 
+    let layout_x = card.x + PAD / 2;
+    let layout_y = card.y + PAD / 2;
+    let layout_w = card.w - PAD;
+    let layout_h = card.h - PAD;
+
+    let sidebar_rect = Rect {
+        x: layout_x,
+        y: layout_y,
+        w: SIDEBAR_W,
+        h: layout_h,
+    };
+    painter.roundish_rect(sidebar_rect, colors.surface);
+
+    let content_x = sidebar_rect.x + sidebar_rect.w + PAD;
+    let content_w = (layout_x + layout_w) - content_x;
+    let content_top = layout_y;
+
     launcher_state.clicks.clear();
 
     let visible = launcher_state.visible_apps();
@@ -766,9 +784,9 @@ pub fn draw_launcher(
     let selected_idx = launcher_state.selected_index_clamped(apps.len());
 
     let header_rect = Rect {
-        x: PAD,
-        y: PAD,
-        w: width as i32 - PAD * 2,
+        x: content_x,
+        y: content_top,
+        w: content_w,
         h: HEADER_H,
     };
     painter.text_clipped(
@@ -794,9 +812,9 @@ pub fn draw_launcher(
     );
 
     let search_rect = Rect {
-        x: PAD,
-        y: PAD + HEADER_H + 6,
-        w: width as i32 - PAD * 2,
+        x: content_x,
+        y: content_top + HEADER_H + 6,
+        w: content_w,
         h: SEARCH_H,
     };
     painter.roundish_rect(search_rect, colors.surface);
@@ -820,6 +838,62 @@ pub fn draw_launcher(
     );
 
     let mut y = search_rect.y + SEARCH_H + LIST_TOP_GAP + 6;
+
+    let favorites_active = launcher_state.query.is_empty() && pinned_count > 0;
+    let favorites_label_rect = Rect {
+        x: sidebar_rect.x + 8,
+        y: sidebar_rect.y + 8,
+        w: sidebar_rect.w - 16,
+        h: 26,
+    };
+    if favorites_active {
+        painter.roundish_rect(favorites_label_rect, colors.accent);
+    }
+    painter.text_clipped(
+        font,
+        "Favorites",
+        favorites_label_rect.x + 10,
+        favorites_label_rect.y + 17,
+        favorites_label_rect.w - 20,
+        if favorites_active {
+            Color::rgb(0x1e, 0x1e, 0x2e)
+        } else {
+            colors.text
+        },
+    );
+
+    let all_apps_label_rect = Rect {
+        x: sidebar_rect.x + 8,
+        y: favorites_label_rect.y + favorites_label_rect.h + 4,
+        w: sidebar_rect.w - 16,
+        h: 24,
+    };
+    painter.text_clipped(
+        font,
+        "All apps",
+        all_apps_label_rect.x + 10,
+        all_apps_label_rect.y + 16,
+        all_apps_label_rect.w - 20,
+        colors.border,
+    );
+
+    if !launcher_state.query.is_empty() {
+        let search_label_rect = Rect {
+            x: sidebar_rect.x + 8,
+            y: all_apps_label_rect.y + all_apps_label_rect.h + 4,
+            w: sidebar_rect.w - 16,
+            h: 24,
+        };
+        painter.text_clipped(
+            font,
+            "Search",
+            search_label_rect.x + 10,
+            search_label_rect.y + 16,
+            search_label_rect.w - 20,
+            colors.border,
+        );
+    }
+
     if apps.is_empty() {
         let empty = if launcher_state.query.is_empty() {
             "No applications found"
@@ -827,9 +901,9 @@ pub fn draw_launcher(
             "No results. Refine your search"
         };
         let empty_rect = Rect {
-            x: PAD,
+            x: content_x,
             y,
-            w: width as i32 - PAD * 2,
+            w: content_w,
             h: APP_ROW_H,
         };
         painter.roundish_rect(empty_rect, colors.surface);
@@ -846,22 +920,15 @@ pub fn draw_launcher(
 
     let mut list_start = 0;
     if launcher_state.query.is_empty() && pinned_count > 0 {
-        painter.text_clipped(
-            font,
-            "Pinned",
-            PAD,
-            y + 13,
-            width as i32 - PAD * 2,
-            colors.border,
-        );
+        painter.text_clipped(font, "Pinned", content_x, y + 13, content_w, colors.border);
         y += SECTION_LABEL_H + 2;
 
-        let card_w = ((width as i32 - PAD * 2) - PINNED_GRID_COL_GAP) / PINNED_GRID_COLS as i32;
+        let card_w = (content_w - PINNED_GRID_COL_GAP) / PINNED_GRID_COLS as i32;
         for (index, app) in apps.iter().take(pinned_count).enumerate() {
             let row = index / PINNED_GRID_COLS;
             let col = index % PINNED_GRID_COLS;
             let rect = Rect {
-                x: PAD + col as i32 * (card_w + PINNED_GRID_COL_GAP),
+                x: content_x + col as i32 * (card_w + PINNED_GRID_COL_GAP),
                 y: y + row as i32 * (PINNED_CARD_H + PINNED_GRID_ROW_GAP),
                 w: card_w,
                 h: PINNED_CARD_H,
@@ -942,9 +1009,9 @@ pub fn draw_launcher(
         painter.text_clipped(
             font,
             "All apps",
-            PAD,
+            content_x,
             y + 13,
-            width as i32 - PAD * 2,
+            content_w,
             colors.border,
         );
         y += SECTION_LABEL_H + 2;
@@ -954,9 +1021,9 @@ pub fn draw_launcher(
     for (index, app) in apps.iter().enumerate().skip(list_start) {
         let is_selected = index == selected_idx;
         let rect = Rect {
-            x: PAD,
+            x: content_x,
             y,
-            w: width as i32 - PAD * 2,
+            w: content_w,
             h: APP_ROW_H,
         };
         let bg = if is_selected {

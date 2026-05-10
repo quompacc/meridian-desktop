@@ -17,8 +17,8 @@ pub use wayland::{ClickAction, ClickZone, IpcClient, Rect};
 use wayland::{CommitReason, RepaintReason};
 
 pub const PANEL_HEIGHT: u32 = 36;
-pub const LAUNCHER_WIDTH: u32 = 520;
-pub const LAUNCHER_HEIGHT: u32 = 420;
+pub const LAUNCHER_WIDTH: u32 = 720;
+pub const LAUNCHER_HEIGHT: u32 = 520;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
