@@ -894,6 +894,36 @@ pub fn draw_launcher(
         );
     }
 
+    let categories_top = all_apps_label_rect.y + all_apps_label_rect.h + 12;
+    painter.rect(
+        Rect {
+            x: sidebar_rect.x + 12,
+            y: categories_top,
+            w: sidebar_rect.w - 24,
+            h: 1,
+        },
+        colors.border,
+    );
+    let mut category_y = categories_top + 18;
+    for category in [
+        "Development",
+        "Internet",
+        "System",
+        "Utilities",
+        "Graphics",
+        "Games",
+    ] {
+        painter.text_clipped(
+            font,
+            category,
+            sidebar_rect.x + 18,
+            category_y,
+            sidebar_rect.w - 28,
+            colors.border,
+        );
+        category_y += 20;
+    }
+
     if apps.is_empty() {
         let empty = if launcher_state.query.is_empty() {
             "No applications found"
