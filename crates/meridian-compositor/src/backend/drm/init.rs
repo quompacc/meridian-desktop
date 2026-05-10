@@ -10,7 +10,7 @@ use smithay::{
     backend::{
         allocator::{
             gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
-            Format, Fourcc,
+            Format, Fourcc, Modifier,
         },
         drm::{
             compositor::DrmCompositor,
@@ -254,6 +254,12 @@ fn scan_drm_connectors_for_h5b(state: &mut MeridianState, source: &str) {
 fn select_add_mode(
     modes: &[smithay::reexports::drm::control::Mode],
 ) -> Option<(smithay::reexports::drm::control::Mode, String)> {
+    if env_flag_enabled("MERIDIAN_DRM_SAFE_MODE") {
+        if let Some(mode) = select_safe_mode(modes) {
+            return Some((mode, "safe-mode".to_string()));
+        }
+    }
+
     if let Some(index) = forced_mode_index_from_env() {
         if let Some(mode) = modes.get(index).copied() {
             return Some((mode, format!("forced-index({})", index)));
@@ -266,12 +272,24 @@ fn select_add_mode(
     }
 
     if let Some((force_w, force_h)) = forced_mode_size_from_env() {
-        if let Some(forced_mode) = modes
+        let same_size: Vec<_> = modes
             .iter()
             .copied()
             .filter(|mode| mode.size() == (force_w, force_h))
-            .max_by_key(|mode| mode.vrefresh())
-        {
+            .collect();
+        if same_size.len() > 1 {
+            tracing::info!(
+                "drm mode candidates for forced-size {}x{}: count={} candidates={:?}",
+                force_w,
+                force_h,
+                same_size.len(),
+                same_size
+                    .iter()
+                    .map(|mode| mode_brief(*mode))
+                    .collect::<Vec<_>>()
+            );
+        }
+        if let Some(forced_mode) = select_conservative_mode_for_size(modes, force_w, force_h) {
             return Some((forced_mode, format!("forced-size({}x{})", force_w, force_h)));
         }
         tracing::warn!(
@@ -284,12 +302,124 @@ fn select_add_mode(
         mode.mode_type()
             .contains(smithay::reexports::drm::control::ModeTypeFlags::PREFERRED)
     }) {
+        let (pref_w, pref_h) = preferred.size();
+        let same_size: Vec<_> = modes
+            .iter()
+            .copied()
+            .filter(|mode| mode.size() == (pref_w, pref_h))
+            .collect();
+        if same_size.len() > 1 {
+            tracing::info!(
+                "drm preferred-size candidates {}x{}: count={} candidates={:?}",
+                pref_w,
+                pref_h,
+                same_size.len(),
+                same_size
+                    .iter()
+                    .map(|mode| mode_brief(*mode))
+                    .collect::<Vec<_>>()
+            );
+        }
+        if let Some(conservative) = select_conservative_mode_for_size(modes, pref_w, pref_h) {
+            if !same_mode(preferred, conservative) {
+                tracing::info!(
+                    "drm preferred mode adjusted to conservative same-size candidate: preferred={} conservative={}",
+                    mode_brief(preferred),
+                    mode_brief(conservative)
+                );
+            }
+            return Some((conservative, "preferred-size-conservative".to_string()));
+        }
         return Some((preferred, "preferred".to_string()));
     }
     modes
         .first()
         .copied()
-        .map(|mode| (mode, "first".to_string()))
+        .map(|mode| (mode, "safe-fallback-first".to_string()))
+}
+
+fn mode_flags_weird_penalty(mode: smithay::reexports::drm::control::Mode) -> u8 {
+    let flags = format!("{:?}", mode.flags()).to_ascii_uppercase();
+    let mut penalty = 0_u8;
+    for token in ["INTERLACE", "DBLSCAN", "DOUBLESCAN", "3D"] {
+        if flags.contains(token) {
+            penalty = penalty.saturating_add(1);
+        }
+    }
+    penalty
+}
+
+fn mode_conservative_key(mode: smithay::reexports::drm::control::Mode) -> (u8, u32, u32, u8) {
+    let refresh = mode.vrefresh().max(0) as u32;
+    let exact_60_penalty = if refresh == 60 { 0 } else { 1 };
+    let refresh_distance = refresh.abs_diff(60);
+    (
+        exact_60_penalty,
+        refresh_distance,
+        mode.clock(),
+        mode_flags_weird_penalty(mode),
+    )
+}
+
+fn same_mode(
+    a: smithay::reexports::drm::control::Mode,
+    b: smithay::reexports::drm::control::Mode,
+) -> bool {
+    a.size() == b.size()
+        && a.clock() == b.clock()
+        && a.vrefresh() == b.vrefresh()
+        && a.flags() == b.flags()
+        && a.mode_type() == b.mode_type()
+}
+
+fn mode_brief(mode: smithay::reexports::drm::control::Mode) -> String {
+    let (w, h) = mode.size();
+    format!(
+        "{}x{}@{}Hz mclock_khz={} flags={:?} mode_type={:?}",
+        w,
+        h,
+        mode.vrefresh(),
+        mode.clock(),
+        mode.flags(),
+        mode.mode_type()
+    )
+}
+
+fn select_conservative_mode_for_size(
+    modes: &[smithay::reexports::drm::control::Mode],
+    width: u16,
+    height: u16,
+) -> Option<smithay::reexports::drm::control::Mode> {
+    modes
+        .iter()
+        .copied()
+        .filter(|mode| mode.size() == (width, height))
+        .min_by_key(|mode| mode_conservative_key(*mode))
+}
+
+fn select_safe_mode(
+    modes: &[smithay::reexports::drm::control::Mode],
+) -> Option<smithay::reexports::drm::control::Mode> {
+    let mut candidates: Vec<_> = modes
+        .iter()
+        .copied()
+        .filter(|mode| {
+            let (w, h) = mode.size();
+            w >= 1920 && h >= 1080
+        })
+        .collect();
+    if candidates.is_empty() {
+        candidates.extend(modes.iter().copied());
+    }
+    candidates.into_iter().min_by_key(|mode| {
+        let (w, h) = mode.size();
+        (
+            w as u32 * h as u32,
+            mode_conservative_key(*mode),
+            mode.vrefresh().max(0) as u32,
+            mode.clock(),
+        )
+    })
 }
 
 fn parse_mode_size(value: &str) -> Option<(u16, u16)> {
@@ -331,6 +461,8 @@ fn add_drm_output_via_hotplug_pipeline(
             .iter()
             .cloned()
             .collect();
+        let renderer_formats =
+            maybe_disable_modifiers(renderer_formats, disable_drm_modifiers_requested());
         (
             drm.device_fd.clone(),
             drm.outputs
@@ -384,7 +516,9 @@ fn add_drm_output_via_hotplug_pipeline(
         return false;
     }
 
-    let Some((mode, mode_reason)) = select_add_mode(conn.modes()) else {
+    let modes = conn.modes();
+    log_connector_modes("drm output add connector mode", connector, modes);
+    let Some((mode, mode_reason)) = select_add_mode(modes) else {
         tracing::warn!(
             "drm output add skipped reason=no-mode connector={:?}",
             connector
@@ -439,7 +573,13 @@ fn add_drm_output_via_hotplug_pipeline(
         GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
     );
     let exporter = GbmFramebufferExporter::new(gbm.clone(), NodeFilter::All);
-    let color_formats = [Fourcc::Argb8888, Fourcc::Xrgb8888];
+    let force_format = forced_scanout_format_from_env();
+    let color_formats = selected_scanout_formats(force_format);
+    tracing::info!(
+        "drm scanout format selection: source=hotplug-add forced_format={:?} selected={:?}",
+        force_format,
+        color_formats
+    );
 
     let x_offset: i32 = state
         .outputs
@@ -477,7 +617,7 @@ fn add_drm_output_via_hotplug_pipeline(
         None,
         allocator,
         exporter,
-        color_formats,
+        color_formats.clone(),
         renderer_formats.iter().cloned(),
         drm.cursor_size(),
         Some(gbm),
@@ -528,6 +668,8 @@ fn add_drm_output_via_hotplug_pipeline(
         connector,
         wallpaper: None,
         frame_in_flight: false,
+        in_flight_frame_id: None,
+        next_frame_id: 1,
         needs_repaint: true,
     });
     drm_backend
@@ -630,6 +772,48 @@ fn env_flag_enabled(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn force_drm_legacy_requested() -> bool {
+    env_flag_enabled("MERIDIAN_DRM_FORCE_LEGACY")
+}
+
+fn disable_drm_modifiers_requested() -> bool {
+    env_flag_enabled("MERIDIAN_DRM_DISABLE_MODIFIERS")
+}
+
+fn disable_direct_scanout_requested() -> bool {
+    env_flag_enabled("MERIDIAN_DRM_DISABLE_DIRECT_SCANOUT")
+}
+
+fn forced_scanout_format_from_env() -> Option<Fourcc> {
+    let value = env::var("MERIDIAN_DRM_FORCE_FORMAT").ok()?;
+    let normalized = value.trim().to_ascii_uppercase();
+    match normalized.as_str() {
+        "XRGB8888" => Some(Fourcc::Xrgb8888),
+        "ARGB8888" => Some(Fourcc::Argb8888),
+        _ => None,
+    }
+}
+
+fn maybe_disable_modifiers(formats: HashSet<Format>, disable_modifiers: bool) -> HashSet<Format> {
+    if !disable_modifiers {
+        return formats;
+    }
+    formats
+        .into_iter()
+        .map(|format| Format {
+            code: format.code,
+            modifier: Modifier::Invalid,
+        })
+        .collect()
+}
+
+fn selected_scanout_formats(force_format: Option<Fourcc>) -> Vec<Fourcc> {
+    match force_format {
+        Some(format) => vec![format],
+        None => vec![Fourcc::Argb8888, Fourcc::Xrgb8888],
+    }
+}
+
 fn duration_from_hz(hz: u32) -> Option<Duration> {
     if hz == 0 {
         return None;
@@ -716,6 +900,34 @@ fn log_mode_details(
     );
 }
 
+fn log_connector_modes(
+    label: &str,
+    connector: smithay::reexports::drm::control::connector::Handle,
+    modes: &[smithay::reexports::drm::control::Mode],
+) {
+    for (index, mode) in modes.iter().copied().enumerate() {
+        let (hdisplay, vdisplay) = mode.size();
+        let preferred = mode
+            .mode_type()
+            .contains(smithay::reexports::drm::control::ModeTypeFlags::PREFERRED);
+        tracing::info!(
+            "{}: connector={:?} index={} name={} hdisplay={} vdisplay={} vrefresh_hz={} mclock_khz={} flags={:?} mode_type={:?} preferred={} conservative_key={:?}",
+            label,
+            connector,
+            index,
+            mode.name().to_string_lossy(),
+            hdisplay,
+            vdisplay,
+            mode.vrefresh(),
+            mode.clock(),
+            mode.flags(),
+            mode.mode_type(),
+            preferred,
+            mode_conservative_key(mode),
+        );
+    }
+}
+
 fn env_value_or_unset(name: &str) -> String {
     env::var(name).unwrap_or_else(|_| "<unset>".to_string())
 }
@@ -786,6 +998,13 @@ pub fn init_drm(
     if env_flag_enabled("SMITHAY_USE_LEGACY") {
         warn!("SMITHAY_USE_LEGACY is enabled; atomic drm path is forced off");
     }
+    if force_drm_legacy_requested() {
+        // Smithay reads this env var inside DrmDevice::new() to force legacy KMS path.
+        unsafe {
+            env::set_var("SMITHAY_USE_LEGACY", "1");
+        }
+        info!("MERIDIAN_DRM_FORCE_LEGACY requested: SMITHAY_USE_LEGACY=1 applied");
+    }
     if let Some((w, h)) = forced_mode_size_from_env() {
         info!("drm mode override requested: {}x{}", w, h);
     }
@@ -831,12 +1050,36 @@ pub fn init_drm(
     let context = EGLContext::new(&egl_display)?;
     let renderer = unsafe { smithay::backend::renderer::gles::GlesRenderer::new(context)? };
 
+    let disable_modifiers = disable_drm_modifiers_requested();
     let renderer_formats: HashSet<Format> = renderer
         .egl_context()
         .dmabuf_render_formats()
         .iter()
         .cloned()
         .collect();
+    let renderer_formats = maybe_disable_modifiers(renderer_formats, disable_modifiers);
+    let mut renderer_format_list: Vec<String> = renderer_formats
+        .iter()
+        .map(|format| format!("{:?}", format))
+        .collect();
+    renderer_format_list.sort();
+    let renderer_format_preview = renderer_format_list
+        .iter()
+        .take(6)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
+    info!(
+        "drm renderer dmabuf formats: count={} preview=[{}] disable_modifiers={} forced_modifier={:?}",
+        renderer_formats.len(),
+        renderer_format_preview,
+        disable_modifiers,
+        if disable_modifiers {
+            Some(Modifier::Invalid)
+        } else {
+            None
+        }
+    );
 
     let resources = drm.resource_handles()?;
     let mut drm_outputs: Vec<DrmOutput> = Vec::new();
@@ -854,6 +1097,7 @@ pub fn init_drm(
         if modes.is_empty() {
             continue;
         }
+        log_connector_modes("drm connector mode", *conn_handle, modes);
         let Some((mode, mode_reason)) = select_add_mode(modes) else {
             continue;
         };
@@ -888,7 +1132,12 @@ pub fn init_drm(
             GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
         );
         let exporter = GbmFramebufferExporter::new(gbm.clone(), NodeFilter::All);
-        let color_formats = [Fourcc::Argb8888, Fourcc::Xrgb8888];
+        let force_format = forced_scanout_format_from_env();
+        let color_formats = selected_scanout_formats(force_format);
+        info!(
+            "drm compositor format assumptions: forced_format={:?} color_formats={:?}",
+            force_format, color_formats
+        );
 
         let (w, h) = mode.size();
         let phys_size = conn.size().map_or((0, 0), |s| (s.0 as i32, s.1 as i32));
@@ -938,7 +1187,7 @@ pub fn init_drm(
             None,
             allocator,
             exporter,
-            color_formats,
+            color_formats.clone(),
             renderer_formats.iter().cloned(),
             drm.cursor_size(),
             Some(gbm.clone()),
@@ -952,6 +1201,8 @@ pub fn init_drm(
             connector: *conn_handle,
             wallpaper: None,
             frame_in_flight: false,
+            in_flight_frame_id: None,
+            next_frame_id: 1,
             needs_repaint: true,
         });
         info!("Initialized output {}x{} @ {}Hz", w, h, mode.vrefresh());
@@ -973,9 +1224,16 @@ pub fn init_drm(
         mode_interval_hint.map(|duration| duration.as_millis())
     );
 
+    let force_legacy = force_drm_legacy_requested();
     info!(
         "drm api selected: path={} (atomic={})",
-        if drm.is_atomic() { "atomic" } else { "legacy" },
+        if drm.is_atomic() {
+            "atomic"
+        } else if force_legacy {
+            "legacy-forced"
+        } else {
+            "legacy"
+        },
         drm.is_atomic()
     );
 
@@ -1005,6 +1263,21 @@ pub fn init_drm(
     let cursor_buffer = cursor_image.to_memory_buffer();
     let timing_enabled = env_flag_enabled("MERIDIAN_DRM_TIMING");
     let dirty_stats_enabled = env_flag_enabled("MERIDIAN_DIRTY_STATS");
+    let frame_diag_enabled = env_flag_enabled("MERIDIAN_DRM_FRAME_DIAG");
+    let force_full_repaint = env_flag_enabled("MERIDIAN_DRM_FORCE_FULL_REPAINT");
+    let force_opaque_clear = env_flag_enabled("MERIDIAN_DRM_FORCE_OPAQUE_CLEAR");
+    let disable_direct_scanout = disable_direct_scanout_requested();
+    if force_full_repaint {
+        tracing::info!("drm frame repaint mode: full (MERIDIAN_DRM_FORCE_FULL_REPAINT=1)");
+    }
+    if force_opaque_clear {
+        tracing::info!("drm clear mode: opaque (MERIDIAN_DRM_FORCE_OPAQUE_CLEAR=1)");
+    } else {
+        tracing::info!("drm clear mode: transparent-default");
+    }
+    if disable_direct_scanout {
+        tracing::info!("drm direct scanout mode: disabled (MERIDIAN_DRM_DISABLE_DIRECT_SCANOUT=1)");
+    }
 
     state.drm_backend = Some(DrmBackend {
         device_fd: device_fd.clone(),
@@ -1017,6 +1290,10 @@ pub fn init_drm(
         cursor_image,
         cursor_buffer,
         dirty_stats: super::DrmDirtyStats::new(dirty_stats_enabled),
+        force_full_repaint,
+        force_opaque_clear,
+        disable_direct_scanout,
+        frame_diag_enabled,
         last_pointer_location: None,
         last_connector_scan: std::time::Instant::now(),
         timing_stats: super::DrmTimingStats::new(timing_enabled),
@@ -1039,6 +1316,7 @@ pub fn init_drm(
                     let mut matched_output = false;
                     if let Some(out) = drm.outputs.iter_mut().find(|o| o.crtc == crtc) {
                         matched_output = true;
+                        let completed_frame_id = out.in_flight_frame_id;
                         let frame_submitted_started = std::time::Instant::now();
                         if let Err(err) = out.compositor.frame_submitted() {
                             tracing::warn!(
@@ -1046,9 +1324,26 @@ pub fn init_drm(
                                 out.output.name(),
                                 err
                             );
+                            if drm.frame_diag_enabled {
+                                tracing::info!(
+                                    "drm frame lifecycle: output={} event=vblank_complete frame_id={:?} commit_result=frame_submitted_err err={}",
+                                    out.output.name(),
+                                    completed_frame_id,
+                                    err
+                                );
+                            }
                             out.frame_in_flight = false;
+                            out.in_flight_frame_id = None;
                         } else {
                             out.frame_in_flight = false;
+                            out.in_flight_frame_id = None;
+                            if drm.frame_diag_enabled {
+                                tracing::info!(
+                                    "drm frame lifecycle: output={} event=vblank_complete frame_id={:?} commit_result=ok",
+                                    out.output.name(),
+                                    completed_frame_id
+                                );
+                            }
                         }
                         frame_submitted_duration = frame_submitted_started.elapsed();
                     }
