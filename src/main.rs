@@ -62,7 +62,10 @@ impl ShellWatchdog {
                 self.last_start = std::time::Instant::now();
             }
             Err(err) => {
-                warn!("failed to start meridian-shell {:?}: {}", self.shell_binary, err);
+                warn!(
+                    "failed to start meridian-shell {:?}: {}",
+                    self.shell_binary, err
+                );
             }
         }
     }
@@ -119,6 +122,17 @@ fn find_shell_binary() -> PathBuf {
     PathBuf::from("meridian-shell")
 }
 
+fn env_flag_enabled(name: &str) -> bool {
+    std::env::var(name)
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
@@ -133,13 +147,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         init_winit(&mut event_loop, &mut state)?;
     } else {
         info!("No parent display – using DRM/KMS backend");
-        match init_drm(&mut event_loop, &mut state) {
-            Ok(()) => {}
-            Err(err) => {
-                warn!("DRM init failed ({}), falling back to winit", err);
-                init_winit(&mut event_loop, &mut state)?;
-            }
-        }
+        init_drm(&mut event_loop, &mut state)?;
     }
 
     info!("Meridian running on socket: {:?}", state.socket_name);
@@ -148,8 +156,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     start_xwayland(&mut state);
 
-    let mut watchdog = ShellWatchdog::new(socket_name);
-    watchdog.start();
+    let shell_disabled =
+        env_flag_enabled("MERIDIAN_DRM_DISABLE_SHELL") || env_flag_enabled("MERIDIAN_NO_SHELL");
+
+    if shell_disabled {
+        info!("shell auto-start disabled by env (MERIDIAN_DRM_DISABLE_SHELL or MERIDIAN_NO_SHELL)");
+    }
 
     event_loop.handle().insert_source(
         Timer::from_duration(Duration::from_millis(100)),
@@ -159,13 +171,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     )?;
 
-    event_loop.handle().insert_source(
-        Timer::from_duration(Duration::from_secs(2)),
-        move |_, _, _| {
-            watchdog.watch();
-            TimeoutAction::ToDuration(Duration::from_secs(2))
-        },
-    )?;
+    if !shell_disabled {
+        let mut watchdog = ShellWatchdog::new(socket_name);
+        watchdog.start();
+        event_loop.handle().insert_source(
+            Timer::from_duration(Duration::from_secs(2)),
+            move |_, _, _| {
+                watchdog.watch();
+                TimeoutAction::ToDuration(Duration::from_secs(2))
+            },
+        )?;
+    }
 
     event_loop.run(None, &mut state, move |_| {})?;
     Ok(())
