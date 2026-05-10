@@ -463,6 +463,25 @@ struct VisibleApps {
     pinned_count: usize,
 }
 
+fn search_match_rank(app: &DesktopApp, query: &str) -> u8 {
+    let exec_base = app_exec_basename(&app.program);
+    if app.name_key == query {
+        0
+    } else if app.name_key.starts_with(query) {
+        1
+    } else if app.name_key.contains(query) {
+        2
+    } else if exec_base.starts_with(query) {
+        3
+    } else if exec_base.contains(query) {
+        4
+    } else if app.exec_key.contains(query) || app.program.to_ascii_lowercase().contains(query) {
+        5
+    } else {
+        6
+    }
+}
+
 impl LauncherState {
     pub fn new() -> Self {
         Self {
@@ -501,9 +520,16 @@ impl LauncherState {
             .collect::<Vec<_>>();
 
         if !query.is_empty() {
+            let mut ranked = matching;
+            ranked.sort_by(|left, right| {
+                search_match_rank(left, &query)
+                    .cmp(&search_match_rank(right, &query))
+                    .then_with(|| left.name_key.cmp(&right.name_key))
+                    .then_with(|| left.exec_key.cmp(&right.exec_key))
+            });
             return VisibleApps {
-                total_results: matching.len(),
-                apps: matching.into_iter().take(MAX_RESULTS).collect(),
+                total_results: ranked.len(),
+                apps: ranked.into_iter().take(MAX_RESULTS).collect(),
                 pinned_count: 0,
             };
         }
@@ -1649,5 +1675,72 @@ Exec=viewer %U
     #[test]
     fn app_initial_empty_falls_back_to_question_mark() {
         assert_eq!(app_initial(""), "?");
+    }
+
+    #[test]
+    fn search_ranking_prefers_name_prefix_over_name_substring() {
+        let state = LauncherState {
+            open: true,
+            query: "alp".to_string(),
+            selected_index: 0,
+            clicks: Vec::new(),
+            apps: vec![
+                DesktopApp::new("Zeta Alpha".to_string(), vec!["za".to_string()], false),
+                DesktopApp::new(
+                    "Alpha Tools".to_string(),
+                    vec!["alpha-tools".to_string()],
+                    false,
+                ),
+            ],
+        };
+
+        let visible = state.visible_apps();
+        assert_eq!(visible.apps.len(), 2);
+        assert_eq!(visible.apps[0].name, "Alpha Tools");
+        assert_eq!(visible.apps[1].name, "Zeta Alpha");
+    }
+
+    #[test]
+    fn search_ranking_prefers_name_match_over_exec_only_match() {
+        let state = LauncherState {
+            open: true,
+            query: "browser".to_string(),
+            selected_index: 0,
+            clicks: Vec::new(),
+            apps: vec![
+                DesktopApp::new("Browser Hub".to_string(), vec!["hub".to_string()], false),
+                DesktopApp::new(
+                    "Notes".to_string(),
+                    vec!["browser-helper".to_string()],
+                    false,
+                ),
+            ],
+        };
+
+        let visible = state.visible_apps();
+        assert_eq!(visible.apps.len(), 2);
+        assert_eq!(visible.apps[0].name, "Browser Hub");
+        assert_eq!(visible.apps[1].name, "Notes");
+    }
+
+    #[test]
+    fn empty_query_ranking_keeps_pinned_behavior() {
+        let state = LauncherState {
+            open: true,
+            query: String::new(),
+            selected_index: 0,
+            clicks: Vec::new(),
+            apps: vec![
+                DesktopApp::new("Alpha".to_string(), vec!["alpha".to_string()], false),
+                DesktopApp::new("Firefox".to_string(), vec!["firefox".to_string()], false),
+                DesktopApp::new("Terminal".to_string(), vec!["foot".to_string()], true),
+            ],
+        };
+
+        let visible = state.visible_apps();
+        assert_eq!(visible.pinned_count, 2);
+        assert_eq!(visible.apps[0].name, "Firefox");
+        assert_eq!(visible.apps[1].name, "Terminal");
+        assert_eq!(visible.apps[2].name, "Alpha");
     }
 }
