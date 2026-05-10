@@ -117,5 +117,4 @@ The goal is cohesion and reliability over endless surface-level tweakability.
 
 ## License
 
-License text is not finalized yet.
-Until a `LICENSE` file is added, treat the project as source-available for evaluation and development discussion only.
+Meridian is licensed under GPL-3.0-or-later.
