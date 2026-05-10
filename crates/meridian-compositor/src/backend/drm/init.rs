@@ -668,8 +668,6 @@ fn add_drm_output_via_hotplug_pipeline(
         connector,
         wallpaper: None,
         frame_in_flight: false,
-        in_flight_frame_id: None,
-        next_frame_id: 1,
         needs_repaint: true,
     });
     drm_backend
@@ -778,10 +776,6 @@ fn force_drm_legacy_requested() -> bool {
 
 fn disable_drm_modifiers_requested() -> bool {
     env_flag_enabled("MERIDIAN_DRM_DISABLE_MODIFIERS")
-}
-
-fn disable_direct_scanout_requested() -> bool {
-    env_flag_enabled("MERIDIAN_DRM_DISABLE_DIRECT_SCANOUT")
 }
 
 fn forced_scanout_format_from_env() -> Option<Fourcc> {
@@ -1201,8 +1195,6 @@ pub fn init_drm(
             connector: *conn_handle,
             wallpaper: None,
             frame_in_flight: false,
-            in_flight_frame_id: None,
-            next_frame_id: 1,
             needs_repaint: true,
         });
         info!("Initialized output {}x{} @ {}Hz", w, h, mode.vrefresh());
@@ -1263,21 +1255,6 @@ pub fn init_drm(
     let cursor_buffer = cursor_image.to_memory_buffer();
     let timing_enabled = env_flag_enabled("MERIDIAN_DRM_TIMING");
     let dirty_stats_enabled = env_flag_enabled("MERIDIAN_DIRTY_STATS");
-    let frame_diag_enabled = env_flag_enabled("MERIDIAN_DRM_FRAME_DIAG");
-    let force_full_repaint = env_flag_enabled("MERIDIAN_DRM_FORCE_FULL_REPAINT");
-    let force_opaque_clear = env_flag_enabled("MERIDIAN_DRM_FORCE_OPAQUE_CLEAR");
-    let disable_direct_scanout = disable_direct_scanout_requested();
-    if force_full_repaint {
-        tracing::info!("drm frame repaint mode: full (MERIDIAN_DRM_FORCE_FULL_REPAINT=1)");
-    }
-    if force_opaque_clear {
-        tracing::info!("drm clear mode: opaque (MERIDIAN_DRM_FORCE_OPAQUE_CLEAR=1)");
-    } else {
-        tracing::info!("drm clear mode: transparent-default");
-    }
-    if disable_direct_scanout {
-        tracing::info!("drm direct scanout mode: disabled (MERIDIAN_DRM_DISABLE_DIRECT_SCANOUT=1)");
-    }
 
     state.drm_backend = Some(DrmBackend {
         device_fd: device_fd.clone(),
@@ -1290,10 +1267,6 @@ pub fn init_drm(
         cursor_image,
         cursor_buffer,
         dirty_stats: super::DrmDirtyStats::new(dirty_stats_enabled),
-        force_full_repaint,
-        force_opaque_clear,
-        disable_direct_scanout,
-        frame_diag_enabled,
         last_pointer_location: None,
         last_connector_scan: std::time::Instant::now(),
         timing_stats: super::DrmTimingStats::new(timing_enabled),
@@ -1316,7 +1289,6 @@ pub fn init_drm(
                     let mut matched_output = false;
                     if let Some(out) = drm.outputs.iter_mut().find(|o| o.crtc == crtc) {
                         matched_output = true;
-                        let completed_frame_id = out.in_flight_frame_id;
                         let frame_submitted_started = std::time::Instant::now();
                         if let Err(err) = out.compositor.frame_submitted() {
                             tracing::warn!(
@@ -1324,26 +1296,9 @@ pub fn init_drm(
                                 out.output.name(),
                                 err
                             );
-                            if drm.frame_diag_enabled {
-                                tracing::info!(
-                                    "drm frame lifecycle: output={} event=vblank_complete frame_id={:?} commit_result=frame_submitted_err err={}",
-                                    out.output.name(),
-                                    completed_frame_id,
-                                    err
-                                );
-                            }
                             out.frame_in_flight = false;
-                            out.in_flight_frame_id = None;
                         } else {
                             out.frame_in_flight = false;
-                            out.in_flight_frame_id = None;
-                            if drm.frame_diag_enabled {
-                                tracing::info!(
-                                    "drm frame lifecycle: output={} event=vblank_complete frame_id={:?} commit_result=ok",
-                                    out.output.name(),
-                                    completed_frame_id
-                                );
-                            }
                         }
                         frame_submitted_duration = frame_submitted_started.elapsed();
                     }
