@@ -953,12 +953,27 @@ fn log_connector_modes(
     connector: smithay::reexports::drm::control::connector::Handle,
     modes: &[smithay::reexports::drm::control::Mode],
 ) {
+    let preferred_count = modes
+        .iter()
+        .filter(|mode| {
+            mode.mode_type()
+                .contains(smithay::reexports::drm::control::ModeTypeFlags::PREFERRED)
+        })
+        .count();
+    tracing::info!(
+        "{} summary: connector={:?} mode_count={} preferred_count={}",
+        label,
+        connector,
+        modes.len(),
+        preferred_count
+    );
+
     for (index, mode) in modes.iter().copied().enumerate() {
         let (hdisplay, vdisplay) = mode.size();
         let preferred = mode
             .mode_type()
             .contains(smithay::reexports::drm::control::ModeTypeFlags::PREFERRED);
-        tracing::info!(
+        tracing::debug!(
             "{}: connector={:?} index={} name={} hdisplay={} vdisplay={} vrefresh_hz={} calc_refresh_millihz={:?} mclock_khz={} flags={:?} mode_type={:?} preferred={} safe_mode_key={:?}",
             label,
             connector,
