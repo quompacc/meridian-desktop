@@ -59,6 +59,7 @@ pub struct DesktopApp {
     pub program: String,
     pub args: Vec<String>,
     pub terminal: bool,
+    pub categories: Vec<String>,
     name_key: String,
     exec_key: String,
 }
@@ -80,6 +81,7 @@ impl DesktopApp {
             program,
             args,
             terminal,
+            categories: Vec::new(),
         }
     }
 
@@ -134,6 +136,7 @@ impl DesktopApp {
         let mut hidden = false;
         let mut no_display = false;
         let mut desktop_type = None;
+        let mut categories = None;
 
         for line in raw.lines() {
             let line = line.trim();
@@ -182,6 +185,11 @@ impl DesktopApp {
                     }
                 }
                 "Type" => desktop_type = Some(value.to_string()),
+                "Categories" => {
+                    if !value.is_empty() {
+                        categories.get_or_insert_with(|| value.to_string());
+                    }
+                }
                 _ => {}
             };
         }
@@ -214,7 +222,10 @@ impl DesktopApp {
 
         let name = name.ok_or("missing-name")?;
         let exec_argv = exec_argv.ok_or("missing-exec")?;
-        let app = Self::new(name, exec_argv, terminal);
+        let mut app = Self::new(name, exec_argv, terminal);
+        if let Some(raw_categories) = categories {
+            app.categories = parse_categories(&raw_categories);
+        }
         if app.name.is_empty() || app.program.is_empty() {
             return Err("empty-name-or-exec");
         }
@@ -225,6 +236,14 @@ impl DesktopApp {
     fn matches_query(&self, query: &str) -> bool {
         query.is_empty() || self.name_key.contains(query) || self.exec_key.contains(query)
     }
+}
+
+fn parse_categories(raw: &str) -> Vec<String> {
+    raw.split(';')
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(|token| token.to_ascii_lowercase())
+        .collect()
 }
 
 fn parse_exec_argv(exec: &str) -> Vec<String> {
@@ -1237,6 +1256,54 @@ Terminal=false
         assert_eq!(app.program, "gnome-calculator");
         assert!(app.args.is_empty());
         assert!(!app.terminal);
+        assert!(app.categories.is_empty());
+    }
+
+    #[test]
+    fn parses_categories_and_normalizes_to_lowercase_tokens() {
+        let app = DesktopApp::from_desktop_entry_str_with_reason(
+            r#"
+[Desktop Entry]
+Type=Application
+Name=Builder
+Exec=builder
+Categories=Development;IDE;
+"#,
+        )
+        .expect("valid desktop entry with categories");
+
+        assert_eq!(app.categories, vec!["development", "ide"]);
+    }
+
+    #[test]
+    fn parses_categories_ignores_empty_tokens_and_whitespace() {
+        let app = DesktopApp::from_desktop_entry_str_with_reason(
+            r#"
+[Desktop Entry]
+Type=Application
+Name=Viewer
+Exec=viewer
+Categories=Utility; ;Graphics;;
+"#,
+        )
+        .expect("valid desktop entry with mixed category separators");
+
+        assert_eq!(app.categories, vec!["utility", "graphics"]);
+    }
+
+    #[test]
+    fn missing_categories_defaults_to_empty_vec() {
+        let app = DesktopApp::from_desktop_entry_str_with_reason(
+            r#"
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Exec=foot
+"#,
+        )
+        .expect("valid desktop entry without categories");
+
+        assert!(app.categories.is_empty());
     }
 
     #[test]
