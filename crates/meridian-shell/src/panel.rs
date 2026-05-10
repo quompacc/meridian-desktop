@@ -28,6 +28,7 @@ pub fn draw_panel(
     font: &RefCell<Option<TextRenderer>>,
     theme: &ThemeConfig,
     active_workspace: u8,
+    occupied_workspaces: Option<&[bool; 9]>,
     focused_title: Option<&str>,
     clock: &str,
     width: u32,
@@ -41,20 +42,28 @@ pub fn draw_panel(
 
     // ── Left: Workspace buttons ─────────────────────────────────────────────
     for ws in 1u8..=9 {
+        let ws_idx = (ws - 1) as usize;
+        let is_active = ws == active_workspace;
+        let is_occupied = occupied_workspaces
+            .map(|occupied| occupied[ws_idx])
+            .unwrap_or(false);
+
         let rect = Rect {
             x,
             y: WS_BTN_Y,
             w: WS_BTN_W,
             h: WS_BTN_H,
         };
-        let bg = if ws == active_workspace {
+        let bg = if is_active {
             colors.accent
+        } else if is_occupied {
+            colors.border
         } else {
             colors.background
         };
         painter.roundish_rect(rect, bg);
 
-        let text_color = if ws == active_workspace {
+        let text_color = if is_active {
             Color::rgb(0x1e, 0x1e, 0x2e)
         } else {
             colors.text
