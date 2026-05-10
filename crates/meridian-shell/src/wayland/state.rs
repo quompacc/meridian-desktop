@@ -530,6 +530,7 @@ impl MeridianShell {
             ClickAction::LaunchApp(index) => {
                 self.launcher_state.launch_app(index, &mut self.ipc);
             }
+            ClickAction::SelectLauncherCategory(_) => {}
             ClickAction::ToggleLauncher => {
                 self.toggle_launcher();
                 self.draw_panel(qh, RepaintReason::Pointer);
@@ -548,6 +549,9 @@ impl MeridianShell {
                 self.launcher_state.set_selected_index(index);
                 self.launcher_state
                     .launch_app(self.launcher_state.selected_index, &mut self.ipc);
+            }
+            ClickAction::SelectLauncherCategory(raw) => {
+                self.launcher_state.set_sidebar_category_from_click(raw);
             }
             ClickAction::SwitchWorkspace(_) => {}
             ClickAction::ToggleLauncher => {}

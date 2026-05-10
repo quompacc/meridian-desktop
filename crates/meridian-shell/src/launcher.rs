@@ -30,6 +30,7 @@ const APP_BADGE_SIZE: i32 = 18;
 const APP_BADGE_GAP: i32 = 8;
 const MAX_RESULTS: usize = 9;
 const MAX_PINNED_RESULTS: usize = 4;
+const SIDEBAR_CATEGORY_CLICK_BASE: u8 = 100;
 const PINNED_CANDIDATES: &[&str] = &[
     "terminal",
     "foot",
@@ -52,6 +53,122 @@ const PINNED_CANDIDATES: &[&str] = &[
 ];
 const XDG_DATA_DIRS_DEFAULT: &str = "/usr/local/share:/usr/share";
 const MERIDIAN_DESKTOP_ENV: &str = "Meridian";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SidebarCategory {
+    Favorites = 0,
+    AllApps = 1,
+    Development = 2,
+    Internet = 3,
+    System = 4,
+    Utilities = 5,
+    Graphics = 6,
+    Games = 7,
+}
+
+impl SidebarCategory {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Favorites => "Favorites",
+            Self::AllApps => "All apps",
+            Self::Development => "Development",
+            Self::Internet => "Internet",
+            Self::System => "System",
+            Self::Utilities => "Utilities",
+            Self::Graphics => "Graphics",
+            Self::Games => "Games",
+        }
+    }
+
+    fn to_click_id(self) -> u8 {
+        SIDEBAR_CATEGORY_CLICK_BASE + self as u8
+    }
+
+    fn from_click_id(raw: u8) -> Option<Self> {
+        let offset = raw.checked_sub(SIDEBAR_CATEGORY_CLICK_BASE)?;
+        match offset {
+            0 => Some(Self::Favorites),
+            1 => Some(Self::AllApps),
+            2 => Some(Self::Development),
+            3 => Some(Self::Internet),
+            4 => Some(Self::System),
+            5 => Some(Self::Utilities),
+            6 => Some(Self::Graphics),
+            7 => Some(Self::Games),
+            _ => None,
+        }
+    }
+
+    fn category_tokens(self) -> &'static [&'static str] {
+        match self {
+            Self::Favorites | Self::AllApps => &[],
+            Self::Development => &[
+                "development",
+                "ide",
+                "building",
+                "debugger",
+                "profiling",
+                "revisioncontrol",
+                "translation",
+            ],
+            Self::Internet => &[
+                "network",
+                "webbrowser",
+                "email",
+                "chat",
+                "instantmessaging",
+                "ircclient",
+                "filetransfer",
+                "remoteaccess",
+            ],
+            Self::System => &[
+                "system",
+                "settings",
+                "desktopsettings",
+                "hardwaresettings",
+                "packagemanager",
+                "security",
+            ],
+            Self::Utilities => &[
+                "utility",
+                "texteditor",
+                "archiving",
+                "calculator",
+                "clock",
+                "filetools",
+            ],
+            Self::Graphics => &[
+                "graphics",
+                "2dgraphics",
+                "rastergraphics",
+                "vectorgraphics",
+                "3dgraphics",
+                "photography",
+                "scanning",
+                "viewer",
+            ],
+            Self::Games => &[
+                "game",
+                "actiongame",
+                "arcadegame",
+                "boardgame",
+                "cardgame",
+                "kidsgame",
+                "logicgame",
+                "simulation",
+            ],
+        }
+    }
+}
+
+fn app_matches_sidebar_category(app: &DesktopApp, category: SidebarCategory) -> bool {
+    let tokens = category.category_tokens();
+    !tokens.is_empty()
+        && app
+            .categories
+            .iter()
+            .any(|category| tokens.iter().any(|token| category == token))
+}
 
 #[derive(Debug, Clone)]
 pub struct DesktopApp {
@@ -475,6 +592,7 @@ pub struct LauncherState {
     pub selected_index: usize,
     pub clicks: Vec<ClickZone>,
     pub apps: Vec<DesktopApp>,
+    pub sidebar_category: SidebarCategory,
 }
 
 struct VisibleApps {
@@ -508,6 +626,7 @@ impl LauncherState {
             open: false,
             query: String::new(),
             selected_index: 0,
+            sidebar_category: SidebarCategory::Favorites,
             clicks: Vec::new(),
             apps: DesktopApp::load_system(),
         }
@@ -517,6 +636,7 @@ impl LauncherState {
         self.open = !self.open;
         self.query.clear();
         self.selected_index = 0;
+        self.sidebar_category = SidebarCategory::Favorites;
         self.open
     }
 
@@ -524,6 +644,7 @@ impl LauncherState {
         self.open = false;
         self.query.clear();
         self.selected_index = 0;
+        self.sidebar_category = SidebarCategory::Favorites;
     }
 
     pub fn filtered_apps(&self) -> Vec<DesktopApp> {
@@ -554,6 +675,26 @@ impl LauncherState {
             };
         }
 
+        if self.sidebar_category == SidebarCategory::AllApps {
+            return VisibleApps {
+                total_results: matching.len(),
+                apps: matching.into_iter().take(MAX_RESULTS).collect(),
+                pinned_count: 0,
+            };
+        }
+
+        if self.sidebar_category != SidebarCategory::Favorites {
+            let filtered = matching
+                .into_iter()
+                .filter(|app| app_matches_sidebar_category(app, self.sidebar_category))
+                .collect::<Vec<_>>();
+            return VisibleApps {
+                total_results: filtered.len(),
+                apps: filtered.into_iter().take(MAX_RESULTS).collect(),
+                pinned_count: 0,
+            };
+        }
+
         let mut pinned = Vec::new();
         let mut pinned_keys = HashSet::new();
         for app in &matching {
@@ -566,19 +707,10 @@ impl LauncherState {
             }
         }
 
-        let mut apps = pinned.clone();
-        apps.extend(
-            matching
-                .iter()
-                .filter(|app| !pinned_keys.contains(&(app.name_key.clone(), app.exec_key.clone())))
-                .take(MAX_RESULTS.saturating_sub(pinned.len()))
-                .cloned(),
-        );
-
         VisibleApps {
-            total_results: matching.len(),
+            total_results: pinned.len(),
             pinned_count: pinned.len(),
-            apps,
+            apps: pinned,
         }
     }
 
@@ -625,6 +757,7 @@ impl LauncherState {
             .and_then(|zone| match zone.action {
                 ClickAction::LaunchApp(index) => Some(index),
                 ClickAction::SwitchWorkspace(_) => None,
+                ClickAction::SelectLauncherCategory(_) => None,
                 ClickAction::ToggleLauncher => None,
             });
 
@@ -744,6 +877,18 @@ impl LauncherState {
 
         LauncherInputResult::None
     }
+
+    pub fn set_sidebar_category_from_click(&mut self, raw: u8) -> bool {
+        let Some(category) = SidebarCategory::from_click_id(raw) else {
+            return false;
+        };
+        if self.sidebar_category != category {
+            self.sidebar_category = category;
+            self.selected_index = 0;
+            return true;
+        }
+        false
+    }
 }
 
 #[derive(Debug)]
@@ -858,62 +1003,52 @@ pub fn draw_launcher(
 
     let mut y = search_rect.y + SEARCH_H + LIST_TOP_GAP + 6;
 
-    let favorites_active = launcher_state.query.is_empty() && pinned_count > 0;
-    let favorites_label_rect = Rect {
-        x: sidebar_rect.x + 8,
-        y: sidebar_rect.y + 8,
-        w: sidebar_rect.w - 16,
-        h: 26,
-    };
-    if favorites_active {
-        painter.roundish_rect(favorites_label_rect, colors.accent);
-    }
-    painter.text_clipped(
-        font,
-        "Favorites",
-        favorites_label_rect.x + 10,
-        favorites_label_rect.y + 17,
-        favorites_label_rect.w - 20,
-        if favorites_active {
-            Color::rgb(0x1e, 0x1e, 0x2e)
-        } else {
-            colors.text
-        },
-    );
-
-    let all_apps_label_rect = Rect {
-        x: sidebar_rect.x + 8,
-        y: favorites_label_rect.y + favorites_label_rect.h + 4,
-        w: sidebar_rect.w - 16,
-        h: 24,
-    };
-    painter.text_clipped(
-        font,
-        "All apps",
-        all_apps_label_rect.x + 10,
-        all_apps_label_rect.y + 16,
-        all_apps_label_rect.w - 20,
-        colors.border,
-    );
-
-    if !launcher_state.query.is_empty() {
-        let search_label_rect = Rect {
+    let mut sidebar_item_y = sidebar_rect.y + 8;
+    let mut all_apps_label_bottom = sidebar_item_y;
+    for category in [SidebarCategory::Favorites, SidebarCategory::AllApps] {
+        let label_rect = Rect {
             x: sidebar_rect.x + 8,
-            y: all_apps_label_rect.y + all_apps_label_rect.h + 4,
+            y: sidebar_item_y,
             w: sidebar_rect.w - 16,
-            h: 24,
+            h: if category == SidebarCategory::Favorites {
+                26
+            } else {
+                24
+            },
         };
+        let is_active =
+            launcher_state.query.is_empty() && launcher_state.sidebar_category == category;
+        if is_active {
+            painter.roundish_rect(label_rect, colors.accent);
+        }
         painter.text_clipped(
             font,
-            "Search",
-            search_label_rect.x + 10,
-            search_label_rect.y + 16,
-            search_label_rect.w - 20,
-            colors.border,
+            category.label(),
+            label_rect.x + 10,
+            label_rect.y
+                + if category == SidebarCategory::Favorites {
+                    17
+                } else {
+                    16
+                },
+            label_rect.w - 20,
+            if is_active {
+                Color::rgb(0x1e, 0x1e, 0x2e)
+            } else if category == SidebarCategory::Favorites {
+                colors.text
+            } else {
+                colors.border
+            },
         );
+        launcher_state.clicks.push(ClickZone {
+            rect: label_rect,
+            action: ClickAction::SelectLauncherCategory(category.to_click_id()),
+        });
+        sidebar_item_y = label_rect.y + label_rect.h + 4;
+        all_apps_label_bottom = label_rect.y + label_rect.h;
     }
 
-    let categories_top = all_apps_label_rect.y + all_apps_label_rect.h + 12;
+    let categories_top = all_apps_label_bottom + 12;
     painter.rect(
         Rect {
             x: sidebar_rect.x + 12,
@@ -925,21 +1060,40 @@ pub fn draw_launcher(
     );
     let mut category_y = categories_top + 18;
     for category in [
-        "Development",
-        "Internet",
-        "System",
-        "Utilities",
-        "Graphics",
-        "Games",
+        SidebarCategory::Development,
+        SidebarCategory::Internet,
+        SidebarCategory::System,
+        SidebarCategory::Utilities,
+        SidebarCategory::Graphics,
+        SidebarCategory::Games,
     ] {
+        let label_rect = Rect {
+            x: sidebar_rect.x + 8,
+            y: category_y - 14,
+            w: sidebar_rect.w - 16,
+            h: 24,
+        };
+        let is_active =
+            launcher_state.query.is_empty() && launcher_state.sidebar_category == category;
+        if is_active {
+            painter.roundish_rect(label_rect, colors.accent);
+        }
         painter.text_clipped(
             font,
-            category,
-            sidebar_rect.x + 18,
+            category.label(),
+            label_rect.x + 10,
             category_y,
-            sidebar_rect.w - 28,
-            colors.border,
+            label_rect.w - 20,
+            if is_active {
+                Color::rgb(0x1e, 0x1e, 0x2e)
+            } else {
+                colors.border
+            },
         );
+        launcher_state.clicks.push(ClickZone {
+            rect: label_rect,
+            action: ClickAction::SelectLauncherCategory(category.to_click_id()),
+        });
         category_y += 20;
     }
 
@@ -967,8 +1121,10 @@ pub fn draw_launcher(
         return;
     }
 
-    let mut list_start = 0;
-    if launcher_state.query.is_empty() && pinned_count > 0 {
+    let show_pinned_grid = launcher_state.query.is_empty()
+        && launcher_state.sidebar_category == SidebarCategory::Favorites
+        && pinned_count > 0;
+    if show_pinned_grid {
         painter.text_clipped(font, "Pinned", content_x, y + 13, content_w, colors.border);
         y += SECTION_LABEL_H + 2;
 
@@ -1054,20 +1210,13 @@ pub fn draw_launcher(
         let pinned_rows = pinned_count.div_ceil(PINNED_GRID_COLS) as i32;
         y += pinned_rows * PINNED_CARD_H + (pinned_rows.saturating_sub(1)) * PINNED_GRID_ROW_GAP;
         y += 10;
-
-        painter.text_clipped(
-            font,
-            "All apps",
-            content_x,
-            y + 13,
-            content_w,
-            colors.border,
-        );
-        y += SECTION_LABEL_H + 2;
-        list_start = pinned_count;
     }
 
-    for (index, app) in apps.iter().enumerate().skip(list_start) {
+    if show_pinned_grid {
+        return;
+    }
+
+    for (index, app) in apps.iter().enumerate() {
         let is_selected = index == selected_idx;
         let rect = Rect {
             x: content_x,
@@ -1193,7 +1342,8 @@ mod tests {
 
     use super::{
         app_initial, desktop_app_dirs, is_executable_available, parse_exec_argv, ClickAction,
-        ClickZone, DesktopApp, LauncherInputResult, LauncherState, Rect, XDG_DATA_DIRS_DEFAULT,
+        ClickZone, DesktopApp, LauncherInputResult, LauncherState, Rect, SidebarCategory,
+        XDG_DATA_DIRS_DEFAULT,
     };
 
     static TEST_ID: AtomicU64 = AtomicU64::new(1);
@@ -1237,6 +1387,12 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create test dir");
         dir
+    }
+
+    fn app_with_categories(name: &str, program: &str, categories: &[&str]) -> DesktopApp {
+        let mut app = DesktopApp::new(name.to_string(), vec![program.to_string()], false);
+        app.categories = categories.iter().map(|c| c.to_string()).collect();
+        app
     }
 
     #[test]
@@ -1594,6 +1750,7 @@ Exec=viewer %U
             open: true,
             query: String::new(),
             selected_index: 0,
+            sidebar_category: SidebarCategory::AllApps,
             clicks: Vec::new(),
             apps: vec![
                 DesktopApp::new("Alpha".to_string(), vec!["alpha".to_string()], false),
@@ -1624,6 +1781,7 @@ Exec=viewer %U
             open: true,
             query: String::new(),
             selected_index: 2,
+            sidebar_category: SidebarCategory::Favorites,
             clicks: Vec::new(),
             apps: vec![DesktopApp::new(
                 "Terminal".to_string(),
@@ -1643,6 +1801,7 @@ Exec=viewer %U
             open: true,
             query: String::new(),
             selected_index: 0,
+            sidebar_category: SidebarCategory::AllApps,
             clicks: vec![ClickZone {
                 rect: Rect {
                     x: 0,
@@ -1670,6 +1829,7 @@ Exec=viewer %U
             open: true,
             query: String::new(),
             selected_index: 1,
+            sidebar_category: SidebarCategory::Favorites,
             clicks: vec![ClickZone {
                 rect: Rect {
                     x: 0,
@@ -1696,6 +1856,7 @@ Exec=viewer %U
             open: true,
             query: String::new(),
             selected_index: 0,
+            sidebar_category: SidebarCategory::AllApps,
             clicks: vec![ClickZone {
                 rect: Rect {
                     x: 0,
@@ -1726,6 +1887,7 @@ Exec=viewer %U
             open: true,
             query: "zzzz-no-hit".to_string(),
             selected_index: 5,
+            sidebar_category: SidebarCategory::Favorites,
             clicks: Vec::new(),
             apps: vec![DesktopApp::new(
                 "Terminal".to_string(),
@@ -1745,6 +1907,7 @@ Exec=viewer %U
             open: true,
             query: String::new(),
             selected_index: 99,
+            sidebar_category: SidebarCategory::AllApps,
             clicks: Vec::new(),
             apps: vec![
                 DesktopApp::new("Alpha".to_string(), vec!["alpha".to_string()], false),
@@ -1762,6 +1925,7 @@ Exec=viewer %U
             open: true,
             query: String::new(),
             selected_index: 0,
+            sidebar_category: SidebarCategory::Favorites,
             clicks: Vec::new(),
             apps: vec![
                 DesktopApp::new("Alpha".to_string(), vec!["alpha".to_string()], false),
@@ -1772,9 +1936,10 @@ Exec=viewer %U
 
         let visible = state.visible_apps();
         assert_eq!(visible.pinned_count, 2);
-        assert_eq!(visible.total_results, 3);
-        assert_eq!(visible.apps.len(), 3);
-        assert_eq!(visible.apps[2].name, "Alpha");
+        assert_eq!(visible.total_results, 2);
+        assert_eq!(visible.apps.len(), 2);
+        assert_eq!(visible.apps[0].name, "Firefox");
+        assert_eq!(visible.apps[1].name, "Terminal");
     }
 
     #[test]
@@ -1783,6 +1948,7 @@ Exec=viewer %U
             open: true,
             query: "alp".to_string(),
             selected_index: 0,
+            sidebar_category: SidebarCategory::Favorites,
             clicks: Vec::new(),
             apps: vec![
                 DesktopApp::new("Alpha".to_string(), vec!["alpha".to_string()], false),
@@ -1808,6 +1974,7 @@ Exec=viewer %U
             open: true,
             query: String::new(),
             selected_index: 0,
+            sidebar_category: SidebarCategory::Favorites,
             clicks: Vec::new(),
             apps: vec![
                 DesktopApp::new("Alpha".to_string(), vec!["alpha".to_string()], false),
@@ -1819,11 +1986,10 @@ Exec=viewer %U
         let visible = state.visible_apps();
         assert_eq!(visible.apps[0].name, "Firefox");
         assert_eq!(visible.apps[1].name, "Terminal");
-        assert_eq!(visible.apps[2].name, "Alpha");
 
-        state.selected_index = 2;
+        state.selected_index = 1;
         let result = state.handle_key(None, false, true, false, false, false);
-        assert!(matches!(result, LauncherInputResult::Launch(2)));
+        assert!(matches!(result, LauncherInputResult::Launch(1)));
     }
 
     #[test]
@@ -1847,6 +2013,7 @@ Exec=viewer %U
             open: true,
             query: "alp".to_string(),
             selected_index: 0,
+            sidebar_category: SidebarCategory::Favorites,
             clicks: Vec::new(),
             apps: vec![
                 DesktopApp::new("Zeta Alpha".to_string(), vec!["za".to_string()], false),
@@ -1870,6 +2037,7 @@ Exec=viewer %U
             open: true,
             query: "browser".to_string(),
             selected_index: 0,
+            sidebar_category: SidebarCategory::Favorites,
             clicks: Vec::new(),
             apps: vec![
                 DesktopApp::new("Browser Hub".to_string(), vec!["hub".to_string()], false),
@@ -1888,11 +2056,96 @@ Exec=viewer %U
     }
 
     #[test]
-    fn empty_query_ranking_keeps_pinned_behavior() {
+    fn sidebar_category_token_mapping_matches_expected_internet_tokens() {
+        assert_eq!(
+            SidebarCategory::Internet.category_tokens(),
+            &[
+                "network",
+                "webbrowser",
+                "email",
+                "chat",
+                "instantmessaging",
+                "ircclient",
+                "filetransfer",
+                "remoteaccess",
+            ]
+        );
+    }
+
+    #[test]
+    fn selecting_internet_category_filters_apps_by_parsed_categories() {
+        let mut state = LauncherState {
+            open: true,
+            query: String::new(),
+            selected_index: 0,
+            sidebar_category: SidebarCategory::Favorites,
+            clicks: Vec::new(),
+            apps: vec![
+                app_with_categories("Browser", "browser", &["webbrowser"]),
+                app_with_categories("Mail", "mail", &["email"]),
+                app_with_categories("Editor", "editor", &["texteditor"]),
+            ],
+        };
+
+        assert!(state.set_sidebar_category_from_click(SidebarCategory::Internet.to_click_id()));
+        let visible = state.visible_apps();
+        assert_eq!(visible.total_results, 2);
+        assert_eq!(visible.pinned_count, 0);
+        assert_eq!(visible.apps.len(), 2);
+        assert_eq!(visible.apps[0].name, "Browser");
+        assert_eq!(visible.apps[1].name, "Mail");
+    }
+
+    #[test]
+    fn non_empty_query_ignores_sidebar_category_filter() {
+        let mut state = LauncherState {
+            open: true,
+            query: "notes".to_string(),
+            selected_index: 0,
+            sidebar_category: SidebarCategory::Favorites,
+            clicks: Vec::new(),
+            apps: vec![
+                app_with_categories("Browser", "browser", &["webbrowser"]),
+                app_with_categories("Notes", "notes", &["texteditor"]),
+            ],
+        };
+
+        assert!(state.set_sidebar_category_from_click(SidebarCategory::Internet.to_click_id()));
+        let visible = state.visible_apps();
+        assert_eq!(visible.total_results, 1);
+        assert_eq!(visible.apps.len(), 1);
+        assert_eq!(visible.apps[0].name, "Notes");
+    }
+
+    #[test]
+    fn all_apps_category_shows_all_apps() {
+        let mut state = LauncherState {
+            open: true,
+            query: String::new(),
+            selected_index: 0,
+            sidebar_category: SidebarCategory::Favorites,
+            clicks: Vec::new(),
+            apps: vec![
+                app_with_categories("Alpha", "alpha", &["development"]),
+                app_with_categories("Browser", "browser", &["webbrowser"]),
+                app_with_categories("Settings", "settings", &["settings"]),
+            ],
+        };
+
+        assert!(state.set_sidebar_category_from_click(SidebarCategory::AllApps.to_click_id()));
+        let visible = state.visible_apps();
+        assert_eq!(visible.total_results, 3);
+        assert_eq!(visible.pinned_count, 0);
+        assert_eq!(visible.apps.len(), 3);
+    }
+
+    #[test]
+    fn empty_query_favorites_shows_only_pinned_apps() {
         let state = LauncherState {
             open: true,
             query: String::new(),
             selected_index: 0,
+            sidebar_category: SidebarCategory::Favorites,
             clicks: Vec::new(),
             apps: vec![
                 DesktopApp::new("Alpha".to_string(), vec!["alpha".to_string()], false),
@@ -1903,8 +2156,33 @@ Exec=viewer %U
 
         let visible = state.visible_apps();
         assert_eq!(visible.pinned_count, 2);
+        assert_eq!(visible.total_results, 2);
+        assert_eq!(visible.apps.len(), 2);
         assert_eq!(visible.apps[0].name, "Firefox");
         assert_eq!(visible.apps[1].name, "Terminal");
-        assert_eq!(visible.apps[2].name, "Alpha");
+    }
+
+    #[test]
+    fn favorites_category_shows_only_pinned_apps() {
+        let mut state = LauncherState {
+            open: true,
+            query: String::new(),
+            selected_index: 0,
+            sidebar_category: SidebarCategory::AllApps,
+            clicks: Vec::new(),
+            apps: vec![
+                DesktopApp::new("Alpha".to_string(), vec!["alpha".to_string()], false),
+                DesktopApp::new("Firefox".to_string(), vec!["firefox".to_string()], false),
+                DesktopApp::new("Terminal".to_string(), vec!["foot".to_string()], true),
+            ],
+        };
+
+        assert!(state.set_sidebar_category_from_click(SidebarCategory::Favorites.to_click_id()));
+        let visible = state.visible_apps();
+        assert_eq!(visible.pinned_count, 2);
+        assert_eq!(visible.total_results, 2);
+        assert_eq!(visible.apps.len(), 2);
+        assert_eq!(visible.apps[0].name, "Firefox");
+        assert_eq!(visible.apps[1].name, "Terminal");
     }
 }
