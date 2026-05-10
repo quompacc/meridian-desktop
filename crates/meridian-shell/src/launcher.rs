@@ -13,12 +13,12 @@ use tracing::{debug, info, warn};
 
 use crate::{ClickAction, ClickZone, Painter, Rect, TextRenderer};
 
-const APP_ROW_H: i32 = 36;
+const APP_ROW_H: i32 = 38;
 const SEARCH_H: i32 = 44;
 const HEADER_H: i32 = 22;
 const PAD: i32 = 16;
 const INNER_PAD: i32 = 12;
-const ROW_GAP: i32 = 6;
+const ROW_GAP: i32 = 4;
 const LIST_TOP_GAP: i32 = 10;
 const MAX_RESULTS: usize = 9;
 const XDG_DATA_DIRS_DEFAULT: &str = "/usr/local/share:/usr/share";
@@ -668,6 +668,14 @@ pub fn draw_launcher(
         w: width as i32,
         h: height as i32,
     };
+    let card = Rect {
+        x: PAD / 2,
+        y: PAD / 2,
+        w: width as i32 - PAD,
+        h: height as i32 - PAD,
+    };
+    painter.roundish_rect(card, colors.background);
+    painter.stroke_rect(card, colors.border);
     painter.stroke_rect(outer, colors.border);
 
     launcher_state.clicks.clear();
@@ -687,29 +695,41 @@ pub fn draw_launcher(
         "Launcher",
         header_rect.x,
         header_rect.y + 16,
-        header_rect.w / 2,
+        header_rect.w / 2 - 8,
         colors.text,
     );
-    let count_text = format!("{} Treffer", results_total);
     painter.text_clipped(
         font,
-        &count_text,
+        "Enter launch · Esc close",
         header_rect.x + header_rect.w / 2,
         header_rect.y + 16,
         header_rect.w / 2,
         colors.border,
     );
+    let count_text = if results_total == 1 {
+        "1 result".to_string()
+    } else {
+        format!("{} results", results_total)
+    };
+    painter.text_clipped(
+        font,
+        &count_text,
+        header_rect.x + header_rect.w - 110,
+        header_rect.y + HEADER_H + 1,
+        110,
+        colors.border,
+    );
 
     let search_rect = Rect {
         x: PAD,
-        y: PAD + HEADER_H + 2,
+        y: PAD + HEADER_H + 6,
         w: width as i32 - PAD * 2,
         h: SEARCH_H,
     };
-    painter.roundish_rect(search_rect, colors.background);
+    painter.roundish_rect(search_rect, colors.surface);
     painter.stroke_rect(search_rect, colors.border);
     let query_text = if launcher_state.query.is_empty() {
-        "Type to search applications"
+        "Search apps by name or executable"
     } else {
         &launcher_state.query
     };
@@ -727,12 +747,12 @@ pub fn draw_launcher(
         query_color,
     );
 
-    let mut y = search_rect.y + SEARCH_H + LIST_TOP_GAP;
+    let mut y = search_rect.y + SEARCH_H + LIST_TOP_GAP + 2;
     if apps.is_empty() {
         let empty = if launcher_state.query.is_empty() {
-            "Keine Anwendungen gefunden"
+            "No applications found"
         } else {
-            "Keine Treffer. Suche anpassen"
+            "No results. Refine your search"
         };
         let empty_rect = Rect {
             x: PAD,
@@ -763,24 +783,49 @@ pub fn draw_launcher(
         let bg = if is_selected {
             colors.accent
         } else {
-            colors.background
+            colors.surface
         };
         painter.roundish_rect(rect, bg);
+        painter.stroke_rect(rect, colors.border);
         if is_selected {
-            painter.stroke_rect(rect, colors.border);
+            painter.rect(
+                Rect {
+                    x: rect.x + 2,
+                    y: rect.y + 2,
+                    w: 3,
+                    h: rect.h - 4,
+                },
+                colors.text,
+            );
         }
         let text_color = if is_selected {
             Color::rgb(0x1e, 0x1e, 0x2e)
         } else {
             colors.text
         };
+        let exec_hint = Path::new(&app.program)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(&app.program);
         painter.text_clipped(
             font,
             &app.name,
-            rect.x + INNER_PAD,
-            rect.y + 23,
+            rect.x + INNER_PAD + 2,
+            rect.y + 17,
             rect.w - INNER_PAD * 2,
             text_color,
+        );
+        painter.text_clipped(
+            font,
+            exec_hint,
+            rect.x + INNER_PAD + 2,
+            rect.y + 32,
+            rect.w - INNER_PAD * 2,
+            if is_selected {
+                Color::rgb(0x3a, 0x3a, 0x44)
+            } else {
+                colors.border
+            },
         );
         launcher_state.clicks.push(ClickZone {
             rect,
