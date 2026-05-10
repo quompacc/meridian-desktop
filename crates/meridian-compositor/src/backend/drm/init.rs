@@ -315,7 +315,7 @@ fn select_add_mode(
             .filter(|mode| mode.size() == (pref_w, pref_h))
             .collect();
         if same_size.len() > 1 {
-            tracing::info!(
+            tracing::debug!(
                 "drm preferred-size candidates {}x{}: count={} candidates={:?}",
                 pref_w,
                 pref_h,
@@ -328,7 +328,7 @@ fn select_add_mode(
         }
         if let Some(selected_mode) = select_best_mode_for_size(modes, pref_w, pref_h) {
             if !same_mode(preferred, selected_mode) {
-                tracing::info!(
+                tracing::debug!(
                     "drm preferred mode adjusted to best same-size refresh candidate: preferred={} selected={}",
                     mode_brief(preferred),
                     mode_brief(selected_mode)
