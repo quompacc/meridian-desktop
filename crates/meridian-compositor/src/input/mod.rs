@@ -11,6 +11,9 @@ impl MeridianState {
             InputEvent::Keyboard { event, .. } => {
                 keyboard::handle_keyboard(self, &event);
             }
+            InputEvent::PointerMotion { event, .. } => {
+                pointer::handle_pointer_motion_relative(self, &event);
+            }
             InputEvent::PointerMotionAbsolute { event, .. } => {
                 pointer::handle_pointer_motion_absolute(self, &event);
             }
