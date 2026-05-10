@@ -176,6 +176,31 @@ Ziel: Render-/Event-Loop-Lag gegen Input-Lag trennen.
   - `shell commit summary: total=... panel(...) launcher(...)`
 - Offener Punkt: hohe steady-state `layer-surface-commit`/`surface-commit` Rate im Idle weiter analysieren und reduzieren.
 
+## Shell Idle Regression Check (DRM)
+Empfohlener Lauf:
+
+```bash
+MERIDIAN_DRM_TIMING=1 \
+MERIDIAN_DIRTY_STATS=1 \
+MERIDIAN_SHELL_RENDER_STATS=1 \
+RUST_LOG=info \
+timeout 20s cargo run --release -- 2>&1 | tee /tmp/meridian-shell-idle-check.log
+```
+
+### Guter Zustand
+- Nach Setup im steady-state:
+  - `frames=0`
+  - `outputs_skipped_clean≈62/63` (oder ähnlich hoch)
+  - `commit_ms=0`
+  - `dirty reasons=<none>`
+- Clock-Update:
+  - einmaliger Frame (`frames=1`, einmal `layer-surface-commit`/`surface-commit`)
+  - danach wieder clean idle.
+
+### Schlechter Zustand (Regression)
+- Viele `layer-surface-commit`/`surface-commit` pro Sekunde im Idle.
+- Dauerhafte `Creating wl_shm buffer...`-Zeilen ohne sichtbare State-Änderung.
+
 ## Registry / Layer-Shell Debugging
 - Client Bind/Init: `crates/meridian-shell/src/wayland/init.rs`
 - Server Layer Mapping: `crates/meridian-compositor/src/state/handlers/core/layer_shell.rs`

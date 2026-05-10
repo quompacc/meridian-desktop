@@ -68,6 +68,41 @@ Empfohlene Host-Checks:
    - Launcher (`Super+Space`)
    - Hotplug (falls im Setup auslösbar)
 
+### Reproduzierbarer Smoke-Test (DRM/NVIDIA)
+Aus Repo-Root:
+
+```bash
+MERIDIAN_SMOKE_TIMEOUT=20 \
+MERIDIAN_SMOKE_LOG=/tmp/meridian-smoke-drm.log \
+scripts/smoke-drm.sh
+```
+
+Der Smoke-Test setzt:
+- `MERIDIAN_DRM_TIMING=1`
+- `MERIDIAN_DIRTY_STATS=1`
+- `MERIDIAN_SHELL_RENDER_STATS=1`
+- `RUST_LOG=info`
+
+und wertet danach u. a. folgende Muster aus:
+- `GL Vendor`
+- `GL Renderer`
+- `drm api selected`
+- `drm mode selected`
+- `drm timing summary`
+- `dirty reasons`
+- `shell render summary`
+- `too slow` / `lagging` / `error` / `warn`
+
+Erwartete Erfolgsindikatoren (nach Setup):
+- DRM-API: `atomic`
+- Timing stabil bei etwa `16-17ms` vblank wait (60Hz-Pfad)
+- Shell-Idle sauber:
+  - `frames=0` in steady-state
+  - `outputs_skipped_clean` hoch
+  - `commit_ms=0`
+  - `dirty reasons=<none>`
+- Clock-Update erzeugt nur einen einmaligen Frame und kehrt dann in clean idle zurück.
+
 ## 5) Fehlerdiagnose (Kurzpfad)
 - Kein `/dev/dri`:
   - PCI passthrough/guest-driver/sitzungsrechte prüfen.
