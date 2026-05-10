@@ -394,7 +394,13 @@ fn select_conservative_mode_for_size(
         .iter()
         .copied()
         .filter(|mode| mode.size() == (width, height))
-        .min_by_key(|mode| mode_conservative_key(*mode))
+        .max_by_key(|mode| {
+            (
+                mode.vrefresh().max(0) as u32,
+                u8::MAX - mode_flags_weird_penalty(*mode),
+                mode.clock(),
+            )
+        })
 }
 
 fn select_safe_mode(
@@ -824,7 +830,7 @@ fn duration_from_millihz(millihz: i32) -> Option<Duration> {
     ))
 }
 
-fn select_repaint_interval(default: Duration) -> (Duration, String) {
+fn select_repaint_interval(default: Duration, default_source: String) -> (Duration, String) {
     if let Ok(value) = env::var("MERIDIAN_DRM_FRAME_INTERVAL_MS") {
         match value.trim().parse::<u64>() {
             Ok(ms) if ms > 0 => {
@@ -863,7 +869,7 @@ fn select_repaint_interval(default: Duration) -> (Duration, String) {
         }
     }
 
-    (default, "default:hardcoded-16ms".to_string())
+    (default, default_source)
 }
 
 fn log_mode_details(
@@ -1207,10 +1213,16 @@ pub fn init_drm(
         .first()
         .and_then(|output| output.output.current_mode().map(|mode| mode.refresh));
     let mode_interval_hint = mode_refresh_hint_millihz.and_then(duration_from_millihz);
-    let (repaint_interval, repaint_source) = select_repaint_interval(Duration::from_millis(16));
+    let default_repaint_interval = mode_interval_hint.unwrap_or_else(|| Duration::from_millis(16));
+    let default_repaint_source = mode_refresh_hint_millihz
+        .map(|millihz| format!("default:mode-refresh-hint({millihz}mHz)"))
+        .unwrap_or_else(|| "default:hardcoded-16ms".to_string());
+    let (repaint_interval, repaint_source) =
+        select_repaint_interval(default_repaint_interval, default_repaint_source);
     tracing::info!(
-        "drm repaint interval configured: interval_ms={} source={} mode_refresh_hint_millihz={:?} mode_interval_hint_ms={:?}",
+        "drm repaint interval configured: interval_ms={} interval_ns={} source={} mode_refresh_hint_millihz={:?} mode_interval_hint_ms={:?}",
         repaint_interval.as_millis(),
+        repaint_interval.as_nanos(),
         repaint_source,
         mode_refresh_hint_millihz,
         mode_interval_hint.map(|duration| duration.as_millis())
