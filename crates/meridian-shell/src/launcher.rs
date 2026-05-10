@@ -20,7 +20,29 @@ const PAD: i32 = 16;
 const INNER_PAD: i32 = 12;
 const ROW_GAP: i32 = 4;
 const LIST_TOP_GAP: i32 = 10;
+const SECTION_LABEL_H: i32 = 16;
 const MAX_RESULTS: usize = 9;
+const MAX_PINNED_RESULTS: usize = 4;
+const PINNED_CANDIDATES: &[&str] = &[
+    "terminal",
+    "foot",
+    "alacritty",
+    "kitty",
+    "wezterm",
+    "ghostty",
+    "konsole",
+    "kgx",
+    "firefox",
+    "chromium",
+    "google chrome",
+    "brave",
+    "dolphin",
+    "nautilus",
+    "thunar",
+    "nemo",
+    "system settings",
+    "systemsettings",
+];
 const XDG_DATA_DIRS_DEFAULT: &str = "/usr/local/share:/usr/share";
 const MERIDIAN_DESKTOP_ENV: &str = "Meridian";
 
@@ -429,6 +451,12 @@ pub struct LauncherState {
     pub apps: Vec<DesktopApp>,
 }
 
+struct VisibleApps {
+    apps: Vec<DesktopApp>,
+    total_results: usize,
+    pinned_count: usize,
+}
+
 impl LauncherState {
     pub fn new() -> Self {
         Self {
@@ -454,30 +482,56 @@ impl LauncherState {
     }
 
     pub fn filtered_apps(&self) -> Vec<DesktopApp> {
-        let query = self.query.to_lowercase();
-        self.apps
-            .iter()
-            .filter(|app| app.matches_query(&query))
-            .take(MAX_RESULTS)
-            .cloned()
-            .collect()
+        self.visible_apps().apps
     }
 
-    fn filtered_count(&self) -> usize {
+    fn visible_apps(&self) -> VisibleApps {
         let query = self.query.to_lowercase();
-        self.apps
+        let matching = self
+            .apps
             .iter()
             .filter(|app| app.matches_query(&query))
-            .count()
+            .cloned()
+            .collect::<Vec<_>>();
+
+        if !query.is_empty() {
+            return VisibleApps {
+                total_results: matching.len(),
+                apps: matching.into_iter().take(MAX_RESULTS).collect(),
+                pinned_count: 0,
+            };
+        }
+
+        let mut pinned = Vec::new();
+        let mut pinned_keys = HashSet::new();
+        for app in &matching {
+            if !is_pinned_candidate(app) || pinned.len() >= MAX_PINNED_RESULTS {
+                continue;
+            }
+            let key = (app.name_key.clone(), app.exec_key.clone());
+            if pinned_keys.insert(key) {
+                pinned.push(app.clone());
+            }
+        }
+
+        let mut apps = pinned.clone();
+        apps.extend(
+            matching
+                .iter()
+                .filter(|app| !pinned_keys.contains(&(app.name_key.clone(), app.exec_key.clone())))
+                .take(MAX_RESULTS.saturating_sub(pinned.len()))
+                .cloned(),
+        );
+
+        VisibleApps {
+            total_results: matching.len(),
+            pinned_count: pinned.len(),
+            apps,
+        }
     }
 
     fn filtered_visible_count(&self) -> usize {
-        let query = self.query.to_lowercase();
-        self.apps
-            .iter()
-            .filter(|app| app.matches_query(&query))
-            .take(MAX_RESULTS)
-            .count()
+        self.visible_apps().apps.len()
     }
 
     fn selected_index_clamped(&self, visible_len: usize) -> usize {
@@ -529,7 +583,7 @@ impl LauncherState {
     }
 
     pub fn launch_app(&mut self, index: usize, ipc: &mut crate::IpcClient) {
-        let apps = self.filtered_apps();
+        let apps = self.visible_apps().apps;
         if let Some(app) = apps.get(index).cloned() {
             if app.program.trim().is_empty() {
                 warn!("ignoring launch request for {}: empty argv", app.name);
@@ -680,8 +734,10 @@ pub fn draw_launcher(
 
     launcher_state.clicks.clear();
 
-    let results_total = launcher_state.filtered_count();
-    let apps = launcher_state.filtered_apps();
+    let visible = launcher_state.visible_apps();
+    let apps = visible.apps;
+    let results_total = visible.total_results;
+    let pinned_count = visible.pinned_count;
     let selected_idx = launcher_state.selected_index_clamped(apps.len());
 
     let header_rect = Rect {
@@ -772,7 +828,32 @@ pub fn draw_launcher(
         return;
     }
 
+    if launcher_state.query.is_empty() && pinned_count > 0 {
+        painter.text_clipped(
+            font,
+            "Pinned",
+            PAD,
+            y + 12,
+            width as i32 - PAD * 2,
+            colors.border,
+        );
+        y += SECTION_LABEL_H;
+    }
+
     for (index, app) in apps.iter().enumerate() {
+        if launcher_state.query.is_empty() && pinned_count > 0 && index == pinned_count {
+            y += 2;
+            painter.text_clipped(
+                font,
+                "All apps",
+                PAD,
+                y + 12,
+                width as i32 - PAD * 2,
+                colors.border,
+            );
+            y += SECTION_LABEL_H;
+        }
+
         let is_selected = index == selected_idx;
         let rect = Rect {
             x: PAD,
@@ -833,6 +914,21 @@ pub fn draw_launcher(
         });
         y += APP_ROW_H + ROW_GAP;
     }
+}
+
+fn app_exec_basename(program: &str) -> String {
+    Path::new(program)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(program)
+        .to_ascii_lowercase()
+}
+
+fn is_pinned_candidate(app: &DesktopApp) -> bool {
+    let exec_base = app_exec_basename(&app.program);
+    PINNED_CANDIDATES
+        .iter()
+        .any(|candidate| app.name_key == *candidate || exec_base == *candidate)
 }
 
 #[cfg(test)]
@@ -1358,5 +1454,75 @@ Exec=viewer %U
 
         let result = state.handle_key(None, false, true, false, false, false);
         assert!(matches!(result, LauncherInputResult::Launch(1)));
+    }
+
+    #[test]
+    fn pinned_section_shows_only_existing_apps_without_duplicates() {
+        let state = LauncherState {
+            open: true,
+            query: String::new(),
+            selected_index: 0,
+            clicks: Vec::new(),
+            apps: vec![
+                DesktopApp::new("Alpha".to_string(), vec!["alpha".to_string()], false),
+                DesktopApp::new("Firefox".to_string(), vec!["firefox".to_string()], false),
+                DesktopApp::new("Terminal".to_string(), vec!["foot".to_string()], true),
+            ],
+        };
+
+        let visible = state.visible_apps();
+        assert_eq!(visible.pinned_count, 2);
+        assert_eq!(visible.total_results, 3);
+        assert_eq!(visible.apps.len(), 3);
+        assert_eq!(visible.apps[2].name, "Alpha");
+    }
+
+    #[test]
+    fn search_query_bypasses_pinned_section() {
+        let mut state = LauncherState {
+            open: true,
+            query: "alp".to_string(),
+            selected_index: 0,
+            clicks: Vec::new(),
+            apps: vec![
+                DesktopApp::new("Alpha".to_string(), vec!["alpha".to_string()], false),
+                DesktopApp::new("Firefox".to_string(), vec!["firefox".to_string()], false),
+                DesktopApp::new("Terminal".to_string(), vec!["foot".to_string()], true),
+            ],
+        };
+
+        let visible = state.visible_apps();
+        assert_eq!(visible.pinned_count, 0);
+        assert_eq!(visible.total_results, 1);
+        assert_eq!(visible.apps.len(), 1);
+        assert_eq!(visible.apps[0].name, "Alpha");
+
+        state.query.clear();
+        let visible = state.visible_apps();
+        assert!(visible.pinned_count > 0);
+    }
+
+    #[test]
+    fn enter_launch_maps_to_visible_index_with_pinned_section() {
+        let mut state = LauncherState {
+            open: true,
+            query: String::new(),
+            selected_index: 0,
+            clicks: Vec::new(),
+            apps: vec![
+                DesktopApp::new("Alpha".to_string(), vec!["alpha".to_string()], false),
+                DesktopApp::new("Firefox".to_string(), vec!["firefox".to_string()], false),
+                DesktopApp::new("Terminal".to_string(), vec!["foot".to_string()], true),
+            ],
+        };
+
+        let visible = state.visible_apps();
+        assert_eq!(visible.apps[0].name, "Firefox");
+        assert_eq!(visible.apps[1].name, "Terminal");
+        assert_eq!(visible.apps[2].name, "Alpha");
+
+        state.selected_index = 2;
+        let result = state.handle_key(None, false, true, false, false, false);
+        assert!(matches!(result, LauncherInputResult::Launch(2)));
     }
 }
