@@ -349,6 +349,39 @@ fn mode_flags_weird_penalty(mode: smithay::reexports::drm::control::Mode) -> u8 
     penalty
 }
 
+fn calculate_mode_refresh_millihz(mode: smithay::reexports::drm::control::Mode) -> Option<i32> {
+    let clock_khz = mode.clock();
+    let htotal = mode.hsync().2 as i64;
+    let vtotal = mode.vsync().2 as i64;
+    if clock_khz == 0 || htotal <= 0 || vtotal <= 0 {
+        return None;
+    }
+
+    let mut refresh_millihz = u128::from(clock_khz)
+        .checked_mul(1_000_000)?
+        .checked_div(htotal as u128)?
+        .checked_div(vtotal as u128)?;
+
+    let flags = mode.flags();
+    if flags.contains(smithay::reexports::drm::control::ModeFlags::INTERLACE) {
+        refresh_millihz = refresh_millihz.checked_mul(2)?;
+    }
+    if flags.contains(smithay::reexports::drm::control::ModeFlags::DBLSCAN) {
+        refresh_millihz /= 2;
+    }
+
+    let vscan = mode.vscan() as u128;
+    if vscan > 1 {
+        refresh_millihz /= vscan;
+    }
+
+    i32::try_from(refresh_millihz).ok()
+}
+
+fn mode_refresh_millihz_with_fallback(mode: smithay::reexports::drm::control::Mode) -> i32 {
+    calculate_mode_refresh_millihz(mode).unwrap_or_else(|| mode.vrefresh().max(0) as i32 * 1000)
+}
+
 fn mode_conservative_key(mode: smithay::reexports::drm::control::Mode) -> (u8, u32, u32, u8) {
     let refresh = mode.vrefresh().max(0) as u32;
     let exact_60_penalty = if refresh == 60 { 0 } else { 1 };
@@ -374,12 +407,14 @@ fn same_mode(
 
 fn mode_brief(mode: smithay::reexports::drm::control::Mode) -> String {
     let (w, h) = mode.size();
+    let calc_refresh_millihz = calculate_mode_refresh_millihz(mode);
     format!(
-        "{}x{}@{}Hz mclock_khz={} flags={:?} mode_type={:?}",
+        "{}x{}@{}Hz mclock_khz={} calc_refresh_millihz={:?} flags={:?} mode_type={:?}",
         w,
         h,
         mode.vrefresh(),
         mode.clock(),
+        calc_refresh_millihz,
         mode.flags(),
         mode.mode_type()
     )
@@ -396,7 +431,7 @@ fn select_conservative_mode_for_size(
         .filter(|mode| mode.size() == (width, height))
         .max_by_key(|mode| {
             (
-                mode.vrefresh().max(0) as u32,
+                mode_refresh_millihz_with_fallback(*mode),
                 u8::MAX - mode_flags_weird_penalty(*mode),
                 mode.clock(),
             )
@@ -881,12 +916,13 @@ fn log_mode_details(
     let (hsync_start, hsync_end, htotal) = mode.hsync();
     let (vsync_start, vsync_end, vtotal) = mode.vsync();
     tracing::info!(
-        "{}: connector={:?} name={} mclock_khz={} vrefresh_hz={} hdisplay={} hsync_start={} hsync_end={} htotal={} vdisplay={} vsync_start={} vsync_end={} vtotal={} flags={:?} mode_type={:?}",
+        "{}: connector={:?} name={} mclock_khz={} vrefresh_hz={} calc_refresh_millihz={:?} hdisplay={} hsync_start={} hsync_end={} htotal={} vdisplay={} vsync_start={} vsync_end={} vtotal={} flags={:?} mode_type={:?}",
         label,
         connector,
         mode.name().to_string_lossy(),
         mode.clock(),
         mode.vrefresh(),
+        calculate_mode_refresh_millihz(mode),
         hdisplay,
         hsync_start,
         hsync_end,
@@ -911,7 +947,7 @@ fn log_connector_modes(
             .mode_type()
             .contains(smithay::reexports::drm::control::ModeTypeFlags::PREFERRED);
         tracing::info!(
-            "{}: connector={:?} index={} name={} hdisplay={} vdisplay={} vrefresh_hz={} mclock_khz={} flags={:?} mode_type={:?} preferred={} conservative_key={:?}",
+            "{}: connector={:?} index={} name={} hdisplay={} vdisplay={} vrefresh_hz={} calc_refresh_millihz={:?} mclock_khz={} flags={:?} mode_type={:?} preferred={} conservative_key={:?}",
             label,
             connector,
             index,
@@ -919,6 +955,7 @@ fn log_connector_modes(
             hdisplay,
             vdisplay,
             mode.vrefresh(),
+            calculate_mode_refresh_millihz(mode),
             mode.clock(),
             mode.flags(),
             mode.mode_type(),
@@ -1084,6 +1121,7 @@ pub fn init_drm(
     let resources = drm.resource_handles()?;
     let mut drm_outputs: Vec<DrmOutput> = Vec::new();
     let mut occupied_crtcs: Vec<smithay::reexports::drm::control::crtc::Handle> = Vec::new();
+    let mut first_selected_mode_refresh_millihz: Option<i32> = None;
 
     for conn_handle in resources.connectors() {
         let conn = match drm.get_connector(*conn_handle, false) {
@@ -1102,6 +1140,10 @@ pub fn init_drm(
             continue;
         };
         log_mode_details("drm mode selected", *conn_handle, mode);
+        let selected_mode_refresh_millihz = mode_refresh_millihz_with_fallback(mode);
+        if first_selected_mode_refresh_millihz.is_none() {
+            first_selected_mode_refresh_millihz = Some(selected_mode_refresh_millihz);
+        }
         tracing::info!(
             "drm mode selection reason: connector={:?} reason={}",
             conn_handle,
@@ -1120,12 +1162,13 @@ pub fn init_drm(
         let surface = drm.create_surface(crtc_handle, mode, &[*conn_handle])?;
         let (mode_w, mode_h) = mode.size();
         info!(
-            "drm kms surface created: connector={:?} crtc={:?} mode={}x{}@{}Hz",
+            "drm kms surface created: connector={:?} crtc={:?} mode={}x{}@{}Hz calc_refresh_millihz={}",
             conn_handle,
             crtc_handle,
             mode_w,
             mode_h,
-            mode.vrefresh()
+            mode.vrefresh(),
+            selected_mode_refresh_millihz
         );
         let allocator = GbmAllocator::new(
             gbm.clone(),
@@ -1154,7 +1197,7 @@ pub fn init_drm(
         let _global = output.create_global::<MeridianState>(&state.display_handle);
         let out_mode = OutputMode {
             size: (w as i32, h as i32).into(),
-            refresh: mode.vrefresh() as i32 * 1000,
+            refresh: selected_mode_refresh_millihz,
         };
         output.change_current_state(
             Some(out_mode),
@@ -1178,7 +1221,7 @@ pub fn init_drm(
             geometry: MeridianState::output_geometry_for_registry(x_offset, 0, w as i32, h as i32),
             scale: 1.0,
             transform: Transform::Normal,
-            refresh_millihz: Some(mode.vrefresh() as i32 * 1000),
+            refresh_millihz: Some(selected_mode_refresh_millihz),
         });
 
         let compositor = DrmCompositor::new(
@@ -1203,19 +1246,27 @@ pub fn init_drm(
             frame_in_flight: false,
             needs_repaint: true,
         });
-        info!("Initialized output {}x{} @ {}Hz", w, h, mode.vrefresh());
+        info!(
+            "Initialized output {}x{} @ {}Hz (calc_refresh_millihz={})",
+            w,
+            h,
+            mode.vrefresh(),
+            selected_mode_refresh_millihz
+        );
     }
 
     if drm_outputs.is_empty() {
         return Err("no connected displays found".into());
     }
-    let mode_refresh_hint_millihz = drm_outputs
-        .first()
-        .and_then(|output| output.output.current_mode().map(|mode| mode.refresh));
+    let mode_refresh_hint_millihz = first_selected_mode_refresh_millihz.or_else(|| {
+        drm_outputs
+            .first()
+            .and_then(|output| output.output.current_mode().map(|mode| mode.refresh))
+    });
     let mode_interval_hint = mode_refresh_hint_millihz.and_then(duration_from_millihz);
     let default_repaint_interval = mode_interval_hint.unwrap_or_else(|| Duration::from_millis(16));
     let default_repaint_source = mode_refresh_hint_millihz
-        .map(|millihz| format!("default:mode-refresh-hint({millihz}mHz)"))
+        .map(|millihz| format!("default:calculated-mode-refresh({millihz}mHz)"))
         .unwrap_or_else(|| "default:hardcoded-16ms".to_string());
     let (repaint_interval, repaint_source) =
         select_repaint_interval(default_repaint_interval, default_repaint_source);
