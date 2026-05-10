@@ -1,5 +1,5 @@
 use smithay_client_toolkit::shm::slot::{Buffer, SlotPool};
-use tracing::info;
+use tracing::debug;
 use wayland_client::protocol::wl_shm;
 
 pub fn shm_buffer_format() -> wl_shm::Format {
@@ -27,7 +27,7 @@ pub fn buffer_for<'a>(
         .unwrap_or(true);
 
     if recreate {
-        info!(
+        debug!(
             "Creating wl_shm buffer: {}x{} stride={} bytes={} format=Argb8888",
             width,
             height,

@@ -163,6 +163,64 @@ impl RepaintStats {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct ThemeRenderSignature {
+    pub(crate) font_ui: String,
+    pub(crate) colors: [u8; 16],
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct PanelRenderSignature {
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) active_workspace: u8,
+    pub(crate) occupied_state_available: bool,
+    pub(crate) occupied_workspaces: [bool; 9],
+    pub(crate) focused_title: Option<String>,
+    pub(crate) clock: String,
+    pub(crate) theme: ThemeRenderSignature,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct LauncherRenderSignature {
+    pub(crate) open: bool,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) query: String,
+    pub(crate) selected_index: usize,
+    pub(crate) visible_apps_len: usize,
+    pub(crate) visible_apps_hash: u64,
+    pub(crate) theme: ThemeRenderSignature,
+}
+
+#[derive(Default)]
+pub(crate) struct SurfaceRenderStats {
+    pub(crate) renders: u64,
+    pub(crate) skips: u64,
+    pub(crate) commits: u64,
+}
+
+#[derive(Default)]
+pub(crate) struct ShellRenderStats {
+    pub(crate) panel: SurfaceRenderStats,
+    pub(crate) launcher: SurfaceRenderStats,
+}
+
+impl ShellRenderStats {
+    pub(crate) fn has_activity(&self) -> bool {
+        self.panel.renders > 0
+            || self.panel.skips > 0
+            || self.panel.commits > 0
+            || self.launcher.renders > 0
+            || self.launcher.skips > 0
+            || self.launcher.commits > 0
+    }
+
+    pub(crate) fn reset(&mut self) {
+        *self = Self::default();
+    }
+}
+
 pub(crate) struct MeridianShell {
     pub(crate) registry_state: RegistryState,
     pub(crate) seat_state: SeatState,
@@ -205,12 +263,17 @@ pub(crate) struct MeridianShell {
     pub(crate) occupied_unavailable_logged: bool,
     pub(crate) panel_dirty: bool,
     pub(crate) launcher_dirty: bool,
+    pub(crate) panel_last_signature: Option<PanelRenderSignature>,
+    pub(crate) launcher_last_signature: Option<LauncherRenderSignature>,
     pub(crate) repaint_stats: RepaintStats,
     pub(crate) repaint_stats_enabled: bool,
     pub(crate) last_repaint_stats_log: Instant,
     pub(crate) commit_stats: CommitStats,
     pub(crate) commit_stats_enabled: bool,
     pub(crate) last_commit_stats_log: Instant,
+    pub(crate) render_stats: ShellRenderStats,
+    pub(crate) render_stats_enabled: bool,
+    pub(crate) last_render_stats_log: Instant,
     pub(crate) commit_info_until: Instant,
     pub(crate) last_clock: String,
     pub(crate) last_tick: Instant,

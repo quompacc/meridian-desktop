@@ -247,6 +247,7 @@ impl MeridianShell {
         }
         self.maybe_log_repaint_stats(now);
         self.maybe_log_commit_stats(now);
+        self.maybe_log_render_stats(now);
 
         if self.ipc.should_reconnect() {
             self.ipc.reconnect();
@@ -584,6 +585,29 @@ impl MeridianShell {
             self.commit_stats.launcher.unknown_other
         );
         self.commit_stats.reset();
+    }
+
+    fn maybe_log_render_stats(&mut self, now: Instant) {
+        if !self.render_stats_enabled {
+            return;
+        }
+        if now.duration_since(self.last_render_stats_log) < Duration::from_secs(1) {
+            return;
+        }
+        self.last_render_stats_log = now;
+        if !self.render_stats.has_activity() {
+            return;
+        }
+        info!(
+            "shell render summary: panel(renders={} skips={} commits={}) launcher(renders={} skips={} commits={})",
+            self.render_stats.panel.renders,
+            self.render_stats.panel.skips,
+            self.render_stats.panel.commits,
+            self.render_stats.launcher.renders,
+            self.render_stats.launcher.skips,
+            self.render_stats.launcher.commits
+        );
+        self.render_stats.reset();
     }
 }
 

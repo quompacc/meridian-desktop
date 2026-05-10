@@ -94,6 +94,14 @@ pub(crate) fn initialize(
             )
         })
         .unwrap_or(false);
+    let render_stats_enabled = std::env::var("MERIDIAN_SHELL_RENDER_STATS")
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false);
 
     let mut shell = MeridianShell {
         registry_state: RegistryState::new(&globals),
@@ -137,6 +145,8 @@ pub(crate) fn initialize(
         occupied_unavailable_logged: false,
         panel_dirty: true,
         launcher_dirty: true,
+        panel_last_signature: None,
+        launcher_last_signature: None,
         repaint_stats: Default::default(),
         repaint_stats_enabled: std::env::var("MERIDIAN_SHELL_REPAINT_STATS")
             .map(|value| {
@@ -150,6 +160,9 @@ pub(crate) fn initialize(
         commit_stats: CommitStats::default(),
         commit_stats_enabled,
         last_commit_stats_log: Instant::now(),
+        render_stats: Default::default(),
+        render_stats_enabled,
+        last_render_stats_log: Instant::now(),
         commit_info_until: Instant::now()
             + if commit_stats_enabled {
                 std::time::Duration::from_secs(5)
