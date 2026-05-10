@@ -168,7 +168,7 @@ fn scan_drm_connectors_for_h5b(state: &mut MeridianState, source: &str) {
         let (w, h) = mode.size();
         connected_modes.insert(
             *conn_handle,
-            (w as i32, h as i32, mode.vrefresh() as i32 * 1000),
+            (w as i32, h as i32, mode_refresh_millihz_with_fallback(mode)),
         );
     }
 
@@ -289,7 +289,7 @@ fn select_add_mode(
                     .collect::<Vec<_>>()
             );
         }
-        if let Some(forced_mode) = select_conservative_mode_for_size(modes, force_w, force_h) {
+        if let Some(forced_mode) = select_best_mode_for_size(modes, force_w, force_h) {
             return Some((forced_mode, format!("forced-size({}x{})", force_w, force_h)));
         }
         tracing::warn!(
@@ -320,15 +320,15 @@ fn select_add_mode(
                     .collect::<Vec<_>>()
             );
         }
-        if let Some(conservative) = select_conservative_mode_for_size(modes, pref_w, pref_h) {
-            if !same_mode(preferred, conservative) {
+        if let Some(selected_mode) = select_best_mode_for_size(modes, pref_w, pref_h) {
+            if !same_mode(preferred, selected_mode) {
                 tracing::info!(
-                    "drm preferred mode adjusted to conservative same-size candidate: preferred={} conservative={}",
+                    "drm preferred mode adjusted to best same-size refresh candidate: preferred={} selected={}",
                     mode_brief(preferred),
-                    mode_brief(conservative)
+                    mode_brief(selected_mode)
                 );
             }
-            return Some((conservative, "preferred-size-conservative".to_string()));
+            return Some((selected_mode, "preferred-size-best-refresh".to_string()));
         }
         return Some((preferred, "preferred".to_string()));
     }
@@ -420,7 +420,7 @@ fn mode_brief(mode: smithay::reexports::drm::control::Mode) -> String {
     )
 }
 
-fn select_conservative_mode_for_size(
+fn select_best_mode_for_size(
     modes: &[smithay::reexports::drm::control::Mode],
     width: u16,
     height: u16,
@@ -567,7 +567,7 @@ fn add_drm_output_via_hotplug_pipeline(
         return false;
     };
     let (width, height) = mode.size();
-    let refresh_millihz = mode.vrefresh() as i32 * 1000;
+    let refresh_millihz = mode_refresh_millihz_with_fallback(mode);
     log_mode_details("drm output add selected mode details", connector, mode);
     tracing::debug!(
         "drm output add selected mode: connector={:?} mode={}x{} refresh={} reason={}",
@@ -947,7 +947,7 @@ fn log_connector_modes(
             .mode_type()
             .contains(smithay::reexports::drm::control::ModeTypeFlags::PREFERRED);
         tracing::info!(
-            "{}: connector={:?} index={} name={} hdisplay={} vdisplay={} vrefresh_hz={} calc_refresh_millihz={:?} mclock_khz={} flags={:?} mode_type={:?} preferred={} conservative_key={:?}",
+            "{}: connector={:?} index={} name={} hdisplay={} vdisplay={} vrefresh_hz={} calc_refresh_millihz={:?} mclock_khz={} flags={:?} mode_type={:?} preferred={} safe_mode_key={:?}",
             label,
             connector,
             index,
