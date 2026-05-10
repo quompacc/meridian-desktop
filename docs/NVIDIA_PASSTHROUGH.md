@@ -264,11 +264,13 @@ Render-/Event-Loop-Langsamkeit gegen reinen Input-Dispatch trennen.
 4. Forcierte Cadence (nur Scheduler-Override, keine Renderlogik):
    - `RUST_LOG=info MERIDIAN_DRM_TIMING=1 MERIDIAN_DRM_FORCE_REFRESH_HZ=60 cargo run`
    - oder: `RUST_LOG=info MERIDIAN_DRM_TIMING=1 MERIDIAN_DRM_FRAME_INTERVAL_MS=16 cargo run`
+   - Hinweis: `MERIDIAN_DRM_FORCE_REFRESH_HZ` und `MERIDIAN_DRM_FRAME_INTERVAL_MS` beeinflussen nur den Repaint-Scheduler (Timer), nicht die KMS/Display-Mode-Auswahl.
 5. Optionaler Mode-Override (nur Diagnose):
    - `RUST_LOG=info MERIDIAN_DRM_TIMING=1 MERIDIAN_DRM_MODE=1920x1080 cargo run`
    - `RUST_LOG=info MERIDIAN_DRM_TIMING=1 MERIDIAN_DRM_MODE=2560x1440 cargo run`
    - oder: `RUST_LOG=info MERIDIAN_DRM_TIMING=1 MERIDIAN_DRM_MODE_INDEX=0 cargo run`
    - Legacy-Alias bleibt: `MERIDIAN_DRM_FORCE_MODE=...`
+   - Die KMS/Display-Mode-Auswahl wird über `MERIDIAN_DRM_MODE`, `MERIDIAN_DRM_FORCE_MODE` oder `MERIDIAN_DRM_MODE_INDEX` beeinflusst.
 6. Optionaler Shell-Isolationstest:
    - `RUST_LOG=info MERIDIAN_DRM_TIMING=1 MERIDIAN_DRM_DISABLE_SHELL=1 cargo run`
    - Alias: `MERIDIAN_NO_SHELL=1`

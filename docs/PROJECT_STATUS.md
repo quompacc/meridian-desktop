@@ -98,6 +98,7 @@
   - Repaint-Scheduler-Override für Diagnose ergänzt:
     - `MERIDIAN_DRM_FORCE_REFRESH_HZ=60`
     - `MERIDIAN_DRM_FRAME_INTERVAL_MS=16`
+    - Hinweis: beide Flags beeinflussen nur das Repaint-Scheduling (Timer), nicht die KMS/Display-Mode-Auswahl.
     - `MERIDIAN_DRM_FORCE_MODE=1920x1080|2560x1440` (nur Diagnose)
   - DRM-Pfad-Diagnose ergänzt:
     - Mode-Detail-Logs (clock/sync/flags/type)
@@ -123,6 +124,7 @@
     - `MERIDIAN_DRM_MODE=WxH`
     - `MERIDIAN_DRM_MODE_INDEX=N`
     - `MERIDIAN_DRM_FORCE_MODE` bleibt als Alias nutzbar.
+    - Diese Mode-Flags beeinflussen die KMS/Display-Mode-Auswahl; sie sind getrennt von den Repaint-Scheduler-Overrides.
   - Shell-Frame-Callback-Redraw-Loop entfernt: Panel/Launcher committen nicht mehr automatisch pro Compositor-Frame.
   - Opt-in Shell-Repaint-Grundstatistik ergänzt (`MERIDIAN_SHELL_REPAINT_STATS=1`).
 - Input-Pfad-Fix ergänzt:

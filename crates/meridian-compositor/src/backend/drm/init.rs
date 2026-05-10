@@ -877,7 +877,10 @@ fn select_repaint_interval(default: Duration, default_source: String) -> (Durati
             Ok(ms) if ms > 0 => {
                 return (
                     Duration::from_millis(ms),
-                    format!("env:MERIDIAN_DRM_FRAME_INTERVAL_MS({})", ms),
+                    format!(
+                        "env:MERIDIAN_DRM_FRAME_INTERVAL_MS({})[repaint-timer-interval-override]",
+                        ms
+                    ),
                 );
             }
             _ => {
@@ -896,7 +899,10 @@ fn select_repaint_interval(default: Duration, default_source: String) -> (Durati
                 if let Some(interval) = duration_from_hz(hz) {
                     return (
                         interval,
-                        format!("env:MERIDIAN_DRM_FORCE_REFRESH_HZ({})", hz),
+                        format!(
+                            "env:MERIDIAN_DRM_FORCE_REFRESH_HZ({})[repaint-timer-hz-override]",
+                            hz
+                        ),
                     );
                 }
             }
@@ -1277,7 +1283,7 @@ pub fn init_drm(
     let (repaint_interval, repaint_source) =
         select_repaint_interval(default_repaint_interval, default_repaint_source);
     tracing::info!(
-        "drm repaint interval configured: interval_ms={} interval_ns={} source={} mode_refresh_hint_millihz={:?} mode_interval_hint_ms={:?}",
+        "drm repaint scheduler interval configured (timer-only, not KMS mode forcing): interval_ms={} interval_ns={} source={} mode_refresh_hint_millihz={:?} mode_interval_hint_ms={:?}",
         repaint_interval.as_millis(),
         repaint_interval.as_nanos(),
         repaint_source,
