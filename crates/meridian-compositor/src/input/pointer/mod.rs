@@ -56,7 +56,10 @@ pub fn handle_pointer_motion_absolute<I: InputBackend>(
     update_hover_cursor_feedback(state, pos);
 
     let serial = SERIAL_COUNTER.next_serial();
-    let pointer = state.seat.get_pointer().unwrap();
+    let Some(pointer) = state.seat.get_pointer() else {
+        debug!("pointer absolute motion ignored: seat has no pointer");
+        return;
+    };
     let under = state.surface_under(pos);
 
     pointer.motion(
@@ -75,7 +78,10 @@ pub fn handle_pointer_motion_relative<I: InputBackend>(
     state: &mut MeridianState,
     event: &impl PointerMotionEvent<I>,
 ) {
-    let pointer = state.seat.get_pointer().unwrap();
+    let Some(pointer) = state.seat.get_pointer() else {
+        debug!("pointer relative motion ignored: seat has no pointer");
+        return;
+    };
     let old_pos = pointer.current_location();
     let delta = event.delta();
     let raw_new_pos = old_pos + delta;
@@ -340,7 +346,10 @@ pub fn handle_pointer_axis<I: InputBackend>(
         }
     }
 
-    let pointer = state.seat.get_pointer().unwrap();
+    let Some(pointer) = state.seat.get_pointer() else {
+        debug!("pointer axis ignored: seat has no pointer");
+        return;
+    };
     pointer.axis(state, frame);
     pointer.frame(state);
 }

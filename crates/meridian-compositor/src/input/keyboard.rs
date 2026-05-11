@@ -20,7 +20,10 @@ pub fn handle_keyboard<I: InputBackend>(
     let serial = SERIAL_COUNTER.next_serial();
     let time = Event::time_msec(event);
     let key_state = event.state();
-    let keyboard = state.seat.get_keyboard().unwrap();
+    let Some(keyboard) = state.seat.get_keyboard() else {
+        debug!("keyboard event ignored: seat has no keyboard");
+        return;
+    };
 
     let match_result = keyboard.input::<KeyMatch, _>(
         state,
