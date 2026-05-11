@@ -140,7 +140,7 @@ fn parse_event_line(line: &str) -> Option<ShellEvent> {
     }
 
     let mut parts = line.splitn(3, ' ');
-    match parts.next()? {
+    let event = match parts.next()? {
         "workspace-changed" => parts
             .next()
             .and_then(|workspace| workspace.parse().ok())
@@ -161,7 +161,13 @@ fn parse_event_line(line: &str) -> Option<ShellEvent> {
             .and_then(|value| value.parse().ok())
             .map(|success| ShellEvent::ConfigReloaded { success }),
         _ => None,
+    };
+    if event.is_some() {
+        warn!(
+            "deprecated legacy IPC text event format received; migrate sender to JSON ShellEvent"
+        );
     }
+    event
 }
 
 #[cfg(test)]
@@ -172,7 +178,9 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use super::{IpcClient, IPC_MAX_BUFFER_BYTES};
+    use meridian_ipc::ShellEvent;
+
+    use super::{parse_event_line, IpcClient, IPC_MAX_BUFFER_BYTES};
 
     #[test]
     fn oversized_incomplete_line_disconnects_and_clears_buffer() {
@@ -193,5 +201,27 @@ mod tests {
         assert!(events.is_empty());
         assert!(!client.is_connected());
         assert!(client.buffer.is_empty());
+    }
+
+    #[test]
+    fn json_event_parsing_remains_preferred() {
+        let line = r#"{"type":"workspace-changed","workspace":4}"#;
+        assert_eq!(
+            parse_event_line(line),
+            Some(ShellEvent::WorkspaceChanged { workspace: 4 })
+        );
+    }
+
+    #[test]
+    fn legacy_workspace_changed_event_still_parses() {
+        assert_eq!(
+            parse_event_line("workspace-changed 3"),
+            Some(ShellEvent::WorkspaceChanged { workspace: 3 })
+        );
+    }
+
+    #[test]
+    fn invalid_line_is_ignored() {
+        assert_eq!(parse_event_line("not-a-real-event"), None);
     }
 }
