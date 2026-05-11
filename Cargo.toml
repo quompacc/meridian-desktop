@@ -11,7 +11,7 @@ members = [
 
 [workspace.dependencies]
 bitflags = "2"
-smithay = { git = "https://github.com/Smithay/smithay.git", features = [
+smithay = { git = "https://github.com/Smithay/smithay.git", rev = "060e9cd9c8ae2633947bdb72cffa1748ac53922d", features = [
     "backend_drm",
     "backend_gbm",
     "backend_egl",
