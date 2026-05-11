@@ -14,8 +14,8 @@ use tracing::{debug, info, warn};
 use crate::{
     ui::{
         primitives::{
-            draw_card, draw_initial_badge, draw_list_item, draw_sidebar_item,
-            fill_surface_with_radius, InteractiveState, SurfaceKind,
+            draw_initial_badge, draw_list_item, draw_sidebar_item, fill_surface_with_radius,
+            InteractiveState, SurfaceKind,
         },
         tokens,
     },
@@ -914,7 +914,13 @@ pub fn draw_launcher(
         w: width as i32 - tokens::launcher::OUTER_PADDING,
         h: height as i32 - tokens::launcher::OUTER_PADDING,
     };
-    draw_card(painter, card, theme);
+    fill_surface_with_radius(
+        painter,
+        card,
+        theme,
+        SurfaceKind::Background,
+        tokens::launcher::CARD_RADIUS,
+    );
 
     let layout_x = card.x + tokens::launcher::OUTER_PADDING / 2;
     let layout_y = card.y + tokens::launcher::OUTER_PADDING / 2;
@@ -931,13 +937,23 @@ pub fn draw_launcher(
         painter,
         sidebar_rect,
         theme,
-        SurfaceKind::Surface,
+        SurfaceKind::Background,
         tokens::launcher::SIDEBAR_RADIUS,
     );
 
     let content_x = sidebar_rect.x + sidebar_rect.w + tokens::launcher::OUTER_PADDING;
     let content_w = (layout_x + layout_w) - content_x;
     let content_top = layout_y;
+    let separator_x = content_x - (tokens::launcher::OUTER_PADDING / 2);
+    painter.rect(
+        Rect {
+            x: separator_x,
+            y: layout_y + 6,
+            w: 1,
+            h: (layout_h - 12).max(0),
+        },
+        colors.border,
+    );
 
     launcher_state.clicks.clear();
 

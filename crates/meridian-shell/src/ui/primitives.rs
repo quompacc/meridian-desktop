@@ -47,17 +47,6 @@ pub fn subtle_border(painter: &mut Painter<'_>, rect: Rect, theme: &ThemeConfig)
     painter.stroke_rect(rect, theme.colors.border);
 }
 
-pub fn draw_card(painter: &mut Painter<'_>, rect: Rect, theme: &ThemeConfig) {
-    fill_surface_with_radius(
-        painter,
-        rect,
-        theme,
-        SurfaceKind::Background,
-        tokens::launcher::CARD_RADIUS,
-    );
-    subtle_border(painter, rect, theme);
-}
-
 pub fn draw_workspace_button(
     painter: &mut Painter<'_>,
     rect: Rect,
