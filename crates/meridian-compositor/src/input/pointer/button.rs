@@ -1,5 +1,6 @@
 use smithay::{
     backend::input::{ButtonState, InputBackend, PointerButtonEvent},
+    desktop::{layer_map_for_output, WindowSurfaceType},
     input::pointer::{ButtonEvent, Focus},
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
@@ -76,6 +77,16 @@ pub fn handle_pointer_button<I: InputBackend>(
             );
         }
         let under = state.surface_under(location);
+        let under_is_layer_surface = under
+            .as_ref()
+            .map(|(surface, _)| {
+                state.outputs.iter().any(|output| {
+                    let map = layer_map_for_output(output);
+                    map.layer_for_surface(surface, WindowSurfaceType::ALL)
+                        .is_some()
+                })
+            })
+            .unwrap_or(false);
 
         type HitInfo = (
             smithay::desktop::Window,
@@ -83,7 +94,9 @@ pub fn handle_pointer_button<I: InputBackend>(
             smithay::utils::Point<i32, smithay::utils::Logical>,
             Option<smithay::utils::Rectangle<i32, smithay::utils::Logical>>,
         );
-        let hit_info: Option<HitInfo> = {
+        let hit_info: Option<HitInfo> = if under_is_layer_surface {
+            None
+        } else {
             let space = state.workspaces.active_space();
             let theme = &state.theme_manager.current().config.decorations;
             let output_geo = selected_output_info.and_then(|info| {
