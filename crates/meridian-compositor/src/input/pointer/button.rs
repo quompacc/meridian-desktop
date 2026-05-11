@@ -78,9 +78,23 @@ pub fn handle_pointer_button<I: InputBackend>(
         let hit_info: Option<HitInfo> = {
             let space = state.workspaces.active_space();
             let theme = &state.theme_manager.current().config.decorations;
-            space
-                .element_under(location)
-                .and_then(|(window, window_loc)| {
+            let output_geo = selected_output_info.and_then(|info| {
+                let mapped = state
+                    .outputs
+                    .iter()
+                    .find(|candidate| candidate.name() == info.name);
+                if mapped.is_none() {
+                    debug!(
+                        "pointer button output selection fallback: registry output '{}' not present in active output list",
+                        info.name
+                    );
+                }
+                mapped.and_then(|output| space.output_geometry(output))
+            });
+
+            let hit_for_window =
+                |window: &smithay::desktop::Window,
+                 window_loc: smithay::utils::Point<i32, smithay::utils::Logical>| {
                     let wl_surf = window.wl_surface()?.into_owned();
                     let content_size = window.geometry().size;
                     let hit = state.decoration_manager.hit_test(
@@ -91,20 +105,21 @@ pub fn handle_pointer_button<I: InputBackend>(
                         theme,
                     )?;
                     let initial_loc = space.element_location(window).unwrap_or_default();
-                    let output_geo = selected_output_info.and_then(|info| {
-                        let mapped = state
-                            .outputs
-                            .iter()
-                            .find(|candidate| candidate.name() == info.name);
-                        if mapped.is_none() {
-                            debug!(
-                                "pointer button output selection fallback: registry output '{}' not present in active output list",
-                                info.name
-                            );
-                        }
-                        mapped.and_then(|output| space.output_geometry(output))
-                    });
                     Some((window.clone(), hit, initial_loc, output_geo))
+                };
+
+            space
+                .element_under(location)
+                .and_then(|(window, window_loc)| hit_for_window(window, window_loc))
+                .or_else(|| {
+                    // Fallback path: allow SSD frame hit-testing even when pointer is
+                    // outside the client surface and element_under() returns None.
+                    // Iterate in reverse mapped order to prefer topmost windows.
+                    let windows: Vec<_> = space.elements().cloned().collect();
+                    windows.iter().rev().find_map(|window| {
+                        let window_loc = space.element_location(window)?;
+                        hit_for_window(window, window_loc)
+                    })
                 })
         };
 
