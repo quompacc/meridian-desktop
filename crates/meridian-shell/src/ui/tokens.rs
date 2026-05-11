@@ -22,6 +22,7 @@ pub mod radius {
 pub mod badge {
     pub const SIZE: i32 = 18;
     pub const CONTENT_GAP: i32 = 8;
+    pub const RADIUS: i32 = super::radius::SM;
 }
 
 pub mod panel {
@@ -33,6 +34,10 @@ pub mod panel {
     pub const LAUNCHER_BUTTON_W: i32 = 58;
     pub const CLOCK_W: i32 = 170;
     pub const RIGHT_PADDING: i32 = 10;
+    pub const OUTER_RADIUS: i32 = super::radius::LG;
+    pub const GROUP_RADIUS: i32 = super::radius::MD;
+    pub const BUTTON_RADIUS: i32 = super::radius::SM;
+    pub const CLOCK_RADIUS: i32 = super::radius::MD;
 }
 
 pub mod launcher {
@@ -48,11 +53,16 @@ pub mod launcher {
     pub const PINNED_CARD_H: i32 = 36;
     pub const PINNED_GRID_COL_GAP: i32 = 8;
     pub const PINNED_GRID_ROW_GAP: i32 = 6;
+    pub const CARD_RADIUS: i32 = super::radius::LG;
+    pub const SIDEBAR_RADIUS: i32 = super::radius::MD;
+    pub const SEARCH_RADIUS: i32 = super::radius::MD;
+    pub const SIDEBAR_ITEM_RADIUS: i32 = super::radius::SM;
+    pub const LIST_ROW_RADIUS: i32 = super::radius::SM;
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{badge, launcher, panel, spacing};
+    use super::{badge, launcher, panel, radius, spacing};
 
     #[test]
     fn panel_workspace_button_stays_inside_height() {
@@ -69,5 +79,19 @@ mod tests {
     fn badge_is_larger_than_base_spacing() {
         assert!(badge::SIZE > spacing::MD);
         assert!(badge::CONTENT_GAP >= spacing::MD);
+    }
+
+    #[test]
+    fn radius_scale_is_ordered() {
+        assert!(radius::SM < radius::MD);
+        assert!(radius::MD < radius::LG);
+    }
+
+    #[test]
+    fn surface_radii_follow_shell_hierarchy() {
+        assert!(launcher::CARD_RADIUS >= launcher::SEARCH_RADIUS);
+        assert!(panel::OUTER_RADIUS >= panel::GROUP_RADIUS);
+        assert!(panel::GROUP_RADIUS >= panel::BUTTON_RADIUS);
+        assert!(badge::RADIUS <= launcher::LIST_ROW_RADIUS);
     }
 }

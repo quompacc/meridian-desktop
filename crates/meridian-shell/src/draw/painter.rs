@@ -34,6 +34,10 @@ impl<'a> Painter<'a> {
         self.fill_rounded_rect(rect, color, DEFAULT_ROUNDISH_RADIUS);
     }
 
+    pub fn roundish_rect_with_radius(&mut self, rect: Rect, color: Color, radius: i32) {
+        self.fill_rounded_rect(rect, color, radius);
+    }
+
     pub fn rect(&mut self, rect: Rect, color: Color) {
         let x0 = rect.x.clamp(0, self.width);
         let y0 = rect.y.clamp(0, self.height);

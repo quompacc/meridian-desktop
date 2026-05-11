@@ -14,8 +14,8 @@ use tracing::{debug, info, warn};
 use crate::{
     ui::{
         primitives::{
-            draw_card, draw_initial_badge, draw_list_item, draw_sidebar_item, fill_surface,
-            InteractiveState, SurfaceKind,
+            draw_card, draw_initial_badge, draw_list_item, draw_sidebar_item,
+            fill_surface_with_radius, InteractiveState, SurfaceKind,
         },
         tokens,
     },
@@ -927,7 +927,13 @@ pub fn draw_launcher(
         w: tokens::launcher::SIDEBAR_W,
         h: layout_h,
     };
-    fill_surface(painter, sidebar_rect, theme, SurfaceKind::Surface);
+    fill_surface_with_radius(
+        painter,
+        sidebar_rect,
+        theme,
+        SurfaceKind::Surface,
+        tokens::launcher::SIDEBAR_RADIUS,
+    );
 
     let content_x = sidebar_rect.x + sidebar_rect.w + tokens::launcher::OUTER_PADDING;
     let content_w = (layout_x + layout_w) - content_x;
@@ -975,7 +981,13 @@ pub fn draw_launcher(
         w: content_w,
         h: tokens::launcher::SEARCH_H,
     };
-    fill_surface(painter, search_rect, theme, SurfaceKind::Surface);
+    fill_surface_with_radius(
+        painter,
+        search_rect,
+        theme,
+        SurfaceKind::Surface,
+        tokens::launcher::SEARCH_RADIUS,
+    );
     let query_text = if launcher_state.query.is_empty() {
         "Search apps by name or executable"
     } else {
@@ -1114,7 +1126,13 @@ pub fn draw_launcher(
             w: content_w,
             h: tokens::launcher::APP_ROW_H,
         };
-        fill_surface(painter, empty_rect, theme, SurfaceKind::Surface);
+        fill_surface_with_radius(
+            painter,
+            empty_rect,
+            theme,
+            SurfaceKind::Surface,
+            tokens::launcher::LIST_ROW_RADIUS,
+        );
         painter.text_clipped(
             font,
             empty,

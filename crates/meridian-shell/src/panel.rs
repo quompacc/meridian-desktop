@@ -5,7 +5,7 @@ use meridian_config::ThemeConfig;
 use crate::{
     ui::{
         primitives::{
-            draw_panel_button, draw_workspace_button, fill_surface, subtle_border,
+            draw_panel_button, draw_workspace_button, fill_surface_with_radius, subtle_border,
             InteractiveState, SurfaceKind,
         },
         tokens,
@@ -45,7 +45,13 @@ pub fn draw_panel(
         w: width as i32 - tokens::spacing::XS * 2,
         h: height - 4,
     };
-    fill_surface(painter, panel_card, theme, SurfaceKind::Background);
+    fill_surface_with_radius(
+        painter,
+        panel_card,
+        theme,
+        SurfaceKind::Background,
+        tokens::panel::OUTER_RADIUS,
+    );
     subtle_border(painter, panel_card, theme);
 
     let mut x = panel_card.x + tokens::panel::LEFT_PADDING;
@@ -60,8 +66,13 @@ pub fn draw_panel(
         w: controls_w + 4,
         h: tokens::panel::WORKSPACE_BUTTON_H + 4,
     };
-    fill_surface(painter, controls_surface, theme, SurfaceKind::Surface);
-    subtle_border(painter, controls_surface, theme);
+    fill_surface_with_radius(
+        painter,
+        controls_surface,
+        theme,
+        SurfaceKind::Surface,
+        tokens::panel::GROUP_RADIUS,
+    );
 
     // ── Left: Launcher button ───────────────────────────────────────────────
     let launcher_rect = Rect {
@@ -108,8 +119,13 @@ pub fn draw_panel(
         w: tokens::panel::CLOCK_W + 8,
         h: 24,
     };
-    fill_surface(painter, clock_surface, theme, SurfaceKind::Surface);
-    subtle_border(painter, clock_surface, theme);
+    fill_surface_with_radius(
+        painter,
+        clock_surface,
+        theme,
+        SurfaceKind::Surface,
+        tokens::panel::CLOCK_RADIUS,
+    );
     let clock_rect = Rect {
         x: width as i32 - tokens::panel::CLOCK_W - tokens::panel::RIGHT_PADDING,
         y: (height - 20) / 2,

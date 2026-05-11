@@ -33,8 +33,14 @@ pub fn surface_color(theme: &ThemeConfig, kind: SurfaceKind) -> Color {
     }
 }
 
-pub fn fill_surface(painter: &mut Painter<'_>, rect: Rect, theme: &ThemeConfig, kind: SurfaceKind) {
-    painter.roundish_rect(rect, surface_color(theme, kind));
+pub fn fill_surface_with_radius(
+    painter: &mut Painter<'_>,
+    rect: Rect,
+    theme: &ThemeConfig,
+    kind: SurfaceKind,
+    radius: i32,
+) {
+    painter.roundish_rect_with_radius(rect, surface_color(theme, kind), radius);
 }
 
 pub fn subtle_border(painter: &mut Painter<'_>, rect: Rect, theme: &ThemeConfig) {
@@ -42,7 +48,13 @@ pub fn subtle_border(painter: &mut Painter<'_>, rect: Rect, theme: &ThemeConfig)
 }
 
 pub fn draw_card(painter: &mut Painter<'_>, rect: Rect, theme: &ThemeConfig) {
-    fill_surface(painter, rect, theme, SurfaceKind::Background);
+    fill_surface_with_radius(
+        painter,
+        rect,
+        theme,
+        SurfaceKind::Background,
+        tokens::launcher::CARD_RADIUS,
+    );
     subtle_border(painter, rect, theme);
 }
 
@@ -54,13 +66,31 @@ pub fn draw_workspace_button(
     is_occupied: bool,
 ) -> Color {
     if is_active {
-        fill_surface(painter, rect, theme, SurfaceKind::Accent);
+        fill_surface_with_radius(
+            painter,
+            rect,
+            theme,
+            SurfaceKind::Accent,
+            tokens::panel::BUTTON_RADIUS,
+        );
         active_accent_foreground()
     } else if is_occupied {
-        fill_surface(painter, rect, theme, SurfaceKind::Border);
+        fill_surface_with_radius(
+            painter,
+            rect,
+            theme,
+            SurfaceKind::Border,
+            tokens::panel::BUTTON_RADIUS,
+        );
         theme.colors.text
     } else {
-        fill_surface(painter, rect, theme, SurfaceKind::Background);
+        fill_surface_with_radius(
+            painter,
+            rect,
+            theme,
+            SurfaceKind::Background,
+            tokens::panel::BUTTON_RADIUS,
+        );
         theme.colors.text
     }
 }
@@ -73,11 +103,23 @@ pub fn draw_panel_button(
 ) -> Color {
     match state {
         InteractiveState::Default => {
-            fill_surface(painter, rect, theme, SurfaceKind::Background);
+            fill_surface_with_radius(
+                painter,
+                rect,
+                theme,
+                SurfaceKind::Background,
+                tokens::panel::BUTTON_RADIUS,
+            );
             theme.colors.text
         }
         InteractiveState::Selected => {
-            fill_surface(painter, rect, theme, SurfaceKind::Accent);
+            fill_surface_with_radius(
+                painter,
+                rect,
+                theme,
+                SurfaceKind::Accent,
+                tokens::panel::BUTTON_RADIUS,
+            );
             active_accent_foreground()
         }
     }
@@ -92,7 +134,13 @@ pub fn draw_sidebar_item(
     match state {
         InteractiveState::Default => theme.colors.border,
         InteractiveState::Selected => {
-            fill_surface(painter, rect, theme, SurfaceKind::Accent);
+            fill_surface_with_radius(
+                painter,
+                rect,
+                theme,
+                SurfaceKind::Accent,
+                tokens::launcher::SIDEBAR_ITEM_RADIUS,
+            );
             active_accent_foreground()
         }
     }
@@ -107,12 +155,23 @@ pub fn draw_list_item(
 ) -> Color {
     match state {
         InteractiveState::Default => {
-            fill_surface(painter, rect, theme, SurfaceKind::Surface);
+            fill_surface_with_radius(
+                painter,
+                rect,
+                theme,
+                SurfaceKind::Surface,
+                tokens::launcher::LIST_ROW_RADIUS,
+            );
             theme.colors.text
         }
         InteractiveState::Selected => {
-            fill_surface(painter, rect, theme, SurfaceKind::Accent);
-            subtle_border(painter, rect, theme);
+            fill_surface_with_radius(
+                painter,
+                rect,
+                theme,
+                SurfaceKind::Accent,
+                tokens::launcher::LIST_ROW_RADIUS,
+            );
             if with_selected_marker {
                 painter.rect(
                     Rect {
@@ -141,7 +200,7 @@ pub fn draw_initial_badge(
         InteractiveState::Default => (theme.colors.border, theme.colors.text),
         InteractiveState::Selected => (active_accent_foreground(), theme.colors.accent),
     };
-    painter.roundish_rect(rect, bg);
+    painter.roundish_rect_with_radius(rect, bg, tokens::badge::RADIUS);
     painter.text_clipped(font, initial, rect.x + 5, rect.y + 14, rect.w - 6, fg);
 }
 
