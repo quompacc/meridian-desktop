@@ -4,7 +4,10 @@ use meridian_config::ThemeConfig;
 
 use crate::{
     ui::{
-        primitives::{draw_panel_button, draw_workspace_button, InteractiveState},
+        primitives::{
+            draw_panel_button, draw_workspace_button, fill_surface, subtle_border,
+            InteractiveState, SurfaceKind,
+        },
         tokens,
     },
     ClickAction, ClickZone, Painter, Rect, TextRenderer, PANEL_HEIGHT,
@@ -35,13 +38,35 @@ pub fn draw_panel(
     painter.clear(colors.surface);
     panel_state.clicks.clear();
 
-    let mut x = tokens::panel::LEFT_PADDING;
     let height = PANEL_HEIGHT as i32;
+    let panel_card = Rect {
+        x: tokens::spacing::XS,
+        y: 2,
+        w: width as i32 - tokens::spacing::XS * 2,
+        h: height - 4,
+    };
+    fill_surface(painter, panel_card, theme, SurfaceKind::Background);
+    subtle_border(painter, panel_card, theme);
+
+    let mut x = panel_card.x + tokens::panel::LEFT_PADDING;
+    let controls_y = panel_card.y + tokens::panel::WORKSPACE_BUTTON_Y - 2;
+    let controls_x = x;
+    let controls_w = tokens::panel::LAUNCHER_BUTTON_W
+        + tokens::panel::WORKSPACE_BUTTON_GAP
+        + (tokens::panel::WORKSPACE_BUTTON_W + tokens::panel::WORKSPACE_BUTTON_GAP) * 9;
+    let controls_surface = Rect {
+        x: controls_x - 2,
+        y: controls_y - 2,
+        w: controls_w + 4,
+        h: tokens::panel::WORKSPACE_BUTTON_H + 4,
+    };
+    fill_surface(painter, controls_surface, theme, SurfaceKind::Surface);
+    subtle_border(painter, controls_surface, theme);
 
     // ── Left: Launcher button ───────────────────────────────────────────────
     let launcher_rect = Rect {
         x,
-        y: tokens::panel::WORKSPACE_BUTTON_Y,
+        y: controls_y,
         w: tokens::panel::LAUNCHER_BUTTON_W,
         h: tokens::panel::WORKSPACE_BUTTON_H,
     };
@@ -63,7 +88,7 @@ pub fn draw_panel(
 
         let rect = Rect {
             x,
-            y: tokens::panel::WORKSPACE_BUTTON_Y,
+            y: controls_y,
             w: tokens::panel::WORKSPACE_BUTTON_W,
             h: tokens::panel::WORKSPACE_BUTTON_H,
         };
@@ -77,6 +102,14 @@ pub fn draw_panel(
     }
 
     // ── Right: Clock ────────────────────────────────────────────────────────
+    let clock_surface = Rect {
+        x: width as i32 - tokens::panel::CLOCK_W - tokens::panel::RIGHT_PADDING - 4,
+        y: panel_card.y + (panel_card.h - 24) / 2,
+        w: tokens::panel::CLOCK_W + 8,
+        h: 24,
+    };
+    fill_surface(painter, clock_surface, theme, SurfaceKind::Surface);
+    subtle_border(painter, clock_surface, theme);
     let clock_rect = Rect {
         x: width as i32 - tokens::panel::CLOCK_W - tokens::panel::RIGHT_PADDING,
         y: (height - 20) / 2,
