@@ -9,7 +9,10 @@ use smithay::{
     desktop::{layer_map_for_output, LayerSurface},
     output::Output,
     utils::{Logical, Rectangle, Scale},
-    wayland::{compositor::with_states, shell::wlr_layer::LayerSurfaceData},
+    wayland::{
+        compositor::with_states,
+        shell::wlr_layer::{Layer as WlrLayer, LayerSurfaceData},
+    },
 };
 use tracing::{debug, warn};
 
@@ -70,6 +73,10 @@ fn layer_render_state(
 
 pub(super) type LayerRenderData = (LayerSurface, Rectangle<i32, Logical>);
 
+fn is_upper_layer(namespace: &str, layer: WlrLayer) -> bool {
+    namespace == "meridian-launcher" || matches!(layer, WlrLayer::Top | WlrLayer::Overlay)
+}
+
 pub(super) fn collect_layer_data(output: &Output) -> (Vec<LayerRenderData>, Vec<LayerRenderData>) {
     let layer_map = layer_map_for_output(output);
     let layer_count = layer_map.len();
@@ -111,15 +118,20 @@ pub(super) fn collect_layer_data(output: &Output) -> (Vec<LayerRenderData>, Vec<
             continue;
         };
 
-        match layer_surface.layer() {
-            smithay::wayland::shell::wlr_layer::Layer::Background
-            | smithay::wayland::shell::wlr_layer::Layer::Bottom => {
-                lower.push((layer_surface.clone(), geo))
+        let layer = layer_surface.layer();
+        if is_upper_layer(layer_surface.namespace(), layer) {
+            if layer_surface.namespace() == "meridian-launcher"
+                && matches!(layer, WlrLayer::Background | WlrLayer::Bottom)
+            {
+                debug!(
+                    "launcher layer bucket override: namespace={} reported_layer={:?} bucket=upper",
+                    layer_surface.namespace(),
+                    layer
+                );
             }
-            smithay::wayland::shell::wlr_layer::Layer::Top
-            | smithay::wayland::shell::wlr_layer::Layer::Overlay => {
-                upper.push((layer_surface.clone(), geo))
-            }
+            upper.push((layer_surface.clone(), geo));
+        } else {
+            lower.push((layer_surface.clone(), geo));
         }
     }
 
@@ -164,5 +176,26 @@ pub(super) fn send_layer_frames(
         layer.send_frame(output, time, Some(Duration::ZERO), |_, _| {
             Some(output.clone())
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use smithay::wayland::shell::wlr_layer::Layer as WlrLayer;
+
+    use super::is_upper_layer;
+
+    #[test]
+    fn launcher_namespace_forces_upper_bucket() {
+        assert!(is_upper_layer("meridian-launcher", WlrLayer::Background));
+        assert!(is_upper_layer("meridian-launcher", WlrLayer::Bottom));
+    }
+
+    #[test]
+    fn non_launcher_uses_layer_role() {
+        assert!(is_upper_layer("other", WlrLayer::Top));
+        assert!(is_upper_layer("other", WlrLayer::Overlay));
+        assert!(!is_upper_layer("other", WlrLayer::Background));
+        assert!(!is_upper_layer("other", WlrLayer::Bottom));
     }
 }

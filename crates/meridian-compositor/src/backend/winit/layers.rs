@@ -15,6 +15,10 @@ use super::WinitRenderElements;
 
 pub(super) type LayerRenderData = (LayerSurface, Rectangle<i32, Logical>);
 
+fn is_upper_layer(namespace: &str, layer: WlrLayer) -> bool {
+    namespace == "meridian-launcher" || matches!(layer, WlrLayer::Top | WlrLayer::Overlay)
+}
+
 pub(super) fn collect_layer_data(output: &Output) -> (Vec<LayerRenderData>, Vec<LayerRenderData>) {
     let layer_map = layer_map_for_output(output);
     let mut lower = Vec::new();
@@ -25,13 +29,35 @@ pub(super) fn collect_layer_data(output: &Output) -> (Vec<LayerRenderData>, Vec<
             Some(geo) => geo,
             None => continue,
         };
-        match layer_surface.layer() {
-            WlrLayer::Background | WlrLayer::Bottom => lower.push((layer_surface.clone(), geo)),
-            WlrLayer::Top | WlrLayer::Overlay => upper.push((layer_surface.clone(), geo)),
+        if is_upper_layer(layer_surface.namespace(), layer_surface.layer()) {
+            upper.push((layer_surface.clone(), geo));
+        } else {
+            lower.push((layer_surface.clone(), geo));
         }
     }
 
     (lower, upper)
+}
+
+#[cfg(test)]
+mod tests {
+    use smithay::wayland::shell::wlr_layer::Layer as WlrLayer;
+
+    use super::is_upper_layer;
+
+    #[test]
+    fn launcher_namespace_forces_upper_bucket() {
+        assert!(is_upper_layer("meridian-launcher", WlrLayer::Background));
+        assert!(is_upper_layer("meridian-launcher", WlrLayer::Bottom));
+    }
+
+    #[test]
+    fn non_launcher_uses_layer_role() {
+        assert!(is_upper_layer("other", WlrLayer::Top));
+        assert!(is_upper_layer("other", WlrLayer::Overlay));
+        assert!(!is_upper_layer("other", WlrLayer::Background));
+        assert!(!is_upper_layer("other", WlrLayer::Bottom));
+    }
 }
 
 pub(super) fn render_layer_elements(
