@@ -179,6 +179,10 @@ pub fn handle_pointer_button<I: InputBackend>(
                                     smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized,
                                 )
                             })
+                        }) || toplevel.with_pending_state(|s| {
+                            s.states.contains(
+                                smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized,
+                            )
                         });
                         if is_maxed {
                             toplevel.with_pending_state(|s| {
