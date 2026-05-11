@@ -168,32 +168,36 @@ impl CompositorHandler for MeridianState {
                         output_name,
                         keyboard_interactivity
                     );
-                    if let Some(keyboard) = self.seat.get_keyboard() {
-                        let current_focus = keyboard.current_focus();
-                        if current_focus.as_ref() != Some(surface) {
-                            let serial = SERIAL_COUNTER.next_serial();
-                            keyboard.set_focus(self, Some(surface.clone()), serial);
-                            tracing::debug!(
-                                "layer keyboard focus set: namespace={} layer={:?} output={}",
-                                namespace,
-                                layer_kind,
-                                output_name
-                            );
-                        }
+                    let should_set_focus = self
+                        .seat
+                        .get_keyboard()
+                        .map(|keyboard| keyboard.current_focus().as_ref() != Some(surface))
+                        .unwrap_or(false);
+                    if should_set_focus {
+                        let serial = SERIAL_COUNTER.next_serial();
+                        self.set_keyboard_focus_with_decorations(Some(surface.clone()), serial);
+                        tracing::debug!(
+                            "layer keyboard focus set: namespace={} layer={:?} output={}",
+                            namespace,
+                            layer_kind,
+                            output_name
+                        );
                     }
                 } else if namespace == "meridian-launcher" && !has_buffer {
-                    if let Some(keyboard) = self.seat.get_keyboard() {
-                        let current_focus = keyboard.current_focus();
-                        if current_focus.as_ref() == Some(surface) {
-                            let serial = SERIAL_COUNTER.next_serial();
-                            keyboard.set_focus(self, Option::<WlSurface>::None, serial);
-                            tracing::debug!(
-                                "layer keyboard focus cleared: namespace={} layer={:?} output={} reason=no-buffer-commit",
-                                namespace,
-                                layer_kind,
-                                output_name
-                            );
-                        }
+                    let should_clear_focus = self
+                        .seat
+                        .get_keyboard()
+                        .map(|keyboard| keyboard.current_focus().as_ref() == Some(surface))
+                        .unwrap_or(false);
+                    if should_clear_focus {
+                        let serial = SERIAL_COUNTER.next_serial();
+                        self.set_keyboard_focus_with_decorations(Option::<WlSurface>::None, serial);
+                        tracing::debug!(
+                            "layer keyboard focus cleared: namespace={} layer={:?} output={} reason=no-buffer-commit",
+                            namespace,
+                            layer_kind,
+                            output_name
+                        );
                     }
                 } else if namespace == "meridian-launcher" {
                     tracing::debug!(

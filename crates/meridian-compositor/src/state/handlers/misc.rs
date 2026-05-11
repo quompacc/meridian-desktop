@@ -5,6 +5,7 @@ use smithay::{
         wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
         wayland_server::protocol::wl_surface::WlSurface,
     },
+    utils::Serial,
     wayland::{
         output::OutputHandler,
         selection::{
@@ -99,6 +100,24 @@ impl MeridianState {
         if let Some(new_surf) = new {
             self.decoration_manager.set_focused(new_surf, true);
         }
+    }
+
+    pub fn set_keyboard_focus_with_decorations(
+        &mut self,
+        new_focus: Option<WlSurface>,
+        serial: Serial,
+    ) {
+        let Some(keyboard) = self.seat.get_keyboard() else {
+            return;
+        };
+
+        let old_focus = keyboard.current_focus();
+        if old_focus != new_focus {
+            self.update_focus_decoration(old_focus.as_ref(), new_focus.as_ref());
+            self.mark_all_outputs_dirty("keyboard-focus-change");
+        }
+
+        keyboard.set_focus(self, new_focus, serial);
     }
 }
 

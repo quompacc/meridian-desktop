@@ -201,9 +201,7 @@ impl MeridianState {
 
         if let Some(surface) = window.wl_surface().map(|surface| surface.into_owned()) {
             let serial = SERIAL_COUNTER.next_serial();
-            if let Some(keyboard) = self.seat.get_keyboard() {
-                keyboard.set_focus(self, Some(surface.clone()), serial);
-            }
+            self.set_keyboard_focus_with_decorations(Some(surface.clone()), serial);
             self.update_focused_output_from_surface(&surface, "keyboard-focus-ipc-focus-window");
             self.broadcast_toplevel_focused(&surface);
         }

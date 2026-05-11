@@ -42,7 +42,6 @@ pub fn handle_pointer_button<I: InputBackend>(
     event: &impl PointerButtonEvent<I>,
 ) {
     let pointer = state.seat.get_pointer().unwrap();
-    let keyboard = state.seat.get_keyboard().unwrap();
     let serial = SERIAL_COUNTER.next_serial();
     let button = event.button_code();
     let button_state = event.state();
@@ -206,9 +205,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                         .raise_element(&window, true);
                     if let Some(surface) = window.wl_surface() {
                         let surface = surface.into_owned();
-                        let old_focus = keyboard.current_focus();
-                        state.update_focus_decoration(old_focus.as_ref(), Some(&surface));
-                        keyboard.set_focus(state, Some(surface.clone()), serial);
+                        state.set_keyboard_focus_with_decorations(Some(surface.clone()), serial);
                         state.broadcast_toplevel_focused(&surface);
                     }
                     pointer.button(
@@ -255,9 +252,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                 .raise_element(&window, true);
             if let Some(surface) = window.wl_surface() {
                 let surface = surface.into_owned();
-                let old_focus = keyboard.current_focus();
-                state.update_focus_decoration(old_focus.as_ref(), Some(&surface));
-                keyboard.set_focus(state, Some(surface.clone()), serial);
+                state.set_keyboard_focus_with_decorations(Some(surface.clone()), serial);
                 state.broadcast_toplevel_focused(&surface);
             }
             state.workspaces.active_space().elements().for_each(|w| {
@@ -266,7 +261,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                 }
             });
         } else if let Some((surface, _)) = under {
-            keyboard.set_focus(state, Some(surface.clone()), serial);
+            state.set_keyboard_focus_with_decorations(Some(surface.clone()), serial);
             state.broadcast_toplevel_focused(&surface);
         } else {
             state.workspaces.active_space().elements().for_each(|w| {
@@ -275,7 +270,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                     t.send_pending_configure();
                 }
             });
-            keyboard.set_focus(state, Option::<WlSurface>::None, serial);
+            state.set_keyboard_focus_with_decorations(Option::<WlSurface>::None, serial);
         }
     }
 

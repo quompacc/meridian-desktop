@@ -50,13 +50,11 @@ impl DecorationManager {
     }
 
     pub fn set_focused(&mut self, surface: &WlSurface, focused: bool) {
-        let d = self
-            .decorations
-            .entry(Self::key(surface))
-            .or_insert_with(WindowDecoration::new);
-        if d.is_focused != focused {
-            d.is_focused = focused;
-            d.dirty = true;
+        if let Some(d) = self.decorations.get_mut(&Self::key(surface)) {
+            if d.is_focused != focused {
+                d.is_focused = focused;
+                d.dirty = true;
+            }
         }
     }
 

@@ -48,9 +48,8 @@ pub(super) fn handle_new_toplevel(state: &mut MeridianState, surface: ToplevelSu
     }
 
     let serial = SERIAL_COUNTER.next_serial();
-    if let Some(keyboard) = state.seat.get_keyboard() {
-        state.update_focus_decoration(None, Some(&wl_surface));
-        keyboard.set_focus(state, Some(wl_surface.clone()), serial);
+    if state.seat.get_keyboard().is_some() {
+        state.set_keyboard_focus_with_decorations(Some(wl_surface.clone()), serial);
         state.update_focused_output_from_surface(&wl_surface, "keyboard-focus-new-toplevel");
         state.broadcast_toplevel_focused(&wl_surface);
     }
