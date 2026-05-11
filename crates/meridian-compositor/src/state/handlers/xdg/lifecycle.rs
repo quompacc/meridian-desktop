@@ -1,6 +1,6 @@
 use smithay::{
     desktop::{PopupKind, Window},
-    utils::SERIAL_COUNTER,
+    utils::{Logical, Point, Size, SERIAL_COUNTER},
     wayland::shell::xdg::{PopupSurface, ToplevelSurface},
 };
 
@@ -31,13 +31,20 @@ pub(super) fn handle_new_toplevel(state: &mut MeridianState, surface: ToplevelSu
         state.tile_workspace(active);
     } else {
         let theme = &state.theme_manager.current().config.decorations;
-        let (ox, oy) = state
-            .decoration_manager
-            .decoration_offset(&wl_surface, theme);
+        // Space location currently tracks client origin. We derive it from an explicit
+        // frame-origin model here to make SSD placement semantics visible without changing behavior.
+        let initial_frame_origin: Point<i32, Logical> = (0, 0).into();
+        let initial_client_size: Size<i32, Logical> = (0, 0).into();
+        let metrics = state.decoration_manager.ssd_render_metrics(
+            &wl_surface,
+            initial_frame_origin,
+            initial_client_size,
+            theme,
+        );
         state
             .workspaces
             .active_space_mut()
-            .map_element(window, (ox, oy), true);
+            .map_element(window, metrics.client_origin, true);
     }
 
     let serial = SERIAL_COUNTER.next_serial();

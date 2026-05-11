@@ -148,10 +148,16 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                 None => continue,
             };
             let geo = window.geometry();
-            deco_elements.extend(state.decoration_manager.render_elements(
+            let metrics = state.decoration_manager.ssd_render_metrics(
                 &wl_surf,
                 loc,
                 geo.size,
+                &theme.decorations,
+            );
+            deco_elements.extend(state.decoration_manager.render_elements(
+                &wl_surf,
+                metrics.frame_origin,
+                metrics.client_size,
                 &theme.decorations,
                 &theme.colors,
                 scale,
