@@ -36,7 +36,8 @@ pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: Toplev
                 {
                     state
                         .maximize_restore_locations
-                        .insert(window_id(surface.wl_surface()), current_loc);
+                        .entry(window_id(surface.wl_surface()))
+                        .or_insert(current_loc);
                 }
             }
             state

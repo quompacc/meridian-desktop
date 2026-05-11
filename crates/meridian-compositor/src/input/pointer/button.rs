@@ -211,7 +211,8 @@ pub fn handle_pointer_button<I: InputBackend>(
                             {
                                 state
                                     .maximize_restore_locations
-                                    .insert(window_id(toplevel.wl_surface()), current_loc);
+                                    .entry(window_id(toplevel.wl_surface()))
+                                    .or_insert(current_loc);
                             }
                             state.workspaces.active_space_mut().map_element(
                                 window.clone(),
