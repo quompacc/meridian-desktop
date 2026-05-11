@@ -47,7 +47,10 @@ pub fn handle_pointer_button<I: InputBackend>(
     state: &mut MeridianState,
     event: &impl PointerButtonEvent<I>,
 ) {
-    let pointer = state.seat.get_pointer().unwrap();
+    let Some(pointer) = state.seat.get_pointer() else {
+        debug!("pointer button ignored: seat has no pointer");
+        return;
+    };
     let serial = SERIAL_COUNTER.next_serial();
     let button = event.button_code();
     let button_state = event.state();
