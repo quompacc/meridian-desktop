@@ -4,8 +4,10 @@ use std::{
     net::Shutdown,
     os::{
         fd::AsRawFd,
+        unix::fs::{FileTypeExt, MetadataExt},
         unix::net::{UnixListener, UnixStream},
     },
+    path::{Path, PathBuf},
 };
 
 use meridian_ipc::{
@@ -19,6 +21,8 @@ pub struct IpcServer {
     listener: Option<UnixListener>,
     clients: Vec<IpcClient>,
     next_client_id: u64,
+    socket_path: Option<PathBuf>,
+    socket_identity: Option<SocketIdentity>,
 }
 
 pub struct IpcPoll {
@@ -39,6 +43,12 @@ struct IpcClient {
     alive: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SocketIdentity {
+    dev: u64,
+    ino: u64,
+}
+
 impl IpcServer {
     pub fn new() -> Self {
         let path = meridian_ipc::socket_path();
@@ -48,17 +58,24 @@ impl IpcServer {
             }
         }
 
-        let listener = match UnixListener::bind(&path) {
+        let (listener, socket_path, socket_identity) = match UnixListener::bind(&path) {
             Ok(listener) => {
                 if let Err(err) = listener.set_nonblocking(true) {
                     tracing::warn!("failed to set IPC socket nonblocking: {}", err);
                 }
+                let socket_identity = match socket_identity_for_path(&path) {
+                    Ok(identity) => Some(identity),
+                    Err(err) => {
+                        tracing::warn!("failed to capture IPC socket identity {:?}: {}", path, err);
+                        None
+                    }
+                };
                 tracing::info!("Meridian IPC listening on {:?}", path);
-                Some(listener)
+                (Some(listener), Some(path), socket_identity)
             }
             Err(err) => {
                 tracing::warn!("failed to bind IPC socket {:?}: {}", path, err);
-                None
+                (None, None, None)
             }
         };
 
@@ -66,6 +83,8 @@ impl IpcServer {
             listener,
             clients: Vec::new(),
             next_client_id: 1,
+            socket_path,
+            socket_identity,
         }
     }
 
@@ -231,6 +250,48 @@ impl IpcServer {
     }
 }
 
+impl Drop for IpcServer {
+    fn drop(&mut self) {
+        for client in &mut self.clients {
+            let _ = client.stream.shutdown(Shutdown::Both);
+        }
+        self.clients.clear();
+
+        // Ensure listener fd is dropped before unlinking the socket path.
+        self.listener.take();
+
+        let (Some(path), Some(expected)) = (self.socket_path.as_deref(), self.socket_identity)
+        else {
+            return;
+        };
+        match should_cleanup_socket_path(path, expected) {
+            Ok(true) => {
+                if let Err(err) = fs::remove_file(path) {
+                    tracing::warn!(
+                        "failed to remove IPC socket on shutdown {:?}: {}",
+                        path,
+                        err
+                    );
+                }
+            }
+            Ok(false) => {
+                tracing::debug!(
+                    "skipping IPC socket cleanup: path no longer points to this server socket: {:?}",
+                    path
+                );
+            }
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+            Err(err) => {
+                tracing::warn!(
+                    "failed to validate IPC socket before cleanup {:?}: {}",
+                    path,
+                    err
+                );
+            }
+        }
+    }
+}
+
 fn is_allowed_ipc_peer(stream: &UnixStream) -> bool {
     let effective_uid = current_effective_uid();
     match peer_effective_uid(stream) {
@@ -293,9 +354,35 @@ fn peer_effective_uid(_stream: &UnixStream) -> io::Result<Option<u32>> {
     Ok(None)
 }
 
+fn socket_identity_for_path(path: &Path) -> io::Result<SocketIdentity> {
+    let metadata = fs::metadata(path)?;
+    Ok(SocketIdentity {
+        dev: metadata.dev(),
+        ino: metadata.ino(),
+    })
+}
+
+fn should_cleanup_socket_path(path: &Path, expected: SocketIdentity) -> io::Result<bool> {
+    let metadata = fs::symlink_metadata(path)?;
+    if !metadata.file_type().is_socket() {
+        return Ok(false);
+    }
+    Ok(SocketIdentity {
+        dev: metadata.dev(),
+        ino: metadata.ino(),
+    } == expected)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::is_same_uid;
+    use std::{
+        fs,
+        io::Write,
+        os::unix::net::UnixListener,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use super::{is_same_uid, should_cleanup_socket_path, socket_identity_for_path};
 
     #[test]
     fn same_uid_is_allowed() {
@@ -305,5 +392,65 @@ mod tests {
     #[test]
     fn different_uid_is_rejected() {
         assert!(!is_same_uid(1000, 1001));
+    }
+
+    #[test]
+    fn cleanup_check_matches_original_socket_identity() {
+        let dir = std::env::temp_dir().join(format!(
+            "meridian-ipc-cleanup-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let socket_path = dir.join("meridian.sock");
+
+        let listener = UnixListener::bind(&socket_path).expect("bind test socket");
+        let identity = socket_identity_for_path(&socket_path).expect("capture socket identity");
+
+        assert!(
+            should_cleanup_socket_path(&socket_path, identity).expect("validate cleanup target")
+        );
+
+        drop(listener);
+        let _ = fs::remove_file(&socket_path);
+        let _ = fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn cleanup_check_rejects_replaced_non_socket_path() {
+        let dir = std::env::temp_dir().join(format!(
+            "meridian-ipc-cleanup-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let socket_path = dir.join("meridian.sock");
+
+        let listener = UnixListener::bind(&socket_path).expect("bind test socket");
+        let identity = socket_identity_for_path(&socket_path).expect("capture socket identity");
+        drop(listener);
+        fs::remove_file(&socket_path).expect("remove socket");
+
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&socket_path)
+            .expect("create replacement file");
+        writeln!(file, "replacement").expect("write replacement file");
+        file.flush().expect("flush replacement file");
+
+        assert!(
+            !should_cleanup_socket_path(&socket_path, identity).expect("validate replacement path")
+        );
+
+        let _ = fs::remove_file(&socket_path);
+        let _ = fs::remove_dir(&dir);
     }
 }
