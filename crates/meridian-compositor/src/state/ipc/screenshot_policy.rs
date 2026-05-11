@@ -2,6 +2,10 @@ use meridian_ipc::{ScreenshotBridgeError, ScreenshotBridgeRequest};
 
 pub(crate) struct ScreenshotPolicy;
 
+#[cfg(test)]
+static LAST_EVALUATED_CLIENT_ID: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ScreenshotPolicyContext {
     pub client_id: u64,
@@ -19,6 +23,9 @@ impl ScreenshotPolicy {
         request: &ScreenshotBridgeRequest,
         context: ScreenshotPolicyContext,
     ) -> ScreenshotPolicyDecision {
+        #[cfg(test)]
+        LAST_EVALUATED_CLIENT_ID.store(context.client_id, std::sync::atomic::Ordering::Relaxed);
+
         tracing::info!(
             "screenshot policy evaluating request: request_id={} client_id={} origin={:?} requester={:?} trusted={} kind={:?} output={:?} include_cursor={}",
             request.request_id,
@@ -59,6 +66,11 @@ impl ScreenshotPolicy {
         tracing::info!("screenshot policy decision: deny");
         ScreenshotPolicyDecision::Deny
     }
+}
+
+#[cfg(test)]
+pub(crate) fn last_evaluated_client_id_for_test() -> u64 {
+    LAST_EVALUATED_CLIENT_ID.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 #[cfg(test)]

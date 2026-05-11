@@ -8,8 +8,9 @@ use super::screenshot_policy::{
 
 pub(crate) fn handle_screenshot_bridge_request(
     request: ScreenshotBridgeRequest,
+    client_id: u64,
 ) -> ScreenshotBridgeResult {
-    let decision = ScreenshotPolicy::evaluate(&request, ScreenshotPolicyContext { client_id: 0 });
+    let decision = ScreenshotPolicy::evaluate(&request, ScreenshotPolicyContext { client_id });
     match decision {
         ScreenshotPolicyDecision::Deny => ScreenshotBridgeResult::Error {
             error: ScreenshotBridgeError::PermissionDenied(
@@ -33,6 +34,7 @@ mod tests {
     };
 
     use super::handle_screenshot_bridge_request;
+    use crate::state::ipc::screenshot_policy::last_evaluated_client_id_for_test;
 
     #[test]
     fn invalid_request_is_rejected() {
@@ -51,7 +53,7 @@ mod tests {
         };
 
         assert_eq!(
-            handle_screenshot_bridge_request(request),
+            handle_screenshot_bridge_request(request, 7),
             ScreenshotBridgeResult::Error {
                 error: ScreenshotBridgeError::InvalidRequest(
                     "request_id must not be empty".to_string(),
@@ -77,7 +79,7 @@ mod tests {
         };
 
         assert_eq!(
-            handle_screenshot_bridge_request(request),
+            handle_screenshot_bridge_request(request, 7),
             ScreenshotBridgeResult::Error {
                 error: ScreenshotBridgeError::PermissionDenied(
                     "screenshot denied by compositor policy".to_string(),
@@ -108,12 +110,32 @@ mod tests {
         };
 
         assert_eq!(
-            handle_screenshot_bridge_request(request),
+            handle_screenshot_bridge_request(request, 7),
             ScreenshotBridgeResult::Error {
                 error: ScreenshotBridgeError::Unsupported(
                     "region capture is not implemented yet".to_string(),
                 ),
             }
         );
+    }
+
+    #[test]
+    fn nonzero_client_id_is_forwarded_to_policy_context() {
+        let request = ScreenshotBridgeRequest {
+            request_id: "req-bridge-3".to_string(),
+            kind: ScreenshotKind::FullOutput,
+            output: Some("eDP-1".to_string()),
+            include_cursor: false,
+            region: None,
+            metadata: ScreenshotRequestMetadata {
+                requester: None,
+                origin: ScreenshotRequestOrigin::PortalDbus,
+                request_marker: Some(4),
+                identity_trusted: false,
+            },
+        };
+
+        let _ = handle_screenshot_bridge_request(request, 42);
+        assert_eq!(last_evaluated_client_id_for_test(), 42);
     }
 }

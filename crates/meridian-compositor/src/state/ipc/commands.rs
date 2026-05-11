@@ -33,7 +33,10 @@ impl MeridianState {
                 bridge.request.include_cursor
             );
             let request_id = bridge.request.request_id.clone();
-            let result = super::screenshot::handle_screenshot_bridge_request(bridge.request);
+            let result = super::screenshot::handle_screenshot_bridge_request(
+                bridge.request,
+                bridge.client_id,
+            );
             tracing::info!(
                 "screenshot bridge denied/unsupported: request_id={} result={:?}",
                 request_id,
