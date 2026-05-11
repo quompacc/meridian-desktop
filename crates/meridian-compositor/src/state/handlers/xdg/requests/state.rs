@@ -68,6 +68,21 @@ pub(crate) fn handle_unmaximize_request(state: &mut MeridianState, surface: Topl
                 .workspaces
                 .active_space_mut()
                 .map_element(window, restore_loc, true);
+        } else {
+            let theme = &state.theme_manager.current().config.decorations;
+            let (x_off, y_off) = state
+                .decoration_manager
+                .decoration_offset(surface.wl_surface(), theme);
+            let fallback_loc: Point<i32, Logical> = (x_off, y_off).into();
+            tracing::warn!(
+                x = fallback_loc.x,
+                y = fallback_loc.y,
+                "unmaximize restore location missing in xdg request path; applying fallback client origin"
+            );
+            state
+                .workspaces
+                .active_space_mut()
+                .map_element(window, fallback_loc, true);
         }
     }
     surface.send_pending_configure();

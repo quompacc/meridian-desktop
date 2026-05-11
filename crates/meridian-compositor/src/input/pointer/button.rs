@@ -8,7 +8,7 @@ use smithay::{
     utils::{Rectangle, SERIAL_COUNTER},
     wayland::{compositor::get_parent, seat::WaylandFocus},
 };
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::{
     decoration::{DecorationHit, DecorationResizeEdge},
@@ -199,6 +199,22 @@ pub fn handle_pointer_button<I: InputBackend>(
                                 state.workspaces.active_space_mut().map_element(
                                     window.clone(),
                                     restore_loc,
+                                    true,
+                                );
+                            } else {
+                                let theme = &state.theme_manager.current().config.decorations;
+                                let (x_off, y_off) = state
+                                    .decoration_manager
+                                    .decoration_offset(toplevel.wl_surface(), theme);
+                                let fallback_loc = Point::from((x_off, y_off));
+                                warn!(
+                                    x = fallback_loc.x,
+                                    y = fallback_loc.y,
+                                    "unmaximize restore location missing in SSD button path; applying fallback client origin"
+                                );
+                                state.workspaces.active_space_mut().map_element(
+                                    window.clone(),
+                                    fallback_loc,
                                     true,
                                 );
                             }
