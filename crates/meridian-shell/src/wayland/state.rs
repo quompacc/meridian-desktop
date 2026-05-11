@@ -171,7 +171,7 @@ fn compute_occupied_workspaces(workspace_window_counts: &[u16; 9]) -> [bool; 9] 
     occupied
 }
 
-fn panel_theme_signature(theme: &ThemeConfig) -> (String, [u8; 16]) {
+fn panel_theme_signature(theme: &ThemeConfig) -> (String, [u8; 20]) {
     (
         theme.fonts.ui.clone(),
         [
@@ -191,6 +191,10 @@ fn panel_theme_signature(theme: &ThemeConfig) -> (String, [u8; 16]) {
             theme.colors.text.g,
             theme.colors.text.b,
             theme.colors.text.a,
+            theme.colors.border.r,
+            theme.colors.border.g,
+            theme.colors.border.b,
+            theme.colors.border.a,
         ],
     )
 }
@@ -866,6 +870,16 @@ mod tests {
         let (_name, mut theme) = resolve_shell_theme_from_config(&config).expect("resolve theme");
         let sig_a = panel_theme_signature(&theme);
         theme.colors.accent = meridian_config::Color::rgb(0, 0, 0);
+        let sig_b = panel_theme_signature(&theme);
+        assert_ne!(sig_a, sig_b);
+    }
+
+    #[test]
+    fn panel_theme_signature_changes_when_border_changes() {
+        let config = MeridianConfig::default();
+        let (_name, mut theme) = resolve_shell_theme_from_config(&config).expect("resolve theme");
+        let sig_a = panel_theme_signature(&theme);
+        theme.colors.border = meridian_config::Color::rgb(0, 0, 0);
         let sig_b = panel_theme_signature(&theme);
         assert_ne!(sig_a, sig_b);
     }

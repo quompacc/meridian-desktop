@@ -38,6 +38,10 @@ impl MeridianShell {
                 self.theme.colors.text.g,
                 self.theme.colors.text.b,
                 self.theme.colors.text.a,
+                self.theme.colors.border.r,
+                self.theme.colors.border.g,
+                self.theme.colors.border.b,
+                self.theme.colors.border.a,
             ],
         }
     }
