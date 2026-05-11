@@ -2,7 +2,10 @@ use std::{
     fs,
     io::{self, Read, Write},
     net::Shutdown,
-    os::unix::net::{UnixListener, UnixStream},
+    os::{
+        fd::AsRawFd,
+        unix::net::{UnixListener, UnixStream},
+    },
 };
 
 use meridian_ipc::{
@@ -75,6 +78,10 @@ impl IpcServer {
             loop {
                 match listener.accept() {
                     Ok((stream, _addr)) => {
+                        if !is_allowed_ipc_peer(&stream) {
+                            let _ = stream.shutdown(Shutdown::Both);
+                            continue;
+                        }
                         if let Err(err) = stream.set_nonblocking(true) {
                             tracing::warn!("failed to set IPC client nonblocking: {}", err);
                         }
@@ -221,5 +228,82 @@ impl IpcServer {
             }
             client.alive
         });
+    }
+}
+
+fn is_allowed_ipc_peer(stream: &UnixStream) -> bool {
+    let effective_uid = current_effective_uid();
+    match peer_effective_uid(stream) {
+        Ok(Some(peer_uid)) if is_same_uid(peer_uid, effective_uid) => true,
+        Ok(Some(peer_uid)) => {
+            tracing::warn!("rejecting IPC client from different uid: {}", peer_uid);
+            false
+        }
+        Ok(None) => {
+            tracing::warn!(
+                "IPC peer credential check unsupported on this platform; allowing client"
+            );
+            true
+        }
+        Err(err) => {
+            tracing::warn!(
+                "rejecting IPC client: failed to read peer credentials: {}",
+                err
+            );
+            false
+        }
+    }
+}
+
+fn current_effective_uid() -> u32 {
+    unsafe { libc::geteuid() as u32 }
+}
+
+fn is_same_uid(peer_uid: u32, effective_uid: u32) -> bool {
+    peer_uid == effective_uid
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn peer_effective_uid(stream: &UnixStream) -> io::Result<Option<u32>> {
+    let mut creds: libc::ucred = unsafe { std::mem::zeroed() };
+    let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    let rc = unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            (&mut creds as *mut libc::ucred).cast::<libc::c_void>(),
+            &mut len,
+        )
+    };
+    if rc == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    if len < std::mem::size_of::<libc::ucred>() as libc::socklen_t {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "short SO_PEERCRED payload",
+        ));
+    }
+    Ok(Some(creds.uid))
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "android")))]
+fn peer_effective_uid(_stream: &UnixStream) -> io::Result<Option<u32>> {
+    Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_same_uid;
+
+    #[test]
+    fn same_uid_is_allowed() {
+        assert!(is_same_uid(1000, 1000));
+    }
+
+    #[test]
+    fn different_uid_is_rejected() {
+        assert!(!is_same_uid(1000, 1001));
     }
 }
