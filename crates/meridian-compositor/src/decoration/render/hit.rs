@@ -7,6 +7,74 @@ use smithay::{
 use super::super::{
     DecorationHit, DecorationManager, BUTTON_MARGIN, BUTTON_SIZE, TITLE_BAR_HEIGHT,
 };
+use super::geometry::SsdFrameMetrics;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SsdFrameHitRegion {
+    OutsideFrame,
+    ClientContent,
+    TitleBar,
+    CloseButton,
+    MaximizeButton,
+    MinimizeButton,
+    LeftBorder,
+    RightBorder,
+    BottomBorder,
+}
+
+pub(crate) fn classify_ssd_frame_hit(
+    pointer_pos: Point<f64, Logical>,
+    metrics: SsdFrameMetrics,
+) -> SsdFrameHitRegion {
+    let px = pointer_pos.x as i32;
+    let py = pointer_pos.y as i32;
+    let frame_left = metrics.frame_origin.x;
+    let frame_top = metrics.frame_origin.y;
+    let frame_right = frame_left + metrics.frame_size.w;
+    let frame_bottom = frame_top + metrics.frame_size.h;
+
+    if px < frame_left || py < frame_top || px >= frame_right || py >= frame_bottom {
+        return SsdFrameHitRegion::OutsideFrame;
+    }
+
+    if metrics.titlebar_height > 0 {
+        let close_x = frame_right - BUTTON_SIZE - BUTTON_MARGIN;
+        let close_y =
+            frame_top + (metrics.titlebar_height - BUTTON_SIZE) / 2 + metrics.border_width;
+        let max_x = close_x - BUTTON_SIZE - BUTTON_MARGIN / 2;
+        let min_x = max_x - BUTTON_SIZE - BUTTON_MARGIN / 2;
+        let btn_bot = close_y + BUTTON_SIZE;
+
+        if px >= close_x && px < close_x + BUTTON_SIZE && py >= close_y && py < btn_bot {
+            return SsdFrameHitRegion::CloseButton;
+        }
+        if px >= max_x && px < max_x + BUTTON_SIZE && py >= close_y && py < btn_bot {
+            return SsdFrameHitRegion::MaximizeButton;
+        }
+        if px >= min_x && px < min_x + BUTTON_SIZE && py >= close_y && py < btn_bot {
+            return SsdFrameHitRegion::MinimizeButton;
+        }
+    }
+
+    let bw = metrics.border_width;
+    if bw > 0 {
+        if px < frame_left + bw {
+            return SsdFrameHitRegion::LeftBorder;
+        }
+        if px >= frame_right - bw {
+            return SsdFrameHitRegion::RightBorder;
+        }
+        if py >= frame_bottom - bw {
+            return SsdFrameHitRegion::BottomBorder;
+        }
+    }
+
+    if py < frame_top + metrics.titlebar_height + metrics.border_width {
+        return SsdFrameHitRegion::TitleBar;
+    }
+
+    SsdFrameHitRegion::ClientContent
+}
 
 impl DecorationManager {
     pub fn hit_test(
@@ -22,37 +90,69 @@ impl DecorationManager {
             return None;
         }
 
-        let bw = deco.border_width(theme);
-        let px = pointer_pos.x as i32;
+        let metrics = self.ssd_render_metrics(surface, window_loc, content_size, theme);
         let py = pointer_pos.y as i32;
-        let wx = window_loc.x;
-        let wy = window_loc.y;
-        let total_w = content_size.w + bw * 2;
-
-        if px < wx || py < wy || px >= wx + total_w || py >= wy + TITLE_BAR_HEIGHT + bw {
+        let legacy_hit_top = metrics.frame_origin.y;
+        let legacy_hit_bottom = metrics.frame_origin.y + TITLE_BAR_HEIGHT + metrics.border_width;
+        if py < legacy_hit_top || py >= legacy_hit_bottom {
             return None;
         }
 
-        let close_x = wx + total_w - BUTTON_SIZE - BUTTON_MARGIN;
-        let close_y = wy + (TITLE_BAR_HEIGHT - BUTTON_SIZE) / 2 + bw;
-        let max_x = close_x - BUTTON_SIZE - BUTTON_MARGIN / 2;
-        let min_x = max_x - BUTTON_SIZE - BUTTON_MARGIN / 2;
-        let btn_bot = close_y + BUTTON_SIZE;
+        match classify_ssd_frame_hit(pointer_pos, metrics) {
+            SsdFrameHitRegion::CloseButton => Some(DecorationHit::CloseButton),
+            SsdFrameHitRegion::MaximizeButton => Some(DecorationHit::MaximizeButton),
+            SsdFrameHitRegion::MinimizeButton => Some(DecorationHit::MinimizeButton),
+            SsdFrameHitRegion::LeftBorder | SsdFrameHitRegion::RightBorder => {
+                Some(DecorationHit::Border)
+            }
+            SsdFrameHitRegion::TitleBar => Some(DecorationHit::TitleBar),
+            SsdFrameHitRegion::OutsideFrame
+            | SsdFrameHitRegion::ClientContent
+            | SsdFrameHitRegion::BottomBorder => None,
+        }
+    }
+}
 
-        if px >= close_x && px < close_x + BUTTON_SIZE && py >= close_y && py < btn_bot {
-            return Some(DecorationHit::CloseButton);
-        }
-        if px >= max_x && px < max_x + BUTTON_SIZE && py >= close_y && py < btn_bot {
-            return Some(DecorationHit::MaximizeButton);
-        }
-        if px >= min_x && px < min_x + BUTTON_SIZE && py >= close_y && py < btn_bot {
-            return Some(DecorationHit::MinimizeButton);
-        }
+#[cfg(test)]
+mod tests {
+    use super::{classify_ssd_frame_hit, SsdFrameHitRegion};
+    use crate::decoration::render::geometry::SsdFrameMetrics;
 
-        if bw > 0 && (px < wx + bw || px >= wx + total_w - bw) {
-            return Some(DecorationHit::Border);
-        }
+    #[test]
+    fn titlebar_point_hits_titlebar_region() {
+        let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
+        let hit = classify_ssd_frame_hit((120.0, 10.0).into(), metrics);
+        assert_eq!(hit, SsdFrameHitRegion::TitleBar);
+    }
 
-        Some(DecorationHit::TitleBar)
+    #[test]
+    fn border_points_hit_left_right_and_bottom_regions() {
+        let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
+        assert_eq!(
+            classify_ssd_frame_hit((1.0, 220.0).into(), metrics),
+            SsdFrameHitRegion::LeftBorder
+        );
+        assert_eq!(
+            classify_ssd_frame_hit((643.0, 220.0).into(), metrics),
+            SsdFrameHitRegion::RightBorder
+        );
+        assert_eq!(
+            classify_ssd_frame_hit((100.0, 435.0).into(), metrics),
+            SsdFrameHitRegion::BottomBorder
+        );
+    }
+
+    #[test]
+    fn client_content_point_hits_client_region() {
+        let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
+        let hit = classify_ssd_frame_hit((320.0, 100.0).into(), metrics);
+        assert_eq!(hit, SsdFrameHitRegion::ClientContent);
+    }
+
+    #[test]
+    fn point_outside_frame_misses() {
+        let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
+        let hit = classify_ssd_frame_hit((-1.0, 10.0).into(), metrics);
+        assert_eq!(hit, SsdFrameHitRegion::OutsideFrame);
     }
 }
