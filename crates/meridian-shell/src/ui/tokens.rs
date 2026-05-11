@@ -1,0 +1,73 @@
+use meridian_config::Color;
+
+pub const ACCENT_FOREGROUND: Color = Color::rgb(0x1e, 0x1e, 0x2e);
+
+#[allow(dead_code)]
+pub mod spacing {
+    pub const XS: i32 = 4;
+    pub const SM: i32 = 6;
+    pub const MD: i32 = 8;
+    pub const LG: i32 = 10;
+    pub const XL: i32 = 12;
+    pub const XXL: i32 = 16;
+}
+
+#[allow(dead_code)]
+pub mod radius {
+    pub const SM: i32 = 6;
+    pub const MD: i32 = 8;
+    pub const LG: i32 = 12;
+}
+
+pub mod badge {
+    pub const SIZE: i32 = 18;
+    pub const CONTENT_GAP: i32 = 8;
+}
+
+pub mod panel {
+    pub const WORKSPACE_BUTTON_W: i32 = 28;
+    pub const WORKSPACE_BUTTON_H: i32 = 28;
+    pub const WORKSPACE_BUTTON_Y: i32 = 4;
+    pub const WORKSPACE_BUTTON_GAP: i32 = 4;
+    pub const LEFT_PADDING: i32 = 8;
+    pub const LAUNCHER_BUTTON_W: i32 = 58;
+    pub const CLOCK_W: i32 = 170;
+    pub const RIGHT_PADDING: i32 = 10;
+}
+
+pub mod launcher {
+    pub const APP_ROW_H: i32 = 38;
+    pub const SEARCH_H: i32 = 44;
+    pub const HEADER_H: i32 = 22;
+    pub const OUTER_PADDING: i32 = 16;
+    pub const INNER_PADDING: i32 = 12;
+    pub const ROW_GAP: i32 = 4;
+    pub const LIST_TOP_GAP: i32 = 10;
+    pub const SECTION_LABEL_H: i32 = 16;
+    pub const SIDEBAR_W: i32 = 164;
+    pub const PINNED_CARD_H: i32 = 36;
+    pub const PINNED_GRID_COL_GAP: i32 = 8;
+    pub const PINNED_GRID_ROW_GAP: i32 = 6;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{badge, launcher, panel, spacing};
+
+    #[test]
+    fn panel_workspace_button_stays_inside_height() {
+        assert!(panel::WORKSPACE_BUTTON_Y + panel::WORKSPACE_BUTTON_H <= 36);
+    }
+
+    #[test]
+    fn launcher_rows_are_taller_than_gaps() {
+        assert!(launcher::APP_ROW_H > launcher::ROW_GAP);
+        assert!(launcher::PINNED_CARD_H > launcher::PINNED_GRID_ROW_GAP);
+    }
+
+    #[test]
+    fn badge_is_larger_than_base_spacing() {
+        assert!(badge::SIZE > spacing::MD);
+        assert!(badge::CONTENT_GAP >= spacing::MD);
+    }
+}

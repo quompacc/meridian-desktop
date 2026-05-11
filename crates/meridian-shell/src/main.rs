@@ -10,6 +10,7 @@ mod buffer;
 mod draw;
 mod launcher;
 mod panel;
+mod ui;
 mod wayland;
 
 pub use draw::{Painter, TextRenderer};

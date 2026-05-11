@@ -11,23 +11,18 @@ use meridian_config::{Color, ThemeConfig};
 use meridian_ipc::ShellCommand;
 use tracing::{debug, info, warn};
 
-use crate::{ClickAction, ClickZone, Painter, Rect, TextRenderer};
+use crate::{
+    ui::{
+        primitives::{
+            draw_card, draw_initial_badge, draw_list_item, draw_sidebar_item, fill_surface,
+            InteractiveState, SurfaceKind,
+        },
+        tokens,
+    },
+    ClickAction, ClickZone, Painter, Rect, TextRenderer,
+};
 
-const APP_ROW_H: i32 = 38;
-const SEARCH_H: i32 = 44;
-const HEADER_H: i32 = 22;
-const PAD: i32 = 16;
-const INNER_PAD: i32 = 12;
-const ROW_GAP: i32 = 4;
-const LIST_TOP_GAP: i32 = 10;
-const SECTION_LABEL_H: i32 = 16;
-const SIDEBAR_W: i32 = 164;
 const PINNED_GRID_COLS: usize = 2;
-const PINNED_CARD_H: i32 = 36;
-const PINNED_GRID_COL_GAP: i32 = 8;
-const PINNED_GRID_ROW_GAP: i32 = 6;
-const APP_BADGE_SIZE: i32 = 18;
-const APP_BADGE_GAP: i32 = 8;
 const MAX_RESULTS: usize = 9;
 const MAX_PINNED_RESULTS: usize = 4;
 const SIDEBAR_CATEGORY_CLICK_BASE: u8 = 100;
@@ -914,28 +909,27 @@ pub fn draw_launcher(
     let colors = &theme.colors;
     painter.clear(colors.surface);
     let card = Rect {
-        x: PAD / 2,
-        y: PAD / 2,
-        w: width as i32 - PAD,
-        h: height as i32 - PAD,
+        x: tokens::launcher::OUTER_PADDING / 2,
+        y: tokens::launcher::OUTER_PADDING / 2,
+        w: width as i32 - tokens::launcher::OUTER_PADDING,
+        h: height as i32 - tokens::launcher::OUTER_PADDING,
     };
-    painter.roundish_rect(card, colors.background);
-    painter.stroke_rect(card, colors.border);
+    draw_card(painter, card, theme);
 
-    let layout_x = card.x + PAD / 2;
-    let layout_y = card.y + PAD / 2;
-    let layout_w = card.w - PAD;
-    let layout_h = card.h - PAD;
+    let layout_x = card.x + tokens::launcher::OUTER_PADDING / 2;
+    let layout_y = card.y + tokens::launcher::OUTER_PADDING / 2;
+    let layout_w = card.w - tokens::launcher::OUTER_PADDING;
+    let layout_h = card.h - tokens::launcher::OUTER_PADDING;
 
     let sidebar_rect = Rect {
         x: layout_x,
         y: layout_y,
-        w: SIDEBAR_W,
+        w: tokens::launcher::SIDEBAR_W,
         h: layout_h,
     };
-    painter.roundish_rect(sidebar_rect, colors.surface);
+    fill_surface(painter, sidebar_rect, theme, SurfaceKind::Surface);
 
-    let content_x = sidebar_rect.x + sidebar_rect.w + PAD;
+    let content_x = sidebar_rect.x + sidebar_rect.w + tokens::launcher::OUTER_PADDING;
     let content_w = (layout_x + layout_w) - content_x;
     let content_top = layout_y;
 
@@ -951,7 +945,7 @@ pub fn draw_launcher(
         x: content_x,
         y: content_top,
         w: content_w,
-        h: HEADER_H,
+        h: tokens::launcher::HEADER_H,
     };
     painter.text_clipped(
         font,
@@ -970,18 +964,18 @@ pub fn draw_launcher(
         font,
         &count_text,
         header_rect.x + header_rect.w - 110,
-        header_rect.y + HEADER_H + 1,
+        header_rect.y + tokens::launcher::HEADER_H + 1,
         110,
         colors.border,
     );
 
     let search_rect = Rect {
         x: content_x,
-        y: content_top + HEADER_H + 6,
+        y: content_top + tokens::launcher::HEADER_H + 6,
         w: content_w,
-        h: SEARCH_H,
+        h: tokens::launcher::SEARCH_H,
     };
-    painter.roundish_rect(search_rect, colors.surface);
+    fill_surface(painter, search_rect, theme, SurfaceKind::Surface);
     let query_text = if launcher_state.query.is_empty() {
         "Search apps by name or executable"
     } else {
@@ -995,13 +989,13 @@ pub fn draw_launcher(
     painter.text_clipped(
         font,
         query_text,
-        search_rect.x + INNER_PAD,
+        search_rect.x + tokens::launcher::INNER_PADDING,
         search_rect.y + 28,
-        search_rect.w - INNER_PAD * 2,
+        search_rect.w - tokens::launcher::INNER_PADDING * 2,
         query_color,
     );
 
-    let mut y = search_rect.y + SEARCH_H + LIST_TOP_GAP + 6;
+    let mut y = search_rect.y + tokens::launcher::SEARCH_H + tokens::launcher::LIST_TOP_GAP + 6;
 
     let mut sidebar_item_y = sidebar_rect.y + 8;
     let mut all_apps_label_bottom = sidebar_item_y;
@@ -1018,9 +1012,22 @@ pub fn draw_launcher(
         };
         let is_active =
             launcher_state.query.is_empty() && launcher_state.sidebar_category == category;
-        if is_active {
-            painter.roundish_rect(label_rect, colors.accent);
-        }
+        let label_state = if is_active {
+            InteractiveState::Selected
+        } else {
+            InteractiveState::Default
+        };
+        let default_color = if category == SidebarCategory::Favorites {
+            colors.text
+        } else {
+            colors.border
+        };
+        let label_color = match label_state {
+            InteractiveState::Default => default_color,
+            InteractiveState::Selected => {
+                draw_sidebar_item(painter, label_rect, theme, label_state)
+            }
+        };
         painter.text_clipped(
             font,
             category.label(),
@@ -1032,13 +1039,7 @@ pub fn draw_launcher(
                     16
                 },
             label_rect.w - 20,
-            if is_active {
-                Color::rgb(0x1e, 0x1e, 0x2e)
-            } else if category == SidebarCategory::Favorites {
-                colors.text
-            } else {
-                colors.border
-            },
+            label_color,
         );
         launcher_state.clicks.push(ClickZone {
             rect: label_rect,
@@ -1075,20 +1076,24 @@ pub fn draw_launcher(
         };
         let is_active =
             launcher_state.query.is_empty() && launcher_state.sidebar_category == category;
-        if is_active {
-            painter.roundish_rect(label_rect, colors.accent);
-        }
+        let label_state = if is_active {
+            InteractiveState::Selected
+        } else {
+            InteractiveState::Default
+        };
+        let label_color = match label_state {
+            InteractiveState::Default => colors.border,
+            InteractiveState::Selected => {
+                draw_sidebar_item(painter, label_rect, theme, label_state)
+            }
+        };
         painter.text_clipped(
             font,
             category.label(),
             label_rect.x + 10,
             category_y,
             label_rect.w - 20,
-            if is_active {
-                Color::rgb(0x1e, 0x1e, 0x2e)
-            } else {
-                colors.border
-            },
+            label_color,
         );
         launcher_state.clicks.push(ClickZone {
             rect: label_rect,
@@ -1107,15 +1112,15 @@ pub fn draw_launcher(
             x: content_x,
             y,
             w: content_w,
-            h: APP_ROW_H,
+            h: tokens::launcher::APP_ROW_H,
         };
-        painter.roundish_rect(empty_rect, colors.surface);
+        fill_surface(painter, empty_rect, theme, SurfaceKind::Surface);
         painter.text_clipped(
             font,
             empty,
-            empty_rect.x + INNER_PAD,
+            empty_rect.x + tokens::launcher::INNER_PADDING,
             empty_rect.y + 24,
-            empty_rect.w - INNER_PAD * 2,
+            empty_rect.w - tokens::launcher::INNER_PADDING * 2,
             colors.border,
         );
         return;
@@ -1126,80 +1131,44 @@ pub fn draw_launcher(
         && pinned_count > 0;
     if show_pinned_grid {
         painter.text_clipped(font, "Pinned", content_x, y + 13, content_w, colors.border);
-        y += SECTION_LABEL_H + 2;
+        y += tokens::launcher::SECTION_LABEL_H + 2;
 
-        let card_w = (content_w - PINNED_GRID_COL_GAP) / PINNED_GRID_COLS as i32;
+        let card_w = (content_w - tokens::launcher::PINNED_GRID_COL_GAP) / PINNED_GRID_COLS as i32;
         for (index, app) in apps.iter().take(pinned_count).enumerate() {
             let row = index / PINNED_GRID_COLS;
             let col = index % PINNED_GRID_COLS;
             let rect = Rect {
-                x: content_x + col as i32 * (card_w + PINNED_GRID_COL_GAP),
-                y: y + row as i32 * (PINNED_CARD_H + PINNED_GRID_ROW_GAP),
+                x: content_x + col as i32 * (card_w + tokens::launcher::PINNED_GRID_COL_GAP),
+                y: y + row as i32
+                    * (tokens::launcher::PINNED_CARD_H + tokens::launcher::PINNED_GRID_ROW_GAP),
                 w: card_w,
-                h: PINNED_CARD_H,
+                h: tokens::launcher::PINNED_CARD_H,
             };
             let is_selected = index == selected_idx;
-            let badge_x = rect.x + INNER_PAD - 1;
-            let badge_y = rect.y + (rect.h - APP_BADGE_SIZE) / 2;
-            let text_x = badge_x + APP_BADGE_SIZE + APP_BADGE_GAP;
+            let badge_x = rect.x + tokens::launcher::INNER_PADDING - 1;
+            let badge_y = rect.y + (rect.h - tokens::badge::SIZE) / 2;
+            let text_x = badge_x + tokens::badge::SIZE + tokens::badge::CONTENT_GAP;
             let initial = app_initial(&app.name);
-            painter.roundish_rect(
-                rect,
-                if is_selected {
-                    colors.accent
-                } else {
-                    colors.surface
-                },
-            );
-            if is_selected {
-                painter.stroke_rect(rect, colors.border);
-                painter.rect(
-                    Rect {
-                        x: rect.x + 2,
-                        y: rect.y + 2,
-                        w: 3,
-                        h: rect.h - 4,
-                    },
-                    colors.text,
-                );
-            }
+            let row_state = if is_selected {
+                InteractiveState::Selected
+            } else {
+                InteractiveState::Default
+            };
+            let text_color = draw_list_item(painter, rect, theme, row_state, true);
             let badge_rect = Rect {
                 x: badge_x,
                 y: badge_y,
-                w: APP_BADGE_SIZE,
-                h: APP_BADGE_SIZE,
+                w: tokens::badge::SIZE,
+                h: tokens::badge::SIZE,
             };
-            painter.roundish_rect(
-                badge_rect,
-                if is_selected {
-                    Color::rgb(0x1e, 0x1e, 0x2e)
-                } else {
-                    colors.border
-                },
-            );
-            painter.text_clipped(
-                font,
-                &initial,
-                badge_rect.x + 5,
-                badge_rect.y + 14,
-                badge_rect.w - 6,
-                if is_selected {
-                    colors.accent
-                } else {
-                    colors.text
-                },
-            );
+            draw_initial_badge(painter, font, badge_rect, &initial, theme, row_state);
             painter.text_clipped(
                 font,
                 &app.name,
                 text_x,
                 rect.y + 21,
-                rect.w - (text_x - rect.x) - INNER_PAD,
-                if is_selected {
-                    Color::rgb(0x1e, 0x1e, 0x2e)
-                } else {
-                    colors.text
-                },
+                rect.w - (text_x - rect.x) - tokens::launcher::INNER_PADDING,
+                text_color,
             );
             launcher_state.clicks.push(ClickZone {
                 rect,
@@ -1208,7 +1177,8 @@ pub fn draw_launcher(
         }
 
         let pinned_rows = pinned_count.div_ceil(PINNED_GRID_COLS) as i32;
-        y += pinned_rows * PINNED_CARD_H + (pinned_rows.saturating_sub(1)) * PINNED_GRID_ROW_GAP;
+        y += pinned_rows * tokens::launcher::PINNED_CARD_H
+            + (pinned_rows.saturating_sub(1)) * tokens::launcher::PINNED_GRID_ROW_GAP;
         y += 10;
     }
 
@@ -1222,61 +1192,25 @@ pub fn draw_launcher(
             x: content_x,
             y,
             w: content_w,
-            h: APP_ROW_H,
+            h: tokens::launcher::APP_ROW_H,
         };
-        let bg = if is_selected {
-            colors.accent
+        let row_state = if is_selected {
+            InteractiveState::Selected
         } else {
-            colors.surface
+            InteractiveState::Default
         };
-        painter.roundish_rect(rect, bg);
-        if is_selected {
-            painter.stroke_rect(rect, colors.border);
-            painter.rect(
-                Rect {
-                    x: rect.x + 2,
-                    y: rect.y + 2,
-                    w: 3,
-                    h: rect.h - 4,
-                },
-                colors.text,
-            );
-        }
-        let text_color = if is_selected {
-            Color::rgb(0x1e, 0x1e, 0x2e)
-        } else {
-            colors.text
-        };
-        let badge_x = rect.x + INNER_PAD - 1;
-        let badge_y = rect.y + (rect.h - APP_BADGE_SIZE) / 2;
-        let text_x = badge_x + APP_BADGE_SIZE + APP_BADGE_GAP;
+        let text_color = draw_list_item(painter, rect, theme, row_state, true);
+        let badge_x = rect.x + tokens::launcher::INNER_PADDING - 1;
+        let badge_y = rect.y + (rect.h - tokens::badge::SIZE) / 2;
+        let text_x = badge_x + tokens::badge::SIZE + tokens::badge::CONTENT_GAP;
         let initial = app_initial(&app.name);
         let badge_rect = Rect {
             x: badge_x,
             y: badge_y,
-            w: APP_BADGE_SIZE,
-            h: APP_BADGE_SIZE,
+            w: tokens::badge::SIZE,
+            h: tokens::badge::SIZE,
         };
-        painter.roundish_rect(
-            badge_rect,
-            if is_selected {
-                Color::rgb(0x1e, 0x1e, 0x2e)
-            } else {
-                colors.border
-            },
-        );
-        painter.text_clipped(
-            font,
-            &initial,
-            badge_rect.x + 5,
-            badge_rect.y + 14,
-            badge_rect.w - 6,
-            if is_selected {
-                colors.accent
-            } else {
-                colors.text
-            },
-        );
+        draw_initial_badge(painter, font, badge_rect, &initial, theme, row_state);
         let exec_hint = Path::new(&app.program)
             .file_name()
             .and_then(|name| name.to_str())
@@ -1286,7 +1220,7 @@ pub fn draw_launcher(
             &app.name,
             text_x,
             rect.y + 17,
-            rect.w - (text_x - rect.x) - INNER_PAD,
+            rect.w - (text_x - rect.x) - tokens::launcher::INNER_PADDING,
             text_color,
         );
         painter.text_clipped(
@@ -1294,7 +1228,7 @@ pub fn draw_launcher(
             exec_hint,
             text_x,
             rect.y + 32,
-            rect.w - (text_x - rect.x) - INNER_PAD,
+            rect.w - (text_x - rect.x) - tokens::launcher::INNER_PADDING,
             if is_selected {
                 Color::rgb(0x3a, 0x3a, 0x44)
             } else {
@@ -1305,7 +1239,7 @@ pub fn draw_launcher(
             rect,
             action: ClickAction::LaunchApp(index),
         });
-        y += APP_ROW_H + ROW_GAP;
+        y += tokens::launcher::APP_ROW_H + tokens::launcher::ROW_GAP;
     }
 }
 

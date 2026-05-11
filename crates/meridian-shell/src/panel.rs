@@ -1,17 +1,14 @@
 use std::cell::RefCell;
 
-use meridian_config::{Color, ThemeConfig};
+use meridian_config::ThemeConfig;
 
-use crate::{ClickAction, ClickZone, Painter, Rect, TextRenderer, PANEL_HEIGHT};
-
-const WS_BTN_W: i32 = 28;
-const WS_BTN_H: i32 = 28;
-const WS_BTN_Y: i32 = 4;
-const WS_GAP: i32 = 4;
-const LEFT_PAD: i32 = 8;
-const LAUNCHER_BTN_W: i32 = 58;
-const CLOCK_W: i32 = 170;
-const RIGHT_PAD: i32 = 10;
+use crate::{
+    ui::{
+        primitives::{draw_panel_button, draw_workspace_button, InteractiveState},
+        tokens,
+    },
+    ClickAction, ClickZone, Painter, Rect, TextRenderer, PANEL_HEIGHT,
+};
 
 pub struct PanelState {
     pub clicks: Vec<ClickZone>,
@@ -38,23 +35,23 @@ pub fn draw_panel(
     painter.clear(colors.surface);
     panel_state.clicks.clear();
 
-    let mut x = LEFT_PAD;
+    let mut x = tokens::panel::LEFT_PADDING;
     let height = PANEL_HEIGHT as i32;
 
     // ── Left: Launcher button ───────────────────────────────────────────────
     let launcher_rect = Rect {
         x,
-        y: WS_BTN_Y,
-        w: LAUNCHER_BTN_W,
-        h: WS_BTN_H,
+        y: tokens::panel::WORKSPACE_BUTTON_Y,
+        w: tokens::panel::LAUNCHER_BUTTON_W,
+        h: tokens::panel::WORKSPACE_BUTTON_H,
     };
-    painter.roundish_rect(launcher_rect, colors.background);
-    painter.text_centered(font, "Launcher", launcher_rect, colors.text);
+    let launcher_text = draw_panel_button(painter, launcher_rect, theme, InteractiveState::Default);
+    painter.text_centered(font, "Launcher", launcher_rect, launcher_text);
     panel_state.clicks.push(ClickZone {
         rect: launcher_rect,
         action: ClickAction::ToggleLauncher,
     });
-    x += LAUNCHER_BTN_W + WS_GAP;
+    x += tokens::panel::LAUNCHER_BUTTON_W + tokens::panel::WORKSPACE_BUTTON_GAP;
 
     // ── Left: Workspace buttons ─────────────────────────────────────────────
     for ws in 1u8..=9 {
@@ -66,37 +63,24 @@ pub fn draw_panel(
 
         let rect = Rect {
             x,
-            y: WS_BTN_Y,
-            w: WS_BTN_W,
-            h: WS_BTN_H,
+            y: tokens::panel::WORKSPACE_BUTTON_Y,
+            w: tokens::panel::WORKSPACE_BUTTON_W,
+            h: tokens::panel::WORKSPACE_BUTTON_H,
         };
-        let bg = if is_active {
-            colors.accent
-        } else if is_occupied {
-            colors.border
-        } else {
-            colors.background
-        };
-        painter.roundish_rect(rect, bg);
-
-        let text_color = if is_active {
-            Color::rgb(0x1e, 0x1e, 0x2e)
-        } else {
-            colors.text
-        };
+        let text_color = draw_workspace_button(painter, rect, theme, is_active, is_occupied);
         painter.text_centered(font, &ws.to_string(), rect, text_color);
         panel_state.clicks.push(ClickZone {
             rect,
             action: ClickAction::SwitchWorkspace(ws),
         });
-        x += WS_BTN_W + WS_GAP;
+        x += tokens::panel::WORKSPACE_BUTTON_W + tokens::panel::WORKSPACE_BUTTON_GAP;
     }
 
     // ── Right: Clock ────────────────────────────────────────────────────────
     let clock_rect = Rect {
-        x: width as i32 - CLOCK_W - RIGHT_PAD,
+        x: width as i32 - tokens::panel::CLOCK_W - tokens::panel::RIGHT_PADDING,
         y: (height - 20) / 2,
-        w: CLOCK_W,
+        w: tokens::panel::CLOCK_W,
         h: 20,
     };
     painter.text_centered(font, clock, clock_rect, colors.text);
