@@ -51,7 +51,6 @@ impl SsdFrameMetrics {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn from_client_origin(
         client_origin: Point<i32, Logical>,
         client_size: Size<i32, Logical>,
@@ -88,7 +87,7 @@ impl DecorationManager {
             })
             .unwrap_or((0, 0));
 
-        SsdFrameMetrics::from_frame_origin(window_loc, content_size, border_width, titlebar_height)
+        SsdFrameMetrics::from_client_origin(window_loc, content_size, border_width, titlebar_height)
     }
 
     pub fn decoration_offset(&self, surface: &WlSurface, theme: &Decorations) -> (i32, i32) {
