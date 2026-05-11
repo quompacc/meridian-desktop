@@ -84,6 +84,21 @@ impl MeridianState {
                     }
                 }
             }
+
+            // Keep launcher hit-testing top-priority even if its cached role is stale.
+            let launcher_surface = layer_map
+                .layers()
+                .find(|layer| layer.namespace() == "meridian-launcher")
+                .cloned();
+            if let Some(launcher_surface) = launcher_surface {
+                if let Some(geo) = layer_map.layer_geometry(&launcher_surface) {
+                    if let Some((surface, point)) = launcher_surface
+                        .surface_under(local - geo.loc.to_f64(), WindowSurfaceType::ALL)
+                    {
+                        return Some((surface, (point + output_geo.loc + geo.loc).to_f64()));
+                    }
+                }
+            }
         }
 
         let window_surface =
