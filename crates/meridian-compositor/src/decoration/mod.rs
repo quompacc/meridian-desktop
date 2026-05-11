@@ -15,12 +15,21 @@ pub const BUTTON_MARGIN: i32 = 8;
 const SHADOW_ALPHA: f32 = 0.35;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecorationResizeEdge {
+    Left,
+    Right,
+    Bottom,
+    BottomLeft,
+    BottomRight,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DecorationHit {
     TitleBar,
     CloseButton,
     MaximizeButton,
     MinimizeButton,
-    Border,
+    Resize(DecorationResizeEdge),
 }
 
 pub struct DecorationManager {

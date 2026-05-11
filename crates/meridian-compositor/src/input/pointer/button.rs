@@ -1,15 +1,21 @@
 use smithay::{
     backend::input::{ButtonState, InputBackend, PointerButtonEvent},
     input::pointer::{ButtonEvent, Focus},
+    reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::SERIAL_COUNTER,
     utils::{Logical, Point},
+    utils::{Rectangle, SERIAL_COUNTER},
     wayland::seat::WaylandFocus,
 };
 use tracing::debug;
 
 use crate::{
-    decoration::DecorationHit, grabs::move_grab::MoveSurfaceGrab, state::MeridianState,
+    decoration::{DecorationHit, DecorationResizeEdge},
+    grabs::{
+        move_grab::MoveSurfaceGrab,
+        resize_grab::{ResizeEdge, ResizeSurfaceGrab},
+    },
+    state::MeridianState,
     state::OutputInfo,
 };
 
@@ -198,7 +204,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                     pointer.frame(state);
                     return;
                 }
-                DecorationHit::TitleBar | DecorationHit::Border => {
+                DecorationHit::TitleBar => {
                     state
                         .workspaces
                         .active_space_mut()
@@ -225,6 +231,52 @@ pub fn handle_pointer_button<I: InputBackend>(
                             initial_window_location,
                         };
                         pointer.set_grab(state, grab, serial, Focus::Clear);
+                    }
+                    return;
+                }
+                DecorationHit::Resize(edge) => {
+                    let resize_edges = match edge {
+                        DecorationResizeEdge::Left => ResizeEdge::LEFT,
+                        DecorationResizeEdge::Right => ResizeEdge::RIGHT,
+                        DecorationResizeEdge::Bottom => ResizeEdge::BOTTOM,
+                        DecorationResizeEdge::BottomLeft => ResizeEdge::BOTTOM_LEFT,
+                        DecorationResizeEdge::BottomRight => ResizeEdge::BOTTOM_RIGHT,
+                    };
+
+                    state
+                        .workspaces
+                        .active_space_mut()
+                        .raise_element(&window, true);
+                    if let Some(surface) = window.wl_surface() {
+                        let surface = surface.into_owned();
+                        state.set_keyboard_focus_with_decorations(Some(surface.clone()), serial);
+                        state.broadcast_toplevel_focused(&surface);
+                    }
+                    pointer.button(
+                        state,
+                        &ButtonEvent {
+                            button,
+                            state: button_state,
+                            serial,
+                            time: event.time_msec(),
+                        },
+                    );
+                    pointer.frame(state);
+                    if let Some(start_data) = pointer.grab_start_data() {
+                        if let Some(toplevel) = window.toplevel() {
+                            toplevel.with_pending_state(|pending| {
+                                pending.states.set(xdg_toplevel::State::Resizing);
+                            });
+                            toplevel.send_pending_configure();
+
+                            let grab = ResizeSurfaceGrab::start(
+                                start_data,
+                                window.clone(),
+                                resize_edges,
+                                Rectangle::new(initial_window_location, window.geometry().size),
+                            );
+                            pointer.set_grab(state, grab, serial, Focus::Clear);
+                        }
                     }
                     return;
                 }

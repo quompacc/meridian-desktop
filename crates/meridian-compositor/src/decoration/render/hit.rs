@@ -5,9 +5,11 @@ use smithay::{
 };
 
 use super::super::{
-    DecorationHit, DecorationManager, BUTTON_MARGIN, BUTTON_SIZE, TITLE_BAR_HEIGHT,
+    DecorationHit, DecorationManager, DecorationResizeEdge, BUTTON_MARGIN, BUTTON_SIZE,
 };
 use super::geometry::SsdFrameMetrics;
+
+const RESIZE_HANDLE_THICKNESS: i32 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SsdFrameHitRegion {
@@ -20,6 +22,8 @@ pub(crate) enum SsdFrameHitRegion {
     LeftBorder,
     RightBorder,
     BottomBorder,
+    BottomLeftCorner,
+    BottomRightCorner,
 }
 
 pub(crate) fn classify_ssd_frame_hit(
@@ -58,13 +62,24 @@ pub(crate) fn classify_ssd_frame_hit(
 
     let bw = metrics.border_width;
     if bw > 0 {
-        if px < frame_left + bw {
+        let resize_w = bw.max(RESIZE_HANDLE_THICKNESS);
+        let at_left = px < frame_left + resize_w;
+        let at_right = px >= frame_right - resize_w;
+        let at_bottom = py >= frame_bottom - resize_w;
+
+        if at_left && at_bottom {
+            return SsdFrameHitRegion::BottomLeftCorner;
+        }
+        if at_right && at_bottom {
+            return SsdFrameHitRegion::BottomRightCorner;
+        }
+        if at_left {
             return SsdFrameHitRegion::LeftBorder;
         }
-        if px >= frame_right - bw {
+        if at_right {
             return SsdFrameHitRegion::RightBorder;
         }
-        if py >= frame_bottom - bw {
+        if at_bottom {
             return SsdFrameHitRegion::BottomBorder;
         }
     }
@@ -91,24 +106,28 @@ impl DecorationManager {
         }
 
         let metrics = self.ssd_render_metrics(surface, window_loc, content_size, theme);
-        let py = pointer_pos.y as i32;
-        let legacy_hit_top = metrics.frame_origin.y;
-        let legacy_hit_bottom = metrics.frame_origin.y + TITLE_BAR_HEIGHT + metrics.border_width;
-        if py < legacy_hit_top || py >= legacy_hit_bottom {
-            return None;
-        }
 
         match classify_ssd_frame_hit(pointer_pos, metrics) {
             SsdFrameHitRegion::CloseButton => Some(DecorationHit::CloseButton),
             SsdFrameHitRegion::MaximizeButton => Some(DecorationHit::MaximizeButton),
             SsdFrameHitRegion::MinimizeButton => Some(DecorationHit::MinimizeButton),
-            SsdFrameHitRegion::LeftBorder | SsdFrameHitRegion::RightBorder => {
-                Some(DecorationHit::Border)
+            SsdFrameHitRegion::LeftBorder => {
+                Some(DecorationHit::Resize(DecorationResizeEdge::Left))
+            }
+            SsdFrameHitRegion::RightBorder => {
+                Some(DecorationHit::Resize(DecorationResizeEdge::Right))
+            }
+            SsdFrameHitRegion::BottomBorder => {
+                Some(DecorationHit::Resize(DecorationResizeEdge::Bottom))
+            }
+            SsdFrameHitRegion::BottomLeftCorner => {
+                Some(DecorationHit::Resize(DecorationResizeEdge::BottomLeft))
+            }
+            SsdFrameHitRegion::BottomRightCorner => {
+                Some(DecorationHit::Resize(DecorationResizeEdge::BottomRight))
             }
             SsdFrameHitRegion::TitleBar => Some(DecorationHit::TitleBar),
-            SsdFrameHitRegion::OutsideFrame
-            | SsdFrameHitRegion::ClientContent
-            | SsdFrameHitRegion::BottomBorder => None,
+            SsdFrameHitRegion::OutsideFrame | SsdFrameHitRegion::ClientContent => None,
         }
     }
 }
@@ -139,6 +158,36 @@ mod tests {
         assert_eq!(
             classify_ssd_frame_hit((100.0, 435.0).into(), metrics),
             SsdFrameHitRegion::BottomBorder
+        );
+    }
+
+    #[test]
+    fn thin_visual_border_still_has_practical_resize_hit_area() {
+        let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
+        assert_eq!(
+            classify_ssd_frame_hit((6.0, 220.0).into(), metrics),
+            SsdFrameHitRegion::LeftBorder
+        );
+        assert_eq!(
+            classify_ssd_frame_hit((638.0, 220.0).into(), metrics),
+            SsdFrameHitRegion::RightBorder
+        );
+        assert_eq!(
+            classify_ssd_frame_hit((320.0, 430.0).into(), metrics),
+            SsdFrameHitRegion::BottomBorder
+        );
+    }
+
+    #[test]
+    fn border_corner_points_hit_bottom_corner_regions() {
+        let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
+        assert_eq!(
+            classify_ssd_frame_hit((1.0, 435.0).into(), metrics),
+            SsdFrameHitRegion::BottomLeftCorner
+        );
+        assert_eq!(
+            classify_ssd_frame_hit((642.0, 435.0).into(), metrics),
+            SsdFrameHitRegion::BottomRightCorner
         );
     }
 
