@@ -1,7 +1,7 @@
 use std::hash::{Hash, Hasher};
 
 use smithay_client_toolkit::shell::WaylandSurface;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 use wayland_client::QueueHandle;
 
 use crate::{buffer, launcher, panel, Painter, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, PANEL_HEIGHT};
@@ -243,8 +243,13 @@ impl MeridianShell {
             self.workspace_indicator_dirty = false;
         }
 
-        buf.attach_to(self.panel.wl_surface())
-            .expect("panel buffer attach");
+        if let Err(err) = buf.attach_to(self.panel.wl_surface()) {
+            warn!(
+                "panel buffer attach failed: reason={:?} width={} height={} error={}",
+                reason, width, height, err
+            );
+            return;
+        }
         self.panel
             .wl_surface()
             .damage_buffer(0, 0, width as i32, height as i32);
@@ -344,8 +349,13 @@ impl MeridianShell {
         self.launcher_layer
             .wl_surface()
             .damage_buffer(0, 0, width as i32, height as i32);
-        buf.attach_to(self.launcher_layer.wl_surface())
-            .expect("launcher buffer attach");
+        if let Err(err) = buf.attach_to(self.launcher_layer.wl_surface()) {
+            warn!(
+                "launcher buffer attach failed: reason={:?} width={} height={} error={}",
+                reason, width, height, err
+            );
+            return;
+        }
         self.commit_surface(
             CommitSurfaceKind::Launcher,
             Self::commit_reason_from_repaint(reason, false),
