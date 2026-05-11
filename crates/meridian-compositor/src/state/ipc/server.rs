@@ -10,6 +10,8 @@ use meridian_ipc::{
     ShellEvent,
 };
 
+const IPC_MAX_BUFFER_BYTES: usize = 64 * 1024;
+
 pub struct IpcServer {
     listener: Option<UnixListener>,
     clients: Vec<IpcClient>,
@@ -97,13 +99,27 @@ impl IpcServer {
 
         let mut tmp = [0_u8; 4096];
         for client in &mut self.clients {
+            let mut oversized_incomplete_line = false;
             loop {
                 match client.stream.read(&mut tmp) {
                     Ok(0) => {
                         client.alive = false;
                         break;
                     }
-                    Ok(n) => client.buffer.extend_from_slice(&tmp[..n]),
+                    Ok(n) => {
+                        client.buffer.extend_from_slice(&tmp[..n]);
+                        if client.buffer.len() > IPC_MAX_BUFFER_BYTES {
+                            tracing::warn!(
+                                "IPC client {} exceeded read buffer limit ({} bytes), closing connection",
+                                client.id,
+                                IPC_MAX_BUFFER_BYTES
+                            );
+                            client.buffer.clear();
+                            client.alive = false;
+                            oversized_incomplete_line = true;
+                            break;
+                        }
+                    }
                     Err(err) if err.kind() == io::ErrorKind::WouldBlock => break,
                     Err(err) => {
                         tracing::warn!("IPC client read failed: {}", err);
@@ -111,6 +127,10 @@ impl IpcServer {
                         break;
                     }
                 }
+            }
+
+            if oversized_incomplete_line {
+                continue;
             }
 
             while let Some(pos) = client.buffer.iter().position(|byte| *byte == b'\n') {
