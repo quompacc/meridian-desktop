@@ -64,7 +64,7 @@ impl WindowDecoration {
     }
 
     pub(super) fn should_draw_title_bar(&self) -> bool {
-        self.should_draw() && !self.is_maximized && !self.is_tiled
+        self.should_draw() && !self.is_tiled
     }
 
     pub(super) fn border_width(&self, theme: &Decorations) -> i32 {

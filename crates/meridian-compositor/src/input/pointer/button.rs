@@ -226,6 +226,12 @@ pub fn handle_pointer_button<I: InputBackend>(
                             state
                                 .decoration_manager
                                 .set_maximized(toplevel.wl_surface(), true);
+                            let theme = &state.theme_manager.current().config.decorations;
+                            let (x_off, y_off) = state
+                                .decoration_manager
+                                .decoration_offset(toplevel.wl_surface(), theme);
+                            let maximized_client_loc: Point<i32, Logical> =
+                                (geo.loc.x + x_off, geo.loc.y + y_off).into();
                             if let Some(current_loc) =
                                 state.workspaces.active_space().element_location(&window)
                             {
@@ -236,7 +242,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                             }
                             state.workspaces.active_space_mut().map_element(
                                 window.clone(),
-                                geo.loc,
+                                maximized_client_loc,
                                 true,
                             );
                         }

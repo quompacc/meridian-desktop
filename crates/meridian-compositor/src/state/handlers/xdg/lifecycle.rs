@@ -9,7 +9,10 @@ use meridian_wm::WorkspaceMode;
 
 use crate::state::MeridianState;
 
-fn initial_maximized_origin(state: &MeridianState) -> Option<Point<i32, Logical>> {
+fn initial_maximized_client_origin(
+    state: &MeridianState,
+    surface: &smithay::reexports::wayland_server::protocol::wl_surface::WlSurface,
+) -> Option<Point<i32, Logical>> {
     let selected_output_name = state
         .output_registry
         .list()
@@ -22,7 +25,9 @@ fn initial_maximized_origin(state: &MeridianState) -> Option<Point<i32, Logical>
         .iter()
         .find(|candidate| candidate.name() == selected_output_name)?;
     let geo = state.workspaces.active_space().output_geometry(output)?;
-    Some(geo.loc)
+    let theme = &state.theme_manager.current().config.decorations;
+    let (x_off, y_off) = state.decoration_manager.decoration_offset(surface, theme);
+    Some((geo.loc.x + x_off, geo.loc.y + y_off).into())
 }
 
 pub(super) fn handle_new_toplevel(state: &mut MeridianState, surface: ToplevelSurface) {
@@ -65,7 +70,8 @@ pub(super) fn handle_new_toplevel(state: &mut MeridianState, surface: ToplevelSu
                 .maximize_restore_locations
                 .entry(crate::state::window_id(&wl_surface))
                 .or_insert(initial_client_origin);
-            let maximized_origin = initial_maximized_origin(state).unwrap_or(initial_client_origin);
+            let maximized_origin = initial_maximized_client_origin(state, &wl_surface)
+                .unwrap_or(initial_client_origin);
             state
                 .workspaces
                 .active_space_mut()

@@ -29,6 +29,11 @@ pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: Toplev
         state
             .decoration_manager
             .set_maximized(surface.wl_surface(), true);
+        let theme = &state.theme_manager.current().config.decorations;
+        let (x_off, y_off) = state
+            .decoration_manager
+            .decoration_offset(surface.wl_surface(), theme);
+        let maximized_client_loc: Point<i32, Logical> = (loc.x + x_off, loc.y + y_off).into();
 
         if let Some(window) = find_active_window(state, &surface) {
             if !is_maxed {
@@ -43,7 +48,7 @@ pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: Toplev
             state
                 .workspaces
                 .active_space_mut()
-                .map_element(window, loc, true);
+                .map_element(window, maximized_client_loc, true);
         }
     } else {
         tracing::debug!("selected output for maximize: none (registry empty)");
