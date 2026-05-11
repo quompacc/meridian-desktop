@@ -2074,6 +2074,26 @@ Exec=viewer %U
     }
 
     #[test]
+    fn selecting_same_sidebar_category_reports_no_change() {
+        let mut state = LauncherState {
+            open: true,
+            query: String::new(),
+            selected_index: 2,
+            sidebar_category: SidebarCategory::Favorites,
+            clicks: Vec::new(),
+            apps: vec![DesktopApp::new(
+                "Terminal".to_string(),
+                vec!["foot".to_string()],
+                true,
+            )],
+        };
+
+        assert!(!state.set_sidebar_category_from_click(SidebarCategory::Favorites.to_click_id()));
+        assert_eq!(state.sidebar_category, SidebarCategory::Favorites);
+        assert_eq!(state.selected_index, 2);
+    }
+
+    #[test]
     fn empty_query_favorites_shows_only_pinned_apps() {
         let state = LauncherState {
             open: true,

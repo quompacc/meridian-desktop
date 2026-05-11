@@ -543,7 +543,7 @@ impl MeridianShell {
         }
     }
 
-    pub(crate) fn handle_launcher_click(&mut self, _qh: &QueueHandle<Self>, action: ClickAction) {
+    pub(crate) fn handle_launcher_click(&mut self, qh: &QueueHandle<Self>, action: ClickAction) {
         match action {
             ClickAction::LaunchApp(index) => {
                 self.launcher_state.set_selected_index(index);
@@ -551,7 +551,9 @@ impl MeridianShell {
                     .launch_app(self.launcher_state.selected_index, &mut self.ipc);
             }
             ClickAction::SelectLauncherCategory(raw) => {
-                self.launcher_state.set_sidebar_category_from_click(raw);
+                if self.launcher_state.set_sidebar_category_from_click(raw) {
+                    self.draw_launcher(qh, RepaintReason::Pointer);
+                }
             }
             ClickAction::SwitchWorkspace(_) => {}
             ClickAction::ToggleLauncher => {}
