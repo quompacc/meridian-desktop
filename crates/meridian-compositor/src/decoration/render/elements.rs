@@ -71,13 +71,7 @@ impl DecorationManager {
             let max_x = close_x - BUTTON_SIZE - BUTTON_MARGIN / 2;
             let min_x = max_x - BUTTON_SIZE - BUTTON_MARGIN / 2;
 
-            elements.push(SolidColorRenderElement::from_buffer(
-                &deco.buffers.titlebar,
-                phys(x, y),
-                scale,
-                1.0,
-                Kind::Unspecified,
-            ));
+            // Render order is front-to-back. Emit controls before titlebar fill so controls stay visible.
             elements.push(SolidColorRenderElement::from_buffer(
                 &deco.buffers.close_btn,
                 phys(x + close_x, y + btn_y),
@@ -95,6 +89,13 @@ impl DecorationManager {
             elements.push(SolidColorRenderElement::from_buffer(
                 &deco.buffers.minimize_btn,
                 phys(x + min_x, y + btn_y),
+                scale,
+                1.0,
+                Kind::Unspecified,
+            ));
+            elements.push(SolidColorRenderElement::from_buffer(
+                &deco.buffers.titlebar,
+                phys(x, y),
                 scale,
                 1.0,
                 Kind::Unspecified,
