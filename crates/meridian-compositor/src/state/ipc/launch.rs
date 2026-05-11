@@ -100,19 +100,30 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
     }
 
-    fn with_env_var<R>(key: &str, value: Option<&str>, f: impl FnOnce() -> R) -> R {
+    fn with_env_vars<R>(vars: &[(&str, Option<&str>)], f: impl FnOnce() -> R) -> R {
         let _guard = env_lock().lock().expect("env lock");
-        let previous = std::env::var(key).ok();
-        match value {
-            Some(v) => std::env::set_var(key, v),
-            None => std::env::remove_var(key),
+        let previous: Vec<(&str, Option<String>)> = vars
+            .iter()
+            .map(|(key, _)| (*key, std::env::var(key).ok()))
+            .collect();
+
+        for (key, value) in vars {
+            match value {
+                Some(v) => std::env::set_var(key, v),
+                None => std::env::remove_var(key),
+            }
         }
+
         let result = f();
-        if let Some(v) = previous {
-            std::env::set_var(key, v);
-        } else {
-            std::env::remove_var(key);
+
+        for (key, value) in previous {
+            if let Some(v) = value {
+                std::env::set_var(key, v);
+            } else {
+                std::env::remove_var(key);
+            }
         }
+
         result
     }
 
@@ -154,11 +165,10 @@ mod tests {
             .expect("set permissions");
 
         let terminal_str = terminal_path.to_string_lossy().to_string();
-        let spec = with_env_var("PATH", Some(""), || {
-            with_env_var("TERMINAL", Some(&terminal_str), || {
-                prepare_launch("app", &[], true)
-            })
-        });
+        let spec = with_env_vars(
+            &[("PATH", Some("")), ("TERMINAL", Some(&terminal_str))],
+            || prepare_launch("app", &[], true),
+        );
         assert!(spec.is_none());
         let _ = fs::remove_file(&terminal_path);
         let _ = fs::remove_dir(&tmpdir);
@@ -188,11 +198,10 @@ mod tests {
             .expect("set permissions");
 
         let terminal_str = terminal_path.to_string_lossy().to_string();
-        let spec = with_env_var("PATH", Some(""), || {
-            with_env_var("TERMINAL", Some(&terminal_str), || {
-                prepare_launch("app", &["--flag".to_string()], true)
-            })
-        })
+        let spec = with_env_vars(
+            &[("PATH", Some("")), ("TERMINAL", Some(&terminal_str))],
+            || prepare_launch("app", &["--flag".to_string()], true),
+        )
         .expect("launch spec");
 
         assert_eq!(spec.program, terminal_str);
