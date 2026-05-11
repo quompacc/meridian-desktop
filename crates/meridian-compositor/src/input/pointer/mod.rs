@@ -2,13 +2,20 @@ use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, InputBackend, PointerAxisEvent, PointerMotionEvent,
     },
+    desktop::Window,
     input::pointer::{AxisFrame, MotionEvent},
     utils::SERIAL_COUNTER,
     utils::{Logical, Point, Size},
+    wayland::seat::WaylandFocus,
 };
 use tracing::debug;
 
-use crate::state::{MeridianState, OutputId, OutputRegistry};
+use crate::{
+    backend::drm::DrmCursorIcon,
+    cursor::CursorImage,
+    decoration::{DecorationHit, DecorationResizeEdge},
+    state::{MeridianState, OutputId, OutputRegistry},
+};
 
 mod button;
 
@@ -46,6 +53,7 @@ pub fn handle_pointer_motion_absolute<I: InputBackend>(
     if fallback_used {
         debug!("pointer absolute motion fallback: no output contains point");
     }
+    update_hover_cursor_feedback(state, pos);
 
     let serial = SERIAL_COUNTER.next_serial();
     let pointer = state.seat.get_pointer().unwrap();
@@ -109,6 +117,7 @@ pub fn handle_pointer_motion_relative<I: InputBackend>(
     if fallback_used {
         debug!("pointer relative motion fallback: no output contains point");
     }
+    update_hover_cursor_feedback(state, new_pos);
 
     let serial = SERIAL_COUNTER.next_serial();
     let under = state.surface_under(new_pos);
@@ -122,6 +131,116 @@ pub fn handle_pointer_motion_relative<I: InputBackend>(
         },
     );
     pointer.frame(state);
+}
+
+const CURSOR_EW_RESIZE_NAMES: &[&str] = &[
+    "ew-resize",
+    "size_hor",
+    "sb_h_double_arrow",
+    "h_double_arrow",
+    "col-resize",
+];
+const CURSOR_NS_RESIZE_NAMES: &[&str] = &[
+    "ns-resize",
+    "size_ver",
+    "sb_v_double_arrow",
+    "v_double_arrow",
+    "row-resize",
+];
+const CURSOR_NESW_RESIZE_NAMES: &[&str] = &[
+    "nesw-resize",
+    "size_bdiag",
+    "bottom_left_corner",
+    "sw-resize",
+];
+const CURSOR_NWSE_RESIZE_NAMES: &[&str] = &[
+    "nwse-resize",
+    "size_fdiag",
+    "bottom_right_corner",
+    "se-resize",
+];
+
+fn decoration_hit_for_pointer(
+    state: &MeridianState,
+    location: Point<f64, Logical>,
+) -> Option<DecorationHit> {
+    let space = state.workspaces.active_space();
+    let theme = &state.theme_manager.current().config.decorations;
+
+    let hit_for_window = |window: &Window, window_loc: smithay::utils::Point<i32, Logical>| {
+        let wl_surf = window.wl_surface()?.into_owned();
+        let content_size = window.geometry().size;
+        state
+            .decoration_manager
+            .hit_test(&wl_surf, location, window_loc, content_size, theme)
+    };
+
+    space
+        .element_under(location)
+        .and_then(|(window, window_loc)| hit_for_window(window, window_loc))
+        .or_else(|| {
+            let windows: Vec<_> = space.elements().cloned().collect();
+            windows.iter().rev().find_map(|window| {
+                let window_loc = space.element_location(window)?;
+                hit_for_window(window, window_loc)
+            })
+        })
+}
+
+fn cursor_icon_for_decoration_hit(hit: Option<DecorationHit>) -> DrmCursorIcon {
+    match hit {
+        Some(DecorationHit::Resize(DecorationResizeEdge::Left))
+        | Some(DecorationHit::Resize(DecorationResizeEdge::Right)) => DrmCursorIcon::EwResize,
+        Some(DecorationHit::Resize(DecorationResizeEdge::Bottom)) => DrmCursorIcon::NsResize,
+        Some(DecorationHit::Resize(DecorationResizeEdge::BottomLeft)) => DrmCursorIcon::NeswResize,
+        Some(DecorationHit::Resize(DecorationResizeEdge::BottomRight)) => DrmCursorIcon::NwseResize,
+        _ => DrmCursorIcon::Default,
+    }
+}
+
+fn update_hover_cursor_feedback(state: &mut MeridianState, location: Point<f64, Logical>) {
+    let desired_cursor =
+        cursor_icon_for_decoration_hit(decoration_hit_for_pointer(state, location));
+
+    let cursor_cfg = &state.theme_manager.current().config.cursor;
+    let cursor_theme = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| cursor_cfg.theme.clone());
+    let cursor_size = std::env::var("XCURSOR_SIZE")
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(cursor_cfg.size);
+
+    let mut changed = false;
+    if let Some(drm) = state.drm_backend.as_mut() {
+        if drm.cursor_icon != desired_cursor {
+            let new_cursor = match desired_cursor {
+                DrmCursorIcon::Default => CursorImage::load_theme(&cursor_theme, cursor_size),
+                DrmCursorIcon::EwResize => {
+                    CursorImage::load_theme_icon(&cursor_theme, cursor_size, CURSOR_EW_RESIZE_NAMES)
+                }
+                DrmCursorIcon::NsResize => {
+                    CursorImage::load_theme_icon(&cursor_theme, cursor_size, CURSOR_NS_RESIZE_NAMES)
+                }
+                DrmCursorIcon::NeswResize => CursorImage::load_theme_icon(
+                    &cursor_theme,
+                    cursor_size,
+                    CURSOR_NESW_RESIZE_NAMES,
+                ),
+                DrmCursorIcon::NwseResize => CursorImage::load_theme_icon(
+                    &cursor_theme,
+                    cursor_size,
+                    CURSOR_NWSE_RESIZE_NAMES,
+                ),
+            };
+            drm.cursor_buffer = new_cursor.to_memory_buffer();
+            drm.cursor_image = new_cursor;
+            drm.cursor_icon = desired_cursor;
+            changed = true;
+        }
+    }
+
+    if changed {
+        state.mark_all_outputs_dirty("pointer-cursor-icon-change");
+    }
 }
 
 fn desktop_bounds(state: &MeridianState) -> Option<(i32, i32, i32, i32)> {
@@ -267,6 +386,52 @@ mod tests {
             super::select_output_from_registry_for_point(&registry, 2300.0, 100.0);
         assert_eq!(output.map(|o| o.name.as_str()), Some("right"));
         assert!(!fallback);
+    }
+
+    #[test]
+    fn resize_hit_maps_to_expected_cursor_icons() {
+        assert_eq!(
+            super::cursor_icon_for_decoration_hit(Some(crate::decoration::DecorationHit::Resize(
+                crate::decoration::DecorationResizeEdge::Left,
+            ))),
+            crate::backend::drm::DrmCursorIcon::EwResize
+        );
+        assert_eq!(
+            super::cursor_icon_for_decoration_hit(Some(crate::decoration::DecorationHit::Resize(
+                crate::decoration::DecorationResizeEdge::Right,
+            ))),
+            crate::backend::drm::DrmCursorIcon::EwResize
+        );
+        assert_eq!(
+            super::cursor_icon_for_decoration_hit(Some(crate::decoration::DecorationHit::Resize(
+                crate::decoration::DecorationResizeEdge::Bottom,
+            ))),
+            crate::backend::drm::DrmCursorIcon::NsResize
+        );
+        assert_eq!(
+            super::cursor_icon_for_decoration_hit(Some(crate::decoration::DecorationHit::Resize(
+                crate::decoration::DecorationResizeEdge::BottomLeft,
+            ))),
+            crate::backend::drm::DrmCursorIcon::NeswResize
+        );
+        assert_eq!(
+            super::cursor_icon_for_decoration_hit(Some(crate::decoration::DecorationHit::Resize(
+                crate::decoration::DecorationResizeEdge::BottomRight,
+            ))),
+            crate::backend::drm::DrmCursorIcon::NwseResize
+        );
+    }
+
+    #[test]
+    fn non_resize_hit_maps_to_default_cursor_icon() {
+        assert_eq!(
+            super::cursor_icon_for_decoration_hit(Some(crate::decoration::DecorationHit::TitleBar)),
+            crate::backend::drm::DrmCursorIcon::Default
+        );
+        assert_eq!(
+            super::cursor_icon_for_decoration_hit(None),
+            crate::backend::drm::DrmCursorIcon::Default
+        );
     }
 
     #[test]

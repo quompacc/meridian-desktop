@@ -13,6 +13,15 @@ const ARROW_POLYGON: [(f32, f32); 7] = [
 
 const SAMPLE_GRID: u32 = 4;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum EmbeddedCursorKind {
+    Default,
+    EwResize,
+    NsResize,
+    NeswResize,
+    NwseResize,
+}
+
 fn point_in_polygon(x: f32, y: f32, poly: &[(f32, f32)]) -> bool {
     let mut inside = false;
     let mut j = poly.len() - 1;
@@ -140,4 +149,97 @@ pub(super) fn make_cursor_pixels(width: u32, height: u32) -> Vec<u8> {
     }
 
     px
+}
+
+fn draw_polyline_cursor(width: u32, height: u32, segments: &[((f32, f32), (f32, f32))]) -> Vec<u8> {
+    let mut px = vec![0u8; width as usize * height as usize * 4];
+    let min_dim = width.min(height) as f32;
+    let core = (min_dim / 24.0).clamp(1.0, 2.0);
+    let border = core + 1.2;
+
+    for y in 0..height as usize {
+        for x in 0..width as usize {
+            let fx = x as f32 + 0.5;
+            let fy = y as f32 + 0.5;
+            let min_d = segments.iter().fold(f32::MAX, |acc, seg| {
+                let ((ax, ay), (bx, by)) = *seg;
+                acc.min(point_segment_distance(fx, fy, ax, ay, bx, by))
+            });
+            if min_d > border {
+                continue;
+            }
+            let off = (y * width as usize + x) * 4;
+            px[off + 3] = 255;
+            if min_d <= core {
+                px[off] = 255;
+                px[off + 1] = 255;
+                px[off + 2] = 255;
+            }
+        }
+    }
+
+    px
+}
+
+fn resize_cursor_segments(
+    width: u32,
+    height: u32,
+    kind: EmbeddedCursorKind,
+) -> Vec<((f32, f32), (f32, f32))> {
+    let w = width.saturating_sub(1) as f32;
+    let h = height.saturating_sub(1) as f32;
+    let min_dim = width.min(height) as f32;
+    let margin = (min_dim * 0.2).clamp(4.0, 10.0);
+    let head = (min_dim * 0.22).clamp(5.0, 12.0);
+    let cx = w * 0.5;
+    let cy = h * 0.5;
+
+    match kind {
+        EmbeddedCursorKind::EwResize => vec![
+            ((margin, cy), (w - margin, cy)),
+            ((margin, cy), (margin + head, cy - head)),
+            ((margin, cy), (margin + head, cy + head)),
+            ((w - margin, cy), (w - margin - head, cy - head)),
+            ((w - margin, cy), (w - margin - head, cy + head)),
+        ],
+        EmbeddedCursorKind::NsResize => vec![
+            ((cx, margin), (cx, h - margin)),
+            ((cx, margin), (cx - head, margin + head)),
+            ((cx, margin), (cx + head, margin + head)),
+            ((cx, h - margin), (cx - head, h - margin - head)),
+            ((cx, h - margin), (cx + head, h - margin - head)),
+        ],
+        EmbeddedCursorKind::NeswResize => vec![
+            ((margin, h - margin), (w - margin, margin)),
+            ((margin, h - margin), (margin + head, h - margin)),
+            ((margin, h - margin), (margin, h - margin - head)),
+            ((w - margin, margin), (w - margin - head, margin)),
+            ((w - margin, margin), (w - margin, margin + head)),
+        ],
+        EmbeddedCursorKind::NwseResize => vec![
+            ((margin, margin), (w - margin, h - margin)),
+            ((margin, margin), (margin + head, margin)),
+            ((margin, margin), (margin, margin + head)),
+            ((w - margin, h - margin), (w - margin - head, h - margin)),
+            ((w - margin, h - margin), (w - margin, h - margin - head)),
+        ],
+        EmbeddedCursorKind::Default => Vec::new(),
+    }
+}
+
+pub(super) fn make_cursor_pixels_for_kind(
+    width: u32,
+    height: u32,
+    kind: EmbeddedCursorKind,
+) -> Vec<u8> {
+    match kind {
+        EmbeddedCursorKind::Default => make_cursor_pixels(width, height),
+        EmbeddedCursorKind::EwResize
+        | EmbeddedCursorKind::NsResize
+        | EmbeddedCursorKind::NeswResize
+        | EmbeddedCursorKind::NwseResize => {
+            let segments = resize_cursor_segments(width, height, kind);
+            draw_polyline_cursor(width, height, &segments)
+        }
+    }
 }

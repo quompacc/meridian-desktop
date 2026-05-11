@@ -1356,6 +1356,7 @@ pub fn init_drm(
         outputs: drm_outputs,
         cursor_image,
         cursor_buffer,
+        cursor_icon: super::DrmCursorIcon::Default,
         dirty_stats: super::DrmDirtyStats::new(dirty_stats_enabled),
         last_pointer_location: None,
         last_connector_scan: std::time::Instant::now(),

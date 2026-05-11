@@ -50,6 +50,31 @@ fn embedded_cursor_icon_name_is_left_ptr() {
 }
 
 #[test]
+fn empty_theme_resize_icon_requests_return_named_embedded_variants() {
+    let ew = CursorImage::load_theme_icon("", 24, &["ew-resize"]);
+    let ns = CursorImage::load_theme_icon("", 24, &["ns-resize"]);
+    let nesw = CursorImage::load_theme_icon("", 24, &["nesw-resize"]);
+    let nwse = CursorImage::load_theme_icon("", 24, &["nwse-resize"]);
+    assert_eq!(ew.theme, "meridian-embedded");
+    assert_eq!(ns.theme, "meridian-embedded");
+    assert_eq!(nesw.theme, "meridian-embedded");
+    assert_eq!(nwse.theme, "meridian-embedded");
+    assert_eq!(ew.name, "ew-resize");
+    assert_eq!(ns.name, "ns-resize");
+    assert_eq!(nesw.name, "nesw-resize");
+    assert_eq!(nwse.name, "nwse-resize");
+}
+
+#[test]
+fn embedded_resize_variants_are_visually_distinct_from_default() {
+    let default = CursorImage::embedded();
+    let ew = CursorImage::load_theme_icon("", default.width, &["ew-resize"]);
+    let ns = CursorImage::load_theme_icon("", default.width, &["ns-resize"]);
+    assert_ne!(default.pixels_rgba, ew.pixels_rgba);
+    assert_ne!(default.pixels_rgba, ns.pixels_rgba);
+}
+
+#[test]
 fn embedded_cursor_hotspot_is_origin() {
     let c = CursorImage::embedded();
     assert_eq!(c.xhot, 0);

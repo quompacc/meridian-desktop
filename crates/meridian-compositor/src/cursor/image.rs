@@ -7,7 +7,7 @@ use tracing::info;
 #[cfg(feature = "xcursor-themes")]
 use tracing::warn;
 
-use super::embedded::{make_cursor_pixels, CURSOR_WIDTH};
+use super::embedded::{make_cursor_pixels_for_kind, EmbeddedCursorKind, CURSOR_WIDTH};
 
 pub const CURSOR_FORMAT: Fourcc = Fourcc::Argb8888;
 const CURSOR_XHOT: u32 = 0;
@@ -40,30 +40,43 @@ impl CursorImage {
     }
 
     pub fn load_theme(theme_name: &str, requested_size: u32) -> Self {
+        const DEFAULT_ICON_NAMES: &[&str] = &["left_ptr", "default", "arrow"];
+        Self::load_theme_icon(theme_name, requested_size, DEFAULT_ICON_NAMES)
+    }
+
+    pub fn load_theme_icon(theme_name: &str, requested_size: u32, icon_names: &[&str]) -> Self {
         if theme_name.is_empty() {
             info!(
                 "cursor fallback used: empty theme name, using embedded cursor size={}",
                 requested_size
             );
-            return Self::embedded_sized(requested_size);
+            return Self::embedded_sized_with_kind(
+                requested_size,
+                embedded_kind_for_icon_names(icon_names),
+                embedded_name_for_icon_names(icon_names),
+            );
         }
 
         #[cfg(feature = "xcursor-themes")]
         {
-            super::xcursor::load_xcursor(theme_name, requested_size)
+            super::xcursor::load_xcursor_with_names(theme_name, requested_size, icon_names)
                 .or_else(|err| {
                     warn!(
-                        "Cannot load xcursor theme={} size={}: {}; trying \"default\"",
-                        theme_name, requested_size, err
+                        "Cannot load xcursor theme={} size={} icon_names={:?}: {}; trying \"default\"",
+                        theme_name, requested_size, icon_names, err
                     );
-                    super::xcursor::load_xcursor("default", requested_size)
+                    super::xcursor::load_xcursor_with_names("default", requested_size, icon_names)
                 })
                 .unwrap_or_else(|err| {
                     warn!(
-                        "cursor fallback used: xcursor load failed for theme={} size={}: {}",
-                        theme_name, requested_size, err
+                        "cursor fallback used: xcursor load failed for theme={} size={} icon_names={:?}: {}",
+                        theme_name, requested_size, icon_names, err
                     );
-                    Self::embedded_sized(requested_size)
+                    Self::embedded_sized_with_kind(
+                        requested_size,
+                        embedded_kind_for_icon_names(icon_names),
+                        embedded_name_for_icon_names(icon_names),
+                    )
                 })
         }
 
@@ -73,7 +86,11 @@ impl CursorImage {
                 "cursor fallback used: xcursor feature disabled, using embedded cursor size={}",
                 requested_size
             );
-            Self::embedded_sized(requested_size)
+            Self::embedded_sized_with_kind(
+                requested_size,
+                embedded_kind_for_icon_names(icon_names),
+                embedded_name_for_icon_names(icon_names),
+            )
         }
     }
 
@@ -82,6 +99,10 @@ impl CursorImage {
     }
 
     pub fn embedded_sized(size: u32) -> Self {
+        Self::embedded_sized_with_kind(size, EmbeddedCursorKind::Default, "left_ptr")
+    }
+
+    fn embedded_sized_with_kind(size: u32, kind: EmbeddedCursorKind, name: &str) -> Self {
         let size = size.clamp(16, 64);
         info!(
             "Loading embedded Meridian cursor ({}x{} ARGB8888)",
@@ -89,12 +110,12 @@ impl CursorImage {
         );
         Self {
             theme: "meridian-embedded".to_string(),
-            name: "left_ptr".to_string(),
+            name: name.to_string(),
             width: size,
             height: size,
             xhot: CURSOR_XHOT,
             yhot: CURSOR_YHOT,
-            pixels_rgba: make_cursor_pixels(size, size),
+            pixels_rgba: make_cursor_pixels_for_kind(size, size, kind),
         }
     }
 
@@ -132,5 +153,51 @@ impl CursorImage {
             Transform::Normal,
             None,
         )
+    }
+}
+
+fn embedded_kind_for_icon_names(icon_names: &[&str]) -> EmbeddedCursorKind {
+    if icon_names.iter().any(|name| {
+        matches!(
+            *name,
+            "ew-resize" | "size_hor" | "sb_h_double_arrow" | "h_double_arrow" | "col-resize"
+        )
+    }) {
+        return EmbeddedCursorKind::EwResize;
+    }
+    if icon_names.iter().any(|name| {
+        matches!(
+            *name,
+            "ns-resize" | "size_ver" | "sb_v_double_arrow" | "v_double_arrow" | "row-resize"
+        )
+    }) {
+        return EmbeddedCursorKind::NsResize;
+    }
+    if icon_names.iter().any(|name| {
+        matches!(
+            *name,
+            "nesw-resize" | "size_bdiag" | "bottom_left_corner" | "sw-resize"
+        )
+    }) {
+        return EmbeddedCursorKind::NeswResize;
+    }
+    if icon_names.iter().any(|name| {
+        matches!(
+            *name,
+            "nwse-resize" | "size_fdiag" | "bottom_right_corner" | "se-resize"
+        )
+    }) {
+        return EmbeddedCursorKind::NwseResize;
+    }
+    EmbeddedCursorKind::Default
+}
+
+fn embedded_name_for_icon_names(icon_names: &[&str]) -> &'static str {
+    match embedded_kind_for_icon_names(icon_names) {
+        EmbeddedCursorKind::Default => "left_ptr",
+        EmbeddedCursorKind::EwResize => "ew-resize",
+        EmbeddedCursorKind::NsResize => "ns-resize",
+        EmbeddedCursorKind::NeswResize => "nesw-resize",
+        EmbeddedCursorKind::NwseResize => "nwse-resize",
     }
 }

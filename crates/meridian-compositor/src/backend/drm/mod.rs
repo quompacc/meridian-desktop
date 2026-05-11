@@ -513,6 +513,15 @@ pub struct DrmOutput {
     pub needs_repaint: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DrmCursorIcon {
+    Default,
+    EwResize,
+    NsResize,
+    NeswResize,
+    NwseResize,
+}
+
 pub struct DrmBackend {
     pub device_fd: DrmDeviceFd,
     pub kms_node_path: String,
@@ -523,6 +532,7 @@ pub struct DrmBackend {
     pub outputs: Vec<DrmOutput>,
     pub cursor_image: CursorImage,
     pub cursor_buffer: MemoryRenderBuffer,
+    pub cursor_icon: DrmCursorIcon,
     pub dirty_stats: DrmDirtyStats,
     pub last_pointer_location: Option<(f64, f64)>,
     pub last_connector_scan: Instant,
