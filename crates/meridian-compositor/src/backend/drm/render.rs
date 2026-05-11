@@ -12,8 +12,9 @@ use smithay::{
     desktop::{
         layer_map_for_output,
         space::{space_render_elements, SpaceRenderElements},
-        Window,
+        Space, Window,
     },
+    output::Output,
     utils::Scale,
     wayland::seat::WaylandFocus,
 };
@@ -54,6 +55,19 @@ fn clear_output_dirty(
             output.output.name()
         );
     }
+}
+
+fn render_window_space_elements(
+    renderer: &mut GlesRenderer,
+    output: &Output,
+    window: &Window,
+    window_loc: smithay::utils::Point<i32, smithay::utils::Logical>,
+) -> Vec<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>> {
+    let mut window_space = Space::<Window>::default();
+    window_space.map_output(output, (0, 0));
+    window_space.map_element(window.clone(), window_loc, false);
+    space_render_elements::<GlesRenderer, Window, _>(renderer, [&window_space], output, 1.0)
+        .unwrap_or_default()
 }
 
 pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
@@ -123,47 +137,53 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
             out_size.1,
         );
 
-        let space_elements = space_render_elements::<GlesRenderer, Window, _>(
-            renderer,
-            [state.workspaces.active_space()],
-            &out.output,
-            1.0,
-        )
-        .unwrap_or_default();
-        let space_element_count = space_elements.len();
-
         let space = state.workspaces.active_space();
         let theme = &state.theme_manager.current().config;
         let scale = Scale::from(1.0f64);
 
-        let mut deco_elements: Vec<SolidColorRenderElement> = Vec::new();
+        let mut normal_window_elements: Vec<MeridianRenderElements> = Vec::new();
+        let mut decoration_element_count = 0usize;
+        let mut space_element_count = 0usize;
         let windows: Vec<_> = space.elements().cloned().collect();
-        for window in &windows {
-            let wl_surf = match window.wl_surface().map(|s| s.into_owned()) {
-                Some(s) => s,
-                None => continue,
-            };
+        for window in windows.iter().rev() {
             let loc = match space.element_location(window) {
                 Some(l) => l,
                 None => continue,
             };
-            let geo = window.geometry();
-            let metrics = state.decoration_manager.ssd_render_metrics(
-                &wl_surf,
-                loc,
-                geo.size,
-                &theme.decorations,
+
+            if let Some(wl_surf) = window.wl_surface().map(|s| s.into_owned()) {
+                let geo = window.geometry();
+                let metrics = state.decoration_manager.ssd_render_metrics(
+                    &wl_surf,
+                    loc,
+                    geo.size,
+                    &theme.decorations,
+                );
+                let window_deco_elements = state.decoration_manager.render_elements(
+                    &wl_surf,
+                    metrics.frame_origin,
+                    metrics.client_size,
+                    &theme.decorations,
+                    &theme.colors,
+                    scale,
+                );
+                decoration_element_count += window_deco_elements.len();
+                normal_window_elements.extend(
+                    window_deco_elements
+                        .into_iter()
+                        .map(MeridianRenderElements::Decoration),
+                );
+            }
+
+            let window_space_elements =
+                render_window_space_elements(renderer, &out.output, window, loc);
+            space_element_count += window_space_elements.len();
+            normal_window_elements.extend(
+                window_space_elements
+                    .into_iter()
+                    .map(MeridianRenderElements::Space),
             );
-            deco_elements.extend(state.decoration_manager.render_elements(
-                &wl_surf,
-                metrics.frame_origin,
-                metrics.client_size,
-                &theme.decorations,
-                &theme.colors,
-                scale,
-            ));
         }
-        let decoration_element_count = deco_elements.len();
 
         let mut cursor_elements: Vec<MeridianRenderElements> = Vec::new();
         if let Some(pointer) = state.seat.get_pointer() {
@@ -204,16 +224,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
         let mut elements: Vec<MeridianRenderElements> = Vec::new();
         elements.extend(cursor_elements.into_iter());
         elements.extend(upper_layer_elements.into_iter());
-        elements.extend(
-            deco_elements
-                .into_iter()
-                .map(MeridianRenderElements::Decoration),
-        );
-        elements.extend(
-            space_elements
-                .into_iter()
-                .map(MeridianRenderElements::Space),
-        );
+        elements.extend(normal_window_elements.into_iter());
         elements.extend(lower_layer_elements.into_iter());
         elements.extend(
             wallpaper_elem

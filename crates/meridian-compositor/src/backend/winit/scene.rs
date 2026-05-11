@@ -1,6 +1,6 @@
 use smithay::{
-    backend::renderer::{element::solid::SolidColorRenderElement, gles::GlesRenderer},
-    desktop::{space::space_render_elements, Window},
+    backend::renderer::gles::GlesRenderer,
+    desktop::{space::space_render_elements, Space, Window},
     output::Output,
     utils::Scale,
     wayland::seat::WaylandFocus,
@@ -9,6 +9,24 @@ use smithay::{
 use crate::{state::MeridianState, wallpaper::WallpaperGpuCache};
 
 use super::{layers::render_layer_elements, layers::LayerRenderData, WinitRenderElements};
+
+fn render_window_space_elements(
+    renderer: &mut GlesRenderer,
+    output: &Output,
+    window: &Window,
+    window_loc: smithay::utils::Point<i32, smithay::utils::Logical>,
+) -> Vec<
+    smithay::desktop::space::SpaceRenderElements<
+        GlesRenderer,
+        smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement<GlesRenderer>,
+    >,
+> {
+    let mut window_space = Space::<Window>::default();
+    window_space.map_output(output, (0, 0));
+    window_space.map_element(window.clone(), window_loc, false);
+    space_render_elements::<GlesRenderer, Window, _>(renderer, [&window_space], output, 1.0)
+        .unwrap_or_default()
+}
 
 pub(super) fn render_elements_for_output(
     state: &mut MeridianState,
@@ -32,47 +50,51 @@ pub(super) fn render_elements_for_output(
         out_h,
     );
 
-    let space_elems = space_render_elements::<GlesRenderer, Window, _>(
-        renderer,
-        [state.workspaces.active_space()],
-        output,
-        1.0,
-    )
-    .unwrap_or_default();
-
     let theme = &state.theme_manager.current().config;
     let scale = Scale::from(1.0f64);
-    let mut deco_elements: Vec<SolidColorRenderElement> = Vec::new();
+    let mut normal_window_elements: Vec<WinitRenderElements> = Vec::new();
     for window in state
         .workspaces
         .active_space()
         .elements()
         .cloned()
         .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
     {
-        let wl_surf = match window.wl_surface().map(|s| s.into_owned()) {
-            Some(s) => s,
-            None => continue,
-        };
         let loc = match state.workspaces.active_space().element_location(&window) {
             Some(l) => l,
             None => continue,
         };
-        let geo = window.geometry();
-        let metrics = state.decoration_manager.ssd_render_metrics(
-            &wl_surf,
-            loc,
-            geo.size,
-            &theme.decorations,
+
+        if let Some(wl_surf) = window.wl_surface().map(|s| s.into_owned()) {
+            let geo = window.geometry();
+            let metrics = state.decoration_manager.ssd_render_metrics(
+                &wl_surf,
+                loc,
+                geo.size,
+                &theme.decorations,
+            );
+            let window_deco_elements = state.decoration_manager.render_elements(
+                &wl_surf,
+                metrics.frame_origin,
+                metrics.client_size,
+                &theme.decorations,
+                &theme.colors,
+                scale,
+            );
+            normal_window_elements.extend(
+                window_deco_elements
+                    .into_iter()
+                    .map(WinitRenderElements::Decoration),
+            );
+        }
+
+        normal_window_elements.extend(
+            render_window_space_elements(renderer, output, &window, loc)
+                .into_iter()
+                .map(WinitRenderElements::Space),
         );
-        deco_elements.extend(state.decoration_manager.render_elements(
-            &wl_surf,
-            metrics.frame_origin,
-            metrics.client_size,
-            &theme.decorations,
-            &theme.colors,
-            scale,
-        ));
     }
 
     let lower_layer_elems = render_layer_elements(renderer, lower_layer_data, scale);
@@ -85,12 +107,7 @@ pub(super) fn render_elements_for_output(
         .into_iter()
         .map(WinitRenderElements::Wallpaper)
         .chain(lower_layer_elems)
-        .chain(space_elems.into_iter().map(WinitRenderElements::Space))
-        .chain(
-            deco_elements
-                .into_iter()
-                .map(WinitRenderElements::Decoration),
-        )
+        .chain(normal_window_elements)
         .chain(upper_layer_elems)
         .collect()
 }
