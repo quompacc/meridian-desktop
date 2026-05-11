@@ -24,15 +24,11 @@ pub(super) fn update_buffers(
     let title_f32 = opaque(if deco.is_focused {
         colors.accent
     } else {
-        colors.surface
+        colors.border
     });
     let close_f32 = opaque(colors.error);
-    let btn_f32: [f32; 4] = [
-        colors.text.r as f32 / 255.0,
-        colors.text.g as f32 / 255.0,
-        colors.text.b as f32 / 255.0,
-        0.6,
-    ];
+    let maximize_f32 = opaque(colors.success);
+    let minimize_f32 = opaque(colors.warning);
 
     if show_title {
         deco.buffers
@@ -43,10 +39,10 @@ pub(super) fn update_buffers(
             .update((BUTTON_SIZE, BUTTON_SIZE), close_f32);
         deco.buffers
             .maximize_btn
-            .update((BUTTON_SIZE, BUTTON_SIZE), btn_f32);
+            .update((BUTTON_SIZE, BUTTON_SIZE), maximize_f32);
         deco.buffers
             .minimize_btn
-            .update((BUTTON_SIZE, BUTTON_SIZE), btn_f32);
+            .update((BUTTON_SIZE, BUTTON_SIZE), minimize_f32);
     }
     if bw > 0 {
         if !show_title {
