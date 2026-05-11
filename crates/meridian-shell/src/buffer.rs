@@ -1,5 +1,5 @@
 use smithay_client_toolkit::shm::slot::{Buffer, SlotPool};
-use tracing::debug;
+use tracing::{debug, warn};
 use wayland_client::protocol::wl_shm;
 
 pub fn shm_buffer_format() -> wl_shm::Format {
@@ -20,7 +20,7 @@ pub fn buffer_for<'a>(
     width: u32,
     height: u32,
     stride: i32,
-) -> &'a mut Buffer {
+) -> Option<&'a mut Buffer> {
     let recreate = current
         .as_ref()
         .map(|buf| buf.height() != height as i32 || buf.stride() != stride)
@@ -34,13 +34,26 @@ pub fn buffer_for<'a>(
             stride,
             shm_buffer_size(width, height)
         );
-        let (buffer, _) = pool
-            .create_buffer(width as i32, height as i32, stride, shm_buffer_format())
-            .expect("create shm buffer");
+        let (buffer, _) =
+            match pool.create_buffer(width as i32, height as i32, stride, shm_buffer_format()) {
+                Ok(pair) => pair,
+                Err(err) => {
+                    warn!(
+                    "wl_shm buffer creation failed: width={} height={} stride={} bytes={} error={}",
+                    width,
+                    height,
+                    stride,
+                    shm_buffer_size(width, height),
+                    err
+                );
+                    *current = None;
+                    return None;
+                }
+            };
         *current = Some(buffer);
     }
 
-    current.as_mut().expect("buffer exists")
+    current.as_mut()
 }
 
 #[cfg(test)]

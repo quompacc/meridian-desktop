@@ -216,6 +216,13 @@ impl MeridianShell {
             height,
             stride,
         );
+        let Some(buf) = buf else {
+            warn!(
+                "panel buffer unavailable: reason={:?} width={} height={}",
+                reason, width, height
+            );
+            return;
+        };
         let Some(canvas) = buf.canvas(&mut self.pool) else {
             self.panel_buffer = None;
             return self.draw_panel(_qh, reason);
@@ -331,6 +338,13 @@ impl MeridianShell {
             height,
             stride,
         );
+        let Some(buf) = buf else {
+            warn!(
+                "launcher buffer unavailable: reason={:?} width={} height={}",
+                reason, width, height
+            );
+            return;
+        };
         let Some(canvas) = buf.canvas(&mut self.pool) else {
             self.launcher_buffer = None;
             return self.draw_launcher(_qh, reason);
