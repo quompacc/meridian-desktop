@@ -517,6 +517,21 @@ impl MeridianShell {
         );
     }
 
+    pub(crate) fn close_launcher_after_launch(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        reason: RepaintReason,
+    ) {
+        if !self.launcher_state.open {
+            return;
+        }
+        self.launcher_state.close();
+        self.launcher_layer
+            .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+        self.unmap_launcher(CommitReason::Input);
+        self.draw_panel(qh, reason);
+    }
+
     pub(crate) fn handle_panel_click(&mut self, qh: &QueueHandle<Self>, action: ClickAction) {
         match action {
             ClickAction::SwitchWorkspace(workspace) => {
@@ -553,6 +568,7 @@ impl MeridianShell {
                 self.launcher_state.set_selected_index(index);
                 self.launcher_state
                     .launch_app(self.launcher_state.selected_index, &mut self.ipc);
+                self.close_launcher_after_launch(qh, RepaintReason::Pointer);
             }
             ClickAction::SelectLauncherCategory(raw) => {
                 if self.launcher_state.set_sidebar_category_from_click(raw) {
