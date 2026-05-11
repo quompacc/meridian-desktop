@@ -7,6 +7,7 @@ use crate::Rect;
 use super::{bitmap, text::TextRenderer};
 
 const DEFAULT_ROUNDISH_RADIUS: i32 = 6;
+const CORNER_AA_SAMPLE_OFFSETS: [f32; 2] = [0.25, 0.75];
 
 pub struct Painter<'a> {
     pub(crate) data: &'a mut [u8],
@@ -99,18 +100,26 @@ impl<'a> Painter<'a> {
         let rr = (radius * radius) as f32;
         for dy in 0..radius {
             for dx in 0..radius {
-                let fx = dx as f32 + 0.5;
-                let fy = dy as f32 + 0.5;
-                let cx = radius as f32 - fx;
-                let cy = radius as f32 - fy;
-                if cx * cx + cy * cy > rr {
+                let coverage = corner_coverage(radius, dx, dy, rr);
+                if coverage == 0 {
                     continue;
                 }
 
-                self.fill_pixel(rect.x + dx, rect.y + dy, color);
-                self.fill_pixel(rect.x + rect.w - 1 - dx, rect.y + dy, color);
-                self.fill_pixel(rect.x + dx, rect.y + rect.h - 1 - dy, color);
-                self.fill_pixel(rect.x + rect.w - 1 - dx, rect.y + rect.h - 1 - dy, color);
+                let tl = (rect.x + dx, rect.y + dy);
+                let tr = (rect.x + rect.w - 1 - dx, rect.y + dy);
+                let bl = (rect.x + dx, rect.y + rect.h - 1 - dy);
+                let br = (rect.x + rect.w - 1 - dx, rect.y + rect.h - 1 - dy);
+                if coverage == 255 {
+                    self.fill_pixel(tl.0, tl.1, color);
+                    self.fill_pixel(tr.0, tr.1, color);
+                    self.fill_pixel(bl.0, bl.1, color);
+                    self.fill_pixel(br.0, br.1, color);
+                } else {
+                    self.blend_pixel(tl.0, tl.1, color, coverage);
+                    self.blend_pixel(tr.0, tr.1, color, coverage);
+                    self.blend_pixel(bl.0, bl.1, color, coverage);
+                    self.blend_pixel(br.0, br.1, color, coverage);
+                }
             }
         }
     }
@@ -232,11 +241,35 @@ fn argb(color: Color) -> u32 {
         | u32::from(color.b)
 }
 
+fn corner_coverage(radius: i32, dx: i32, dy: i32, rr: f32) -> u8 {
+    if radius <= 1 {
+        let cx = radius as f32 - (dx as f32 + 0.5);
+        let cy = radius as f32 - (dy as f32 + 0.5);
+        return if cx * cx + cy * cy <= rr { 255 } else { 0 };
+    }
+
+    let mut inside = 0u8;
+    for sy in CORNER_AA_SAMPLE_OFFSETS {
+        for sx in CORNER_AA_SAMPLE_OFFSETS {
+            let cx = radius as f32 - (dx as f32 + sx);
+            let cy = radius as f32 - (dy as f32 + sy);
+            if cx * cx + cy * cy <= rr {
+                inside += 1;
+            }
+        }
+    }
+    match inside {
+        0 => 0,
+        4 => 255,
+        _ => ((u16::from(inside) * 255) / 4) as u8,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use meridian_config::Color;
 
-    use super::{clamped_radius, Painter};
+    use super::{clamped_radius, corner_coverage, Painter};
     use crate::Rect;
 
     fn pixel_at(data: &[u8], width: i32, x: i32, y: i32) -> [u8; 4] {
@@ -286,8 +319,7 @@ mod tests {
             3,
         );
         assert_eq!(pixel_at(&data, 8, 1, 1), [0, 0, 0, 0]);
-        assert_eq!(pixel_at(&data, 8, 2, 1), [0x33, 0x22, 0x11, 0xff]);
-        assert_eq!(pixel_at(&data, 8, 1, 2), [0x33, 0x22, 0x11, 0xff]);
+        assert_eq!(pixel_at(&data, 8, 2, 2), [0x33, 0x22, 0x11, 0xff]);
     }
 
     #[test]
@@ -361,5 +393,70 @@ mod tests {
             3,
         );
         assert_eq!(pixel_at(&data, 8, 3, 3), [0xcc, 0xbb, 0xaa, 0x80]);
+    }
+
+    #[test]
+    fn rounded_fill_full_coverage_pixels_are_raw_filled() {
+        let mut data = vec![0x20u8; 8 * 8 * 4];
+        let mut painter = Painter::new(&mut data, 8, 8);
+        let color = Color::rgba(0xaa, 0xbb, 0xcc, 0x80);
+        painter.fill_rounded_rect(
+            Rect {
+                x: 1,
+                y: 1,
+                w: 6,
+                h: 6,
+            },
+            color,
+            3,
+        );
+        assert_eq!(pixel_at(&data, 8, 3, 3), [0xcc, 0xbb, 0xaa, 0x80]);
+    }
+
+    #[test]
+    fn rounded_fill_outside_corner_pixels_remain_untouched() {
+        let mut data = vec![0x17u8; 8 * 8 * 4];
+        let mut painter = Painter::new(&mut data, 8, 8);
+        painter.fill_rounded_rect(
+            Rect {
+                x: 1,
+                y: 1,
+                w: 6,
+                h: 6,
+            },
+            Color::rgb(0xff, 0xff, 0xff),
+            3,
+        );
+        assert_eq!(pixel_at(&data, 8, 1, 1), [0x17, 0x17, 0x17, 0x17]);
+    }
+
+    #[test]
+    fn rounded_fill_edge_pixels_use_partial_blending() {
+        let mut data = vec![0u8; 8 * 8 * 4];
+        let mut painter = Painter::new(&mut data, 8, 8);
+        let color = Color::rgb(0xff, 0xff, 0xff);
+        painter.fill_rounded_rect(
+            Rect {
+                x: 1,
+                y: 1,
+                w: 6,
+                h: 6,
+            },
+            color,
+            3,
+        );
+        let edge = pixel_at(&data, 8, 2, 1);
+        assert!(edge[0] > 0 && edge[0] < 0xff);
+        assert!(edge[1] > 0 && edge[1] < 0xff);
+        assert!(edge[2] > 0 && edge[2] < 0xff);
+        assert_eq!(edge[3], 0xff);
+    }
+
+    #[test]
+    fn corner_coverage_reports_expected_partial_and_full_values() {
+        let rr = (3 * 3) as f32;
+        assert_eq!(corner_coverage(3, 0, 0, rr), 0);
+        assert!(corner_coverage(3, 1, 0, rr) < 255);
+        assert_eq!(corner_coverage(3, 1, 1, rr), 255);
     }
 }
