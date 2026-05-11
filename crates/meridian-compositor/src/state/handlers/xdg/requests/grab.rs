@@ -24,26 +24,34 @@ pub(crate) fn handle_move_request(
     seat: WlSeat,
     serial: Serial,
 ) {
-    let seat = Seat::from_resource(&seat).unwrap();
+    let Some(seat) = Seat::from_resource(&seat) else {
+        tracing::warn!(
+            "ignoring move request: wl_seat resource is not associated with a known seat"
+        );
+        return;
+    };
     let wl_surface = surface.wl_surface();
     if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
         let window = match find_active_window(state, &surface) {
             Some(window) => window,
             None => return,
         };
-        let initial_window_location = state
-            .workspaces
-            .active_space()
-            .element_location(&window)
-            .unwrap();
+        let Some(initial_window_location) =
+            state.workspaces.active_space().element_location(&window)
+        else {
+            tracing::debug!("ignoring move request: active window location is unavailable");
+            return;
+        };
         let grab = MoveSurfaceGrab {
             start_data,
             window,
             initial_window_location,
         };
-        seat.get_pointer()
-            .unwrap()
-            .set_grab(state, grab, serial, Focus::Clear);
+        let Some(pointer) = seat.get_pointer() else {
+            tracing::debug!("ignoring move request: seat has no pointer");
+            return;
+        };
+        pointer.set_grab(state, grab, serial, Focus::Clear);
     }
 }
 
@@ -54,18 +62,24 @@ pub(crate) fn handle_resize_request(
     serial: Serial,
     edges: xdg_toplevel::ResizeEdge,
 ) {
-    let seat = Seat::from_resource(&seat).unwrap();
+    let Some(seat) = Seat::from_resource(&seat) else {
+        tracing::warn!(
+            "ignoring resize request: wl_seat resource is not associated with a known seat"
+        );
+        return;
+    };
     let wl_surface = surface.wl_surface();
     if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
         let window = match find_active_window(state, &surface) {
             Some(window) => window,
             None => return,
         };
-        let initial_window_location = state
-            .workspaces
-            .active_space()
-            .element_location(&window)
-            .unwrap();
+        let Some(initial_window_location) =
+            state.workspaces.active_space().element_location(&window)
+        else {
+            tracing::debug!("ignoring resize request: active window location is unavailable");
+            return;
+        };
         let initial_window_size = window.geometry().size;
         surface.with_pending_state(|state| {
             state.states.set(xdg_toplevel::State::Resizing);
@@ -77,8 +91,10 @@ pub(crate) fn handle_resize_request(
             ResizeEdge::from(edges),
             Rectangle::new(initial_window_location, initial_window_size),
         );
-        seat.get_pointer()
-            .unwrap()
-            .set_grab(state, grab, serial, Focus::Clear);
+        let Some(pointer) = seat.get_pointer() else {
+            tracing::debug!("ignoring resize request: seat has no pointer");
+            return;
+        };
+        pointer.set_grab(state, grab, serial, Focus::Clear);
     }
 }
