@@ -6,7 +6,7 @@ use smithay::{
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{Logical, Point},
     utils::{Rectangle, SERIAL_COUNTER},
-    wayland::seat::WaylandFocus,
+    wayland::{compositor::get_parent, seat::WaylandFocus},
 };
 use tracing::debug;
 
@@ -44,6 +44,21 @@ fn select_pointer_button_output_info<'a>(
     (None, "empty-registry")
 }
 
+fn surface_belongs_to_layer(state: &MeridianState, surface: &WlSurface) -> bool {
+    let mut current = Some(surface.clone());
+    while let Some(candidate) = current {
+        if state.outputs.iter().any(|output| {
+            let map = layer_map_for_output(output);
+            map.layer_for_surface(&candidate, WindowSurfaceType::ALL)
+                .is_some()
+        }) {
+            return true;
+        }
+        current = get_parent(&candidate);
+    }
+    false
+}
+
 pub fn handle_pointer_button<I: InputBackend>(
     state: &mut MeridianState,
     event: &impl PointerButtonEvent<I>,
@@ -79,13 +94,7 @@ pub fn handle_pointer_button<I: InputBackend>(
         let under = state.surface_under(location);
         let under_is_layer_surface = under
             .as_ref()
-            .map(|(surface, _)| {
-                state.outputs.iter().any(|output| {
-                    let map = layer_map_for_output(output);
-                    map.layer_for_surface(surface, WindowSurfaceType::ALL)
-                        .is_some()
-                })
-            })
+            .map(|(surface, _)| surface_belongs_to_layer(state, surface))
             .unwrap_or(false);
 
         type HitInfo = (
