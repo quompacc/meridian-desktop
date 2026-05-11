@@ -1,5 +1,6 @@
 use smithay::{
     desktop::{PopupKind, Window},
+    reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
     utils::{Logical, Point, SERIAL_COUNTER},
     wayland::shell::xdg::{PopupSurface, ToplevelSurface},
 };
@@ -7,6 +8,22 @@ use smithay::{
 use meridian_wm::WorkspaceMode;
 
 use crate::state::MeridianState;
+
+fn initial_maximized_origin(state: &MeridianState) -> Option<Point<i32, Logical>> {
+    let selected_output_name = state
+        .output_registry
+        .list()
+        .iter()
+        .find(|info| info.primary)
+        .or_else(|| state.output_registry.list().first())
+        .map(|info| info.name.as_str())?;
+    let output = state
+        .outputs
+        .iter()
+        .find(|candidate| candidate.name() == selected_output_name)?;
+    let geo = state.workspaces.active_space().output_geometry(output)?;
+    Some(geo.loc)
+}
 
 pub(super) fn handle_new_toplevel(state: &mut MeridianState, surface: ToplevelSurface) {
     tracing::info!(
@@ -35,10 +52,30 @@ pub(super) fn handle_new_toplevel(state: &mut MeridianState, surface: ToplevelSu
             .decoration_manager
             .decoration_offset(&wl_surface, theme);
         let initial_client_origin: Point<i32, Logical> = (x_off, y_off).into();
-        state
-            .workspaces
-            .active_space_mut()
-            .map_element(window, initial_client_origin, true);
+        let starts_maximized = surface.with_committed_state(|s| {
+            s.map_or(false, |ts| {
+                ts.states.contains(xdg_toplevel::State::Maximized)
+            })
+        }) || surface
+            .with_pending_state(|s| s.states.contains(xdg_toplevel::State::Maximized));
+
+        if starts_maximized {
+            state.decoration_manager.set_maximized(&wl_surface, true);
+            state
+                .maximize_restore_locations
+                .entry(crate::state::window_id(&wl_surface))
+                .or_insert(initial_client_origin);
+            let maximized_origin = initial_maximized_origin(state).unwrap_or(initial_client_origin);
+            state
+                .workspaces
+                .active_space_mut()
+                .map_element(window, maximized_origin, true);
+        } else {
+            state
+                .workspaces
+                .active_space_mut()
+                .map_element(window, initial_client_origin, true);
+        }
     }
 
     let serial = SERIAL_COUNTER.next_serial();
