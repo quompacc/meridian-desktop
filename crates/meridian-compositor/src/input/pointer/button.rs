@@ -16,8 +16,8 @@ use crate::{
         move_grab::MoveSurfaceGrab,
         resize_grab::{ResizeEdge, ResizeSurfaceGrab},
     },
-    state::MeridianState,
     state::OutputInfo,
+    state::{window_id, MeridianState},
 };
 
 fn select_pointer_button_output_info<'a>(
@@ -179,6 +179,16 @@ pub fn handle_pointer_button<I: InputBackend>(
                             state
                                 .decoration_manager
                                 .set_maximized(toplevel.wl_surface(), false);
+                            if let Some(restore_loc) = state
+                                .maximize_restore_locations
+                                .remove(&window_id(toplevel.wl_surface()))
+                            {
+                                state.workspaces.active_space_mut().map_element(
+                                    window.clone(),
+                                    restore_loc,
+                                    true,
+                                );
+                            }
                         } else if let Some(geo) = output_geo {
                             toplevel.with_pending_state(|s| {
                                 s.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized);
@@ -187,6 +197,13 @@ pub fn handle_pointer_button<I: InputBackend>(
                             state
                                 .decoration_manager
                                 .set_maximized(toplevel.wl_surface(), true);
+                            if let Some(current_loc) =
+                                state.workspaces.active_space().element_location(&window)
+                            {
+                                state
+                                    .maximize_restore_locations
+                                    .insert(window_id(toplevel.wl_surface()), current_loc);
+                            }
                             state.workspaces.active_space_mut().map_element(
                                 window.clone(),
                                 geo.loc,

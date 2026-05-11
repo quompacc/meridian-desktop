@@ -224,6 +224,7 @@ impl MeridianState {
             xwayland_shell_state,
             xwm: None,
             drm_backend: None,
+            maximize_restore_locations: std::collections::HashMap::new(),
         })
     }
 

@@ -1,4 +1,4 @@
-use std::{ffi::OsString, time::Instant};
+use std::{collections::HashMap, ffi::OsString, time::Instant};
 
 use meridian_config::{KeybindConfig, ThemeManager};
 use meridian_wm::WmWorkspace;
@@ -8,6 +8,7 @@ use smithay::{
     output::Output,
     reexports::calloop::{LoopHandle, LoopSignal},
     reexports::wayland_server::DisplayHandle,
+    utils::{Logical, Point},
     wayland::{
         compositor::CompositorState,
         output::OutputManagerState,
@@ -70,6 +71,7 @@ pub struct MeridianState {
     pub xwayland_shell_state: XWaylandShellState,
     pub xwm: Option<X11Wm>,
     pub drm_backend: Option<DrmBackend>,
+    pub maximize_restore_locations: HashMap<String, Point<i32, Logical>>,
 }
 
 pub(crate) use client::ClientState;

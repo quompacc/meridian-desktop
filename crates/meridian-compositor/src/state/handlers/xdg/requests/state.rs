@@ -2,12 +2,17 @@ use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
-use crate::state::{MeridianState, OutputGeometry, OutputInfo};
+use crate::state::{window_id, MeridianState, OutputGeometry, OutputInfo};
 
 use super::window::find_active_window;
 
 pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: ToplevelSurface) {
     tracing::debug!("maximize geometry requested");
+    let is_maxed = surface.with_committed_state(|s| {
+        s.map_or(false, |ts| {
+            ts.states.contains(xdg_toplevel::State::Maximized)
+        })
+    });
     if let Some(selected) = select_output_for_surface(state, &surface) {
         tracing::debug!(
             "selected output for maximize: id={} name={} fallback_reason={}",
@@ -26,6 +31,14 @@ pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: Toplev
             .set_maximized(surface.wl_surface(), true);
 
         if let Some(window) = find_active_window(state, &surface) {
+            if !is_maxed {
+                if let Some(current_loc) = state.workspaces.active_space().element_location(&window)
+                {
+                    state
+                        .maximize_restore_locations
+                        .insert(window_id(surface.wl_surface()), current_loc);
+                }
+            }
             state
                 .workspaces
                 .active_space_mut()
@@ -45,6 +58,17 @@ pub(crate) fn handle_unmaximize_request(state: &mut MeridianState, surface: Topl
         state.states.unset(xdg_toplevel::State::Maximized);
         state.size = None;
     });
+    if let Some(window) = find_active_window(state, &surface) {
+        if let Some(restore_loc) = state
+            .maximize_restore_locations
+            .remove(&window_id(surface.wl_surface()))
+        {
+            state
+                .workspaces
+                .active_space_mut()
+                .map_element(window, restore_loc, true);
+        }
+    }
     surface.send_pending_configure();
 }
 
