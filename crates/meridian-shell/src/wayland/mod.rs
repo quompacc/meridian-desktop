@@ -1,3 +1,4 @@
+mod calendar;
 mod handlers;
 mod init;
 mod ipc;
