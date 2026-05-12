@@ -104,7 +104,6 @@ pub(crate) struct SsdResizeBandMetrics {
     pub(crate) bottom_right_corner: Rectangle<i32, Logical>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SsdShadowMetrics {
     pub(crate) rect: Rectangle<i32, Logical>,
@@ -211,7 +210,6 @@ impl SsdChromeMetrics {
         })
     }
 
-    #[allow(dead_code)]
     pub(crate) fn shadow_metrics(self, shadow_radius: i32) -> Option<SsdShadowMetrics> {
         if self.frame.border_width <= 0 {
             return None;

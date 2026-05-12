@@ -4,6 +4,7 @@ use super::super::{
     model::{opaque, WindowDecoration, SHADOW_COLOR},
     BUTTON_SIZE, TITLE_BAR_HEIGHT,
 };
+use super::geometry::{SsdChromeMetrics, SsdFrameMetrics};
 
 pub(super) fn update_buffers(
     deco: &mut WindowDecoration,
@@ -60,9 +61,17 @@ pub(super) fn update_buffers(
     }
     if theme.shadow && bw > 0 {
         let sr = theme.shadow_radius as i32;
-        let sw = (total_w + sr * 2).max(1);
-        let sh = (ch + title_h + bw + sr * 2).max(1);
-        deco.buffers.shadow.update((sw, sh), SHADOW_COLOR);
+        let shadow = SsdChromeMetrics::new(SsdFrameMetrics::from_frame_origin(
+            (0, 0).into(),
+            (cw, ch).into(),
+            bw,
+            title_h,
+        ))
+        .shadow_metrics(sr)
+        .expect("shadow metrics should exist when border width is positive");
+        deco.buffers
+            .shadow
+            .update((shadow.rect.size.w, shadow.rect.size.h), SHADOW_COLOR);
     }
 
     deco.last_content_size = (cw, ch);
