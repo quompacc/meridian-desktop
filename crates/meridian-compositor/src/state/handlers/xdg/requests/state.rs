@@ -2,7 +2,11 @@ use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
-use crate::state::{window_id, MeridianState, OutputGeometry, OutputInfo};
+use crate::state::{
+    remember_maximize_restore_geometry, restore_client_loc_or_fallback,
+    take_maximize_restore_geometry, window_id, MaximizeRestoreGeometry, MeridianState,
+    OutputGeometry, OutputInfo,
+};
 
 use super::window::find_active_window;
 
@@ -39,10 +43,11 @@ pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: Toplev
             if !is_maxed {
                 if let Some(current_loc) = state.workspaces.active_space().element_location(&window)
                 {
-                    state
-                        .maximize_restore_locations
-                        .entry(window_id(surface.wl_surface()))
-                        .or_insert(current_loc);
+                    remember_maximize_restore_geometry(
+                        &mut state.maximize_restore_locations,
+                        window_id(surface.wl_surface()),
+                        MaximizeRestoreGeometry::new(current_loc, Some(window.geometry().size)),
+                    );
                 }
             }
             state
@@ -65,10 +70,13 @@ pub(crate) fn handle_unmaximize_request(state: &mut MeridianState, surface: Topl
         state.size = None;
     });
     if let Some(window) = find_active_window(state, &surface) {
-        if let Some(restore_loc) = state
-            .maximize_restore_locations
-            .remove(&window_id(surface.wl_surface()))
-        {
+        let restore_geometry = take_maximize_restore_geometry(
+            &mut state.maximize_restore_locations,
+            surface.wl_surface(),
+        );
+        if restore_geometry.is_some() {
+            let fallback_loc = Point::from((0, 0));
+            let restore_loc = restore_client_loc_or_fallback(restore_geometry, fallback_loc);
             state
                 .workspaces
                 .active_space_mut()
@@ -84,10 +92,11 @@ pub(crate) fn handle_unmaximize_request(state: &mut MeridianState, surface: Topl
                 y = fallback_loc.y,
                 "unmaximize restore location missing in xdg request path; applying fallback client origin"
             );
+            let restore_loc = restore_client_loc_or_fallback(None, fallback_loc);
             state
                 .workspaces
                 .active_space_mut()
-                .map_element(window, fallback_loc, true);
+                .map_element(window, restore_loc, true);
         }
     }
     surface.send_pending_configure();

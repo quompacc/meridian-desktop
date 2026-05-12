@@ -17,7 +17,10 @@ use crate::{
         resize_grab::{ResizeEdge, ResizeSurfaceGrab},
     },
     state::OutputInfo,
-    state::{window_id, MeridianState},
+    state::{
+        remember_maximize_restore_geometry, restore_client_loc_or_fallback,
+        take_maximize_restore_geometry, window_id, MaximizeRestoreGeometry, MeridianState,
+    },
 };
 
 fn select_pointer_button_output_info<'a>(
@@ -192,10 +195,14 @@ pub fn handle_pointer_button<I: InputBackend>(
                             state
                                 .decoration_manager
                                 .set_maximized(toplevel.wl_surface(), false);
-                            if let Some(restore_loc) = state
-                                .maximize_restore_locations
-                                .remove(&window_id(toplevel.wl_surface()))
-                            {
+                            let restore_geometry = take_maximize_restore_geometry(
+                                &mut state.maximize_restore_locations,
+                                toplevel.wl_surface(),
+                            );
+                            if restore_geometry.is_some() {
+                                let fallback_loc = Point::from((0, 0));
+                                let restore_loc =
+                                    restore_client_loc_or_fallback(restore_geometry, fallback_loc);
                                 state.workspaces.active_space_mut().map_element(
                                     window.clone(),
                                     restore_loc,
@@ -212,9 +219,11 @@ pub fn handle_pointer_button<I: InputBackend>(
                                     y = fallback_loc.y,
                                     "unmaximize restore location missing in SSD button path; applying fallback client origin"
                                 );
+                                let restore_loc =
+                                    restore_client_loc_or_fallback(None, fallback_loc);
                                 state.workspaces.active_space_mut().map_element(
                                     window.clone(),
-                                    fallback_loc,
+                                    restore_loc,
                                     true,
                                 );
                             }
@@ -235,10 +244,14 @@ pub fn handle_pointer_button<I: InputBackend>(
                             if let Some(current_loc) =
                                 state.workspaces.active_space().element_location(&window)
                             {
-                                state
-                                    .maximize_restore_locations
-                                    .entry(window_id(toplevel.wl_surface()))
-                                    .or_insert(current_loc);
+                                remember_maximize_restore_geometry(
+                                    &mut state.maximize_restore_locations,
+                                    window_id(toplevel.wl_surface()),
+                                    MaximizeRestoreGeometry::new(
+                                        current_loc,
+                                        Some(window.geometry().size),
+                                    ),
+                                );
                             }
                             state.workspaces.active_space_mut().map_element(
                                 window.clone(),

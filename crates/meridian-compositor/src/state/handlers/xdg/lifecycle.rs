@@ -7,7 +7,9 @@ use smithay::{
 
 use meridian_wm::WorkspaceMode;
 
-use crate::state::MeridianState;
+use crate::state::{
+    remember_maximize_restore_geometry, window_id, MaximizeRestoreGeometry, MeridianState,
+};
 
 fn initial_maximized_client_origin(
     state: &MeridianState,
@@ -66,10 +68,11 @@ pub(super) fn handle_new_toplevel(state: &mut MeridianState, surface: ToplevelSu
 
         if starts_maximized {
             state.decoration_manager.set_maximized(&wl_surface, true);
-            state
-                .maximize_restore_locations
-                .entry(crate::state::window_id(&wl_surface))
-                .or_insert(initial_client_origin);
+            remember_maximize_restore_geometry(
+                &mut state.maximize_restore_locations,
+                window_id(&wl_surface),
+                MaximizeRestoreGeometry::new(initial_client_origin, None),
+            );
             let maximized_origin = initial_maximized_client_origin(state, &wl_surface)
                 .unwrap_or(initial_client_origin);
             state
@@ -101,7 +104,7 @@ pub(super) fn handle_toplevel_destroyed(state: &mut MeridianState, surface: Topl
     state.decoration_manager.remove(surface.wl_surface());
     state
         .maximize_restore_locations
-        .remove(&crate::state::window_id(surface.wl_surface()));
+        .remove(&window_id(surface.wl_surface()));
     state.broadcast_toplevel_closed(&surface);
     state.mark_all_outputs_dirty("xdg-toplevel-destroyed");
 }
