@@ -102,10 +102,9 @@ pub(super) fn handle_new_popup(state: &mut MeridianState, surface: PopupSurface)
 }
 
 pub(super) fn handle_toplevel_destroyed(state: &mut MeridianState, surface: ToplevelSurface) {
+    let id = window_id(surface.wl_surface());
+    state.clear_window_runtime_state(&id);
     state.decoration_manager.remove(surface.wl_surface());
-    state
-        .maximize_restore_locations
-        .remove(&window_id(surface.wl_surface()));
     state.broadcast_toplevel_closed(&surface);
     state.mark_all_outputs_dirty("xdg-toplevel-destroyed");
 }

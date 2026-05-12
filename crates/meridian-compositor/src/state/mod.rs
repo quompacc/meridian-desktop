@@ -3,7 +3,7 @@ use std::{collections::HashMap, ffi::OsString, time::Instant};
 use meridian_config::{KeybindConfig, ThemeManager};
 use meridian_wm::WmWorkspace;
 use smithay::{
-    desktop::PopupManager,
+    desktop::{PopupManager, Window},
     input::{Seat, SeatState},
     output::Output,
     reexports::calloop::{LoopHandle, LoopSignal},
@@ -88,6 +88,13 @@ impl HalfSnapRestoreGeometry {
 pub struct HalfSnapPlacement {
     pub client_loc: Point<i32, Logical>,
     pub client_size: Size<i32, Logical>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MinimizedWindowEntry {
+    pub window: Window,
+    pub workspace: usize,
+    pub restore_loc: Point<i32, Logical>,
 }
 
 pub(crate) fn remember_maximize_restore_geometry(
@@ -201,6 +208,16 @@ pub struct MeridianState {
     pub maximize_restore_locations: HashMap<String, MaximizeRestoreGeometry>,
     pub half_snap_restore_locations: HashMap<String, HalfSnapRestoreGeometry>,
     pub active_window_snap_states: HashMap<String, WindowSnapState>,
+    pub minimized_windows: HashMap<String, MinimizedWindowEntry>,
+}
+
+impl MeridianState {
+    pub fn clear_window_runtime_state(&mut self, window_key: &str) {
+        self.minimized_windows.remove(window_key);
+        self.maximize_restore_locations.remove(window_key);
+        self.half_snap_restore_locations.remove(window_key);
+        self.active_window_snap_states.remove(window_key);
+    }
 }
 
 pub(crate) use client::ClientState;

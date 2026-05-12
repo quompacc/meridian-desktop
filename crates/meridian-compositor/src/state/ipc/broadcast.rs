@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use meridian_ipc::{OutputWorkspaceState, ShellEvent, WindowSnapshotEntry};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 
@@ -35,17 +37,35 @@ impl MeridianState {
 
     pub fn broadcast_window_snapshot(&mut self) {
         let mut windows = Vec::new();
+        let mut seen_ids = HashSet::new();
         for idx in 0..self.workspaces.count() {
             for window in self.workspaces.space_at(idx).elements() {
                 let Some(toplevel) = window.toplevel() else {
                     continue;
                 };
+                let id = window_id(toplevel.wl_surface());
+                if !seen_ids.insert(id.clone()) {
+                    continue;
+                }
                 windows.push(WindowSnapshotEntry {
                     workspace: (idx + 1) as u8,
-                    id: window_id(toplevel.wl_surface()),
+                    id,
                     title: super::super::toplevel_title(&toplevel),
                 });
             }
+        }
+        for (id, minimized) in &self.minimized_windows {
+            if seen_ids.contains(id) {
+                continue;
+            }
+            let Some(toplevel) = minimized.window.toplevel() else {
+                continue;
+            };
+            windows.push(WindowSnapshotEntry {
+                workspace: (minimized.workspace + 1) as u8,
+                id: id.clone(),
+                title: super::super::toplevel_title(&toplevel),
+            });
         }
 
         tracing::debug!(

@@ -227,6 +227,7 @@ impl MeridianState {
             maximize_restore_locations: std::collections::HashMap::new(),
             half_snap_restore_locations: std::collections::HashMap::new(),
             active_window_snap_states: std::collections::HashMap::new(),
+            minimized_windows: std::collections::HashMap::new(),
         })
     }
 

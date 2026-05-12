@@ -21,6 +21,7 @@ use crate::{
         clear_tiled_toplevel_states, maximized_client_loc_from_output,
         remember_maximize_restore_geometry, resolve_unmaximize_restore_client_loc,
         take_maximize_restore_geometry, window_id, MaximizeRestoreGeometry, MeridianState,
+        MinimizedWindowEntry,
     },
 };
 
@@ -269,6 +270,9 @@ pub fn handle_pointer_button<I: InputBackend>(
                     return;
                 }
                 DecorationHit::MinimizeButton => {
+                    let window_key = window
+                        .toplevel()
+                        .map(|toplevel| window_id(toplevel.wl_surface()));
                     pointer.button(
                         state,
                         &ButtonEvent {
@@ -279,6 +283,71 @@ pub fn handle_pointer_button<I: InputBackend>(
                         },
                     );
                     pointer.frame(state);
+
+                    let Some(window_key) = window_key else {
+                        return;
+                    };
+                    let workspace = state.workspaces.active;
+                    let restore_loc = state
+                        .workspaces
+                        .space_at(workspace)
+                        .element_location(&window)
+                        .unwrap_or_default();
+                    state.minimized_windows.insert(
+                        window_key.clone(),
+                        MinimizedWindowEntry {
+                            window: window.clone(),
+                            workspace,
+                            restore_loc,
+                        },
+                    );
+                    state.workspaces.space_at_mut(workspace).unmap_elem(&window);
+
+                    let window_surface = window.wl_surface().map(|surface| surface.into_owned());
+                    let was_focused = window_surface.as_ref().is_some_and(|window_surface| {
+                        state
+                            .seat
+                            .get_keyboard()
+                            .and_then(|keyboard| keyboard.current_focus())
+                            .as_ref()
+                            == Some(window_surface)
+                    });
+                    if was_focused {
+                        let fallback_surface = state
+                            .workspaces
+                            .space_at(workspace)
+                            .elements()
+                            .filter_map(|candidate| {
+                                candidate.wl_surface().map(|surface| surface.into_owned())
+                            })
+                            .last();
+                        if let Some(surface) = fallback_surface {
+                            state
+                                .set_keyboard_focus_with_decorations(Some(surface.clone()), serial);
+                            state.update_focused_output_from_surface(
+                                &surface,
+                                "keyboard-focus-ssd-minimize-fallback",
+                            );
+                            state.broadcast_toplevel_focused(&surface);
+                        } else {
+                            state.set_keyboard_focus_with_decorations(
+                                Option::<WlSurface>::None,
+                                serial,
+                            );
+                        }
+                    }
+
+                    state
+                        .workspaces
+                        .space_at(workspace)
+                        .elements()
+                        .for_each(|w| {
+                            if let Some(t) = w.toplevel() {
+                                t.send_pending_configure();
+                            }
+                        });
+                    state.mark_all_outputs_dirty("ssd-minimize-window");
+                    state.broadcast_window_snapshot();
                     return;
                 }
                 DecorationHit::TitleBar => {
