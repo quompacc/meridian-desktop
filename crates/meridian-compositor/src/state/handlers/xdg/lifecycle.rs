@@ -8,7 +8,8 @@ use smithay::{
 use meridian_wm::WorkspaceMode;
 
 use crate::state::{
-    remember_maximize_restore_geometry, window_id, MaximizeRestoreGeometry, MeridianState,
+    maximized_client_loc_from_output, remember_maximize_restore_geometry, window_id,
+    MaximizeRestoreGeometry, MeridianState,
 };
 
 fn initial_maximized_client_origin(
@@ -29,7 +30,7 @@ fn initial_maximized_client_origin(
     let geo = state.workspaces.active_space().output_geometry(output)?;
     let theme = &state.theme_manager.current().config.decorations;
     let (x_off, y_off) = state.decoration_manager.decoration_offset(surface, theme);
-    Some((geo.loc.x + x_off, geo.loc.y + y_off).into())
+    Some(maximized_client_loc_from_output(geo.loc, (x_off, y_off)))
 }
 
 pub(super) fn handle_new_toplevel(state: &mut MeridianState, surface: ToplevelSurface) {
