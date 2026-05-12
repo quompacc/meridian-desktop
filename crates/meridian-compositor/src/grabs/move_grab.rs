@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use smithay::{
     desktop::Window,
     input::pointer::{
@@ -334,6 +336,90 @@ fn maybe_restore_maximized_drag(
     ))
 }
 
+fn window_half_snap_direction(
+    data: &MeridianState,
+    window: &Window,
+) -> Option<(String, HalfSnapDirection)> {
+    let toplevel = window.toplevel()?;
+    let key = window_id(toplevel.wl_surface());
+    match data.active_window_snap_states.get(&key).copied() {
+        Some(WindowSnapState::Half(direction)) => Some((key, direction)),
+        None => None,
+    }
+}
+
+fn consume_half_snap_restore_geometry(
+    restore_map: &mut HashMap<String, HalfSnapRestoreGeometry>,
+    window_key: &str,
+    fallback_client_loc: Point<i32, Logical>,
+    fallback_client_size: Size<i32, Logical>,
+) -> HalfSnapRestoreGeometry {
+    restore_map.remove(window_key).unwrap_or_else(|| {
+        HalfSnapRestoreGeometry::new(fallback_client_loc, Some(fallback_client_size))
+    })
+}
+
+fn apply_half_snap_drag_restore_states(
+    state: &mut smithay::wayland::shell::xdg::ToplevelState,
+    restore_client_size: Size<i32, Logical>,
+) {
+    state.states.unset(xdg_toplevel::State::Maximized);
+    clear_tiled_toplevel_states(state);
+    state.size = Some(restore_client_size);
+}
+
+fn maybe_restore_half_snapped_drag(
+    data: &mut MeridianState,
+    window: &Window,
+    initial_window_location: Point<i32, Logical>,
+    drag_start_location: Point<f64, Logical>,
+    current_pointer_location: Point<f64, Logical>,
+) -> Option<Point<i32, Logical>> {
+    let toplevel = window.toplevel()?;
+    let (window_key, _direction) = window_half_snap_direction(data, window)?;
+    if !movement_crosses_restore_threshold(drag_start_location, current_pointer_location) {
+        return None;
+    }
+
+    let theme = data.theme_manager.current().config.decorations.clone();
+    let snapped_insets = data
+        .decoration_manager
+        .decoration_inset(toplevel.wl_surface(), &theme);
+    let anchor = drag_restore_anchor_from_start_pointer(
+        drag_start_location,
+        initial_window_location,
+        window.geometry().size,
+        snapped_insets,
+    );
+
+    let restore_geometry = consume_half_snap_restore_geometry(
+        &mut data.half_snap_restore_locations,
+        &window_key,
+        initial_window_location,
+        window.geometry().size,
+    );
+    let restore_client_size = restore_geometry
+        .client_size
+        .unwrap_or(window.geometry().size);
+
+    data.active_window_snap_states.remove(&window_key);
+    toplevel.with_pending_state(|state| {
+        apply_half_snap_drag_restore_states(state, restore_client_size);
+    });
+    toplevel.send_pending_configure();
+
+    let floating_insets = data
+        .decoration_manager
+        .decoration_inset(toplevel.wl_surface(), &theme);
+    Some(anchored_client_location_from_pointer(
+        current_pointer_location,
+        anchor.pointer_frame_offset_y,
+        anchor.pointer_frame_ratio_x,
+        restore_client_size,
+        floating_insets,
+    ))
+}
+
 pub struct MoveSurfaceGrab {
     pub start_data: PointerGrabStartData<MeridianState>,
     pub window: Window,
@@ -369,6 +455,24 @@ impl PointerGrab<MeridianState> for MoveSurfaceGrab {
                 self.started_maximized = false;
             } else {
                 return;
+            }
+        }
+        if !self.drag_restore_done {
+            let started_half_snapped = window_half_snap_direction(data, &self.window).is_some();
+            if started_half_snapped {
+                if let Some(restored_client_location) = maybe_restore_half_snapped_drag(
+                    data,
+                    &self.window,
+                    self.initial_window_location,
+                    self.start_data.location,
+                    event.location,
+                ) {
+                    let delta = event.location - self.start_data.location;
+                    self.initial_window_location = restored_client_location - delta.to_i32_round();
+                    self.drag_restore_done = true;
+                } else {
+                    return;
+                }
             }
         }
 
@@ -509,10 +613,11 @@ mod tests {
     use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
     use smithay::utils::{Logical, Point, Size};
 
-    use crate::state::{MaximizeRestoreGeometry, OutputGeometry};
+    use crate::state::{HalfSnapRestoreGeometry, MaximizeRestoreGeometry, OutputGeometry};
 
     use super::{
-        anchored_client_location_from_pointer, apply_half_snap_tiled_states,
+        anchored_client_location_from_pointer, apply_half_snap_drag_restore_states,
+        apply_half_snap_tiled_states, consume_half_snap_restore_geometry,
         drag_restore_anchor_from_start_pointer, half_snap_restore_geometry_source,
         is_pointer_near_output_top_edge, movement_crosses_restore_threshold,
         release_edge_action_for_output, HalfSnapDirection, MoveReleaseEdgeAction,
@@ -737,5 +842,59 @@ mod tests {
 
         assert_eq!(selected.client_loc, Point::from((40, 50)));
         assert_eq!(selected.client_size, Some(Size::from((800, 600))));
+    }
+
+    #[test]
+    fn consume_half_snap_restore_geometry_prefers_and_consumes_stored_entry() {
+        let mut restore_map = std::collections::HashMap::new();
+        restore_map.insert(
+            "window-a".to_string(),
+            HalfSnapRestoreGeometry::new((40, 50).into(), Some((900, 700).into())),
+        );
+
+        let selected = consume_half_snap_restore_geometry(
+            &mut restore_map,
+            "window-a",
+            (10, 20).into(),
+            (800, 600).into(),
+        );
+
+        assert_eq!(selected.client_loc, Point::from((40, 50)));
+        assert_eq!(selected.client_size, Some(Size::from((900, 700))));
+        assert!(!restore_map.contains_key("window-a"));
+    }
+
+    #[test]
+    fn consume_half_snap_restore_geometry_falls_back_to_current_geometry() {
+        let mut restore_map = std::collections::HashMap::new();
+        let selected = consume_half_snap_restore_geometry(
+            &mut restore_map,
+            "window-b",
+            (120, 140).into(),
+            (700, 500).into(),
+        );
+
+        assert_eq!(selected.client_loc, Point::from((120, 140)));
+        assert_eq!(selected.client_size, Some(Size::from((700, 500))));
+    }
+
+    #[test]
+    fn half_snap_drag_restore_clears_tiled_bits_and_preserves_other_states() {
+        let mut state = smithay::wayland::shell::xdg::ToplevelState::default();
+        state.states.set(xdg_toplevel::State::Maximized);
+        state.states.set(xdg_toplevel::State::TiledLeft);
+        state.states.set(xdg_toplevel::State::TiledTop);
+        state.states.set(xdg_toplevel::State::TiledBottom);
+        state.states.set(xdg_toplevel::State::Activated);
+
+        apply_half_snap_drag_restore_states(&mut state, (800, 600).into());
+
+        assert!(!state.states.contains(xdg_toplevel::State::Maximized));
+        assert!(!state.states.contains(xdg_toplevel::State::TiledLeft));
+        assert!(!state.states.contains(xdg_toplevel::State::TiledRight));
+        assert!(!state.states.contains(xdg_toplevel::State::TiledTop));
+        assert!(!state.states.contains(xdg_toplevel::State::TiledBottom));
+        assert!(state.states.contains(xdg_toplevel::State::Activated));
+        assert_eq!(state.size, Some(Size::from((800, 600))));
     }
 }
