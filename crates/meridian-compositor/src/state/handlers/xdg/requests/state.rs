@@ -3,9 +3,10 @@ use smithay::utils::{Logical, Point};
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::state::{
-    maximized_client_loc_from_output, remember_maximize_restore_geometry,
-    resolve_unmaximize_restore_client_loc, take_maximize_restore_geometry, window_id,
-    MaximizeRestoreGeometry, MeridianState, OutputGeometry, OutputInfo,
+    clear_tiled_toplevel_states, maximized_client_loc_from_output,
+    remember_maximize_restore_geometry, resolve_unmaximize_restore_client_loc,
+    take_maximize_restore_geometry, window_id, MaximizeRestoreGeometry, MeridianState,
+    OutputGeometry, OutputInfo,
 };
 
 use super::window::find_active_window;
@@ -27,6 +28,7 @@ pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: Toplev
         let size = (selected.geometry.width, selected.geometry.height).into();
         let loc: Point<i32, Logical> = (selected.geometry.x, selected.geometry.y).into();
         surface.with_pending_state(|state| {
+            clear_tiled_toplevel_states(state);
             state.states.set(xdg_toplevel::State::Maximized);
             state.size = Some(size);
         });
@@ -110,6 +112,7 @@ pub(crate) fn handle_fullscreen_request(state: &mut MeridianState, surface: Topl
         let size = (selected.geometry.width, selected.geometry.height).into();
         let loc: Point<i32, Logical> = (selected.geometry.x, selected.geometry.y).into();
         surface.with_pending_state(|state| {
+            clear_tiled_toplevel_states(state);
             state.states.set(xdg_toplevel::State::Fullscreen);
             state.size = Some(size);
         });

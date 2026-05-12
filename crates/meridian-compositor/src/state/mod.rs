@@ -7,6 +7,7 @@ use smithay::{
     input::{Seat, SeatState},
     output::Output,
     reexports::calloop::{LoopHandle, LoopSignal},
+    reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
     reexports::wayland_server::{protocol::wl_surface::WlSurface, DisplayHandle},
     utils::{Logical, Point, Size},
     wayland::{
@@ -101,6 +102,13 @@ pub(crate) fn resolve_unmaximize_restore_client_loc(
     )
 }
 
+pub(crate) fn clear_tiled_toplevel_states(state: &mut smithay::wayland::shell::xdg::ToplevelState) {
+    state.states.unset(xdg_toplevel::State::TiledLeft);
+    state.states.unset(xdg_toplevel::State::TiledRight);
+    state.states.unset(xdg_toplevel::State::TiledTop);
+    state.states.unset(xdg_toplevel::State::TiledBottom);
+}
+
 pub struct MeridianState {
     pub start_time: Instant,
     pub display_handle: DisplayHandle,
@@ -142,9 +150,9 @@ mod tests {
     use smithay::utils::{Logical, Point, Size};
 
     use super::{
-        maximized_client_loc_from_output, remember_maximize_restore_geometry,
-        resolve_unmaximize_restore_client_loc, restore_client_loc_or_fallback,
-        MaximizeRestoreGeometry,
+        clear_tiled_toplevel_states, maximized_client_loc_from_output,
+        remember_maximize_restore_geometry, resolve_unmaximize_restore_client_loc,
+        restore_client_loc_or_fallback, MaximizeRestoreGeometry,
     };
 
     #[test]
@@ -213,5 +221,25 @@ mod tests {
         let (resolved, used_fallback) = resolve_unmaximize_restore_client_loc(None, (2, 34));
         assert_eq!(resolved, Point::from((2, 34)));
         assert!(used_fallback);
+    }
+
+    #[test]
+    fn clear_tiled_toplevel_states_unsets_only_tiled_bits() {
+        use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
+
+        let mut state = smithay::wayland::shell::xdg::ToplevelState::default();
+        state.states.set(xdg_toplevel::State::TiledLeft);
+        state.states.set(xdg_toplevel::State::TiledRight);
+        state.states.set(xdg_toplevel::State::TiledTop);
+        state.states.set(xdg_toplevel::State::TiledBottom);
+        state.states.set(xdg_toplevel::State::Maximized);
+
+        clear_tiled_toplevel_states(&mut state);
+
+        assert!(!state.states.contains(xdg_toplevel::State::TiledLeft));
+        assert!(!state.states.contains(xdg_toplevel::State::TiledRight));
+        assert!(!state.states.contains(xdg_toplevel::State::TiledTop));
+        assert!(!state.states.contains(xdg_toplevel::State::TiledBottom));
+        assert!(state.states.contains(xdg_toplevel::State::Maximized));
     }
 }

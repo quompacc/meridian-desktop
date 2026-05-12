@@ -18,9 +18,9 @@ use crate::{
     },
     state::OutputInfo,
     state::{
-        maximized_client_loc_from_output, remember_maximize_restore_geometry,
-        resolve_unmaximize_restore_client_loc, take_maximize_restore_geometry, window_id,
-        MaximizeRestoreGeometry, MeridianState,
+        clear_tiled_toplevel_states, maximized_client_loc_from_output,
+        remember_maximize_restore_geometry, resolve_unmaximize_restore_client_loc,
+        take_maximize_restore_geometry, window_id, MaximizeRestoreGeometry, MeridianState,
     },
 };
 
@@ -223,6 +223,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                             );
                         } else if let Some(geo) = output_geo {
                             toplevel.with_pending_state(|s| {
+                                clear_tiled_toplevel_states(s);
                                 s.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized);
                                 s.size = Some(geo.size);
                             });
