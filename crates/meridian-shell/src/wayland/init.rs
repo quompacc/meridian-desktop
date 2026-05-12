@@ -73,23 +73,24 @@ pub(crate) fn initialize(
     );
 
     let calendar_surface = compositor.create_surface(&qh);
+    // Reuse the launcher namespace bucket so popup stacking matches launcher behavior.
     let calendar_layer = layer_shell.create_layer_surface(
         &qh,
         calendar_surface,
         Layer::Overlay,
-        Some("meridian-calendar-popup"),
+        Some("meridian-launcher"),
         None,
     );
     calendar_layer.set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
-    calendar_layer.set_margin(0, 12, PANEL_HEIGHT as i32 + 8, 0);
+    calendar_layer.set_margin(0, 12, PANEL_HEIGHT as i32 + 2, 0);
     calendar_layer.set_size(CALENDAR_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT);
     calendar_layer.set_exclusive_zone(0);
     calendar_layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
     debug!(
-        "Calendar popup surface created: namespace=meridian-calendar-popup layer=Overlay anchor=Bottom|Right size={}x{} margin_bottom={} margin_right=12 exclusive_zone=0 keyboard_interactivity=OnDemand",
+        "Calendar popup surface created: namespace=meridian-launcher layer=Overlay anchor=Bottom|Right size={}x{} margin_bottom={} margin_right=12 exclusive_zone=0 keyboard_interactivity=OnDemand",
         CALENDAR_POPUP_WIDTH,
         CALENDAR_POPUP_HEIGHT,
-        PANEL_HEIGHT
+        PANEL_HEIGHT as i32 + 2
     );
 
     let meridian_config = MeridianConfig::load();

@@ -519,6 +519,9 @@ impl MeridianShell {
 
     fn toggle_launcher(&mut self) {
         let open_before = self.launcher_state.open;
+        if !open_before && self.calendar_popup_open {
+            self.close_calendar_popup(CommitReason::Input);
+        }
         self.launcher_state.toggle();
         let open_after = self.launcher_state.open;
         if self.launcher_state.open {
@@ -564,11 +567,18 @@ impl MeridianShell {
             return;
         }
 
+        if self.launcher_state.open {
+            self.launcher_state.close();
+            self.launcher_layer
+                .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+            self.unmap_launcher(reason);
+        }
+
         self.calendar_popup_open = true;
         self.calendar_layer
             .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
         self.calendar_layer
-            .set_margin(0, 12, crate::PANEL_HEIGHT as i32 + 8, 0);
+            .set_margin(0, 12, crate::PANEL_HEIGHT as i32 + 2, 0);
         self.calendar_layer.set_exclusive_zone(0);
         self.calendar_layer
             .set_size(crate::CALENDAR_POPUP_WIDTH, crate::CALENDAR_POPUP_HEIGHT);

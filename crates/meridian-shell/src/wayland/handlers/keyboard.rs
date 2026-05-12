@@ -69,10 +69,12 @@ impl KeyboardHandler for MeridianShell {
         event: KeyEvent,
     ) {
         let is_escape = event.keysym == Keysym::Escape;
-        if self.calendar_popup_open && !self.launcher_state.open && is_escape {
+        if self.calendar_popup_open && is_escape {
             self.close_calendar_popup(CommitReason::Input);
             self.draw_panel(qh, RepaintReason::Keyboard);
-            return;
+            if !self.launcher_state.open {
+                return;
+            }
         }
 
         if !self.launcher_state.open {

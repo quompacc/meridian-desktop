@@ -116,7 +116,7 @@ impl LayerShellHandler for MeridianShell {
             self.calendar_layer
                 .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
             self.calendar_layer
-                .set_margin(0, 12, crate::PANEL_HEIGHT as i32 + 8, 0);
+                .set_margin(0, 12, crate::PANEL_HEIGHT as i32 + 2, 0);
             self.calendar_layer.set_exclusive_zone(0);
             self.calendar_layer
                 .set_size(CALENDAR_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT);
