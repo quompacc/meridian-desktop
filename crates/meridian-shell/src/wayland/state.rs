@@ -14,8 +14,12 @@ fn workspace_idx(workspace: u8) -> usize {
     workspace.saturating_sub(1).min(8) as usize
 }
 
+fn normalize_workspace_1_based_u8(workspace: u8) -> u8 {
+    workspace.clamp(1, 9)
+}
+
 fn apply_workspace_changed(active_workspace: &mut u8, next_workspace_raw: u8) {
-    *active_workspace = next_workspace_raw.clamp(1, 9);
+    *active_workspace = normalize_workspace_1_based_u8(next_workspace_raw);
 }
 
 fn normalize_workspace_1_based(workspace: usize) -> usize {
@@ -130,16 +134,39 @@ fn apply_output_workspace_changed_state(
     *workspace_indicator_dirty = true;
 }
 
-fn apply_window_opened_state(windows: &mut Vec<WindowInfo>, id: String, title: String) {
+fn apply_window_opened_state(
+    windows: &mut Vec<WindowInfo>,
+    id: String,
+    title: String,
+    workspace: Option<u8>,
+) {
+    let workspace = workspace.map(normalize_workspace_1_based_u8);
     if let Some(window) = windows.iter_mut().find(|w| w.id == id) {
         window.title = title;
+        if let Some(workspace) = workspace {
+            window.workspace = workspace;
+        }
     } else {
-        windows.push(WindowInfo { id, title });
+        windows.push(WindowInfo {
+            id,
+            title,
+            workspace: workspace.unwrap_or(1),
+        });
     }
 }
 
 fn apply_window_closed_state(windows: &mut Vec<WindowInfo>, id: &str) {
     windows.retain(|w| w.id != id);
+}
+
+fn clear_stale_focused_window_id(focused_window_id: &mut Option<String>, windows: &[WindowInfo]) {
+    let Some(focused_id) = focused_window_id.as_deref() else {
+        return;
+    };
+    if windows.iter().any(|window| window.id == focused_id) {
+        return;
+    }
+    *focused_window_id = None;
 }
 
 fn apply_full_window_snapshot(
@@ -159,6 +186,7 @@ fn apply_full_window_snapshot(
         windows.push(WindowInfo {
             id: window.id,
             title: window.title,
+            workspace: normalize_workspace_1_based_u8(window.workspace),
         });
     }
 }
@@ -327,6 +355,7 @@ impl MeridianShell {
                 self.occupied_state_available = true;
                 self.occupied_unavailable_logged = false;
                 self.update_occupied_workspaces();
+                clear_stale_focused_window_id(&mut self.focused_window_id, &self.windows);
                 self.update_focused_title();
             }
             ShellEvent::OutputWorkspaceChanged {
@@ -386,15 +415,18 @@ impl MeridianShell {
                 self.workspace_ipc_unavailable_logged = false;
             }
             ShellEvent::WindowOpened { id, title } => {
-                apply_window_opened_state(&mut self.windows, id, title);
+                apply_window_opened_state(
+                    &mut self.windows,
+                    id,
+                    title,
+                    Some(self.active_workspace),
+                );
                 self.update_focused_title();
             }
             ShellEvent::WindowClosed { id } => {
                 apply_window_closed_state(&mut self.windows, &id);
-                if self.focused_window_id.as_deref() == Some(id.as_str()) {
-                    self.focused_window_id = None;
-                    self.focused_title = None;
-                }
+                clear_stale_focused_window_id(&mut self.focused_window_id, &self.windows);
+                self.update_focused_title();
             }
             ShellEvent::WindowFocused { id } => {
                 self.focused_window_id = Some(id);
@@ -691,9 +723,9 @@ mod tests {
     use super::{
         apply_full_window_snapshot, apply_output_workspace_changed_state,
         apply_output_workspace_snapshot_state, apply_window_closed_state,
-        apply_window_opened_state, apply_workspace_changed, compute_occupied_workspaces,
-        panel_theme_signature, resolve_shell_theme_from_config, select_panel_active_workspace,
-        WindowInfo, WindowSnapshotEntry,
+        apply_window_opened_state, apply_workspace_changed, clear_stale_focused_window_id,
+        compute_occupied_workspaces, panel_theme_signature, resolve_shell_theme_from_config,
+        select_panel_active_workspace, WindowInfo, WindowSnapshotEntry,
     };
 
     #[test]
@@ -749,6 +781,7 @@ mod tests {
         let mut windows = vec![WindowInfo {
             id: "stale".into(),
             title: "stale".into(),
+            workspace: 1,
         }];
         let mut counts = [3u16; 9];
         apply_full_window_snapshot(&mut active, &mut windows, &mut counts, 1, Vec::new());
@@ -819,12 +852,15 @@ mod tests {
         let mut windows = vec![WindowInfo {
             id: "id-1".into(),
             title: "old".into(),
+            workspace: 2,
         }];
-        apply_window_opened_state(&mut windows, "id-1".into(), "new".into());
+        apply_window_opened_state(&mut windows, "id-1".into(), "new".into(), None);
         assert_eq!(windows[0].title, "new");
+        assert_eq!(windows[0].workspace, 2);
 
-        apply_window_opened_state(&mut windows, "id-2".into(), "B".into());
+        apply_window_opened_state(&mut windows, "id-2".into(), "B".into(), Some(3));
         assert_eq!(windows.len(), 2);
+        assert_eq!(windows[1].workspace, 3);
     }
 
     #[test]
@@ -832,6 +868,7 @@ mod tests {
         let mut windows = vec![WindowInfo {
             id: "id-1".into(),
             title: "A".into(),
+            workspace: 1,
         }];
         apply_window_closed_state(&mut windows, "missing");
         assert_eq!(windows.len(), 1);
@@ -842,9 +879,49 @@ mod tests {
         let mut windows = vec![WindowInfo {
             id: "id-1".into(),
             title: "A".into(),
+            workspace: 1,
         }];
         apply_window_closed_state(&mut windows, "id-1");
         assert!(windows.is_empty());
+    }
+
+    #[test]
+    fn full_snapshot_preserves_workspace_on_window_entries() {
+        let mut active = 1u8;
+        let mut windows = Vec::new();
+        let mut counts = [0u16; 9];
+        apply_full_window_snapshot(
+            &mut active,
+            &mut windows,
+            &mut counts,
+            2,
+            vec![
+                WindowSnapshotEntry {
+                    workspace: 1,
+                    id: "id-1".into(),
+                    title: "A".into(),
+                },
+                WindowSnapshotEntry {
+                    workspace: 3,
+                    id: "id-2".into(),
+                    title: "B".into(),
+                },
+            ],
+        );
+        assert_eq!(windows[0].workspace, 1);
+        assert_eq!(windows[1].workspace, 3);
+    }
+
+    #[test]
+    fn stale_focused_window_id_is_cleared_when_no_window_matches() {
+        let windows = vec![WindowInfo {
+            id: "id-1".into(),
+            title: "A".into(),
+            workspace: 1,
+        }];
+        let mut focused = Some("missing".to_string());
+        clear_stale_focused_window_id(&mut focused, &windows);
+        assert_eq!(focused, None);
     }
 
     #[test]

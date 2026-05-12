@@ -9,6 +9,7 @@ pub(crate) enum SurfaceKind {
 pub(crate) struct WindowInfo {
     pub(crate) id: String,
     pub(crate) title: String,
+    pub(crate) workspace: u8,
 }
 
 #[derive(Debug, Clone)]
