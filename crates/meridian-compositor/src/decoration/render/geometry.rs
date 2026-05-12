@@ -119,12 +119,10 @@ impl SsdChromeMetrics {
         Self { frame }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn decoration_offset(self) -> (i32, i32) {
         self.frame.decoration_offset()
     }
 
-    #[allow(dead_code)]
     pub(crate) fn decoration_inset(self) -> (i32, i32, i32, i32) {
         self.frame.decoration_inset()
     }
@@ -272,10 +270,7 @@ impl DecorationManager {
             0
         };
         let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (0, 0).into(), bw, title_h);
-        (
-            metrics.client_origin.x - metrics.frame_origin.x,
-            metrics.client_origin.y - metrics.frame_origin.y,
-        )
+        SsdChromeMetrics::new(metrics).decoration_offset()
     }
 
     pub fn decoration_inset(
@@ -296,13 +291,7 @@ impl DecorationManager {
             0
         };
         let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (0, 0).into(), bw, title_h);
-        let left = metrics.client_origin.x - metrics.frame_origin.x;
-        let top = metrics.client_origin.y - metrics.frame_origin.y;
-        let right = metrics.frame_rect.loc.x + metrics.frame_rect.size.w
-            - (metrics.client_rect.loc.x + metrics.client_rect.size.w);
-        let bottom = metrics.frame_rect.loc.y + metrics.frame_rect.size.h
-            - (metrics.client_rect.loc.y + metrics.client_rect.size.h);
-        (left, top, right, bottom)
+        SsdChromeMetrics::new(metrics).decoration_inset()
     }
 }
 
