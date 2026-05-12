@@ -18,8 +18,9 @@ use crate::{
     },
     state::OutputInfo,
     state::{
-        remember_maximize_restore_geometry, restore_client_loc_or_fallback,
-        take_maximize_restore_geometry, window_id, MaximizeRestoreGeometry, MeridianState,
+        maximized_client_loc_from_output, remember_maximize_restore_geometry,
+        resolve_unmaximize_restore_client_loc, take_maximize_restore_geometry, window_id,
+        MaximizeRestoreGeometry, MeridianState,
     },
 };
 
@@ -199,34 +200,27 @@ pub fn handle_pointer_button<I: InputBackend>(
                                 &mut state.maximize_restore_locations,
                                 toplevel.wl_surface(),
                             );
-                            if restore_geometry.is_some() {
-                                let fallback_loc = Point::from((0, 0));
-                                let restore_loc =
-                                    restore_client_loc_or_fallback(restore_geometry, fallback_loc);
-                                state.workspaces.active_space_mut().map_element(
-                                    window.clone(),
-                                    restore_loc,
-                                    true,
-                                );
+                            let (restore_loc, used_fallback) = if restore_geometry.is_some() {
+                                resolve_unmaximize_restore_client_loc(restore_geometry, (0, 0))
                             } else {
                                 let theme = &state.theme_manager.current().config.decorations;
                                 let (x_off, y_off) = state
                                     .decoration_manager
                                     .decoration_offset(toplevel.wl_surface(), theme);
-                                let fallback_loc = Point::from((x_off, y_off));
+                                resolve_unmaximize_restore_client_loc(None, (x_off, y_off))
+                            };
+                            if used_fallback {
                                 warn!(
-                                    x = fallback_loc.x,
-                                    y = fallback_loc.y,
+                                    x = restore_loc.x,
+                                    y = restore_loc.y,
                                     "unmaximize restore location missing in SSD button path; applying fallback client origin"
                                 );
-                                let restore_loc =
-                                    restore_client_loc_or_fallback(None, fallback_loc);
-                                state.workspaces.active_space_mut().map_element(
-                                    window.clone(),
-                                    restore_loc,
-                                    true,
-                                );
                             }
+                            state.workspaces.active_space_mut().map_element(
+                                window.clone(),
+                                restore_loc,
+                                true,
+                            );
                         } else if let Some(geo) = output_geo {
                             toplevel.with_pending_state(|s| {
                                 s.states.set(smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized);
@@ -239,8 +233,8 @@ pub fn handle_pointer_button<I: InputBackend>(
                             let (x_off, y_off) = state
                                 .decoration_manager
                                 .decoration_offset(toplevel.wl_surface(), theme);
-                            let maximized_client_loc: Point<i32, Logical> =
-                                (geo.loc.x + x_off, geo.loc.y + y_off).into();
+                            let maximized_client_loc =
+                                maximized_client_loc_from_output(geo.loc, (x_off, y_off));
                             if let Some(current_loc) =
                                 state.workspaces.active_space().element_location(&window)
                             {

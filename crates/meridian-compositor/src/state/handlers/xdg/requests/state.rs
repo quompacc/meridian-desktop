@@ -3,9 +3,9 @@ use smithay::utils::{Logical, Point};
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::state::{
-    remember_maximize_restore_geometry, restore_client_loc_or_fallback,
-    take_maximize_restore_geometry, window_id, MaximizeRestoreGeometry, MeridianState,
-    OutputGeometry, OutputInfo,
+    maximized_client_loc_from_output, remember_maximize_restore_geometry,
+    resolve_unmaximize_restore_client_loc, take_maximize_restore_geometry, window_id,
+    MaximizeRestoreGeometry, MeridianState, OutputGeometry, OutputInfo,
 };
 
 use super::window::find_active_window;
@@ -37,7 +37,7 @@ pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: Toplev
         let (x_off, y_off) = state
             .decoration_manager
             .decoration_offset(surface.wl_surface(), theme);
-        let maximized_client_loc: Point<i32, Logical> = (loc.x + x_off, loc.y + y_off).into();
+        let maximized_client_loc = maximized_client_loc_from_output(loc, (x_off, y_off));
 
         if let Some(window) = find_active_window(state, &surface) {
             if !is_maxed {
@@ -74,30 +74,26 @@ pub(crate) fn handle_unmaximize_request(state: &mut MeridianState, surface: Topl
             &mut state.maximize_restore_locations,
             surface.wl_surface(),
         );
-        if restore_geometry.is_some() {
-            let fallback_loc = Point::from((0, 0));
-            let restore_loc = restore_client_loc_or_fallback(restore_geometry, fallback_loc);
-            state
-                .workspaces
-                .active_space_mut()
-                .map_element(window, restore_loc, true);
+        let (restore_loc, used_fallback) = if restore_geometry.is_some() {
+            resolve_unmaximize_restore_client_loc(restore_geometry, (0, 0))
         } else {
             let theme = &state.theme_manager.current().config.decorations;
             let (x_off, y_off) = state
                 .decoration_manager
                 .decoration_offset(surface.wl_surface(), theme);
-            let fallback_loc: Point<i32, Logical> = (x_off, y_off).into();
+            resolve_unmaximize_restore_client_loc(None, (x_off, y_off))
+        };
+        if used_fallback {
             tracing::warn!(
-                x = fallback_loc.x,
-                y = fallback_loc.y,
+                x = restore_loc.x,
+                y = restore_loc.y,
                 "unmaximize restore location missing in xdg request path; applying fallback client origin"
             );
-            let restore_loc = restore_client_loc_or_fallback(None, fallback_loc);
-            state
-                .workspaces
-                .active_space_mut()
-                .map_element(window, restore_loc, true);
         }
+        state
+            .workspaces
+            .active_space_mut()
+            .map_element(window, restore_loc, true);
     }
     surface.send_pending_configure();
 }

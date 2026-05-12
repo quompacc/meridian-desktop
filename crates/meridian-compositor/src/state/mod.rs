@@ -79,6 +79,28 @@ pub(crate) fn restore_client_loc_or_fallback(
     geometry.map_or(fallback, |entry| entry.client_loc)
 }
 
+pub(crate) fn maximized_client_loc_from_output(
+    output_loc: Point<i32, Logical>,
+    decoration_offset: (i32, i32),
+) -> Point<i32, Logical> {
+    Point::from((
+        output_loc.x + decoration_offset.0,
+        output_loc.y + decoration_offset.1,
+    ))
+}
+
+pub(crate) fn resolve_unmaximize_restore_client_loc(
+    geometry: Option<MaximizeRestoreGeometry>,
+    decoration_offset: (i32, i32),
+) -> (Point<i32, Logical>, bool) {
+    let used_fallback = geometry.is_none();
+    let fallback_loc = Point::from(decoration_offset);
+    (
+        restore_client_loc_or_fallback(geometry, fallback_loc),
+        used_fallback,
+    )
+}
+
 pub struct MeridianState {
     pub start_time: Instant,
     pub display_handle: DisplayHandle,
@@ -120,7 +142,9 @@ mod tests {
     use smithay::utils::{Logical, Point, Size};
 
     use super::{
-        remember_maximize_restore_geometry, restore_client_loc_or_fallback, MaximizeRestoreGeometry,
+        maximized_client_loc_from_output, remember_maximize_restore_geometry,
+        resolve_unmaximize_restore_client_loc, restore_client_loc_or_fallback,
+        MaximizeRestoreGeometry,
     };
 
     #[test]
@@ -164,5 +188,30 @@ mod tests {
         let fallback: Point<i32, Logical> = (12, 34).into();
         let resolved = restore_client_loc_or_fallback(None, fallback);
         assert_eq!(resolved, fallback);
+    }
+
+    #[test]
+    fn maximize_mapping_adds_decoration_offset_to_output_origin() {
+        let output_loc: Point<i32, Logical> = (100, 200).into();
+        let mapped = maximized_client_loc_from_output(output_loc, (2, 34));
+        assert_eq!(mapped, Point::from((102, 234)));
+    }
+
+    #[test]
+    fn unmaximize_restore_uses_stored_geometry_without_fallback() {
+        let geometry = Some(MaximizeRestoreGeometry::new(
+            (40, 50).into(),
+            Some((800, 600).into()),
+        ));
+        let (resolved, used_fallback) = resolve_unmaximize_restore_client_loc(geometry, (2, 34));
+        assert_eq!(resolved, Point::from((40, 50)));
+        assert!(!used_fallback);
+    }
+
+    #[test]
+    fn unmaximize_restore_uses_decoration_offset_when_missing() {
+        let (resolved, used_fallback) = resolve_unmaximize_restore_client_loc(None, (2, 34));
+        assert_eq!(resolved, Point::from((2, 34)));
+        assert!(used_fallback);
     }
 }
