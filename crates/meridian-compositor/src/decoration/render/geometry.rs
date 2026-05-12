@@ -4,7 +4,6 @@ use smithay::utils::{Logical, Point, Rectangle, Size};
 
 use super::super::{DecorationManager, BUTTON_MARGIN, BUTTON_SIZE, TITLE_BAR_HEIGHT};
 
-#[allow(dead_code)]
 pub(crate) const SSD_RESIZE_HANDLE_THICKNESS: i32 = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,7 +84,6 @@ impl SsdFrameMetrics {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SsdButtonMetrics {
     pub(crate) close_rect: Rectangle<i32, Logical>,
@@ -93,7 +91,6 @@ pub(crate) struct SsdButtonMetrics {
     pub(crate) minimize_rect: Rectangle<i32, Logical>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SsdResizeBandMetrics {
     pub(crate) thickness: i32,
@@ -113,7 +110,6 @@ pub(crate) struct SsdShadowMetrics {
     pub(crate) rect: Rectangle<i32, Logical>,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SsdChromeMetrics {
     pub(crate) frame: SsdFrameMetrics,

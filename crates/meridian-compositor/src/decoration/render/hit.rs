@@ -1,15 +1,11 @@
 use meridian_config::Decorations;
 use smithay::{
     reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::{Logical, Point, Size},
+    utils::{Logical, Point, Rectangle, Size},
 };
 
-use super::super::{
-    DecorationHit, DecorationManager, DecorationResizeEdge, BUTTON_MARGIN, BUTTON_SIZE,
-};
-use super::geometry::SsdFrameMetrics;
-
-const RESIZE_HANDLE_THICKNESS: i32 = 8;
+use super::super::{DecorationHit, DecorationManager, DecorationResizeEdge};
+use super::geometry::{SsdChromeMetrics, SsdFrameMetrics};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SsdFrameHitRegion {
@@ -33,75 +29,69 @@ pub(crate) fn classify_ssd_frame_hit(
     pointer_pos: Point<f64, Logical>,
     metrics: SsdFrameMetrics,
 ) -> SsdFrameHitRegion {
+    let chrome = SsdChromeMetrics::new(metrics);
+    let frame = chrome.frame;
     let px = pointer_pos.x as i32;
     let py = pointer_pos.y as i32;
-    let frame_left = metrics.frame_origin.x;
-    let frame_top = metrics.frame_origin.y;
-    let frame_right = frame_left + metrics.frame_size.w;
-    let frame_bottom = frame_top + metrics.frame_size.h;
+    let frame_left = frame.frame_origin.x;
+    let frame_top = frame.frame_origin.y;
+    let frame_right = frame_left + frame.frame_size.w;
+    let frame_bottom = frame_top + frame.frame_size.h;
 
     if px < frame_left || py < frame_top || px >= frame_right || py >= frame_bottom {
         return SsdFrameHitRegion::OutsideFrame;
     }
 
-    if metrics.titlebar_height > 0 {
-        let close_x = frame_right - BUTTON_SIZE - BUTTON_MARGIN;
-        let close_y =
-            frame_top + (metrics.titlebar_height - BUTTON_SIZE) / 2 + metrics.border_width;
-        let max_x = close_x - BUTTON_SIZE - BUTTON_MARGIN / 2;
-        let min_x = max_x - BUTTON_SIZE - BUTTON_MARGIN / 2;
-        let btn_bot = close_y + BUTTON_SIZE;
-
-        if px >= close_x && px < close_x + BUTTON_SIZE && py >= close_y && py < btn_bot {
+    if let Some(buttons) = chrome.button_metrics() {
+        if point_in_rect(px, py, buttons.close_rect) {
             return SsdFrameHitRegion::CloseButton;
         }
-        if px >= max_x && px < max_x + BUTTON_SIZE && py >= close_y && py < btn_bot {
+        if point_in_rect(px, py, buttons.maximize_rect) {
             return SsdFrameHitRegion::MaximizeButton;
         }
-        if px >= min_x && px < min_x + BUTTON_SIZE && py >= close_y && py < btn_bot {
+        if point_in_rect(px, py, buttons.minimize_rect) {
             return SsdFrameHitRegion::MinimizeButton;
         }
     }
 
-    let bw = metrics.border_width;
-    if bw > 0 {
-        let resize_w = bw.max(RESIZE_HANDLE_THICKNESS);
-        let at_top = py < frame_top + resize_w;
-        let at_left = px < frame_left + resize_w;
-        let at_right = px >= frame_right - resize_w;
-        let at_bottom = py >= frame_bottom - resize_w;
-
-        if at_left && at_top {
+    if let Some(resize) = chrome.resize_band_metrics() {
+        if point_in_rect(px, py, resize.top_left_corner) {
             return SsdFrameHitRegion::TopLeftCorner;
         }
-        if at_right && at_top {
+        if point_in_rect(px, py, resize.top_right_corner) {
             return SsdFrameHitRegion::TopRightCorner;
         }
-        if at_left && at_bottom {
+        if point_in_rect(px, py, resize.bottom_left_corner) {
             return SsdFrameHitRegion::BottomLeftCorner;
         }
-        if at_right && at_bottom {
+        if point_in_rect(px, py, resize.bottom_right_corner) {
             return SsdFrameHitRegion::BottomRightCorner;
         }
-        if at_top {
+        if point_in_rect(px, py, resize.top_band) {
             return SsdFrameHitRegion::TopBorder;
         }
-        if at_left {
+        if point_in_rect(px, py, resize.left_band) {
             return SsdFrameHitRegion::LeftBorder;
         }
-        if at_right {
+        if point_in_rect(px, py, resize.right_band) {
             return SsdFrameHitRegion::RightBorder;
         }
-        if at_bottom {
+        if point_in_rect(px, py, resize.bottom_band) {
             return SsdFrameHitRegion::BottomBorder;
         }
     }
 
-    if py < frame_top + metrics.titlebar_height + metrics.border_width {
+    if py < frame_top + frame.titlebar_height + frame.border_width {
         return SsdFrameHitRegion::TitleBar;
     }
 
     SsdFrameHitRegion::ClientContent
+}
+
+fn point_in_rect(px: i32, py: i32, rect: Rectangle<i32, Logical>) -> bool {
+    let right = rect.loc.x + rect.size.w;
+    let bottom = rect.loc.y + rect.size.h;
+    px >= rect.loc.x && px < right && py >= rect.loc.y && py < bottom
 }
 
 impl DecorationManager {
@@ -162,6 +152,23 @@ mod tests {
         let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
         let hit = classify_ssd_frame_hit((120.0, 10.0).into(), metrics);
         assert_eq!(hit, SsdFrameHitRegion::TitleBar);
+    }
+
+    #[test]
+    fn button_points_hit_close_maximize_and_minimize_regions() {
+        let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
+        assert_eq!(
+            classify_ssd_frame_hit((620.0, 10.0).into(), metrics),
+            SsdFrameHitRegion::CloseButton
+        );
+        assert_eq!(
+            classify_ssd_frame_hit((600.0, 10.0).into(), metrics),
+            SsdFrameHitRegion::MaximizeButton
+        );
+        assert_eq!(
+            classify_ssd_frame_hit((580.0, 10.0).into(), metrics),
+            SsdFrameHitRegion::MinimizeButton
+        );
     }
 
     #[test]
