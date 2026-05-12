@@ -298,6 +298,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                             start_data,
                             window: window.clone(),
                             initial_window_location,
+                            latest_pointer_location: None,
                         };
                         pointer.set_grab(state, grab, serial, Focus::Clear);
                     }

@@ -46,6 +46,7 @@ pub(crate) fn handle_move_request(
             start_data,
             window,
             initial_window_location,
+            latest_pointer_location: None,
         };
         let Some(pointer) = seat.get_pointer() else {
             tracing::debug!("ignoring move request: seat has no pointer");
