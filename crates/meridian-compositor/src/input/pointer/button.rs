@@ -307,11 +307,34 @@ pub fn handle_pointer_button<I: InputBackend>(
                     );
                     pointer.frame(state);
                     if let Some(start_data) = pointer.grab_start_data() {
+                        let (started_maximized, started_fullscreen) =
+                            if let Some(toplevel) = window.toplevel() {
+                                let maximized = toplevel.with_committed_state(|s| {
+                                    s.map_or(false, |ts| {
+                                        ts.states.contains(xdg_toplevel::State::Maximized)
+                                    })
+                                }) || toplevel.with_pending_state(|s| {
+                                    s.states.contains(xdg_toplevel::State::Maximized)
+                                });
+                                let fullscreen = toplevel.with_committed_state(|s| {
+                                    s.map_or(false, |ts| {
+                                        ts.states.contains(xdg_toplevel::State::Fullscreen)
+                                    })
+                                }) || toplevel.with_pending_state(|s| {
+                                    s.states.contains(xdg_toplevel::State::Fullscreen)
+                                });
+                                (maximized, fullscreen)
+                            } else {
+                                (false, false)
+                            };
                         let grab = MoveSurfaceGrab {
                             start_data,
                             window: window.clone(),
                             initial_window_location,
                             latest_pointer_location: None,
+                            started_maximized,
+                            started_fullscreen,
+                            drag_restore_done: false,
                         };
                         pointer.set_grab(state, grab, serial, Focus::Clear);
                     }

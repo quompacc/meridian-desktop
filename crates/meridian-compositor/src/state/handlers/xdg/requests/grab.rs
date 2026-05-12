@@ -42,11 +42,26 @@ pub(crate) fn handle_move_request(
             tracing::debug!("ignoring move request: active window location is unavailable");
             return;
         };
+        let started_maximized = surface.with_committed_state(|s| {
+            s.map_or(false, |ts| {
+                ts.states.contains(xdg_toplevel::State::Maximized)
+            })
+        }) || surface
+            .with_pending_state(|s| s.states.contains(xdg_toplevel::State::Maximized));
+        let started_fullscreen = surface.with_committed_state(|s| {
+            s.map_or(false, |ts| {
+                ts.states.contains(xdg_toplevel::State::Fullscreen)
+            })
+        }) || surface
+            .with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen));
         let grab = MoveSurfaceGrab {
             start_data,
             window,
             initial_window_location,
             latest_pointer_location: None,
+            started_maximized,
+            started_fullscreen,
+            drag_restore_done: false,
         };
         let Some(pointer) = seat.get_pointer() else {
             tracing::debug!("ignoring move request: seat has no pointer");
