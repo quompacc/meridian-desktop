@@ -305,9 +305,12 @@ pub fn handle_pointer_button<I: InputBackend>(
                 }
                 DecorationHit::Resize(edge) => {
                     let resize_edges = match edge {
+                        DecorationResizeEdge::Top => ResizeEdge::TOP,
                         DecorationResizeEdge::Left => ResizeEdge::LEFT,
                         DecorationResizeEdge::Right => ResizeEdge::RIGHT,
                         DecorationResizeEdge::Bottom => ResizeEdge::BOTTOM,
+                        DecorationResizeEdge::TopLeft => ResizeEdge::TOP_LEFT,
+                        DecorationResizeEdge::TopRight => ResizeEdge::TOP_RIGHT,
                         DecorationResizeEdge::BottomLeft => ResizeEdge::BOTTOM_LEFT,
                         DecorationResizeEdge::BottomRight => ResizeEdge::BOTTOM_RIGHT,
                     };

@@ -16,9 +16,12 @@ const SHADOW_ALPHA: f32 = 0.35;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DecorationResizeEdge {
+    Top,
     Left,
     Right,
     Bottom,
+    TopLeft,
+    TopRight,
     BottomLeft,
     BottomRight,
 }

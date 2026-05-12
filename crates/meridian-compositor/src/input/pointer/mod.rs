@@ -197,7 +197,10 @@ fn cursor_icon_for_decoration_hit(hit: Option<DecorationHit>) -> DrmCursorIcon {
     match hit {
         Some(DecorationHit::Resize(DecorationResizeEdge::Left))
         | Some(DecorationHit::Resize(DecorationResizeEdge::Right)) => DrmCursorIcon::EwResize,
-        Some(DecorationHit::Resize(DecorationResizeEdge::Bottom)) => DrmCursorIcon::NsResize,
+        Some(DecorationHit::Resize(DecorationResizeEdge::Top))
+        | Some(DecorationHit::Resize(DecorationResizeEdge::Bottom)) => DrmCursorIcon::NsResize,
+        Some(DecorationHit::Resize(DecorationResizeEdge::TopLeft)) => DrmCursorIcon::NwseResize,
+        Some(DecorationHit::Resize(DecorationResizeEdge::TopRight)) => DrmCursorIcon::NeswResize,
         Some(DecorationHit::Resize(DecorationResizeEdge::BottomLeft)) => DrmCursorIcon::NeswResize,
         Some(DecorationHit::Resize(DecorationResizeEdge::BottomRight)) => DrmCursorIcon::NwseResize,
         _ => DrmCursorIcon::Default,
@@ -413,9 +416,27 @@ mod tests {
         );
         assert_eq!(
             super::cursor_icon_for_decoration_hit(Some(crate::decoration::DecorationHit::Resize(
+                crate::decoration::DecorationResizeEdge::Top,
+            ))),
+            crate::backend::drm::DrmCursorIcon::NsResize
+        );
+        assert_eq!(
+            super::cursor_icon_for_decoration_hit(Some(crate::decoration::DecorationHit::Resize(
                 crate::decoration::DecorationResizeEdge::Bottom,
             ))),
             crate::backend::drm::DrmCursorIcon::NsResize
+        );
+        assert_eq!(
+            super::cursor_icon_for_decoration_hit(Some(crate::decoration::DecorationHit::Resize(
+                crate::decoration::DecorationResizeEdge::TopLeft,
+            ))),
+            crate::backend::drm::DrmCursorIcon::NwseResize
+        );
+        assert_eq!(
+            super::cursor_icon_for_decoration_hit(Some(crate::decoration::DecorationHit::Resize(
+                crate::decoration::DecorationResizeEdge::TopRight,
+            ))),
+            crate::backend::drm::DrmCursorIcon::NeswResize
         );
         assert_eq!(
             super::cursor_icon_for_decoration_hit(Some(crate::decoration::DecorationHit::Resize(

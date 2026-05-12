@@ -19,9 +19,12 @@ pub(crate) enum SsdFrameHitRegion {
     CloseButton,
     MaximizeButton,
     MinimizeButton,
+    TopBorder,
     LeftBorder,
     RightBorder,
     BottomBorder,
+    TopLeftCorner,
+    TopRightCorner,
     BottomLeftCorner,
     BottomRightCorner,
 }
@@ -63,15 +66,25 @@ pub(crate) fn classify_ssd_frame_hit(
     let bw = metrics.border_width;
     if bw > 0 {
         let resize_w = bw.max(RESIZE_HANDLE_THICKNESS);
+        let at_top = py < frame_top + resize_w;
         let at_left = px < frame_left + resize_w;
         let at_right = px >= frame_right - resize_w;
         let at_bottom = py >= frame_bottom - resize_w;
 
+        if at_left && at_top {
+            return SsdFrameHitRegion::TopLeftCorner;
+        }
+        if at_right && at_top {
+            return SsdFrameHitRegion::TopRightCorner;
+        }
         if at_left && at_bottom {
             return SsdFrameHitRegion::BottomLeftCorner;
         }
         if at_right && at_bottom {
             return SsdFrameHitRegion::BottomRightCorner;
+        }
+        if at_top {
+            return SsdFrameHitRegion::TopBorder;
         }
         if at_left {
             return SsdFrameHitRegion::LeftBorder;
@@ -111,6 +124,7 @@ impl DecorationManager {
             SsdFrameHitRegion::CloseButton => Some(DecorationHit::CloseButton),
             SsdFrameHitRegion::MaximizeButton => Some(DecorationHit::MaximizeButton),
             SsdFrameHitRegion::MinimizeButton => Some(DecorationHit::MinimizeButton),
+            SsdFrameHitRegion::TopBorder => Some(DecorationHit::Resize(DecorationResizeEdge::Top)),
             SsdFrameHitRegion::LeftBorder => {
                 Some(DecorationHit::Resize(DecorationResizeEdge::Left))
             }
@@ -119,6 +133,12 @@ impl DecorationManager {
             }
             SsdFrameHitRegion::BottomBorder => {
                 Some(DecorationHit::Resize(DecorationResizeEdge::Bottom))
+            }
+            SsdFrameHitRegion::TopLeftCorner => {
+                Some(DecorationHit::Resize(DecorationResizeEdge::TopLeft))
+            }
+            SsdFrameHitRegion::TopRightCorner => {
+                Some(DecorationHit::Resize(DecorationResizeEdge::TopRight))
             }
             SsdFrameHitRegion::BottomLeftCorner => {
                 Some(DecorationHit::Resize(DecorationResizeEdge::BottomLeft))
@@ -145,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn border_points_hit_left_right_and_bottom_regions() {
+    fn border_points_hit_left_right_top_and_bottom_regions() {
         let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
         assert_eq!(
             classify_ssd_frame_hit((1.0, 220.0).into(), metrics),
@@ -154,6 +174,10 @@ mod tests {
         assert_eq!(
             classify_ssd_frame_hit((643.0, 220.0).into(), metrics),
             SsdFrameHitRegion::RightBorder
+        );
+        assert_eq!(
+            classify_ssd_frame_hit((320.0, 1.0).into(), metrics),
+            SsdFrameHitRegion::TopBorder
         );
         assert_eq!(
             classify_ssd_frame_hit((100.0, 435.0).into(), metrics),
@@ -179,8 +203,16 @@ mod tests {
     }
 
     #[test]
-    fn border_corner_points_hit_bottom_corner_regions() {
+    fn border_corner_points_hit_top_and_bottom_corner_regions() {
         let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
+        assert_eq!(
+            classify_ssd_frame_hit((1.0, 1.0).into(), metrics),
+            SsdFrameHitRegion::TopLeftCorner
+        );
+        assert_eq!(
+            classify_ssd_frame_hit((642.0, 1.0).into(), metrics),
+            SsdFrameHitRegion::TopRightCorner
+        );
         assert_eq!(
             classify_ssd_frame_hit((1.0, 435.0).into(), metrics),
             SsdFrameHitRegion::BottomLeftCorner
