@@ -752,6 +752,7 @@ impl LauncherState {
             .and_then(|zone| match zone.action {
                 ClickAction::LaunchApp(index) => Some(index),
                 ClickAction::SwitchWorkspace(_) => None,
+                ClickAction::FocusWindow(_) => None,
                 ClickAction::SelectLauncherCategory(_) => None,
                 ClickAction::ToggleLauncher => None,
             });

@@ -19,6 +19,7 @@ pub struct PanelState {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PanelWindowEntry {
+    pub id: String,
     pub title: String,
     pub focused: bool,
 }
@@ -175,6 +176,18 @@ pub fn draw_panel(
             painter.text_clipped(font, &label, text_x, baseline, remaining, color);
 
             let advance = (label.chars().count() as i32 * 8).max(0);
+            let hit_w = remaining.min(advance).max(0);
+            if hit_w > 0 {
+                panel_state.clicks.push(ClickZone {
+                    rect: Rect {
+                        x: text_x,
+                        y: center_rect.y,
+                        w: hit_w,
+                        h: center_rect.h,
+                    },
+                    action: ClickAction::FocusWindow(entry.id.clone()),
+                });
+            }
             text_x += advance;
         }
     }

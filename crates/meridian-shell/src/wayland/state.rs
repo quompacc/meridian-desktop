@@ -578,6 +578,9 @@ impl MeridianShell {
                 self.ipc.send(&ShellCommand::SwitchWorkspace { workspace });
                 self.draw_panel(qh, RepaintReason::Pointer);
             }
+            ClickAction::FocusWindow(id) => {
+                self.ipc.send(&ShellCommand::FocusWindow { id });
+            }
             ClickAction::LaunchApp(index) => {
                 self.launcher_state.launch_app(index, &mut self.ipc);
             }
@@ -607,6 +610,7 @@ impl MeridianShell {
                     self.draw_launcher(qh, RepaintReason::Pointer);
                 }
             }
+            ClickAction::FocusWindow(_) => {}
             ClickAction::SwitchWorkspace(_) => {}
             ClickAction::ToggleLauncher => {}
         }

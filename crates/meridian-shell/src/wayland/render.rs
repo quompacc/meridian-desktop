@@ -52,6 +52,7 @@ impl MeridianShell {
             .iter()
             .filter(|window| window.workspace == active_workspace)
             .map(|window| panel::PanelWindowEntry {
+                id: window.id.clone(),
                 title: if window.title.trim().is_empty() {
                     "Window".to_string()
                 } else {
