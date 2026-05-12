@@ -58,6 +58,38 @@ impl MaximizeRestoreGeometry {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HalfSnapDirection {
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WindowSnapState {
+    Half(HalfSnapDirection),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HalfSnapRestoreGeometry {
+    pub client_loc: Point<i32, Logical>,
+    pub client_size: Option<Size<i32, Logical>>,
+}
+
+impl HalfSnapRestoreGeometry {
+    pub fn new(client_loc: Point<i32, Logical>, client_size: Option<Size<i32, Logical>>) -> Self {
+        Self {
+            client_loc,
+            client_size,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HalfSnapPlacement {
+    pub client_loc: Point<i32, Logical>,
+    pub client_size: Size<i32, Logical>,
+}
+
 pub(crate) fn remember_maximize_restore_geometry(
     map: &mut HashMap<String, MaximizeRestoreGeometry>,
     window_key: String,
@@ -88,6 +120,34 @@ pub(crate) fn maximized_client_loc_from_output(
         output_loc.x + decoration_offset.0,
         output_loc.y + decoration_offset.1,
     ))
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn half_snap_client_placement_from_output(
+    output_geometry: OutputGeometry,
+    direction: HalfSnapDirection,
+    decoration_offset: (i32, i32),
+    decoration_inset: (i32, i32, i32, i32),
+) -> HalfSnapPlacement {
+    let left_frame_width = output_geometry.width / 2;
+    let (frame_x, frame_width) = match direction {
+        HalfSnapDirection::Left => (output_geometry.x, left_frame_width),
+        HalfSnapDirection::Right => (
+            output_geometry.x + left_frame_width,
+            output_geometry.width - left_frame_width,
+        ),
+    };
+    let frame_y = output_geometry.y;
+    let frame_height = output_geometry.height;
+    let (left_inset, top_inset, right_inset, bottom_inset) = decoration_inset;
+
+    HalfSnapPlacement {
+        client_loc: Point::from((frame_x + decoration_offset.0, frame_y + decoration_offset.1)),
+        client_size: Size::from((
+            (frame_width - left_inset - right_inset).max(1),
+            (frame_height - top_inset - bottom_inset).max(1),
+        )),
+    }
 }
 
 pub(crate) fn resolve_unmaximize_restore_client_loc(
@@ -139,6 +199,8 @@ pub struct MeridianState {
     pub xwm: Option<X11Wm>,
     pub drm_backend: Option<DrmBackend>,
     pub maximize_restore_locations: HashMap<String, MaximizeRestoreGeometry>,
+    pub half_snap_restore_locations: HashMap<String, HalfSnapRestoreGeometry>,
+    pub active_window_snap_states: HashMap<String, WindowSnapState>,
 }
 
 pub(crate) use client::ClientState;
@@ -150,9 +212,10 @@ mod tests {
     use smithay::utils::{Logical, Point, Size};
 
     use super::{
-        clear_tiled_toplevel_states, maximized_client_loc_from_output,
-        remember_maximize_restore_geometry, resolve_unmaximize_restore_client_loc,
-        restore_client_loc_or_fallback, MaximizeRestoreGeometry,
+        clear_tiled_toplevel_states, half_snap_client_placement_from_output,
+        maximized_client_loc_from_output, remember_maximize_restore_geometry,
+        resolve_unmaximize_restore_client_loc, restore_client_loc_or_fallback, HalfSnapDirection,
+        MaximizeRestoreGeometry, OutputGeometry,
     };
 
     #[test]
@@ -241,5 +304,114 @@ mod tests {
         assert!(!state.states.contains(xdg_toplevel::State::TiledTop));
         assert!(!state.states.contains(xdg_toplevel::State::TiledBottom));
         assert!(state.states.contains(xdg_toplevel::State::Maximized));
+    }
+
+    #[test]
+    fn half_snap_left_placement_uses_left_output_half() {
+        let output = OutputGeometry {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        let placement = half_snap_client_placement_from_output(
+            output,
+            HalfSnapDirection::Left,
+            (0, 0),
+            (0, 0, 0, 0),
+        );
+        assert_eq!(placement.client_loc, Point::from((0, 0)));
+        assert_eq!(placement.client_size, Size::from((960, 1080)));
+    }
+
+    #[test]
+    fn half_snap_right_placement_uses_right_output_half() {
+        let output = OutputGeometry {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        let placement = half_snap_client_placement_from_output(
+            output,
+            HalfSnapDirection::Right,
+            (0, 0),
+            (0, 0, 0, 0),
+        );
+        assert_eq!(placement.client_loc, Point::from((960, 0)));
+        assert_eq!(placement.client_size, Size::from((960, 1080)));
+    }
+
+    #[test]
+    fn half_snap_nonzero_output_origin_is_preserved() {
+        let output = OutputGeometry {
+            x: 100,
+            y: 50,
+            width: 1600,
+            height: 900,
+        };
+        let placement = half_snap_client_placement_from_output(
+            output,
+            HalfSnapDirection::Left,
+            (0, 0),
+            (0, 0, 0, 0),
+        );
+        assert_eq!(placement.client_loc, Point::from((100, 50)));
+        assert_eq!(placement.client_size, Size::from((800, 900)));
+    }
+
+    #[test]
+    fn half_snap_placement_applies_ssd_offset_and_inset() {
+        let output = OutputGeometry {
+            x: 100,
+            y: 50,
+            width: 1600,
+            height: 900,
+        };
+        let left = half_snap_client_placement_from_output(
+            output,
+            HalfSnapDirection::Left,
+            (2, 34),
+            (2, 34, 2, 2),
+        );
+        assert_eq!(left.client_loc, Point::from((102, 84)));
+        assert_eq!(left.client_size, Size::from((796, 864)));
+
+        let right = half_snap_client_placement_from_output(
+            output,
+            HalfSnapDirection::Right,
+            (2, 34),
+            (2, 34, 2, 2),
+        );
+        assert_eq!(right.client_loc, Point::from((902, 84)));
+        assert_eq!(right.client_size, Size::from((796, 864)));
+    }
+
+    #[test]
+    fn half_snap_odd_output_width_assigns_extra_pixel_to_right_half() {
+        let output = OutputGeometry {
+            x: 0,
+            y: 0,
+            width: 1919,
+            height: 1080,
+        };
+        let left = half_snap_client_placement_from_output(
+            output,
+            HalfSnapDirection::Left,
+            (0, 0),
+            (0, 0, 0, 0),
+        );
+        let right = half_snap_client_placement_from_output(
+            output,
+            HalfSnapDirection::Right,
+            (0, 0),
+            (0, 0, 0, 0),
+        );
+
+        assert_eq!(left.client_size.w, output.width / 2);
+        assert_eq!(right.client_size.w, output.width - (output.width / 2));
+        assert_eq!(left.client_size.w, 959);
+        assert_eq!(right.client_size.w, 960);
+        assert_eq!(right.client_size.w, left.client_size.w + 1);
     }
 }
