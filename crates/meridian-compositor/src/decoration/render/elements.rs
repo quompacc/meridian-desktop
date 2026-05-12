@@ -8,8 +8,9 @@ use smithay::{
 };
 
 use super::{
-    super::{DecorationManager, BUTTON_MARGIN, BUTTON_SIZE, TITLE_BAR_HEIGHT},
+    super::{DecorationManager, TITLE_BAR_HEIGHT},
     buffers::update_buffers,
+    geometry::{SsdChromeMetrics, SsdFrameMetrics},
 };
 
 impl DecorationManager {
@@ -66,29 +67,34 @@ impl DecorationManager {
         }
 
         if show_title {
-            let btn_y = bw + (TITLE_BAR_HEIGHT - BUTTON_SIZE) / 2;
-            let close_x = total_w - BUTTON_SIZE - BUTTON_MARGIN;
-            let max_x = close_x - BUTTON_SIZE - BUTTON_MARGIN / 2;
-            let min_x = max_x - BUTTON_SIZE - BUTTON_MARGIN / 2;
+            let chrome = SsdChromeMetrics::new(SsdFrameMetrics::from_frame_origin(
+                window_loc,
+                content_size,
+                bw,
+                title_h,
+            ));
+            let buttons = chrome
+                .button_metrics()
+                .expect("titlebar buttons should exist when titlebar is shown");
 
             // Render order is front-to-back. Emit controls before titlebar fill so controls stay visible.
             elements.push(SolidColorRenderElement::from_buffer(
                 &deco.buffers.close_btn,
-                phys(x + close_x, y + btn_y),
+                phys(buttons.close_rect.loc.x, buttons.close_rect.loc.y),
                 scale,
                 1.0,
                 Kind::Unspecified,
             ));
             elements.push(SolidColorRenderElement::from_buffer(
                 &deco.buffers.maximize_btn,
-                phys(x + max_x, y + btn_y),
+                phys(buttons.maximize_rect.loc.x, buttons.maximize_rect.loc.y),
                 scale,
                 1.0,
                 Kind::Unspecified,
             ));
             elements.push(SolidColorRenderElement::from_buffer(
                 &deco.buffers.minimize_btn,
-                phys(x + min_x, y + btn_y),
+                phys(buttons.minimize_rect.loc.x, buttons.minimize_rect.loc.y),
                 scale,
                 1.0,
                 Kind::Unspecified,

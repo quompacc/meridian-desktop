@@ -115,16 +115,17 @@ pub(crate) struct SsdChromeMetrics {
     pub(crate) frame: SsdFrameMetrics,
 }
 
-#[allow(dead_code)]
 impl SsdChromeMetrics {
     pub(crate) fn new(frame: SsdFrameMetrics) -> Self {
         Self { frame }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn decoration_offset(self) -> (i32, i32) {
         self.frame.decoration_offset()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn decoration_inset(self) -> (i32, i32, i32, i32) {
         self.frame.decoration_inset()
     }
@@ -210,6 +211,7 @@ impl SsdChromeMetrics {
         })
     }
 
+    #[allow(dead_code)]
     pub(crate) fn shadow_metrics(self, shadow_radius: i32) -> Option<SsdShadowMetrics> {
         if self.frame.border_width <= 0 {
             return None;
