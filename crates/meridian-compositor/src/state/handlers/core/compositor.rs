@@ -192,6 +192,7 @@ impl CompositorHandler for MeridianState {
                     if should_clear_focus {
                         let serial = SERIAL_COUNTER.next_serial();
                         self.set_keyboard_focus_with_decorations(Option::<WlSurface>::None, serial);
+                        self.broadcast_toplevel_focus_cleared();
                         tracing::debug!(
                             "layer keyboard focus cleared: namespace={} layer={:?} output={} reason=no-buffer-commit",
                             namespace,

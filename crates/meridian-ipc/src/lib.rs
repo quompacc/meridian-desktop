@@ -167,6 +167,7 @@ pub enum ShellEvent {
     WindowFocused {
         id: String,
     },
+    WindowFocusCleared,
     ConfigReloaded {
         success: bool,
     },
@@ -333,6 +334,14 @@ mod tests {
     #[test]
     fn legacy_workspace_changed_roundtrip_remains_stable() {
         let event = ShellEvent::WorkspaceChanged { workspace: 4 };
+        let bytes = encode_event(&event).expect("encode");
+        let decoded = decode_event(std::str::from_utf8(&bytes).expect("utf8")).expect("decode");
+        assert_eq!(decoded, event);
+    }
+
+    #[test]
+    fn window_focus_cleared_event_roundtrip_is_supported() {
+        let event = ShellEvent::WindowFocusCleared;
         let bytes = encode_event(&event).expect("encode");
         let decoded = decode_event(std::str::from_utf8(&bytes).expect("utf8")).expect("decode");
         assert_eq!(decoded, event);

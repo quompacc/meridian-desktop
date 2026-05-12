@@ -432,6 +432,10 @@ impl MeridianShell {
                 self.focused_window_id = Some(id);
                 self.update_focused_title();
             }
+            ShellEvent::WindowFocusCleared => {
+                self.focused_window_id = None;
+                self.update_focused_title();
+            }
             ShellEvent::ConfigReloaded { success } => {
                 debug!("ConfigReloaded {{ success: {} }}", success);
                 self.handle_config_reloaded(success);

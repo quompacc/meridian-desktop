@@ -235,6 +235,7 @@ impl MeridianState {
             self.workspaces.space_at_mut(new).refresh();
             let serial = SERIAL_COUNTER.next_serial();
             self.set_keyboard_focus_with_decorations(Option::<WlSurface>::None, serial);
+            self.broadcast_toplevel_focus_cleared();
             tracing::debug!("workspace switched: old={} new={}", old + 1, new + 1);
             self.mark_all_outputs_dirty("workspace-switch");
             self.broadcast_workspace();
@@ -288,6 +289,7 @@ impl MeridianState {
             self.workspaces.space_at_mut(new).refresh();
             let serial = SERIAL_COUNTER.next_serial();
             self.set_keyboard_focus_with_decorations(Option::<WlSurface>::None, serial);
+            self.broadcast_toplevel_focus_cleared();
             tracing::debug!(
                 "compatibility global active updated: old={} new={}",
                 old + 1,
@@ -390,6 +392,7 @@ impl MeridianState {
 
         let serial = SERIAL_COUNTER.next_serial();
         self.set_keyboard_focus_with_decorations(Option::<WlSurface>::None, serial);
+        self.broadcast_toplevel_focus_cleared();
 
         let loc: Point<i32, Logical> = self
             .workspaces

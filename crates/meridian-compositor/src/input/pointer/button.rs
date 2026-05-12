@@ -334,6 +334,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                                 Option::<WlSurface>::None,
                                 serial,
                             );
+                            state.broadcast_toplevel_focus_cleared();
                         }
                     }
 
@@ -496,6 +497,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                 }
             });
             state.set_keyboard_focus_with_decorations(Option::<WlSurface>::None, serial);
+            state.broadcast_toplevel_focus_cleared();
         }
     }
 

@@ -42,6 +42,7 @@ impl MeridianState {
         if let Some(window) = window {
             let serial = SERIAL_COUNTER.next_serial();
             self.set_keyboard_focus_with_decorations(Option::<WlSurface>::None, serial);
+            self.broadcast_toplevel_focus_cleared();
             self.workspaces.move_window_to(window, target);
             self.broadcast_window_snapshot();
         }

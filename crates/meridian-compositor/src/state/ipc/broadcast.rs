@@ -141,6 +141,10 @@ impl MeridianState {
         });
     }
 
+    pub fn broadcast_toplevel_focus_cleared(&mut self) {
+        self.ipc.broadcast(&ShellEvent::WindowFocusCleared);
+    }
+
     pub fn broadcast_toggle_launcher(&mut self) {
         self.ipc.broadcast(&ShellEvent::ToggleLauncher);
     }

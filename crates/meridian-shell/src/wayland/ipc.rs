@@ -156,6 +156,7 @@ fn parse_event_line(line: &str) -> Option<ShellEvent> {
         "window-focused" => Some(ShellEvent::WindowFocused {
             id: parts.next()?.to_string(),
         }),
+        "window-focus-cleared" => Some(ShellEvent::WindowFocusCleared),
         "config-reloaded" => parts
             .next()
             .and_then(|value| value.parse().ok())
@@ -217,6 +218,14 @@ mod tests {
         assert_eq!(
             parse_event_line("workspace-changed 3"),
             Some(ShellEvent::WorkspaceChanged { workspace: 3 })
+        );
+    }
+
+    #[test]
+    fn legacy_window_focus_cleared_event_still_parses() {
+        assert_eq!(
+            parse_event_line("window-focus-cleared"),
+            Some(ShellEvent::WindowFocusCleared)
         );
     }
 
