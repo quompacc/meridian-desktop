@@ -10,6 +10,7 @@ use crate::{
 };
 
 use super::{
+    calendar::CalendarMonthModel,
     shell::{LauncherRenderSignature, PanelRenderSignature, ThemeRenderSignature},
     time, CommitReason, CommitSurfaceKind, MeridianShell, RepaintReason,
 };
@@ -468,18 +469,122 @@ impl MeridianShell {
         };
         painter.roundish_rect_with_radius(card, self.theme.colors.surface, 12);
         painter.stroke_rect(card, self.theme.colors.border);
-        let time_text = if self.last_clock.is_empty() {
-            time::formatted_time()
+
+        let maybe_model = time::local_date()
+            .and_then(|date| CalendarMonthModel::for_month(date.year, date.month, Some(date.day)));
+
+        if let Some(model) = maybe_model {
+            const WEEKDAY_LABELS: [&str; 7] = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+            debug_assert_eq!(
+                model
+                    .cells
+                    .iter()
+                    .position(|cell| cell.is_some())
+                    .unwrap_or(0),
+                usize::from(model.first_weekday_monday0)
+            );
+
+            let content = Rect {
+                x: card.x + 12,
+                y: card.y + 8,
+                w: card.w - 24,
+                h: card.h - 16,
+            };
+            let header_rect = Rect {
+                x: content.x,
+                y: content.y,
+                w: content.w,
+                h: 24,
+            };
+            let header_text = format!("{:02} / {}", model.month, model.year);
+            painter.text_centered(
+                &self.font,
+                &header_text,
+                header_rect,
+                self.theme.colors.text,
+            );
+
+            let weekday_y = header_rect.y + header_rect.h + 8;
+            let weekday_h = 18;
+            for (col, label) in WEEKDAY_LABELS.iter().enumerate() {
+                let x0 = content.x + (col as i32 * content.w) / 7;
+                let x1 = content.x + (((col + 1) as i32 * content.w) / 7);
+                painter.text_centered(
+                    &self.font,
+                    label,
+                    Rect {
+                        x: x0,
+                        y: weekday_y,
+                        w: x1 - x0,
+                        h: weekday_h,
+                    },
+                    self.theme.colors.text,
+                );
+            }
+
+            let grid_y = weekday_y + weekday_h + 6;
+            let grid_h = (content.y + content.h) - grid_y;
+            for row in 0_usize..6 {
+                let row_i32 = row as i32;
+                let y0 = grid_y + (row_i32 * grid_h) / 6;
+                let y1 = grid_y + (((row_i32 + 1) * grid_h) / 6);
+                for col in 0_usize..7 {
+                    let idx = row * 7 + col;
+                    let Some(day) = model.cells[idx] else {
+                        continue;
+                    };
+
+                    let col_i32 = col as i32;
+                    let x0 = content.x + (col_i32 * content.w) / 7;
+                    let x1 = content.x + (((col_i32 + 1) * content.w) / 7);
+                    let cell_rect = Rect {
+                        x: x0,
+                        y: y0,
+                        w: x1 - x0,
+                        h: y1 - y0,
+                    };
+                    let is_today = model.today_day == Some(day);
+                    let day_text = day.to_string();
+                    if is_today {
+                        let highlight = Rect {
+                            x: cell_rect.x + 3,
+                            y: cell_rect.y + 2,
+                            w: (cell_rect.w - 6).max(0),
+                            h: (cell_rect.h - 4).max(0),
+                        };
+                        if highlight.w > 0 && highlight.h > 0 {
+                            painter.roundish_rect(highlight, self.theme.colors.accent);
+                        }
+                        painter.text_centered(
+                            &self.font,
+                            &day_text,
+                            cell_rect,
+                            crate::ui::tokens::ACCENT_FOREGROUND,
+                        );
+                    } else {
+                        painter.text_centered(
+                            &self.font,
+                            &day_text,
+                            cell_rect,
+                            self.theme.colors.text,
+                        );
+                    }
+                }
+            }
         } else {
-            self.last_clock.clone()
-        };
-        let text_rect = Rect {
-            x: card.x + 12,
-            y: card.y + 16,
-            w: card.w - 24,
-            h: 28,
-        };
-        painter.text_centered(&self.font, &time_text, text_rect, self.theme.colors.text);
+            let time_text = if self.last_clock.is_empty() {
+                time::formatted_time()
+            } else {
+                self.last_clock.clone()
+            };
+            let text_rect = Rect {
+                x: card.x + 12,
+                y: card.y + 16,
+                w: card.w - 24,
+                h: 28,
+            };
+            painter.text_centered(&self.font, &time_text, text_rect, self.theme.colors.text);
+        }
 
         if let Err(err) = buf.attach_to(self.calendar_layer.wl_surface()) {
             warn!(

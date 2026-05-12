@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CalendarMonthModel {
     pub(crate) year: i32,
