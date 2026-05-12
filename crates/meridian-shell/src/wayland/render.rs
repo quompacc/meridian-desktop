@@ -59,6 +59,7 @@ impl MeridianShell {
                     window.title.clone()
                 },
                 focused: focused_window_id.is_some_and(|id| id == window.id),
+                minimized: window.minimized,
             })
             .collect()
     }

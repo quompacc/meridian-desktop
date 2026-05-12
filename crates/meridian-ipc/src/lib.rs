@@ -9,6 +9,8 @@ pub struct WindowSnapshotEntry {
     pub workspace: u8,
     pub id: String,
     pub title: String,
+    #[serde(default)]
+    pub minimized: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -251,10 +253,12 @@ mod tests {
             workspace: 2,
             id: "win-1".to_string(),
             title: "Terminal".to_string(),
+            minimized: false,
         };
         assert_eq!(entry.workspace, 2);
         assert_eq!(entry.id, "win-1");
         assert_eq!(entry.title, "Terminal");
+        assert!(!entry.minimized);
     }
 
     #[test]
@@ -266,16 +270,19 @@ mod tests {
                     workspace: 1,
                     id: "a".to_string(),
                     title: "A".to_string(),
+                    minimized: false,
                 },
                 WindowSnapshotEntry {
                     workspace: 3,
                     id: "b".to_string(),
                     title: "B".to_string(),
+                    minimized: true,
                 },
                 WindowSnapshotEntry {
                     workspace: 9,
                     id: "c".to_string(),
                     title: "C".to_string(),
+                    minimized: false,
                 },
             ],
         };
@@ -362,6 +369,13 @@ mod tests {
         let bytes = encode_event(&event).expect("encode");
         let decoded = decode_event(std::str::from_utf8(&bytes).expect("utf8")).expect("decode");
         assert_eq!(decoded, event);
+    }
+
+    #[test]
+    fn window_snapshot_entry_missing_minimized_decodes_to_false() {
+        let raw = r#"{"workspace":2,"id":"win-1","title":"Terminal"}"#;
+        let decoded: WindowSnapshotEntry = serde_json::from_str(raw).expect("decode");
+        assert!(!decoded.minimized);
     }
 
     #[test]

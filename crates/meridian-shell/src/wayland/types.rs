@@ -10,6 +10,7 @@ pub(crate) struct WindowInfo {
     pub(crate) id: String,
     pub(crate) title: String,
     pub(crate) workspace: u8,
+    pub(crate) minimized: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -22,6 +22,7 @@ pub struct PanelWindowEntry {
     pub id: String,
     pub title: String,
     pub focused: bool,
+    pub minimized: bool,
 }
 
 impl PanelState {
@@ -169,6 +170,8 @@ pub fn draw_panel(
 
             let color = if entry.focused {
                 colors.accent
+            } else if entry.minimized {
+                colors.border
             } else {
                 colors.text
             };

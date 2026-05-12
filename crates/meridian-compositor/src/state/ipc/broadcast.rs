@@ -51,6 +51,7 @@ impl MeridianState {
                     workspace: (idx + 1) as u8,
                     id,
                     title: super::super::toplevel_title(&toplevel),
+                    minimized: false,
                 });
             }
         }
@@ -65,6 +66,7 @@ impl MeridianState {
                 workspace: (minimized.workspace + 1) as u8,
                 id: id.clone(),
                 title: super::super::toplevel_title(&toplevel),
+                minimized: true,
             });
         }
 
