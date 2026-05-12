@@ -600,6 +600,9 @@ impl MeridianShell {
                     self.unmap_launcher(CommitReason::Input);
                 }
             }
+            ClickAction::Clock => {
+                debug!("panel clock clicked");
+            }
         }
     }
 
@@ -619,6 +622,7 @@ impl MeridianShell {
             ClickAction::FocusWindow(_) => {}
             ClickAction::SwitchWorkspace(_) => {}
             ClickAction::ToggleLauncher => {}
+            ClickAction::Clock => {}
         }
     }
 

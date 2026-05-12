@@ -20,6 +20,7 @@ pub enum ClickAction {
     SelectLauncherCategory(u8),
     LaunchApp(usize),
     ToggleLauncher,
+    Clock,
 }
 
 #[derive(Debug, Clone)]

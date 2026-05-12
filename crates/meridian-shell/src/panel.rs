@@ -141,6 +141,10 @@ pub fn draw_panel(
         h: 20,
     };
     painter.text_centered(font, clock, clock_rect, colors.text);
+    panel_state.clicks.push(ClickZone {
+        rect: clock_surface,
+        action: ClickAction::Clock,
+    });
 
     // ── Center: Read-only workspace window list ────────────────────────────
     let center_left = x + 12;

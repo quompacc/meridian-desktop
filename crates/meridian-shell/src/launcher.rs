@@ -755,6 +755,7 @@ impl LauncherState {
                 ClickAction::FocusWindow(_) => None,
                 ClickAction::SelectLauncherCategory(_) => None,
                 ClickAction::ToggleLauncher => None,
+                ClickAction::Clock => None,
             });
 
         match hovered_index {
