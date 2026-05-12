@@ -81,7 +81,7 @@ pub(crate) fn classify_ssd_frame_hit(
         }
     }
 
-    if py < frame_top + frame.titlebar_height + frame.border_width {
+    if point_in_rect(px, py, frame.titlebar_rect) {
         return SsdFrameHitRegion::TitleBar;
     }
 
@@ -152,6 +152,29 @@ mod tests {
         let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
         let hit = classify_ssd_frame_hit((120.0, 10.0).into(), metrics);
         assert_eq!(hit, SsdFrameHitRegion::TitleBar);
+    }
+
+    #[test]
+    fn titlebar_lower_boundary_is_exclusive() {
+        let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
+        let hit = classify_ssd_frame_hit((120.0, 34.0).into(), metrics);
+        assert_eq!(hit, SsdFrameHitRegion::ClientContent);
+    }
+
+    #[test]
+    fn resize_top_band_precedence_is_before_titlebar() {
+        let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
+        let hit = classify_ssd_frame_hit((120.0, 1.0).into(), metrics);
+        assert_eq!(hit, SsdFrameHitRegion::TopBorder);
+    }
+
+    #[test]
+    fn fractional_pointer_coordinates_keep_truncation_behavior_at_titlebar_boundary() {
+        let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
+        let titlebar_hit = classify_ssd_frame_hit((120.9, 33.9).into(), metrics);
+        let client_hit = classify_ssd_frame_hit((120.9, 34.1).into(), metrics);
+        assert_eq!(titlebar_hit, SsdFrameHitRegion::TitleBar);
+        assert_eq!(client_hit, SsdFrameHitRegion::ClientContent);
     }
 
     #[test]
