@@ -12,9 +12,14 @@ use smithay::{
     wayland::shell::xdg::XdgShellHandler,
 };
 
-use crate::state::{window_id, MeridianState, OutputGeometry};
+use crate::state::{
+    clear_tiled_toplevel_states, half_snap_client_placement_from_output, window_id,
+    HalfSnapDirection, HalfSnapRestoreGeometry, MaximizeRestoreGeometry, MeridianState,
+    OutputGeometry, OutputInfo, WindowSnapState,
+};
 
 const TOP_EDGE_MAXIMIZE_THRESHOLD_PX: f64 = 12.0;
+const SIDE_EDGE_SNAP_THRESHOLD_PX: f64 = 12.0;
 const DRAG_RESTORE_THRESHOLD_PX: f64 = 8.0;
 
 fn is_pointer_near_output_top_edge(
@@ -25,23 +30,71 @@ fn is_pointer_near_output_top_edge(
         && pointer_location.y < output_geometry.y as f64 + TOP_EDGE_MAXIMIZE_THRESHOLD_PX
 }
 
-fn should_maximize_on_move_release(
-    data: &MeridianState,
-    window: &Window,
-    pointer_location: Option<Point<f64, Logical>>,
+fn is_pointer_near_output_left_edge(
+    output_geometry: OutputGeometry,
+    pointer_location: Point<f64, Logical>,
 ) -> bool {
-    let Some(pointer_location) = pointer_location else {
-        return false;
-    };
+    output_geometry.contains(pointer_location.x, pointer_location.y)
+        && pointer_location.x < output_geometry.x as f64 + SIDE_EDGE_SNAP_THRESHOLD_PX
+}
 
-    let Some(output) = data
-        .output_registry
-        .output_at_point(pointer_location.x, pointer_location.y)
-    else {
-        return false;
-    };
+fn is_pointer_near_output_right_edge(
+    output_geometry: OutputGeometry,
+    pointer_location: Point<f64, Logical>,
+) -> bool {
+    let output_right = output_geometry.x as f64 + output_geometry.width as f64;
+    output_geometry.contains(pointer_location.x, pointer_location.y)
+        && pointer_location.x >= output_right - SIDE_EDGE_SNAP_THRESHOLD_PX
+}
 
-    if !is_pointer_near_output_top_edge(output.geometry, pointer_location) {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MoveReleaseEdgeAction {
+    Maximize,
+    HalfSnap(HalfSnapDirection),
+}
+
+fn release_edge_action_for_output(
+    output_geometry: OutputGeometry,
+    pointer_location: Point<f64, Logical>,
+) -> Option<MoveReleaseEdgeAction> {
+    if is_pointer_near_output_top_edge(output_geometry, pointer_location) {
+        return Some(MoveReleaseEdgeAction::Maximize);
+    }
+    if is_pointer_near_output_left_edge(output_geometry, pointer_location) {
+        return Some(MoveReleaseEdgeAction::HalfSnap(HalfSnapDirection::Left));
+    }
+    if is_pointer_near_output_right_edge(output_geometry, pointer_location) {
+        return Some(MoveReleaseEdgeAction::HalfSnap(HalfSnapDirection::Right));
+    }
+    None
+}
+
+fn select_move_release_output<'a>(
+    infos: &'a [OutputInfo],
+    pointer_location: Point<f64, Logical>,
+) -> Option<&'a OutputInfo> {
+    infos
+        .iter()
+        .find(|info| {
+            info.geometry
+                .contains(pointer_location.x, pointer_location.y)
+        })
+        .or_else(|| infos.iter().find(|info| info.primary))
+        .or_else(|| infos.first())
+}
+
+fn release_edge_action_on_move_release(
+    data: &MeridianState,
+    pointer_location: Option<Point<f64, Logical>>,
+) -> Option<(OutputGeometry, MoveReleaseEdgeAction)> {
+    let pointer_location = pointer_location?;
+    let output = select_move_release_output(data.output_registry.list(), pointer_location)?;
+    let action = release_edge_action_for_output(output.geometry, pointer_location)?;
+    Some((output.geometry, action))
+}
+
+fn should_maximize_on_move_release(window: &Window, action: Option<MoveReleaseEdgeAction>) -> bool {
+    if !matches!(action, Some(MoveReleaseEdgeAction::Maximize)) {
         return false;
     }
 
@@ -80,6 +133,88 @@ fn maximize_window_from_move_release(data: &mut MeridianState, window: &Window) 
     if let Some(toplevel) = window.toplevel() {
         XdgShellHandler::maximize_request(data, toplevel.clone());
     }
+}
+
+fn apply_half_snap_tiled_states(
+    state: &mut smithay::wayland::shell::xdg::ToplevelState,
+    direction: HalfSnapDirection,
+) {
+    clear_tiled_toplevel_states(state);
+    state.states.set(xdg_toplevel::State::TiledTop);
+    state.states.set(xdg_toplevel::State::TiledBottom);
+    match direction {
+        HalfSnapDirection::Left => {
+            state.states.set(xdg_toplevel::State::TiledLeft);
+        }
+        HalfSnapDirection::Right => {
+            state.states.set(xdg_toplevel::State::TiledRight);
+        }
+    };
+}
+
+fn apply_half_snap_from_move_release(
+    data: &mut MeridianState,
+    window: &Window,
+    output_geometry: OutputGeometry,
+    direction: HalfSnapDirection,
+) {
+    let Some(toplevel) = window.toplevel() else {
+        return;
+    };
+
+    let key = window_id(toplevel.wl_surface());
+    let maximize_restore = data.maximize_restore_locations.get(&key).copied();
+    let current_loc = data.workspaces.active_space().element_location(window);
+    if let Some(restore_geometry) =
+        half_snap_restore_geometry_source(maximize_restore, current_loc, window.geometry().size)
+    {
+        data.half_snap_restore_locations
+            .entry(key.clone())
+            .or_insert(restore_geometry);
+    }
+    data.active_window_snap_states
+        .insert(key, WindowSnapState::Half(direction));
+
+    let theme = data.theme_manager.current().config.decorations.clone();
+    let decoration_offset = data
+        .decoration_manager
+        .decoration_offset(toplevel.wl_surface(), &theme);
+    let decoration_inset = data
+        .decoration_manager
+        .decoration_inset(toplevel.wl_surface(), &theme);
+    let placement = half_snap_client_placement_from_output(
+        output_geometry,
+        direction,
+        decoration_offset,
+        decoration_inset,
+    );
+
+    toplevel.with_pending_state(|state| {
+        state.states.unset(xdg_toplevel::State::Maximized);
+        apply_half_snap_tiled_states(state, direction);
+        state.size = Some(placement.client_size);
+    });
+    data.decoration_manager
+        .set_maximized(toplevel.wl_surface(), false);
+    data.workspaces
+        .active_space_mut()
+        .map_element(window.clone(), placement.client_loc, true);
+    toplevel.send_pending_configure();
+}
+
+fn half_snap_restore_geometry_source(
+    maximize_restore: Option<MaximizeRestoreGeometry>,
+    current_client_loc: Option<Point<i32, Logical>>,
+    current_client_size: Size<i32, Logical>,
+) -> Option<HalfSnapRestoreGeometry> {
+    if let Some(geometry) = maximize_restore {
+        return Some(HalfSnapRestoreGeometry::new(
+            geometry.client_loc,
+            geometry.client_size,
+        ));
+    }
+
+    current_client_loc.map(|loc| HalfSnapRestoreGeometry::new(loc, Some(current_client_size)))
 }
 
 fn movement_crosses_restore_threshold(
@@ -265,11 +400,17 @@ impl PointerGrab<MeridianState> for MoveSurfaceGrab {
         handle.button(data, event);
         const BTN_LEFT: u32 = 0x110;
         if !handle.current_pressed().contains(&BTN_LEFT) {
+            let release_action =
+                release_edge_action_on_move_release(data, self.latest_pointer_location);
             let should_maximize =
-                should_maximize_on_move_release(data, &self.window, self.latest_pointer_location);
+                should_maximize_on_move_release(&self.window, release_action.map(|(_, a)| a));
             handle.unset_grab(self, data, event.serial, event.time, true);
             if should_maximize {
                 maximize_window_from_move_release(data, &self.window);
+            } else if let Some((output_geometry, MoveReleaseEdgeAction::HalfSnap(direction))) =
+                release_action
+            {
+                apply_half_snap_from_move_release(data, &self.window, output_geometry, direction);
             }
         }
     }
@@ -365,13 +506,16 @@ impl PointerGrab<MeridianState> for MoveSurfaceGrab {
 
 #[cfg(test)]
 mod tests {
+    use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
     use smithay::utils::{Logical, Point, Size};
 
-    use crate::state::OutputGeometry;
+    use crate::state::{MaximizeRestoreGeometry, OutputGeometry};
 
     use super::{
-        anchored_client_location_from_pointer, drag_restore_anchor_from_start_pointer,
+        anchored_client_location_from_pointer, apply_half_snap_tiled_states,
+        drag_restore_anchor_from_start_pointer, half_snap_restore_geometry_source,
         is_pointer_near_output_top_edge, movement_crosses_restore_threshold,
+        release_edge_action_for_output, HalfSnapDirection, MoveReleaseEdgeAction,
     };
 
     fn point(x: f64, y: f64) -> Point<f64, Logical> {
@@ -496,5 +640,102 @@ mod tests {
         );
 
         assert_eq!(restored_client_loc, Point::from((560, 134)));
+    }
+
+    #[test]
+    fn left_edge_release_triggers_left_half_snap() {
+        let output = OutputGeometry {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+
+        let action = release_edge_action_for_output(output, point(2.0, 400.0));
+        assert_eq!(
+            action,
+            Some(MoveReleaseEdgeAction::HalfSnap(HalfSnapDirection::Left))
+        );
+    }
+
+    #[test]
+    fn right_edge_release_triggers_right_half_snap() {
+        let output = OutputGeometry {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+
+        let action = release_edge_action_for_output(output, point(1919.0, 400.0));
+        assert_eq!(
+            action,
+            Some(MoveReleaseEdgeAction::HalfSnap(HalfSnapDirection::Right))
+        );
+    }
+
+    #[test]
+    fn top_edge_maximize_precedes_side_snap() {
+        let output = OutputGeometry {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+
+        let action = release_edge_action_for_output(output, point(2.0, 2.0));
+        assert_eq!(action, Some(MoveReleaseEdgeAction::Maximize));
+    }
+
+    #[test]
+    fn release_away_from_edges_does_not_snap() {
+        let output = OutputGeometry {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+
+        assert_eq!(
+            release_edge_action_for_output(output, point(800.0, 400.0)),
+            None
+        );
+    }
+
+    #[test]
+    fn half_snap_tiled_states_are_set_for_left_and_right() {
+        let mut left = smithay::wayland::shell::xdg::ToplevelState::default();
+        apply_half_snap_tiled_states(&mut left, HalfSnapDirection::Left);
+        assert!(left.states.contains(xdg_toplevel::State::TiledLeft));
+        assert!(!left.states.contains(xdg_toplevel::State::TiledRight));
+        assert!(left.states.contains(xdg_toplevel::State::TiledTop));
+        assert!(left.states.contains(xdg_toplevel::State::TiledBottom));
+
+        let mut right = smithay::wayland::shell::xdg::ToplevelState::default();
+        apply_half_snap_tiled_states(&mut right, HalfSnapDirection::Right);
+        assert!(!right.states.contains(xdg_toplevel::State::TiledLeft));
+        assert!(right.states.contains(xdg_toplevel::State::TiledRight));
+        assert!(right.states.contains(xdg_toplevel::State::TiledTop));
+        assert!(right.states.contains(xdg_toplevel::State::TiledBottom));
+    }
+
+    #[test]
+    fn half_snap_restore_prefers_maximize_restore_geometry() {
+        let maximize_restore = Some(MaximizeRestoreGeometry::new(
+            (40, 50).into(),
+            Some((800, 600).into()),
+        ));
+        let fallback_current_loc: Option<Point<i32, Logical>> = Some((700, 200).into());
+        let fallback_current_size: Size<i32, Logical> = (1200, 900).into();
+
+        let selected = half_snap_restore_geometry_source(
+            maximize_restore,
+            fallback_current_loc,
+            fallback_current_size,
+        )
+        .expect("restore geometry");
+
+        assert_eq!(selected.client_loc, Point::from((40, 50)));
+        assert_eq!(selected.client_size, Some(Size::from((800, 600))));
     }
 }
