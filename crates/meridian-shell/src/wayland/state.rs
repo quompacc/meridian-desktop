@@ -278,6 +278,9 @@ impl MeridianShell {
             if clock != self.last_clock {
                 self.last_clock = clock;
                 self.draw_panel(qh, RepaintReason::Clock);
+                if self.calendar_popup_open {
+                    self.draw_calendar_popup(qh, RepaintReason::Clock);
+                }
             }
         }
         self.maybe_log_repaint_stats(now);

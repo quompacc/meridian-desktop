@@ -468,6 +468,18 @@ impl MeridianShell {
         };
         painter.roundish_rect_with_radius(card, self.theme.colors.surface, 12);
         painter.stroke_rect(card, self.theme.colors.border);
+        let time_text = if self.last_clock.is_empty() {
+            time::formatted_time()
+        } else {
+            self.last_clock.clone()
+        };
+        let text_rect = Rect {
+            x: card.x + 12,
+            y: card.y + 16,
+            w: card.w - 24,
+            h: 28,
+        };
+        painter.text_centered(&self.font, &time_text, text_rect, self.theme.colors.text);
 
         if let Err(err) = buf.attach_to(self.calendar_layer.wl_surface()) {
             warn!(
