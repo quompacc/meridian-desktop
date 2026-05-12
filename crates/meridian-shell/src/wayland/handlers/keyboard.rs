@@ -28,6 +28,8 @@ impl KeyboardHandler for MeridianShell {
     ) {
         self.keyboard_focus = if self.launcher_layer.wl_surface() == surface {
             SurfaceKind::Launcher
+        } else if self.calendar_layer.wl_surface() == surface {
+            SurfaceKind::Calendar
         } else if self.panel.wl_surface() == surface {
             SurfaceKind::Panel
         } else {
@@ -66,12 +68,18 @@ impl KeyboardHandler for MeridianShell {
         _: u32,
         event: KeyEvent,
     ) {
+        let is_escape = event.keysym == Keysym::Escape;
+        if self.calendar_popup_open && !self.launcher_state.open && is_escape {
+            self.close_calendar_popup(CommitReason::Input);
+            self.draw_panel(qh, RepaintReason::Keyboard);
+            return;
+        }
+
         if !self.launcher_state.open {
             return;
         }
 
         let keycode = event.raw_code;
-        let is_escape = event.keysym == Keysym::Escape;
         let is_enter = event.keysym == Keysym::Return || event.keysym == Keysym::KP_Enter;
         let is_backspace = event.keysym == Keysym::BackSpace;
         let is_up = event.keysym == Keysym::Up || event.keysym == Keysym::KP_Up || keycode == 103;

@@ -7,13 +7,19 @@ use smithay_client_toolkit::{
     reexports::{calloop::EventLoop, calloop_wayland_source::WaylandSource},
     registry::RegistryState,
     seat::SeatState,
-    shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell},
+    shell::{
+        wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell},
+        WaylandSurface,
+    },
     shm::{slot::SlotPool, Shm},
 };
 use tracing::{debug, info, warn};
 use wayland_client::{globals::registry_queue_init, Connection, QueueHandle};
 
-use crate::{launcher, panel, TextRenderer, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, PANEL_HEIGHT};
+use crate::{
+    launcher, panel, TextRenderer, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT,
+    LAUNCHER_WIDTH, PANEL_HEIGHT,
+};
 
 use super::{CommitReason, CommitStats, CommitSurfaceKind, IpcClient, MeridianShell, SurfaceKind};
 
@@ -66,6 +72,26 @@ pub(crate) fn initialize(
         PANEL_HEIGHT
     );
 
+    let calendar_surface = compositor.create_surface(&qh);
+    let calendar_layer = layer_shell.create_layer_surface(
+        &qh,
+        calendar_surface,
+        Layer::Overlay,
+        Some("meridian-calendar-popup"),
+        None,
+    );
+    calendar_layer.set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
+    calendar_layer.set_margin(0, 12, PANEL_HEIGHT as i32 + 8, 0);
+    calendar_layer.set_size(CALENDAR_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT);
+    calendar_layer.set_exclusive_zone(0);
+    calendar_layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+    debug!(
+        "Calendar popup surface created: namespace=meridian-calendar-popup layer=Overlay anchor=Bottom|Right size={}x{} margin_bottom={} margin_right=12 exclusive_zone=0 keyboard_interactivity=OnDemand",
+        CALENDAR_POPUP_WIDTH,
+        CALENDAR_POPUP_HEIGHT,
+        PANEL_HEIGHT
+    );
+
     let meridian_config = MeridianConfig::load();
     let mut theme_manager = ThemeManager::new();
     if !meridian_config.general.theme.trim().is_empty()
@@ -115,14 +141,19 @@ pub(crate) fn initialize(
         shm,
         panel,
         launcher_layer,
+        calendar_layer,
         panel_configured: false,
         launcher_configured: false,
+        calendar_configured: false,
         panel_buffer: None,
         launcher_buffer: None,
+        calendar_buffer: None,
         pool,
         width: 1024,
         launcher_width: LAUNCHER_WIDTH,
         launcher_height: LAUNCHER_HEIGHT,
+        calendar_width: CALENDAR_POPUP_WIDTH,
+        calendar_height: CALENDAR_POPUP_HEIGHT,
         keyboard: None,
         keyboard_focus: SurfaceKind::None,
         pointer: None,
@@ -150,6 +181,8 @@ pub(crate) fn initialize(
         occupied_unavailable_logged: false,
         panel_dirty: true,
         launcher_dirty: true,
+        calendar_dirty: true,
+        calendar_popup_open: false,
         panel_last_signature: None,
         launcher_last_signature: None,
         repaint_stats: Default::default(),
@@ -183,6 +216,8 @@ pub(crate) fn initialize(
     info!("Panel surface created and committed");
     shell.commit_surface(CommitSurfaceKind::Launcher, CommitReason::InitialCreate);
     info!("Launcher surface created and committed");
+    shell.calendar_layer.commit();
+    info!("Calendar popup surface created and committed");
 
     Ok((shell, qh))
 }

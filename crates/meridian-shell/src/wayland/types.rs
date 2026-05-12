@@ -3,6 +3,7 @@ pub(crate) enum SurfaceKind {
     None,
     Panel,
     Launcher,
+    Calendar,
 }
 
 #[derive(Debug, Clone)]

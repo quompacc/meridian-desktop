@@ -4,7 +4,10 @@ use smithay_client_toolkit::shell::WaylandSurface;
 use tracing::{debug, info, warn};
 use wayland_client::QueueHandle;
 
-use crate::{buffer, launcher, panel, Painter, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, PANEL_HEIGHT};
+use crate::{
+    buffer, launcher, panel, Painter, Rect, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH,
+    LAUNCHER_HEIGHT, LAUNCHER_WIDTH, PANEL_HEIGHT,
+};
 
 use super::{
     shell::{LauncherRenderSignature, PanelRenderSignature, ThemeRenderSignature},
@@ -414,5 +417,83 @@ impl MeridianShell {
         self.commit_surface(CommitSurfaceKind::Launcher, reason);
         self.launcher_last_signature = None;
         self.launcher_dirty = false;
+    }
+
+    pub(crate) fn draw_calendar_popup(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
+        debug!(
+            "draw_calendar_popup: reason={:?} open={} configured={} calendar_dirty={} commit_expected={}",
+            reason,
+            self.calendar_popup_open,
+            self.calendar_configured,
+            self.calendar_dirty,
+            self.calendar_popup_open && self.calendar_configured
+        );
+        if !self.calendar_popup_open || !self.calendar_configured {
+            debug!(
+                "draw_calendar_popup skipped: reason={:?} open={} configured={}",
+                reason, self.calendar_popup_open, self.calendar_configured
+            );
+            return;
+        }
+
+        let width = self.calendar_width.min(CALENDAR_POPUP_WIDTH);
+        let height = self.calendar_height.min(CALENDAR_POPUP_HEIGHT);
+        let stride = buffer::shm_buffer_stride(width);
+        let buf = buffer::buffer_for(
+            &mut self.pool,
+            &mut self.calendar_buffer,
+            width,
+            height,
+            stride,
+        );
+        let Some(buf) = buf else {
+            warn!(
+                "calendar popup buffer unavailable: reason={:?} width={} height={}",
+                reason, width, height
+            );
+            return;
+        };
+        let Some(canvas) = buf.canvas(&mut self.pool) else {
+            self.calendar_buffer = None;
+            return self.draw_calendar_popup(_qh, reason);
+        };
+
+        let mut painter = Painter::new(canvas, width as i32, height as i32);
+        painter.clear(self.theme.colors.background);
+        let card = Rect {
+            x: 4,
+            y: 4,
+            w: width as i32 - 8,
+            h: height as i32 - 8,
+        };
+        painter.roundish_rect_with_radius(card, self.theme.colors.surface, 12);
+        painter.stroke_rect(card, self.theme.colors.border);
+
+        if let Err(err) = buf.attach_to(self.calendar_layer.wl_surface()) {
+            warn!(
+                "calendar popup buffer attach failed: reason={:?} width={} height={} error={}",
+                reason, width, height, err
+            );
+            return;
+        }
+        self.calendar_layer
+            .wl_surface()
+            .damage_buffer(0, 0, width as i32, height as i32);
+        self.calendar_layer.commit();
+        debug!(
+            "draw_calendar_popup committed: reason={:?} width={} height={}",
+            reason, width, height
+        );
+        self.calendar_dirty = false;
+    }
+
+    pub(crate) fn unmap_calendar_popup(&mut self, reason: CommitReason) {
+        debug!(
+            "unmap_calendar_popup: reason={:?} open={} configured={} surface=calendar attach_none=true commit=true",
+            reason, self.calendar_popup_open, self.calendar_configured
+        );
+        self.calendar_layer.wl_surface().attach(None, 0, 0);
+        self.calendar_layer.commit();
+        self.calendar_dirty = false;
     }
 }

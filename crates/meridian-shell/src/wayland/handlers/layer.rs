@@ -5,7 +5,7 @@ use tracing::warn;
 use wayland_client::{Connection, QueueHandle};
 
 use crate::wayland::{MeridianShell, RepaintReason};
-use crate::{LAUNCHER_HEIGHT, LAUNCHER_WIDTH};
+use crate::{CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH};
 
 impl LayerShellHandler for MeridianShell {
     fn closed(&mut self, _conn: &Connection, qh: &QueueHandle<Self>, layer: &LayerSurface) {
@@ -21,6 +21,15 @@ impl LayerShellHandler for MeridianShell {
             self.launcher_configured = false;
             self.launcher_last_signature = None;
             self.launcher_dirty = false;
+            self.draw_panel(qh, RepaintReason::LayerConfigure);
+            return;
+        }
+
+        if self.calendar_layer == *layer {
+            warn!("Calendar popup layer surface closed by compositor; recovering popup state");
+            self.calendar_popup_open = false;
+            self.calendar_configured = false;
+            self.calendar_dirty = false;
             self.draw_panel(qh, RepaintReason::LayerConfigure);
             return;
         }
@@ -81,6 +90,41 @@ impl LayerShellHandler for MeridianShell {
             self.launcher_height = LAUNCHER_HEIGHT;
             if self.launcher_state.open {
                 self.draw_launcher(qh, RepaintReason::LayerConfigure);
+            }
+        } else if self.calendar_layer == *layer {
+            let requested_w = if configure.new_size.0 > 0 {
+                configure.new_size.0
+            } else {
+                CALENDAR_POPUP_WIDTH
+            };
+            let requested_h = if configure.new_size.1 > 0 {
+                configure.new_size.1
+            } else {
+                CALENDAR_POPUP_HEIGHT
+            };
+            let clamped_w = requested_w.min(CALENDAR_POPUP_WIDTH);
+            let clamped_h = requested_h.min(CALENDAR_POPUP_HEIGHT);
+            tracing::debug!(
+                "calendar popup configure: requested={}x{} clamped={}x{} desired={}x{}",
+                requested_w,
+                requested_h,
+                clamped_w,
+                clamped_h,
+                CALENDAR_POPUP_WIDTH,
+                CALENDAR_POPUP_HEIGHT
+            );
+            self.calendar_layer
+                .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
+            self.calendar_layer
+                .set_margin(0, 12, crate::PANEL_HEIGHT as i32 + 8, 0);
+            self.calendar_layer.set_exclusive_zone(0);
+            self.calendar_layer
+                .set_size(CALENDAR_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT);
+            self.calendar_configured = true;
+            self.calendar_width = CALENDAR_POPUP_WIDTH;
+            self.calendar_height = CALENDAR_POPUP_HEIGHT;
+            if self.calendar_popup_open {
+                self.draw_calendar_popup(qh, RepaintReason::LayerConfigure);
             }
         }
     }

@@ -21,6 +21,8 @@ impl PointerHandler for MeridianShell {
                 SurfaceKind::Panel
             } else if &event.surface == self.launcher_layer.wl_surface() {
                 SurfaceKind::Launcher
+            } else if &event.surface == self.calendar_layer.wl_surface() {
+                SurfaceKind::Calendar
             } else {
                 SurfaceKind::None
             };
@@ -52,12 +54,14 @@ impl PointerHandler for MeridianShell {
                         .iter()
                         .find(|zone| zone.rect.contains(event.position.0, event.position.1))
                         .map(|zone| zone.action.clone()),
+                    SurfaceKind::Calendar => None,
                     SurfaceKind::None => None,
                 };
                 if let Some(action) = action {
                     match self.pointer_surface {
                         SurfaceKind::Panel => self.handle_panel_click(qh, action),
                         SurfaceKind::Launcher => self.handle_launcher_click(qh, action),
+                        SurfaceKind::Calendar => {}
                         SurfaceKind::None => {}
                     }
                 }

@@ -555,6 +555,52 @@ impl MeridianShell {
         );
     }
 
+    fn toggle_calendar_popup(&mut self, reason: CommitReason) {
+        if self.calendar_popup_open {
+            self.close_calendar_popup(reason);
+            return;
+        }
+
+        self.calendar_popup_open = true;
+        self.calendar_layer
+            .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
+        self.calendar_layer
+            .set_margin(0, 12, crate::PANEL_HEIGHT as i32 + 8, 0);
+        self.calendar_layer.set_exclusive_zone(0);
+        self.calendar_layer
+            .set_size(crate::CALENDAR_POPUP_WIDTH, crate::CALENDAR_POPUP_HEIGHT);
+        self.calendar_layer
+            .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+        self.calendar_width = crate::CALENDAR_POPUP_WIDTH;
+        self.calendar_height = crate::CALENDAR_POPUP_HEIGHT;
+        self.calendar_dirty = true;
+        tracing::debug!(
+            "toggle_calendar_popup: open_after={} configured={} size={}x{} keyboard_focus={:?}",
+            self.calendar_popup_open,
+            self.calendar_configured,
+            self.calendar_width,
+            self.calendar_height,
+            self.keyboard_focus
+        );
+    }
+
+    pub(crate) fn close_calendar_popup(&mut self, reason: CommitReason) -> bool {
+        if !self.calendar_popup_open {
+            return false;
+        }
+        self.calendar_popup_open = false;
+        self.calendar_layer
+            .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+        self.unmap_calendar_popup(reason);
+        tracing::debug!(
+            "close_calendar_popup: open_after={} configured={} keyboard_focus={:?}",
+            self.calendar_popup_open,
+            self.calendar_configured,
+            self.keyboard_focus
+        );
+        true
+    }
+
     pub(crate) fn close_launcher_after_launch(
         &mut self,
         qh: &QueueHandle<Self>,
@@ -571,6 +617,10 @@ impl MeridianShell {
     }
 
     pub(crate) fn handle_panel_click(&mut self, qh: &QueueHandle<Self>, action: ClickAction) {
+        if self.calendar_popup_open && !matches!(action, ClickAction::Clock) {
+            self.close_calendar_popup(CommitReason::Input);
+        }
+
         match action {
             ClickAction::SwitchWorkspace(workspace) => {
                 if self.active_workspace != workspace {
@@ -601,7 +651,11 @@ impl MeridianShell {
                 }
             }
             ClickAction::Clock => {
-                debug!("panel clock clicked");
+                self.toggle_calendar_popup(CommitReason::Input);
+                self.draw_panel(qh, RepaintReason::Pointer);
+                if self.calendar_popup_open {
+                    self.draw_calendar_popup(qh, RepaintReason::Pointer);
+                }
             }
         }
     }
