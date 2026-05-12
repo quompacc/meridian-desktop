@@ -46,6 +46,22 @@ impl MeridianShell {
         }
     }
 
+    fn panel_window_entries(&self, active_workspace: u8) -> Vec<panel::PanelWindowEntry> {
+        let focused_window_id = self.focused_window_id.as_deref();
+        self.windows
+            .iter()
+            .filter(|window| window.workspace == active_workspace)
+            .map(|window| panel::PanelWindowEntry {
+                title: if window.title.trim().is_empty() {
+                    "Window".to_string()
+                } else {
+                    window.title.clone()
+                },
+                focused: focused_window_id.is_some_and(|id| id == window.id),
+            })
+            .collect()
+    }
+
     fn panel_render_signature(
         &self,
         width: u32,
@@ -53,6 +69,7 @@ impl MeridianShell {
         active_workspace: u8,
         clock: &str,
     ) -> PanelRenderSignature {
+        let window_entries = self.panel_window_entries(active_workspace);
         PanelRenderSignature {
             width,
             height,
@@ -60,6 +77,7 @@ impl MeridianShell {
             occupied_state_available: self.occupied_state_available,
             occupied_workspaces: self.occupied_workspaces,
             focused_title: self.focused_title.clone(),
+            window_entries,
             clock: clock.to_string(),
             theme: self.theme_render_signature(),
         }
@@ -173,6 +191,7 @@ impl MeridianShell {
         self.repaint_stats.record_panel(reason);
 
         let panel_active_workspace = self.panel_active_workspace();
+        let panel_window_entries = self.panel_window_entries(panel_active_workspace);
         let width = self.width;
         let height = PANEL_HEIGHT;
         let clock = if self.last_clock.is_empty() {
@@ -237,7 +256,7 @@ impl MeridianShell {
             panel_active_workspace,
             self.occupied_state_available
                 .then_some(&self.occupied_workspaces),
-            self.focused_title.as_deref(),
+            &panel_window_entries,
             &clock,
             width,
         );

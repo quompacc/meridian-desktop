@@ -17,6 +17,12 @@ pub struct PanelState {
     pub clicks: Vec<ClickZone>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PanelWindowEntry {
+    pub title: String,
+    pub focused: bool,
+}
+
 impl PanelState {
     pub fn new() -> Self {
         Self { clicks: Vec::new() }
@@ -30,7 +36,7 @@ pub fn draw_panel(
     theme: &ThemeConfig,
     active_workspace: u8,
     occupied_workspaces: Option<&[bool; 9]>,
-    focused_title: Option<&str>,
+    window_entries: &[PanelWindowEntry],
     clock: &str,
     width: u32,
 ) {
@@ -134,19 +140,42 @@ pub fn draw_panel(
     };
     painter.text_centered(font, clock, clock_rect, colors.text);
 
-    // ── Center: Focused window title ────────────────────────────────────────
+    // ── Center: Read-only workspace window list ────────────────────────────
     let center_left = x + 12;
     let center_right = clock_rect.x - 12;
     let center_w = center_right - center_left;
-    if center_w > 40 {
-        if let Some(title) = focused_title {
-            let center_rect = Rect {
-                x: center_left,
-                y: (height - 20) / 2,
-                w: center_w,
-                h: 20,
+    if center_w > 40 && !window_entries.is_empty() {
+        let center_rect = Rect {
+            x: center_left,
+            y: (height - 20) / 2,
+            w: center_w,
+            h: 20,
+        };
+        let baseline = center_rect.y + (center_rect.h / 2) + 5;
+        let mut text_x = center_rect.x;
+        let right = center_rect.x + center_rect.w;
+
+        for (idx, entry) in window_entries.iter().enumerate() {
+            if text_x >= right {
+                break;
+            }
+
+            let mut label = String::new();
+            if idx > 0 {
+                label.push_str(" | ");
+            }
+            label.push_str(&entry.title);
+
+            let color = if entry.focused {
+                colors.accent
+            } else {
+                colors.text
             };
-            painter.text_centered(font, title, center_rect, colors.text);
+            let remaining = right - text_x;
+            painter.text_clipped(font, &label, text_x, baseline, remaining, color);
+
+            let advance = (label.chars().count() as i32 * 8).max(0);
+            text_x += advance;
         }
     }
 }

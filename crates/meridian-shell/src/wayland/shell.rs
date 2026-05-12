@@ -14,7 +14,7 @@ use smithay_client_toolkit::{
 };
 use wayland_client::protocol::{wl_keyboard, wl_pointer};
 
-use crate::{launcher, panel, TextRenderer};
+use crate::{launcher, panel, panel::PanelWindowEntry, TextRenderer};
 
 use super::{types::WindowInfo, IpcClient, SurfaceKind};
 
@@ -177,6 +177,7 @@ pub(crate) struct PanelRenderSignature {
     pub(crate) occupied_state_available: bool,
     pub(crate) occupied_workspaces: [bool; 9],
     pub(crate) focused_title: Option<String>,
+    pub(crate) window_entries: Vec<PanelWindowEntry>,
     pub(crate) clock: String,
     pub(crate) theme: ThemeRenderSignature,
 }
