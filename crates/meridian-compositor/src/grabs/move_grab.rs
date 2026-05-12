@@ -98,6 +98,46 @@ fn pointer_ratio_within_frame_x(pointer_x: f64, frame_left: i32, frame_width: i3
     ((pointer_x - frame_left as f64) / frame_width as f64).clamp(0.0, 1.0)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct DragRestorePointerAnchor {
+    pointer_frame_ratio_x: f64,
+    pointer_frame_offset_y: f64,
+}
+
+fn frame_geometry_from_client(
+    client_loc: Point<i32, Logical>,
+    client_size: Size<i32, Logical>,
+    frame_insets: (i32, i32, i32, i32),
+) -> (i32, i32, i32) {
+    let (left, top, right, _bottom) = frame_insets;
+    let frame_left = client_loc.x - left;
+    let frame_top = client_loc.y - top;
+    let frame_width = (client_size.w + left + right).max(1);
+    (frame_left, frame_top, frame_width)
+}
+
+fn drag_restore_anchor_from_start_pointer(
+    drag_start_pointer: Point<f64, Logical>,
+    maximized_client_loc: Point<i32, Logical>,
+    maximized_client_size: Size<i32, Logical>,
+    maximized_frame_insets: (i32, i32, i32, i32),
+) -> DragRestorePointerAnchor {
+    let (maximized_frame_left, maximized_frame_top, maximized_frame_width) =
+        frame_geometry_from_client(
+            maximized_client_loc,
+            maximized_client_size,
+            maximized_frame_insets,
+        );
+    DragRestorePointerAnchor {
+        pointer_frame_ratio_x: pointer_ratio_within_frame_x(
+            drag_start_pointer.x,
+            maximized_frame_left,
+            maximized_frame_width,
+        ),
+        pointer_frame_offset_y: drag_start_pointer.y - maximized_frame_top as f64,
+    }
+}
+
 fn anchored_client_location_from_pointer(
     pointer: Point<f64, Logical>,
     pointer_frame_offset_y: f64,
@@ -105,12 +145,12 @@ fn anchored_client_location_from_pointer(
     client_size: Size<i32, Logical>,
     frame_insets: (i32, i32, i32, i32),
 ) -> Point<i32, Logical> {
-    let (left, top, right, _bottom) = frame_insets;
-    let frame_width = (client_size.w + left + right).max(1);
+    let (frame_left_inset, frame_top_inset, _right, _bottom) = frame_insets;
+    let (_, _, frame_width) = frame_geometry_from_client((0, 0).into(), client_size, frame_insets);
     let frame_left = pointer.x - frame_ratio_x * frame_width as f64;
     let frame_top = pointer.y - pointer_frame_offset_y;
-    let client_x = frame_left + left as f64;
-    let client_y = frame_top + top as f64;
+    let client_x = frame_left + frame_left_inset as f64;
+    let client_y = frame_top + frame_top_inset as f64;
     Point::from((client_x.round() as i32, client_y.round() as i32))
 }
 
@@ -130,16 +170,12 @@ fn maybe_restore_maximized_drag(
     let maximized_insets = data
         .decoration_manager
         .decoration_inset(toplevel.wl_surface(), &theme);
-    let maximized_frame_left = initial_window_location.x - maximized_insets.0;
-    let maximized_frame_top = initial_window_location.y - maximized_insets.1;
-    let maximized_frame_width =
-        (window.geometry().size.w + maximized_insets.0 + maximized_insets.2).max(1);
-    let pointer_ratio_x = pointer_ratio_within_frame_x(
-        drag_start_location.x,
-        maximized_frame_left,
-        maximized_frame_width,
+    let anchor = drag_restore_anchor_from_start_pointer(
+        drag_start_location,
+        initial_window_location,
+        window.geometry().size,
+        maximized_insets,
     );
-    let pointer_frame_offset_y = drag_start_location.y - maximized_frame_top as f64;
 
     let restore_geometry = data
         .maximize_restore_locations
@@ -156,8 +192,8 @@ fn maybe_restore_maximized_drag(
         .decoration_inset(toplevel.wl_surface(), &theme);
     Some(anchored_client_location_from_pointer(
         current_pointer_location,
-        pointer_frame_offset_y,
-        pointer_ratio_x,
+        anchor.pointer_frame_offset_y,
+        anchor.pointer_frame_ratio_x,
         restore_client_size,
         floating_insets,
     ))
@@ -334,8 +370,8 @@ mod tests {
     use crate::state::OutputGeometry;
 
     use super::{
-        anchored_client_location_from_pointer, is_pointer_near_output_top_edge,
-        movement_crosses_restore_threshold,
+        anchored_client_location_from_pointer, drag_restore_anchor_from_start_pointer,
+        is_pointer_near_output_top_edge, movement_crosses_restore_threshold,
     };
 
     fn point(x: f64, y: f64) -> Point<f64, Logical> {
@@ -405,5 +441,60 @@ mod tests {
         );
         assert_eq!(client_loc.x, 560);
         assert_eq!(client_loc.y, 144);
+    }
+
+    #[test]
+    fn drag_restore_anchor_clamps_pointer_ratio_near_left_edge() {
+        let drag_start_pointer = point(-20.0, 100.0);
+        let maximized_client_loc: Point<i32, Logical> = (0, 32).into();
+        let maximized_client_size: Size<i32, Logical> = (1920, 1048).into();
+        let maximized_insets = (0, 32, 0, 0);
+
+        let anchor = drag_restore_anchor_from_start_pointer(
+            drag_start_pointer,
+            maximized_client_loc,
+            maximized_client_size,
+            maximized_insets,
+        );
+        assert_eq!(anchor.pointer_frame_ratio_x, 0.0);
+        assert_eq!(anchor.pointer_frame_offset_y, 100.0);
+    }
+
+    #[test]
+    fn drag_restore_anchor_clamps_pointer_ratio_near_right_edge() {
+        let drag_start_pointer = point(2500.0, 100.0);
+        let maximized_client_loc: Point<i32, Logical> = (0, 32).into();
+        let maximized_client_size: Size<i32, Logical> = (1920, 1048).into();
+        let maximized_insets = (0, 32, 0, 0);
+
+        let anchor = drag_restore_anchor_from_start_pointer(
+            drag_start_pointer,
+            maximized_client_loc,
+            maximized_client_size,
+            maximized_insets,
+        );
+        assert_eq!(anchor.pointer_frame_ratio_x, 1.0);
+        assert_eq!(anchor.pointer_frame_offset_y, 100.0);
+    }
+
+    #[test]
+    fn anchored_restore_location_applies_floating_insets_after_frame_anchor() {
+        let pointer = point(960.0, 200.0);
+        let anchor = drag_restore_anchor_from_start_pointer(
+            point(960.0, 100.0),
+            (0, 32).into(),
+            (1920, 1048).into(),
+            (0, 32, 0, 0),
+        );
+
+        let restored_client_loc = anchored_client_location_from_pointer(
+            pointer,
+            anchor.pointer_frame_offset_y,
+            anchor.pointer_frame_ratio_x,
+            (800, 600).into(),
+            (2, 34, 2, 2),
+        );
+
+        assert_eq!(restored_client_loc, Point::from((560, 134)));
     }
 }
