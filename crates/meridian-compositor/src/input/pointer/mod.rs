@@ -5,7 +5,7 @@ use smithay::{
     desktop::Window,
     input::pointer::{AxisFrame, MotionEvent},
     utils::SERIAL_COUNTER,
-    utils::{Logical, Point, Size},
+    utils::{Logical, Point, Rectangle, Size},
     wayland::seat::WaylandFocus,
 };
 use tracing::debug;
@@ -14,7 +14,7 @@ use crate::{
     backend::drm::DrmCursorIcon,
     cursor::CursorImage,
     decoration::{DecorationHit, DecorationResizeEdge},
-    state::{MeridianState, OutputId, OutputRegistry},
+    state::{MeridianState, OutputGeometry, OutputId, OutputRegistry},
 };
 
 mod button;
@@ -166,6 +166,96 @@ const CURSOR_NWSE_RESIZE_NAMES: &[&str] = &[
     "se-resize",
 ];
 
+// Keep this aligned with SSD resize hit thickness for consistent hover affordance.
+const XWAYLAND_EDGE_RESIZE_THICKNESS_PX: i32 = 8;
+
+fn output_geometry_for_rect_center(
+    state: &MeridianState,
+    rect: Rectangle<i32, Logical>,
+) -> Option<OutputGeometry> {
+    let center_x = rect.loc.x as f64 + (rect.size.w.max(1) as f64 * 0.5);
+    let center_y = rect.loc.y as f64 + (rect.size.h.max(1) as f64 * 0.5);
+    state
+        .output_registry
+        .select_for_point_with_fallback(center_x, center_y)
+        .map(|info| info.geometry)
+}
+
+fn rect_matches_output_fullscreen_shape(
+    rect: Rectangle<i32, Logical>,
+    output_geometry: OutputGeometry,
+) -> bool {
+    rect.loc.x == output_geometry.x
+        && rect.loc.y == output_geometry.y
+        && rect.size.w == output_geometry.width
+        && rect.size.h == output_geometry.height
+}
+
+fn xwayland_resize_edge_from_rect(
+    rect: Rectangle<i32, Logical>,
+    pointer: Point<f64, Logical>,
+) -> Option<DecorationResizeEdge> {
+    if rect.size.w <= 0 || rect.size.h <= 0 {
+        return None;
+    }
+
+    let left = rect.loc.x;
+    let top = rect.loc.y;
+    let right = left + rect.size.w;
+    let bottom = top + rect.size.h;
+    let px = pointer.x as i32;
+    let py = pointer.y as i32;
+
+    if px < left || py < top || px >= right || py >= bottom {
+        return None;
+    }
+
+    let edge_x = XWAYLAND_EDGE_RESIZE_THICKNESS_PX.min((rect.size.w / 2).max(1));
+    let edge_y = XWAYLAND_EDGE_RESIZE_THICKNESS_PX.min((rect.size.h / 2).max(1));
+    let hit_left = px < left + edge_x;
+    let hit_right = px >= right - edge_x;
+    let hit_top = py < top + edge_y;
+    let hit_bottom = py >= bottom - edge_y;
+
+    match (hit_left, hit_right, hit_top, hit_bottom) {
+        (true, _, true, _) => Some(DecorationResizeEdge::TopLeft),
+        (_, true, true, _) => Some(DecorationResizeEdge::TopRight),
+        (true, _, _, true) => Some(DecorationResizeEdge::BottomLeft),
+        (_, true, _, true) => Some(DecorationResizeEdge::BottomRight),
+        (true, _, _, _) => Some(DecorationResizeEdge::Left),
+        (_, true, _, _) => Some(DecorationResizeEdge::Right),
+        (_, _, true, _) => Some(DecorationResizeEdge::Top),
+        (_, _, _, true) => Some(DecorationResizeEdge::Bottom),
+        _ => None,
+    }
+}
+
+pub(super) fn xwayland_resize_edge_hit_for_pointer(
+    state: &MeridianState,
+    location: Point<f64, Logical>,
+) -> Option<(
+    Window,
+    DecorationResizeEdge,
+    smithay::utils::Point<i32, Logical>,
+)> {
+    let space = state.workspaces.active_space();
+    let (window, window_loc) = space.element_under(location)?;
+    let x11 = window.x11_surface()?;
+    if x11.is_override_redirect() {
+        return None;
+    }
+
+    let rect = Rectangle::new(window_loc, window.geometry().size);
+    if output_geometry_for_rect_center(state, rect)
+        .is_some_and(|output_geometry| rect_matches_output_fullscreen_shape(rect, output_geometry))
+    {
+        return None;
+    }
+
+    let edge = xwayland_resize_edge_from_rect(rect, location)?;
+    Some((window.clone(), edge, window_loc))
+}
+
 fn decoration_hit_for_pointer(
     state: &MeridianState,
     location: Point<f64, Logical>,
@@ -207,9 +297,17 @@ fn cursor_icon_for_decoration_hit(hit: Option<DecorationHit>) -> DrmCursorIcon {
     }
 }
 
+fn cursor_icon_for_resize_edge(edge: DecorationResizeEdge) -> DrmCursorIcon {
+    cursor_icon_for_decoration_hit(Some(DecorationHit::Resize(edge)))
+}
+
 fn update_hover_cursor_feedback(state: &mut MeridianState, location: Point<f64, Logical>) {
-    let desired_cursor =
-        cursor_icon_for_decoration_hit(decoration_hit_for_pointer(state, location));
+    let desired_cursor = match decoration_hit_for_pointer(state, location) {
+        Some(DecorationHit::Resize(edge)) => cursor_icon_for_resize_edge(edge),
+        _ => xwayland_resize_edge_hit_for_pointer(state, location)
+            .map(|(_, edge, _)| cursor_icon_for_resize_edge(edge))
+            .unwrap_or(DrmCursorIcon::Default),
+    };
 
     let cursor_cfg = &state.theme_manager.current().config.cursor;
     let cursor_theme = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| cursor_cfg.theme.clone());
@@ -353,7 +451,7 @@ pub fn handle_pointer_axis<I: InputBackend>(
 
 #[cfg(test)]
 mod tests {
-    use smithay::utils::{Logical, Point, Transform};
+    use smithay::utils::{Logical, Point, Rectangle, Transform};
 
     use crate::state::{OutputGeometry, OutputRegistration, OutputRegistry};
 
@@ -494,5 +592,57 @@ mod tests {
         let (clamped, was_clamped) = super::clamp_point_to_desktop_bounds(point, bounds);
         assert!(!was_clamped);
         assert_eq!(clamped, point);
+    }
+
+    #[test]
+    fn xwayland_edge_hit_detects_corners_and_edges() {
+        let rect: Rectangle<i32, Logical> = Rectangle::new((100, 100).into(), (400, 300).into());
+
+        assert_eq!(
+            super::xwayland_resize_edge_from_rect(rect, (101.0, 101.0).into()),
+            Some(crate::decoration::DecorationResizeEdge::TopLeft)
+        );
+        assert_eq!(
+            super::xwayland_resize_edge_from_rect(rect, (498.0, 101.0).into()),
+            Some(crate::decoration::DecorationResizeEdge::TopRight)
+        );
+        assert_eq!(
+            super::xwayland_resize_edge_from_rect(rect, (101.0, 398.0).into()),
+            Some(crate::decoration::DecorationResizeEdge::BottomLeft)
+        );
+        assert_eq!(
+            super::xwayland_resize_edge_from_rect(rect, (498.0, 398.0).into()),
+            Some(crate::decoration::DecorationResizeEdge::BottomRight)
+        );
+        assert_eq!(
+            super::xwayland_resize_edge_from_rect(rect, (101.0, 250.0).into()),
+            Some(crate::decoration::DecorationResizeEdge::Left)
+        );
+        assert_eq!(
+            super::xwayland_resize_edge_from_rect(rect, (498.0, 250.0).into()),
+            Some(crate::decoration::DecorationResizeEdge::Right)
+        );
+        assert_eq!(
+            super::xwayland_resize_edge_from_rect(rect, (250.0, 101.0).into()),
+            Some(crate::decoration::DecorationResizeEdge::Top)
+        );
+        assert_eq!(
+            super::xwayland_resize_edge_from_rect(rect, (250.0, 398.0).into()),
+            Some(crate::decoration::DecorationResizeEdge::Bottom)
+        );
+    }
+
+    #[test]
+    fn xwayland_edge_hit_ignores_interior_and_outside_points() {
+        let rect: Rectangle<i32, Logical> = Rectangle::new((50, 50).into(), (300, 200).into());
+
+        assert_eq!(
+            super::xwayland_resize_edge_from_rect(rect, (200.0, 150.0).into()),
+            None
+        );
+        assert_eq!(
+            super::xwayland_resize_edge_from_rect(rect, (49.0, 150.0).into()),
+            None
+        );
     }
 }

@@ -80,6 +80,19 @@ fn started_move_grab_window_states(window: &smithay::desktop::Window) -> (bool, 
     }
 }
 
+fn decoration_resize_edge_to_resize_edge(edge: DecorationResizeEdge) -> ResizeEdge {
+    match edge {
+        DecorationResizeEdge::Top => ResizeEdge::TOP,
+        DecorationResizeEdge::Left => ResizeEdge::LEFT,
+        DecorationResizeEdge::Right => ResizeEdge::RIGHT,
+        DecorationResizeEdge::Bottom => ResizeEdge::BOTTOM,
+        DecorationResizeEdge::TopLeft => ResizeEdge::TOP_LEFT,
+        DecorationResizeEdge::TopRight => ResizeEdge::TOP_RIGHT,
+        DecorationResizeEdge::BottomLeft => ResizeEdge::BOTTOM_LEFT,
+        DecorationResizeEdge::BottomRight => ResizeEdge::BOTTOM_RIGHT,
+    }
+}
+
 fn raise_window_and_focus(
     state: &mut MeridianState,
     window: &smithay::desktop::Window,
@@ -414,16 +427,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                     return;
                 }
                 DecorationHit::Resize(edge) => {
-                    let resize_edges = match edge {
-                        DecorationResizeEdge::Top => ResizeEdge::TOP,
-                        DecorationResizeEdge::Left => ResizeEdge::LEFT,
-                        DecorationResizeEdge::Right => ResizeEdge::RIGHT,
-                        DecorationResizeEdge::Bottom => ResizeEdge::BOTTOM,
-                        DecorationResizeEdge::TopLeft => ResizeEdge::TOP_LEFT,
-                        DecorationResizeEdge::TopRight => ResizeEdge::TOP_RIGHT,
-                        DecorationResizeEdge::BottomLeft => ResizeEdge::BOTTOM_LEFT,
-                        DecorationResizeEdge::BottomRight => ResizeEdge::BOTTOM_RIGHT,
-                    };
+                    let resize_edges = decoration_resize_edge_to_resize_edge(edge);
 
                     raise_window_and_focus(state, &window, serial);
                     pointer.button(
@@ -454,6 +458,36 @@ pub fn handle_pointer_button<I: InputBackend>(
                     }
                     return;
                 }
+            }
+        }
+
+        const BTN_LEFT: u32 = 0x110;
+        if button == BTN_LEFT && !under_is_layer_surface {
+            if let Some((window, edge, initial_window_location)) =
+                super::xwayland_resize_edge_hit_for_pointer(state, location)
+            {
+                let resize_edges = decoration_resize_edge_to_resize_edge(edge);
+                raise_window_and_focus(state, &window, serial);
+                pointer.button(
+                    state,
+                    &ButtonEvent {
+                        button,
+                        state: button_state,
+                        serial,
+                        time: event.time_msec(),
+                    },
+                );
+                pointer.frame(state);
+                if let Some(start_data) = pointer.grab_start_data() {
+                    let grab = ResizeSurfaceGrab::start(
+                        start_data,
+                        window.clone(),
+                        resize_edges,
+                        Rectangle::new(initial_window_location, window.geometry().size),
+                    );
+                    pointer.set_grab(state, grab, serial, Focus::Clear);
+                }
+                return;
             }
         }
 
