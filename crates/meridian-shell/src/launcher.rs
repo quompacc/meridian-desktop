@@ -70,6 +70,11 @@ const SIDEBAR_SECTION_GAP: i32 = 12;
 const SIDEBAR_DIVIDER_X_INSET: i32 = 12;
 const SIDEBAR_DIVIDER_MARGIN_TOP: i32 = 10;
 const SIDEBAR_DIVIDER_TO_LIST_GAP: i32 = 10;
+const HEADER_TITLE_BASELINE_OFFSET: i32 = 16;
+const HEADER_COUNT_BASELINE_OFFSET: i32 = tokens::launcher::HEADER_H + 1;
+const HEADER_COUNT_WIDTH: i32 = 110;
+const HEADER_COUNT_RIGHT_INSET: i32 = 0;
+const HEADER_TITLE_TO_COUNT_GAP: i32 = 10;
 const SEARCH_TEXT_BASELINE_OFFSET: i32 = 28;
 const PINNED_APP_TITLE_BASELINE_OFFSET: i32 = 20;
 const APP_ROW_TITLE_BASELINE_OFFSET: i32 = 16;
@@ -1189,8 +1194,12 @@ pub fn draw_launcher(
         font,
         "Launcher",
         layout.header.x,
-        layout.header.y + 16,
-        layout.header.w - 120,
+        layout.header.y + HEADER_TITLE_BASELINE_OFFSET,
+        (layout.header.w
+            - HEADER_COUNT_WIDTH
+            - HEADER_COUNT_RIGHT_INSET
+            - HEADER_TITLE_TO_COUNT_GAP)
+            .max(0),
         colors.text,
     );
     let count_text = if results_total == 1 {
@@ -1201,9 +1210,9 @@ pub fn draw_launcher(
     painter.text_clipped(
         font,
         &count_text,
-        layout.header.x + layout.header.w - 110,
-        layout.header.y + tokens::launcher::HEADER_H + 1,
-        110,
+        layout.header.x + layout.header.w - HEADER_COUNT_WIDTH - HEADER_COUNT_RIGHT_INSET,
+        layout.header.y + HEADER_COUNT_BASELINE_OFFSET,
+        HEADER_COUNT_WIDTH,
         colors.border,
     );
 
