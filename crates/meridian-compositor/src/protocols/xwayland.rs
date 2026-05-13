@@ -219,7 +219,8 @@ impl XwmHandler for MeridianState {
             .cloned();
         if let Some(win) = maybe {
             if let Some((id, _)) = window_list_entry(&win) {
-                self.broadcast_window_closed(id);
+                self.broadcast_window_closed(id.clone());
+                self.clear_window_runtime_state(&id);
             }
             self.workspaces.space_at_mut(active).unmap_elem(&win);
             self.mark_all_outputs_dirty("xwayland-unmap-window");

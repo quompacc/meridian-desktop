@@ -271,6 +271,18 @@ fn apply_xwayland_snap_from_move_release(
     if x11.is_override_redirect() || window_is_output_fullscreen_shape(data, window) {
         return false;
     }
+    if let Some(current_loc) = data.workspaces.active_space().element_location(window) {
+        let current_size = window.geometry().size;
+        if current_size.w > 0 && current_size.h > 0 {
+            let window_key = format!("x11:{}", x11.window_id());
+            data.half_snap_restore_locations
+                .entry(window_key)
+                .or_insert(HalfSnapRestoreGeometry::new(
+                    current_loc,
+                    Some(current_size),
+                ));
+        }
+    }
 
     let target_rect = xwayland_snap_rect_for_action(output_geometry, action);
     if let Err(err) = x11.configure(target_rect) {
@@ -525,6 +537,57 @@ fn maybe_restore_half_snapped_drag(
     ))
 }
 
+fn xwayland_restore_window_key(data: &MeridianState, window: &Window) -> Option<String> {
+    let x11 = window.x11_surface()?;
+    if x11.is_override_redirect() || window_is_output_fullscreen_shape(data, window) {
+        return None;
+    }
+    Some(format!("x11:{}", x11.window_id()))
+}
+
+fn maybe_restore_xwayland_snapped_drag(
+    data: &mut MeridianState,
+    window: &Window,
+    initial_window_location: Point<i32, Logical>,
+    drag_start_location: Point<f64, Logical>,
+    current_pointer_location: Point<f64, Logical>,
+) -> Option<Point<i32, Logical>> {
+    if !movement_crosses_restore_threshold(drag_start_location, current_pointer_location) {
+        return None;
+    }
+
+    let window_key = xwayland_restore_window_key(data, window)?;
+    let restore_geometry = data.half_snap_restore_locations.remove(&window_key)?;
+    let x11 = window.x11_surface()?;
+    let current_size = window.geometry().size;
+    let restore_client_size = restore_geometry.client_size.unwrap_or(current_size);
+    if restore_client_size.w <= 0 || restore_client_size.h <= 0 {
+        return None;
+    }
+    let anchor = drag_restore_anchor_from_start_pointer(
+        drag_start_location,
+        initial_window_location,
+        current_size,
+        (0, 0, 0, 0),
+    );
+    let restored_client_location = anchored_restore_client_location(
+        current_pointer_location,
+        anchor,
+        restore_client_size,
+        (0, 0, 0, 0),
+    );
+    let restored_rect = Rectangle::new(restored_client_location, restore_client_size);
+    if let Err(err) = x11.configure(restored_rect) {
+        tracing::error!("xwayland drag-restore configure failed: {}", err);
+        return None;
+    }
+    data.workspaces
+        .active_space_mut()
+        .map_element(window.clone(), restored_client_location, true);
+    data.mark_all_outputs_dirty("xwayland-drag-restore");
+    Some(restored_client_location)
+}
+
 pub struct MoveSurfaceGrab {
     pub start_data: PointerGrabStartData<MeridianState>,
     pub window: Window,
@@ -569,6 +632,31 @@ impl PointerGrab<MeridianState> for MoveSurfaceGrab {
             let started_half_snapped = window_half_snap_direction(data, &self.window).is_some();
             if started_half_snapped {
                 if let Some(restored_client_location) = maybe_restore_half_snapped_drag(
+                    data,
+                    &self.window,
+                    self.initial_window_location,
+                    self.start_data.location,
+                    event.location,
+                ) {
+                    self.initial_window_location = restored_initial_window_location(
+                        restored_client_location,
+                        self.start_data.location,
+                        event.location,
+                    );
+                    self.drag_restore_done = true;
+                } else {
+                    return;
+                }
+            }
+        }
+        if !self.drag_restore_done {
+            let started_xwayland_snapped = xwayland_restore_window_key(data, &self.window)
+                .is_some_and(|window_key| {
+                    data.half_snap_restore_locations
+                        .contains_key(window_key.as_str())
+                });
+            if started_xwayland_snapped {
+                if let Some(restored_client_location) = maybe_restore_xwayland_snapped_drag(
                     data,
                     &self.window,
                     self.initial_window_location,
