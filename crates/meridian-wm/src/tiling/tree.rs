@@ -213,3 +213,72 @@ pub(super) fn adjust_split_node(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use smithay::utils::Rectangle;
+
+    use super::{split_rect, SplitDir};
+
+    #[test]
+    fn split_rect_horizontal_applies_gap_and_ratio() {
+        let rect = Rectangle::new((10, 20).into(), (100, 50).into());
+
+        let (left, right) = split_rect(rect, SplitDir::Horizontal, 0.5, 4);
+
+        assert_eq!(left.loc.x, 10);
+        assert_eq!(left.loc.y, 20);
+        assert_eq!(left.size.w, 48);
+        assert_eq!(left.size.h, 50);
+        assert_eq!(right.loc.x, 62);
+        assert_eq!(right.loc.y, 20);
+        assert_eq!(right.size.w, 48);
+        assert_eq!(right.size.h, 50);
+    }
+
+    #[test]
+    fn split_rect_vertical_applies_gap_and_ratio() {
+        let rect = Rectangle::new((5, 7).into(), (60, 80).into());
+
+        let (top, bottom) = split_rect(rect, SplitDir::Vertical, 0.5, 4);
+
+        assert_eq!(top.loc.x, 5);
+        assert_eq!(top.loc.y, 7);
+        assert_eq!(top.size.w, 60);
+        assert_eq!(top.size.h, 38);
+        assert_eq!(bottom.loc.x, 5);
+        assert_eq!(bottom.loc.y, 49);
+        assert_eq!(bottom.size.w, 60);
+        assert_eq!(bottom.size.h, 38);
+    }
+
+    #[test]
+    fn split_rect_horizontal_clamps_extreme_ratios() {
+        let rect = Rectangle::new((0, 0).into(), (100, 20).into());
+
+        let (left_min, right_min) = split_rect(rect, SplitDir::Horizontal, -2.0, 4);
+        assert_eq!(left_min.size.w, 1);
+        assert_eq!(right_min.loc.x, 3);
+        assert_eq!(right_min.size.w, 97);
+
+        let (left_max, right_max) = split_rect(rect, SplitDir::Horizontal, 2.0, 4);
+        assert_eq!(left_max.size.w, 97);
+        assert_eq!(right_max.loc.x, 101);
+        assert_eq!(right_max.size.w, 1);
+    }
+
+    #[test]
+    fn split_rect_vertical_clamps_extreme_ratios() {
+        let rect = Rectangle::new((0, 0).into(), (20, 100).into());
+
+        let (top_min, bottom_min) = split_rect(rect, SplitDir::Vertical, -2.0, 4);
+        assert_eq!(top_min.size.h, 1);
+        assert_eq!(bottom_min.loc.y, 3);
+        assert_eq!(bottom_min.size.h, 97);
+
+        let (top_max, bottom_max) = split_rect(rect, SplitDir::Vertical, 2.0, 4);
+        assert_eq!(top_max.size.h, 97);
+        assert_eq!(bottom_max.loc.y, 101);
+        assert_eq!(bottom_max.size.h, 1);
+    }
+}
