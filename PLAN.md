@@ -1,5 +1,7 @@
 # Meridian – Masterplan
 
+> Hinweis (Stand 2026-05): Dieses Dokument ist ein historischer Masterplan und in Teilen veraltet. Für den aktuellen Ist-Stand bitte primär den aktuellen Commit-Verlauf sowie `README.md` (Build-/Workflow-Checks) heranziehen; für aktive Patch-Regeln gilt `AGENTS.md`.
+
 ## Projektübersicht
 
 Meridian ist eine vollständige Wayland-Desktop-Umgebung, geschrieben in Rust.
