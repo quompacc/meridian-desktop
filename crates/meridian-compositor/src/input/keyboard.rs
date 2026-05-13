@@ -13,6 +13,13 @@ struct KeyMatch {
     keysym: u32,
 }
 
+fn wm_split_dir(dir: SplitDir) -> meridian_wm::SplitDir {
+    match dir {
+        SplitDir::Horizontal => meridian_wm::SplitDir::Horizontal,
+        SplitDir::Vertical => meridian_wm::SplitDir::Vertical,
+    }
+}
+
 pub fn handle_keyboard<I: InputBackend>(
     state: &mut MeridianState,
     event: &impl KeyboardKeyEvent<I>,
@@ -152,18 +159,12 @@ pub fn handle_keyboard<I: InputBackend>(
         Action::ToggleTiling => state.toggle_tiling(),
         Action::ForceSplit(dir) => {
             let active = state.workspaces.active;
-            state.wm_workspaces[active].force_split(match dir {
-                SplitDir::Horizontal => meridian_wm::SplitDir::Horizontal,
-                SplitDir::Vertical => meridian_wm::SplitDir::Vertical,
-            });
+            state.wm_workspaces[active].force_split(wm_split_dir(dir));
         }
         Action::ResizeTile { dir, delta } => {
             if let Some(window) = state.focused_window() {
                 let active = state.workspaces.active;
-                let wm_dir = match dir {
-                    SplitDir::Horizontal => meridian_wm::SplitDir::Horizontal,
-                    SplitDir::Vertical => meridian_wm::SplitDir::Vertical,
-                };
+                let wm_dir = wm_split_dir(dir);
                 state.wm_workspaces[active].resize_focused(&window, wm_dir, delta);
                 state.tile_workspace(active);
             }
