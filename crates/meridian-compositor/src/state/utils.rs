@@ -21,8 +21,22 @@ pub(crate) fn window_list_entry(window: &Window) -> Option<(String, String)> {
 
     window.x11_surface().map(|x11| {
         let id = format!("x11:{}", x11.window_id());
-        let title = format!("X11 window {}", x11.window_id());
-        (id, title)
+        let title = x11.title();
+        let class = x11.class();
+        let instance = x11.instance();
+        let fallback_title = format!("X11 window {}", x11.window_id());
+        let resolved_title = if !title.trim().is_empty() {
+            title
+        } else if !class.trim().is_empty() && !instance.trim().is_empty() && class != instance {
+            format!("{} ({})", class, instance)
+        } else if !class.trim().is_empty() {
+            class
+        } else if !instance.trim().is_empty() {
+            instance
+        } else {
+            fallback_title
+        };
+        (id, resolved_title)
     })
 }
 

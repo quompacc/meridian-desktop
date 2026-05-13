@@ -10,7 +10,7 @@ use smithay::{
         xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
     },
     xwayland::{
-        xwm::{Reorder, ResizeEdge as X11ResizeEdge, XwmId},
+        xwm::{Reorder, ResizeEdge as X11ResizeEdge, WmWindowProperty, XwmId},
         X11Surface, X11Wm, XWayland, XWaylandEvent, XwmHandler,
     },
 };
@@ -437,6 +437,12 @@ impl XwmHandler for MeridianState {
                 .space_at_mut(active)
                 .map_element(win, loc, false);
             self.mark_all_outputs_dirty("xwayland-configure-notify");
+        }
+    }
+
+    fn property_notify(&mut self, _xwm: XwmId, _window: X11Surface, property: WmWindowProperty) {
+        if matches!(property, WmWindowProperty::Title | WmWindowProperty::Class) {
+            self.broadcast_window_snapshot();
         }
     }
 
