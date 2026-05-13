@@ -194,6 +194,7 @@ pub enum ShellCommand {
         terminal: bool,
     },
     ReloadConfig,
+    Quit,
 }
 
 pub fn socket_path() -> PathBuf {
@@ -409,6 +410,14 @@ mod tests {
                 terminal: false,
             }
         );
+    }
+
+    #[test]
+    fn quit_command_roundtrip_is_supported() {
+        let command = ShellCommand::Quit;
+        let bytes = encode_command(&command).expect("encode");
+        let decoded = decode_command(std::str::from_utf8(&bytes).expect("utf8")).expect("decode");
+        assert_eq!(decoded, command);
     }
 
     #[test]

@@ -665,6 +665,9 @@ impl MeridianShell {
             ClickAction::LaunchApp(index) => {
                 self.launcher_state.launch_app(index, &mut self.ipc);
             }
+            ClickAction::LauncherAction { action, .. } => {
+                let _result = self.launcher_state.trigger_action(action, &mut self.ipc);
+            }
             ClickAction::SelectLauncherCategory(_) => {}
             ClickAction::ToggleLauncher => {
                 self.toggle_launcher();
@@ -692,6 +695,20 @@ impl MeridianShell {
                 self.launcher_state
                     .launch_app(self.launcher_state.selected_index, &mut self.ipc);
                 self.close_launcher_after_launch(qh, RepaintReason::Pointer);
+            }
+            ClickAction::LauncherAction { action, index } => {
+                self.launcher_state.set_selected_index(index);
+                match self.launcher_state.trigger_action(action, &mut self.ipc) {
+                    crate::launcher::LauncherActionTriggerResult::Armed => {
+                        self.draw_launcher(qh, RepaintReason::Pointer);
+                    }
+                    crate::launcher::LauncherActionTriggerResult::Sent => {
+                        self.close_launcher_after_launch(qh, RepaintReason::Pointer);
+                    }
+                    crate::launcher::LauncherActionTriggerResult::Failed => {
+                        self.draw_launcher(qh, RepaintReason::Pointer);
+                    }
+                }
             }
             ClickAction::SelectLauncherCategory(raw) => {
                 if self.launcher_state.set_sidebar_category_from_click(raw) {

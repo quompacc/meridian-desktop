@@ -1,3 +1,5 @@
+use crate::launcher::LauncherAction;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SurfaceKind {
     None,
@@ -20,6 +22,10 @@ pub enum ClickAction {
     FocusWindow(String),
     SelectLauncherCategory(u8),
     LaunchApp(usize),
+    LauncherAction {
+        action: LauncherAction,
+        index: usize,
+    },
     ToggleLauncher,
     Clock,
 }

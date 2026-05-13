@@ -188,6 +188,8 @@ pub(crate) struct LauncherRenderSignature {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) query: String,
+    pub(crate) sidebar_category: crate::launcher::SidebarCategory,
+    pub(crate) pending_action_confirmation: Option<crate::launcher::LauncherAction>,
     pub(crate) selected_index: usize,
     pub(crate) visible_apps_len: usize,
     pub(crate) visible_apps_hash: u64,
@@ -287,4 +289,37 @@ pub(crate) struct MeridianShell {
     pub(crate) last_clock: String,
     pub(crate) last_tick: Instant,
     pub(crate) exit: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{LauncherRenderSignature, ThemeRenderSignature};
+    use crate::launcher::{LauncherAction, SidebarCategory};
+
+    fn base_launcher_signature() -> LauncherRenderSignature {
+        LauncherRenderSignature {
+            open: true,
+            width: 720,
+            height: 520,
+            query: String::new(),
+            sidebar_category: SidebarCategory::System,
+            pending_action_confirmation: None,
+            selected_index: 0,
+            visible_apps_len: 1,
+            visible_apps_hash: 42,
+            theme: ThemeRenderSignature {
+                font_ui: "Sans".to_string(),
+                colors: [0; 20],
+            },
+        }
+    }
+
+    #[test]
+    fn launcher_signature_changes_with_pending_action_confirmation() {
+        let without_confirmation = base_launcher_signature();
+        let mut with_confirmation = base_launcher_signature();
+        with_confirmation.pending_action_confirmation = Some(LauncherAction::ExitMeridian);
+
+        assert_ne!(without_confirmation, with_confirmation);
+    }
 }

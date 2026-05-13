@@ -127,6 +127,19 @@ impl KeyboardHandler for MeridianShell {
                 self.launcher_state.launch_app(idx, &mut self.ipc);
                 self.close_launcher_after_launch(qh, RepaintReason::Keyboard);
             }
+            launcher::LauncherInputResult::Action(action) => {
+                match self.launcher_state.trigger_action(action, &mut self.ipc) {
+                    launcher::LauncherActionTriggerResult::Armed => {
+                        self.draw_launcher(qh, RepaintReason::Keyboard);
+                    }
+                    launcher::LauncherActionTriggerResult::Sent => {
+                        self.close_launcher_after_launch(qh, RepaintReason::Keyboard);
+                    }
+                    launcher::LauncherActionTriggerResult::Failed => {
+                        self.draw_launcher(qh, RepaintReason::Keyboard);
+                    }
+                }
+            }
             launcher::LauncherInputResult::Redraw => {
                 self.draw_launcher(qh, RepaintReason::Keyboard);
             }

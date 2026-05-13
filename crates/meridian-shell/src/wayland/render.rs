@@ -113,6 +113,8 @@ impl MeridianShell {
             width,
             height,
             query: self.launcher_state.query.clone(),
+            sidebar_category: self.launcher_state.sidebar_category,
+            pending_action_confirmation: self.launcher_state.pending_action_confirmation(),
             selected_index: self.launcher_state.selected_index,
             visible_apps_len: visible_apps.len(),
             visible_apps_hash: Self::launcher_apps_hash(visible_apps),

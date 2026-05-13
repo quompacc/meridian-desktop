@@ -109,6 +109,9 @@ impl MeridianState {
             ShellCommand::ReloadConfig => {
                 self.reload_config();
             }
+            ShellCommand::Quit => {
+                self.loop_signal.stop();
+            }
         }
     }
 
