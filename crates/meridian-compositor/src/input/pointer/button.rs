@@ -80,6 +80,22 @@ fn started_move_grab_window_states(window: &smithay::desktop::Window) -> (bool, 
     }
 }
 
+fn raise_window_and_focus(
+    state: &mut MeridianState,
+    window: &smithay::desktop::Window,
+    serial: smithay::utils::Serial,
+) {
+    state
+        .workspaces
+        .active_space_mut()
+        .raise_element(window, true);
+    if let Some(surface) = window.wl_surface() {
+        let surface = surface.into_owned();
+        state.set_keyboard_focus_with_decorations(Some(surface.clone()), serial);
+        state.broadcast_toplevel_focused(&surface);
+    }
+}
+
 pub fn handle_pointer_button<I: InputBackend>(
     state: &mut MeridianState,
     event: &impl PointerButtonEvent<I>,
@@ -368,15 +384,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                     return;
                 }
                 DecorationHit::TitleBar => {
-                    state
-                        .workspaces
-                        .active_space_mut()
-                        .raise_element(&window, true);
-                    if let Some(surface) = window.wl_surface() {
-                        let surface = surface.into_owned();
-                        state.set_keyboard_focus_with_decorations(Some(surface.clone()), serial);
-                        state.broadcast_toplevel_focused(&surface);
-                    }
+                    raise_window_and_focus(state, &window, serial);
                     pointer.button(
                         state,
                         &ButtonEvent {
@@ -415,15 +423,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                         DecorationResizeEdge::BottomRight => ResizeEdge::BOTTOM_RIGHT,
                     };
 
-                    state
-                        .workspaces
-                        .active_space_mut()
-                        .raise_element(&window, true);
-                    if let Some(surface) = window.wl_surface() {
-                        let surface = surface.into_owned();
-                        state.set_keyboard_focus_with_decorations(Some(surface.clone()), serial);
-                        state.broadcast_toplevel_focused(&surface);
-                    }
+                    raise_window_and_focus(state, &window, serial);
                     pointer.button(
                         state,
                         &ButtonEvent {
@@ -470,15 +470,7 @@ pub fn handle_pointer_button<I: InputBackend>(
         };
 
         if let Some(window) = window_under {
-            state
-                .workspaces
-                .active_space_mut()
-                .raise_element(&window, true);
-            if let Some(surface) = window.wl_surface() {
-                let surface = surface.into_owned();
-                state.set_keyboard_focus_with_decorations(Some(surface.clone()), serial);
-                state.broadcast_toplevel_focused(&surface);
-            }
+            raise_window_and_focus(state, &window, serial);
             state.workspaces.active_space().elements().for_each(|w| {
                 if let Some(t) = w.toplevel() {
                     t.send_pending_configure();
