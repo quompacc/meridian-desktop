@@ -10,7 +10,7 @@ use smithay::{
     },
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::{Logical, Point, Size},
+    utils::{Logical, Point, Rectangle, Size},
     wayland::shell::xdg::XdgShellHandler,
 };
 
@@ -201,6 +201,88 @@ fn apply_half_snap_from_move_release(
         .active_space_mut()
         .map_element(window.clone(), placement.client_loc, true);
     toplevel.send_pending_configure();
+}
+
+fn select_output_geometry_for_rect_center(
+    data: &MeridianState,
+    rect: Rectangle<i32, Logical>,
+) -> Option<OutputGeometry> {
+    let center_x = rect.loc.x as f64 + (rect.size.w.max(1) as f64 * 0.5);
+    let center_y = rect.loc.y as f64 + (rect.size.h.max(1) as f64 * 0.5);
+    data.output_registry
+        .select_for_point_with_fallback(center_x, center_y)
+        .map(|info| info.geometry)
+}
+
+fn rect_matches_output_fullscreen_shape(
+    rect: Rectangle<i32, Logical>,
+    output_geometry: OutputGeometry,
+) -> bool {
+    rect.loc.x == output_geometry.x
+        && rect.loc.y == output_geometry.y
+        && rect.size.w == output_geometry.width
+        && rect.size.h == output_geometry.height
+}
+
+fn window_is_output_fullscreen_shape(data: &MeridianState, window: &Window) -> bool {
+    let Some(window_loc) = data.workspaces.active_space().element_location(window) else {
+        return false;
+    };
+    let rect = Rectangle::new(window_loc, window.geometry().size);
+    select_output_geometry_for_rect_center(data, rect)
+        .is_some_and(|output_geometry| rect_matches_output_fullscreen_shape(rect, output_geometry))
+}
+
+fn xwayland_snap_rect_for_action(
+    output_geometry: OutputGeometry,
+    action: MoveReleaseEdgeAction,
+) -> Rectangle<i32, Logical> {
+    match action {
+        MoveReleaseEdgeAction::Maximize => Rectangle::new(
+            (output_geometry.x, output_geometry.y).into(),
+            (output_geometry.width, output_geometry.height).into(),
+        ),
+        MoveReleaseEdgeAction::HalfSnap(direction) => {
+            let left_width = output_geometry.width / 2;
+            let (x, width) = match direction {
+                HalfSnapDirection::Left => (output_geometry.x, left_width),
+                HalfSnapDirection::Right => (
+                    output_geometry.x + left_width,
+                    output_geometry.width - left_width,
+                ),
+            };
+            Rectangle::new(
+                (x, output_geometry.y).into(),
+                (width.max(1), output_geometry.height.max(1)).into(),
+            )
+        }
+    }
+}
+
+fn apply_xwayland_snap_from_move_release(
+    data: &mut MeridianState,
+    window: &Window,
+    output_geometry: OutputGeometry,
+    action: MoveReleaseEdgeAction,
+) -> bool {
+    let Some(x11) = window.x11_surface() else {
+        return false;
+    };
+    if x11.is_override_redirect() || window_is_output_fullscreen_shape(data, window) {
+        return false;
+    }
+
+    let target_rect = xwayland_snap_rect_for_action(output_geometry, action);
+    if let Err(err) = x11.configure(target_rect) {
+        tracing::error!("xwayland move-release snap configure failed: {}", err);
+        return false;
+    }
+
+    data.workspaces
+        .active_space_mut()
+        .map_element(window.clone(), target_rect.loc, true);
+    data.mark_all_outputs_dirty("xwayland-move-release-snap");
+    true
 }
 
 fn half_snap_restore_geometry_source(
@@ -540,10 +622,22 @@ impl PointerGrab<MeridianState> for MoveSurfaceGrab {
             handle.unset_grab(self, data, event.serial, event.time, true);
             if should_maximize {
                 maximize_window_from_move_release(data, &self.window);
-            } else if let Some((output_geometry, MoveReleaseEdgeAction::HalfSnap(direction))) =
-                release_action
-            {
-                apply_half_snap_from_move_release(data, &self.window, output_geometry, direction);
+            } else if let Some((output_geometry, action)) = release_action {
+                if !apply_xwayland_snap_from_move_release(
+                    data,
+                    &self.window,
+                    output_geometry,
+                    action,
+                ) {
+                    if let MoveReleaseEdgeAction::HalfSnap(direction) = action {
+                        apply_half_snap_from_move_release(
+                            data,
+                            &self.window,
+                            output_geometry,
+                            direction,
+                        );
+                    }
+                }
             }
         }
     }
@@ -941,5 +1035,40 @@ mod tests {
         assert!(!state.states.contains(xdg_toplevel::State::TiledBottom));
         assert!(state.states.contains(xdg_toplevel::State::Activated));
         assert_eq!(state.size, Some(Size::from((800, 600))));
+    }
+
+    #[test]
+    fn xwayland_snap_rect_for_maximize_uses_workarea_geometry() {
+        let output = OutputGeometry {
+            x: 10,
+            y: 20,
+            width: 1600,
+            height: 900,
+        };
+        let rect = super::xwayland_snap_rect_for_action(output, MoveReleaseEdgeAction::Maximize);
+        assert_eq!(rect.loc, Point::from((10, 20)));
+        assert_eq!(rect.size, Size::from((1600, 900)));
+    }
+
+    #[test]
+    fn xwayland_snap_rect_for_half_snap_splits_width() {
+        let output = OutputGeometry {
+            x: 0,
+            y: 0,
+            width: 1601,
+            height: 900,
+        };
+        let left = super::xwayland_snap_rect_for_action(
+            output,
+            MoveReleaseEdgeAction::HalfSnap(HalfSnapDirection::Left),
+        );
+        let right = super::xwayland_snap_rect_for_action(
+            output,
+            MoveReleaseEdgeAction::HalfSnap(HalfSnapDirection::Right),
+        );
+        assert_eq!(left.loc, Point::from((0, 0)));
+        assert_eq!(left.size, Size::from((800, 900)));
+        assert_eq!(right.loc, Point::from((800, 0)));
+        assert_eq!(right.size, Size::from((801, 900)));
     }
 }
