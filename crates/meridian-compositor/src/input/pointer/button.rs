@@ -506,6 +506,17 @@ pub fn handle_pointer_button<I: InputBackend>(
         };
 
         if let Some(window) = window_under {
+            if button == BTN_LEFT {
+                if let Some(x11) = window.x11_surface() {
+                    debug!(
+                        event = "pointer.button.xwayland_left_press",
+                        window_id = x11.window_id(),
+                        override_redirect = x11.is_override_redirect(),
+                        pointer_location = ?location,
+                        "left click targeted xwayland window"
+                    );
+                }
+            }
             raise_window_and_focus(state, &window, serial);
             state.workspaces.active_space().elements().for_each(|w| {
                 if let Some(t) = w.toplevel() {

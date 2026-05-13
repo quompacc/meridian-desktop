@@ -14,7 +14,7 @@ use smithay::{
         X11Surface, X11Wm, XWayland, XWaylandEvent, XwmHandler,
     },
 };
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::grabs::{
     move_grab::MoveSurfaceGrab,
@@ -198,10 +198,37 @@ impl XwmHandler for MeridianState {
             .expect("xwm_state called but X11Wm is not initialised")
     }
 
-    fn new_window(&mut self, _xwm: XwmId, _window: X11Surface) {}
-    fn new_override_redirect_window(&mut self, _xwm: XwmId, _window: X11Surface) {}
+    fn new_window(&mut self, _xwm: XwmId, window: X11Surface) {
+        debug!(
+            event = "xwayland.new_window",
+            window_id = window.window_id(),
+            override_redirect = window.is_override_redirect(),
+            geometry = ?window.geometry(),
+            "xwayland window announced"
+        );
+    }
+
+    fn new_override_redirect_window(&mut self, _xwm: XwmId, window: X11Surface) {
+        debug!(
+            event = "xwayland.new_override_redirect_window",
+            window_id = window.window_id(),
+            override_redirect = window.is_override_redirect(),
+            geometry = ?window.geometry(),
+            "xwayland override-redirect window announced"
+        );
+    }
 
     fn map_window_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        let window_id = window.window_id();
+        let is_override_redirect = window.is_override_redirect();
+        let initial_geometry = window.geometry();
+        debug!(
+            event = "xwayland.map_window_request.start",
+            window_id,
+            override_redirect = is_override_redirect,
+            geometry = ?initial_geometry,
+            "handling xwayland map window request"
+        );
         if let Err(e) = window.set_mapped(true) {
             error!("map_window_request: set_mapped failed: {}", e);
             return;
@@ -214,10 +241,21 @@ impl XwmHandler for MeridianState {
             (100, 100).into()
         };
         let requested_rect = Rectangle::new(loc, geo.size);
-        let clamped_loc = select_output_geometry_for_rect(self, requested_rect)
-            .map(|output_geometry| panel_safe_normal_xwayland_rect(requested_rect, output_geometry))
+        let output_geometry = select_output_geometry_for_rect(self, requested_rect);
+        let clamped_loc = output_geometry
+            .map(|geometry| panel_safe_normal_xwayland_rect(requested_rect, geometry))
             .map(|rect| rect.loc)
             .unwrap_or(loc);
+        debug!(
+            event = "xwayland.map_window_request.geometry",
+            window_id,
+            requested_rect = ?requested_rect,
+            output_geometry = ?output_geometry,
+            clamp_applied = output_geometry.is_some(),
+            final_loc = ?clamped_loc,
+            map_path = "managed",
+            "resolved xwayland managed map geometry"
+        );
         let win = Window::new_x11_window(window);
         let active = self.workspaces.active;
         let opened = window_list_entry(&win);
@@ -231,6 +269,8 @@ impl XwmHandler for MeridianState {
     }
 
     fn mapped_override_redirect_window(&mut self, _xwm: XwmId, window: X11Surface) {
+        let window_id = window.window_id();
+        let is_override_redirect = window.is_override_redirect();
         let geo = window.geometry();
         let loc = if geo.size.w > 0 && geo.size.h > 0 {
             geo.loc
@@ -242,10 +282,28 @@ impl XwmHandler for MeridianState {
         self.workspaces
             .space_at_mut(active)
             .map_element(win, loc, true);
+        debug!(
+            event = "xwayland.mapped_override_redirect_window",
+            window_id,
+            override_redirect = is_override_redirect,
+            geometry = ?geo,
+            final_loc = ?loc,
+            map_path = "override_redirect",
+            "mapped xwayland override-redirect window"
+        );
         self.mark_all_outputs_dirty("xwayland-map-override");
     }
 
     fn unmapped_window(&mut self, _xwm: XwmId, window: X11Surface) {
+        let window_id = window.window_id();
+        let is_override_redirect = window.is_override_redirect();
+        debug!(
+            event = "xwayland.unmapped_window.start",
+            window_id,
+            override_redirect = is_override_redirect,
+            geometry = ?window.geometry(),
+            "handling xwayland unmap"
+        );
         let active = self.workspaces.active;
         let maybe = self
             .workspaces
@@ -257,16 +315,37 @@ impl XwmHandler for MeridianState {
             if let Some((id, _)) = window_list_entry(&win) {
                 self.broadcast_window_closed(id.clone());
                 self.clear_window_runtime_state(&id);
+                debug!(
+                    event = "xwayland.unmapped_window.closed",
+                    window_id,
+                    published_id = id,
+                    "broadcasted window closed for xwayland unmap"
+                );
             }
             self.workspaces.space_at_mut(active).unmap_elem(&win);
             self.mark_all_outputs_dirty("xwayland-unmap-window");
         }
-        if !window.is_override_redirect() {
+        if !is_override_redirect {
             let _ = window.set_mapped(false);
         }
+        debug!(
+            event = "xwayland.unmapped_window.done",
+            window_id,
+            override_redirect = is_override_redirect,
+            mapped_flag_cleared = !is_override_redirect,
+            "completed xwayland unmap handling"
+        );
     }
 
-    fn destroyed_window(&mut self, _xwm: XwmId, _window: X11Surface) {}
+    fn destroyed_window(&mut self, _xwm: XwmId, window: X11Surface) {
+        debug!(
+            event = "xwayland.destroyed_window",
+            window_id = window.window_id(),
+            override_redirect = window.is_override_redirect(),
+            geometry = ?window.geometry(),
+            "xwayland window destroyed"
+        );
+    }
 
     fn configure_request(
         &mut self,
@@ -276,15 +355,34 @@ impl XwmHandler for MeridianState {
         y: Option<i32>,
         w: Option<u32>,
         h: Option<u32>,
-        _reorder: Option<Reorder>,
+        reorder: Option<Reorder>,
     ) {
-        let requested_rect = configure_request_rect(window.geometry(), x, y, w, h);
-        let adjusted_rect = adjusted_configure_request_rect(
-            requested_rect,
-            select_output_geometry_for_rect(self, requested_rect),
-            window.is_override_redirect(),
-        );
+        let window_id = window.window_id();
+        let is_override_redirect = window.is_override_redirect();
+        let base_rect = window.geometry();
+        let requested_rect = configure_request_rect(base_rect, x, y, w, h);
+        let output_geometry = select_output_geometry_for_rect(self, requested_rect);
+        let adjusted_rect =
+            adjusted_configure_request_rect(requested_rect, output_geometry, is_override_redirect);
         let adjusted_geo = Rectangle::new(adjusted_rect.loc, adjusted_rect.size);
+        let clamp_applied = !is_override_redirect && output_geometry.is_some();
+        debug!(
+            event = "xwayland.configure_request",
+            window_id,
+            override_redirect = is_override_redirect,
+            base_rect = ?base_rect,
+            requested_x = ?x,
+            requested_y = ?y,
+            requested_w = ?w,
+            requested_h = ?h,
+            requested_rect = ?requested_rect,
+            adjusted_rect = ?adjusted_rect,
+            output_geometry = ?output_geometry,
+            reorder = ?reorder,
+            clamp_applied,
+            clamp_skipped_override_redirect = is_override_redirect,
+            "handling xwayland configure request"
+        );
         if let Err(e) = window.configure(adjusted_geo) {
             error!("configure_request: configure failed: {}", e);
         } else {
@@ -297,8 +395,10 @@ impl XwmHandler for MeridianState {
         _xwm: XwmId,
         window: X11Surface,
         geometry: Rectangle<i32, Logical>,
-        _above: Option<u32>,
+        above: Option<u32>,
     ) {
+        let window_id = window.window_id();
+        let is_override_redirect = window.is_override_redirect();
         let active = self.workspaces.active;
         let maybe = self
             .workspaces
@@ -307,16 +407,32 @@ impl XwmHandler for MeridianState {
             .find(|w| matches!(w.x11_surface(), Some(x) if x == &window))
             .cloned();
         if let Some(win) = maybe {
+            let output_geometry = if is_override_redirect {
+                None
+            } else {
+                select_output_geometry_for_rect(self, geometry)
+            };
             let loc = if window.is_override_redirect() {
                 geometry.loc
             } else {
-                select_output_geometry_for_rect(self, geometry)
-                    .map(|output_geometry| {
-                        panel_safe_normal_xwayland_rect(geometry, output_geometry)
+                output_geometry
+                    .map(|geometry_for_output| {
+                        panel_safe_normal_xwayland_rect(geometry, geometry_for_output)
                     })
                     .map(|rect| rect.loc)
                     .unwrap_or(geometry.loc)
             };
+            debug!(
+                event = "xwayland.configure_notify",
+                window_id,
+                override_redirect = is_override_redirect,
+                geometry = ?geometry,
+                mapped_loc = ?loc,
+                output_geometry = ?output_geometry,
+                above = ?above,
+                clamp_applied = !is_override_redirect && output_geometry.is_some(),
+                "handling xwayland configure notify"
+            );
             self.workspaces
                 .space_at_mut(active)
                 .map_element(win, loc, false);
@@ -328,18 +444,56 @@ impl XwmHandler for MeridianState {
         &mut self,
         _xwm: XwmId,
         window: X11Surface,
-        _button: u32,
+        button: u32,
         edges: X11ResizeEdge,
     ) {
+        let window_id = window.window_id();
         if window.is_override_redirect() {
+            debug!(
+                event = "xwayland.resize_request.ignored",
+                window_id,
+                override_redirect = true,
+                button,
+                edges = ?edges,
+                reason = "override_redirect",
+                "ignoring xwayland resize request"
+            );
             return;
         }
         let Some(mapped_window) = find_active_x11_window(self, &window) else {
+            debug!(
+                event = "xwayland.resize_request.ignored",
+                window_id,
+                override_redirect = false,
+                button,
+                edges = ?edges,
+                reason = "window_not_mapped",
+                "ignoring xwayland resize request"
+            );
             return;
         };
-        if window_is_output_fullscreen_shape(self, &mapped_window) {
+        let fullscreen_shaped = window_is_output_fullscreen_shape(self, &mapped_window);
+        if fullscreen_shaped {
+            debug!(
+                event = "xwayland.resize_request.ignored",
+                window_id,
+                button,
+                edges = ?edges,
+                fullscreen_shaped,
+                reason = "fullscreen_shaped",
+                "ignoring xwayland resize request"
+            );
             return;
         }
+        debug!(
+            event = "xwayland.resize_request.start",
+            window_id,
+            button,
+            edges = ?edges,
+            fullscreen_shaped,
+            geometry = ?window.geometry(),
+            "handling xwayland resize request"
+        );
         let Some(pointer) = self.seat.get_pointer() else {
             tracing::debug!("ignoring xwayland resize request: seat has no pointer");
             return;
@@ -364,6 +518,13 @@ impl XwmHandler for MeridianState {
             return;
         };
         let initial_window_size = mapped_window.geometry().size;
+        debug!(
+            event = "xwayland.resize_request.grab",
+            window_id,
+            initial_window_location = ?initial_window_location,
+            initial_window_size = ?initial_window_size,
+            "starting xwayland resize grab"
+        );
         let grab = ResizeSurfaceGrab::start(
             start_data,
             mapped_window,
@@ -374,16 +535,50 @@ impl XwmHandler for MeridianState {
         pointer.set_grab(self, grab, serial, Focus::Clear);
     }
 
-    fn move_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32) {
+    fn move_request(&mut self, _xwm: XwmId, window: X11Surface, button: u32) {
+        let window_id = window.window_id();
         if window.is_override_redirect() {
+            debug!(
+                event = "xwayland.move_request.ignored",
+                window_id,
+                override_redirect = true,
+                button,
+                reason = "override_redirect",
+                "ignoring xwayland move request"
+            );
             return;
         }
         let Some(mapped_window) = find_active_x11_window(self, &window) else {
+            debug!(
+                event = "xwayland.move_request.ignored",
+                window_id,
+                override_redirect = false,
+                button,
+                reason = "window_not_mapped",
+                "ignoring xwayland move request"
+            );
             return;
         };
-        if window_is_output_fullscreen_shape(self, &mapped_window) {
+        let fullscreen_shaped = window_is_output_fullscreen_shape(self, &mapped_window);
+        if fullscreen_shaped {
+            debug!(
+                event = "xwayland.move_request.ignored",
+                window_id,
+                button,
+                fullscreen_shaped,
+                reason = "fullscreen_shaped",
+                "ignoring xwayland move request"
+            );
             return;
         }
+        debug!(
+            event = "xwayland.move_request.start",
+            window_id,
+            button,
+            fullscreen_shaped,
+            geometry = ?window.geometry(),
+            "handling xwayland move request"
+        );
         let Some(pointer) = self.seat.get_pointer() else {
             tracing::debug!("ignoring xwayland move request: seat has no pointer");
             return;
@@ -400,6 +595,12 @@ impl XwmHandler for MeridianState {
             tracing::debug!("ignoring xwayland move request: window location unavailable");
             return;
         };
+        debug!(
+            event = "xwayland.move_request.grab",
+            window_id,
+            initial_window_location = ?initial_window_location,
+            "starting xwayland move grab"
+        );
         let grab = MoveSurfaceGrab {
             start_data,
             window: mapped_window,
@@ -423,6 +624,7 @@ impl XwmHandler for MeridianState {
     }
 
     fn disconnected(&mut self, _xwm: XwmId) {
+        debug!(event = "xwayland.disconnected", "xwayland wm disconnected");
         self.xwm = None;
     }
 }
