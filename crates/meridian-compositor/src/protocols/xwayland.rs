@@ -20,7 +20,10 @@ use crate::grabs::{
     move_grab::MoveSurfaceGrab,
     resize_grab::{ResizeEdge, ResizeSurfaceGrab},
 };
-use crate::state::{normal_window_workarea_from_output_geometry, window_list_entry, MeridianState};
+use crate::state::{
+    normal_window_workarea_from_output_geometry, remember_maximize_restore_geometry,
+    window_list_entry, MaximizeRestoreGeometry, MeridianState,
+};
 
 fn select_output_geometry_for_rect(
     state: &MeridianState,
@@ -137,6 +140,10 @@ fn x11_resize_edge_to_resize_edge(edges: X11ResizeEdge) -> ResizeEdge {
         X11ResizeEdge::BottomLeft => ResizeEdge::BOTTOM_LEFT,
         X11ResizeEdge::BottomRight => ResizeEdge::BOTTOM_RIGHT,
     }
+}
+
+fn x11_window_key(window: &X11Surface) -> String {
+    format!("x11:{}", window.window_id())
 }
 
 pub fn start_xwayland(state: &mut MeridianState) {
@@ -438,6 +445,82 @@ impl XwmHandler for MeridianState {
                 .map_element(win, loc, false);
             self.mark_all_outputs_dirty("xwayland-configure-notify");
         }
+    }
+
+    fn maximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if window.is_override_redirect() {
+            return;
+        }
+
+        let Some(mapped_window) = find_active_x11_window(self, &window) else {
+            return;
+        };
+        let Some(current_loc) = self
+            .workspaces
+            .space_at(self.workspaces.active)
+            .element_location(&mapped_window)
+        else {
+            return;
+        };
+        let current_size = mapped_window.geometry().size;
+        let requested_rect = Rectangle::new(current_loc, current_size);
+        let Some(output_geometry) = select_output_geometry_for_rect(self, requested_rect) else {
+            return;
+        };
+        let workarea = normal_window_workarea_from_output_geometry(output_geometry);
+        let target_rect = Rectangle::new(
+            (workarea.x, workarea.y).into(),
+            (workarea.width.max(1), workarea.height.max(1)).into(),
+        );
+
+        remember_maximize_restore_geometry(
+            &mut self.maximize_restore_locations,
+            x11_window_key(&window),
+            MaximizeRestoreGeometry::new(current_loc, Some(current_size)),
+        );
+        if let Err(err) = window.set_maximized(true) {
+            error!("xwayland maximize request: set_maximized failed: {}", err);
+        }
+        if let Err(err) = window.configure(target_rect) {
+            error!("xwayland maximize request: configure failed: {}", err);
+            return;
+        }
+        self.workspaces
+            .space_at_mut(self.workspaces.active)
+            .map_element(mapped_window, target_rect.loc, true);
+        self.mark_all_outputs_dirty("xwayland-maximize-request");
+    }
+
+    fn unmaximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if window.is_override_redirect() {
+            return;
+        }
+
+        let Some(mapped_window) = find_active_x11_window(self, &window) else {
+            return;
+        };
+        if let Err(err) = window.set_maximized(false) {
+            error!("xwayland unmaximize request: set_maximized failed: {}", err);
+        }
+
+        let restore = self
+            .maximize_restore_locations
+            .remove(&x11_window_key(&window));
+        let Some(restore) = restore else {
+            return;
+        };
+        let restore_size = restore
+            .client_size
+            .unwrap_or_else(|| mapped_window.geometry().size);
+        let restore_rect = Rectangle::new(restore.client_loc, restore_size);
+        if let Err(err) = window.configure(restore_rect) {
+            error!("xwayland unmaximize request: configure failed: {}", err);
+            return;
+        }
+        self.workspaces
+            .space_at_mut(self.workspaces.active)
+            .map_element(mapped_window, restore.client_loc, true);
+        self.mark_all_outputs_dirty("xwayland-unmaximize-request");
     }
 
     fn property_notify(&mut self, _xwm: XwmId, _window: X11Surface, property: WmWindowProperty) {
