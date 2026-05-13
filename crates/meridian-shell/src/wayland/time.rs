@@ -12,9 +12,9 @@ pub(super) struct LocalDate {
 
 pub(super) fn local_date() -> Option<LocalDate> {
     unsafe {
-        let mut now = libc::time(ptr::null_mut());
+        let now = libc::time(ptr::null_mut());
         let mut tm = std::mem::zeroed::<libc::tm>();
-        if libc::localtime_r(&mut now, &mut tm).is_null() {
+        if libc::localtime_r(&now, &mut tm).is_null() {
             return None;
         }
 
@@ -31,9 +31,9 @@ pub(super) fn local_date() -> Option<LocalDate> {
 
 pub(super) fn formatted_time() -> String {
     unsafe {
-        let mut now = libc::time(ptr::null_mut());
+        let now = libc::time(ptr::null_mut());
         let mut tm = std::mem::zeroed::<libc::tm>();
-        if libc::localtime_r(&mut now, &mut tm).is_null() {
+        if libc::localtime_r(&now, &mut tm).is_null() {
             return String::new();
         }
         let mut out = [0_i8; 64];
