@@ -1,8 +1,10 @@
 use meridian_config::{Action, Modifiers, SplitDir};
 use smithay::{
     backend::input::{Event, InputBackend, KeyState, KeyboardKeyEvent},
+    desktop::Window,
     input::keyboard::FilterResult,
     utils::SERIAL_COUNTER,
+    wayland::seat::WaylandFocus,
 };
 use tracing::debug;
 
@@ -18,6 +20,22 @@ fn wm_split_dir(dir: SplitDir) -> meridian_wm::SplitDir {
         SplitDir::Horizontal => meridian_wm::SplitDir::Horizontal,
         SplitDir::Vertical => meridian_wm::SplitDir::Vertical,
     }
+}
+
+fn focused_window_for_close(state: &MeridianState) -> Option<Window> {
+    let focus_surface = state.seat.get_keyboard()?.current_focus()?;
+    (0..state.workspaces.count()).find_map(|idx| {
+        state
+            .workspaces
+            .space_at(idx)
+            .elements()
+            .find(|window| {
+                window
+                    .wl_surface()
+                    .is_some_and(|surface| surface.as_ref() == &focus_surface)
+            })
+            .cloned()
+    })
 }
 
 pub fn handle_keyboard<I: InputBackend>(
@@ -170,9 +188,17 @@ pub fn handle_keyboard<I: InputBackend>(
             }
         }
         Action::CloseWindow => {
-            if let Some(window) = state.focused_window() {
+            if let Some(window) = focused_window_for_close(state) {
                 if let Some(toplevel) = window.toplevel() {
                     toplevel.send_close();
+                } else if let Some(x11) = window.x11_surface() {
+                    if let Err(err) = x11.close() {
+                        debug!(
+                            "xwayland close request failed for {}: {}",
+                            x11.window_id(),
+                            err
+                        );
+                    }
                 }
             }
         }
