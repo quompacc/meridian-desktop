@@ -308,7 +308,7 @@ impl XwmHandler for MeridianState {
         let active = self.workspaces.active;
         self.workspaces
             .space_at_mut(active)
-            .map_element(win, loc, true);
+            .map_element(win, loc, false);
         debug!(
             event = "xwayland.mapped_override_redirect_window",
             window_id,

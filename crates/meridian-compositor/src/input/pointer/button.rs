@@ -539,15 +539,30 @@ pub fn handle_pointer_button<I: InputBackend>(
                     );
                 }
             }
-            raise_window_and_focus(state, &window, serial);
+            if window
+                .x11_surface()
+                .is_some_and(|x11| x11.is_override_redirect())
+            {
+                state
+                    .workspaces
+                    .active_space_mut()
+                    .raise_element(&window, false);
+            } else {
+                raise_window_and_focus(state, &window, serial);
+            }
             state.workspaces.active_space().elements().for_each(|w| {
                 if let Some(t) = w.toplevel() {
                     t.send_pending_configure();
                 }
             });
-        } else if let Some((surface, _)) = under {
-            state.set_keyboard_focus_with_decorations(Some(surface.clone()), serial);
-            state.broadcast_toplevel_focused(&surface);
+        } else if let Some(under_surface) = under {
+            if xwayland_override_redirect_window_under_pointer(state, location, &under_surface)
+                .is_none()
+            {
+                let (surface, _) = under_surface;
+                state.set_keyboard_focus_with_decorations(Some(surface.clone()), serial);
+                state.broadcast_toplevel_focused(&surface);
+            }
         } else {
             state.workspaces.active_space().elements().for_each(|w| {
                 w.set_activated(false);
