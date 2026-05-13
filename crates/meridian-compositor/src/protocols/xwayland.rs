@@ -70,6 +70,42 @@ fn panel_safe_normal_xwayland_rect(
     adjusted
 }
 
+fn configure_request_rect(
+    base: Rectangle<i32, Logical>,
+    x: Option<i32>,
+    y: Option<i32>,
+    w: Option<u32>,
+    h: Option<u32>,
+) -> Rectangle<i32, Logical> {
+    let mut rect = base;
+    if let Some(x) = x {
+        rect.loc.x = x;
+    }
+    if let Some(y) = y {
+        rect.loc.y = y;
+    }
+    if let Some(w) = w {
+        rect.size.w = w.max(1) as i32;
+    }
+    if let Some(h) = h {
+        rect.size.h = h.max(1) as i32;
+    }
+    rect
+}
+
+fn adjusted_configure_request_rect(
+    requested_rect: Rectangle<i32, Logical>,
+    output_geometry: Option<crate::state::OutputGeometry>,
+    is_override_redirect: bool,
+) -> Rectangle<i32, Logical> {
+    if is_override_redirect {
+        return requested_rect;
+    }
+    output_geometry
+        .map(|geometry| panel_safe_normal_xwayland_rect(requested_rect, geometry))
+        .unwrap_or(requested_rect)
+}
+
 fn find_active_x11_window(state: &MeridianState, surface: &X11Surface) -> Option<Window> {
     let active = state.workspaces.active;
     state
@@ -236,23 +272,18 @@ impl XwmHandler for MeridianState {
         &mut self,
         _xwm: XwmId,
         window: X11Surface,
-        _x: Option<i32>,
-        _y: Option<i32>,
+        x: Option<i32>,
+        y: Option<i32>,
         w: Option<u32>,
         h: Option<u32>,
         _reorder: Option<Reorder>,
     ) {
-        let mut geo = window.geometry();
-        if let Some(w) = w {
-            geo.size.w = w.max(1) as i32;
-        }
-        if let Some(h) = h {
-            geo.size.h = h.max(1) as i32;
-        }
-        let requested_rect = Rectangle::new(geo.loc, geo.size);
-        let adjusted_rect = select_output_geometry_for_rect(self, requested_rect)
-            .map(|output_geometry| panel_safe_normal_xwayland_rect(requested_rect, output_geometry))
-            .unwrap_or(requested_rect);
+        let requested_rect = configure_request_rect(window.geometry(), x, y, w, h);
+        let adjusted_rect = adjusted_configure_request_rect(
+            requested_rect,
+            select_output_geometry_for_rect(self, requested_rect),
+            window.is_override_redirect(),
+        );
         let adjusted_geo = Rectangle::new(adjusted_rect.loc, adjusted_rect.size);
         if let Err(e) = window.configure(adjusted_geo) {
             error!("configure_request: configure failed: {}", e);
@@ -402,7 +433,9 @@ mod tests {
 
     use crate::state::{OutputGeometry, NORMAL_WINDOW_BOTTOM_RESERVED_PX};
 
-    use super::panel_safe_normal_xwayland_rect;
+    use super::{
+        adjusted_configure_request_rect, configure_request_rect, panel_safe_normal_xwayland_rect,
+    };
 
     #[test]
     fn normal_xwayland_rect_is_clamped_to_panel_safe_bottom() {
@@ -435,5 +468,42 @@ mod tests {
             864,
             "sanity check: panel-safe height differs from fullscreen height"
         );
+    }
+
+    #[test]
+    fn configure_request_rect_uses_requested_x_y_when_present() {
+        let base = Rectangle::new((100, 200).into(), (800, 600).into());
+        let configured = configure_request_rect(base, Some(320), Some(480), None, None);
+        assert_eq!(configured.loc.x, 320);
+        assert_eq!(configured.loc.y, 480);
+        assert_eq!(configured.size.w, 800);
+        assert_eq!(configured.size.h, 600);
+    }
+
+    #[test]
+    fn override_redirect_configure_bypasses_panel_clamp() {
+        let output = OutputGeometry {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        let requested = Rectangle::new((500, 980).into(), (400, 200).into());
+        let adjusted = adjusted_configure_request_rect(requested, Some(output), true);
+        assert_eq!(adjusted, requested);
+    }
+
+    #[test]
+    fn managed_configure_still_clamps_to_panel_safe_workarea() {
+        let output = OutputGeometry {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        let requested = Rectangle::new((500, 980).into(), (400, 200).into());
+        let adjusted = adjusted_configure_request_rect(requested, Some(output), false);
+        assert_eq!(adjusted.loc.y, 844);
+        assert_eq!(adjusted.size.h, 200);
     }
 }
