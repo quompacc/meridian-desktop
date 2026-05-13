@@ -293,6 +293,21 @@ fn anchored_client_location_from_pointer(
     Point::from((client_x.round() as i32, client_y.round() as i32))
 }
 
+fn anchored_restore_client_location(
+    pointer: Point<f64, Logical>,
+    anchor: DragRestorePointerAnchor,
+    restore_client_size: Size<i32, Logical>,
+    floating_insets: (i32, i32, i32, i32),
+) -> Point<i32, Logical> {
+    anchored_client_location_from_pointer(
+        pointer,
+        anchor.pointer_frame_offset_y,
+        anchor.pointer_frame_ratio_x,
+        restore_client_size,
+        floating_insets,
+    )
+}
+
 fn maybe_restore_maximized_drag(
     data: &mut MeridianState,
     window: &Window,
@@ -329,10 +344,9 @@ fn maybe_restore_maximized_drag(
     let floating_insets = data
         .decoration_manager
         .decoration_inset(toplevel.wl_surface(), &theme);
-    Some(anchored_client_location_from_pointer(
+    Some(anchored_restore_client_location(
         current_pointer_location,
-        anchor.pointer_frame_offset_y,
-        anchor.pointer_frame_ratio_x,
+        anchor,
         restore_client_size,
         floating_insets,
     ))
@@ -415,10 +429,9 @@ fn maybe_restore_half_snapped_drag(
     let floating_insets = data
         .decoration_manager
         .decoration_inset(toplevel.wl_surface(), &theme);
-    Some(anchored_client_location_from_pointer(
+    Some(anchored_restore_client_location(
         current_pointer_location,
-        anchor.pointer_frame_offset_y,
-        anchor.pointer_frame_ratio_x,
+        anchor,
         restore_client_size,
         floating_insets,
     ))
