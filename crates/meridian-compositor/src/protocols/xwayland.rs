@@ -146,6 +146,10 @@ fn x11_window_key(window: &X11Surface) -> String {
     format!("x11:{}", window.window_id())
 }
 
+fn x11_fullscreen_restore_key(window: &X11Surface) -> String {
+    format!("x11-fullscreen:{}", window.window_id())
+}
+
 pub fn start_xwayland(state: &mut MeridianState) {
     let (xwayland, client) = match XWayland::spawn(
         &state.display_handle,
@@ -521,6 +525,87 @@ impl XwmHandler for MeridianState {
             .space_at_mut(self.workspaces.active)
             .map_element(mapped_window, restore.client_loc, true);
         self.mark_all_outputs_dirty("xwayland-unmaximize-request");
+    }
+
+    fn fullscreen_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if window.is_override_redirect() {
+            return;
+        }
+
+        let Some(mapped_window) = find_active_x11_window(self, &window) else {
+            return;
+        };
+        let Some(current_loc) = self
+            .workspaces
+            .space_at(self.workspaces.active)
+            .element_location(&mapped_window)
+        else {
+            return;
+        };
+        let current_size = mapped_window.geometry().size;
+        let requested_rect = Rectangle::new(current_loc, current_size);
+        let Some(output_geometry) = select_output_geometry_for_rect(self, requested_rect) else {
+            return;
+        };
+        let target_rect = Rectangle::new(
+            (output_geometry.x, output_geometry.y).into(),
+            (output_geometry.width.max(1), output_geometry.height.max(1)).into(),
+        );
+
+        remember_maximize_restore_geometry(
+            &mut self.maximize_restore_locations,
+            x11_fullscreen_restore_key(&window),
+            MaximizeRestoreGeometry::new(current_loc, Some(current_size)),
+        );
+        if let Err(err) = window.set_fullscreen(true) {
+            error!(
+                "xwayland fullscreen request: set_fullscreen failed: {}",
+                err
+            );
+        }
+        if let Err(err) = window.configure(target_rect) {
+            error!("xwayland fullscreen request: configure failed: {}", err);
+            return;
+        }
+        self.workspaces
+            .space_at_mut(self.workspaces.active)
+            .map_element(mapped_window, target_rect.loc, true);
+        self.mark_all_outputs_dirty("xwayland-fullscreen-request");
+    }
+
+    fn unfullscreen_request(&mut self, _xwm: XwmId, window: X11Surface) {
+        if window.is_override_redirect() {
+            return;
+        }
+
+        let Some(mapped_window) = find_active_x11_window(self, &window) else {
+            return;
+        };
+        if let Err(err) = window.set_fullscreen(false) {
+            error!(
+                "xwayland unfullscreen request: set_fullscreen failed: {}",
+                err
+            );
+        }
+
+        let restore = self
+            .maximize_restore_locations
+            .remove(&x11_fullscreen_restore_key(&window));
+        let Some(restore) = restore else {
+            return;
+        };
+        let restore_size = restore
+            .client_size
+            .unwrap_or_else(|| mapped_window.geometry().size);
+        let restore_rect = Rectangle::new(restore.client_loc, restore_size);
+        if let Err(err) = window.configure(restore_rect) {
+            error!("xwayland unfullscreen request: configure failed: {}", err);
+            return;
+        }
+        self.workspaces
+            .space_at_mut(self.workspaces.active)
+            .map_element(mapped_window, restore.client_loc, true);
+        self.mark_all_outputs_dirty("xwayland-unfullscreen-request");
     }
 
     fn property_notify(&mut self, _xwm: XwmId, _window: X11Surface, property: WmWindowProperty) {
