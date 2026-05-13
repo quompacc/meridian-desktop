@@ -59,6 +59,17 @@ const FOOTER_MODE_PILL_H: i32 = 24;
 const FOOTER_ACTION_BUTTON_H: i32 = 28;
 const FOOTER_ACTION_BUTTON_MIN_W: i32 = 150;
 const FOOTER_ACTION_BUTTON_MAX_W: i32 = 220;
+const SIDEBAR_ITEM_X_INSET: i32 = 8;
+const SIDEBAR_ITEM_W_INSET: i32 = 16;
+const SIDEBAR_ITEM_H: i32 = 24;
+const SIDEBAR_ITEM_GAP: i32 = 4;
+const SIDEBAR_TEXT_X_OFFSET: i32 = 10;
+const SIDEBAR_TEXT_BASELINE_OFFSET: i32 = 16;
+const SIDEBAR_TOP_PADDING: i32 = 10;
+const SIDEBAR_SECTION_GAP: i32 = 12;
+const SIDEBAR_DIVIDER_X_INSET: i32 = 12;
+const SIDEBAR_DIVIDER_MARGIN_TOP: i32 = 10;
+const SIDEBAR_DIVIDER_TO_LIST_GAP: i32 = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SidebarCategory {
@@ -1220,18 +1231,14 @@ pub fn draw_launcher(
 
     let mut y = layout.results.y;
 
-    let mut sidebar_item_y = layout.sidebar.y + 8;
+    let mut sidebar_item_y = layout.sidebar.y + SIDEBAR_TOP_PADDING;
     let mut all_apps_label_bottom = sidebar_item_y;
     for category in [SidebarCategory::Favorites, SidebarCategory::AllApps] {
         let label_rect = Rect {
-            x: layout.sidebar.x + 8,
+            x: layout.sidebar.x + SIDEBAR_ITEM_X_INSET,
             y: sidebar_item_y,
-            w: layout.sidebar.w - 16,
-            h: if category == SidebarCategory::Favorites {
-                26
-            } else {
-                24
-            },
+            w: layout.sidebar.w - SIDEBAR_ITEM_W_INSET,
+            h: SIDEBAR_ITEM_H,
         };
         let is_active =
             launcher_state.query.is_empty() && launcher_state.sidebar_category == category;
@@ -1254,35 +1261,31 @@ pub fn draw_launcher(
         painter.text_clipped(
             font,
             category.label(),
-            label_rect.x + 10,
-            label_rect.y
-                + if category == SidebarCategory::Favorites {
-                    17
-                } else {
-                    16
-                },
-            label_rect.w - 20,
+            label_rect.x + SIDEBAR_TEXT_X_OFFSET,
+            label_rect.y + SIDEBAR_TEXT_BASELINE_OFFSET,
+            label_rect.w - SIDEBAR_TEXT_X_OFFSET * 2,
             label_color,
         );
         launcher_state.clicks.push(ClickZone {
             rect: label_rect,
             action: ClickAction::SelectLauncherCategory(category.to_click_id()),
         });
-        sidebar_item_y = label_rect.y + label_rect.h + 4;
+        sidebar_item_y = label_rect.y + label_rect.h + SIDEBAR_ITEM_GAP;
         all_apps_label_bottom = label_rect.y + label_rect.h;
     }
 
-    let categories_top = all_apps_label_bottom + 12;
+    let categories_top = all_apps_label_bottom + SIDEBAR_SECTION_GAP;
     painter.rect(
         Rect {
-            x: layout.sidebar.x + 12,
-            y: categories_top,
-            w: layout.sidebar.w - 24,
+            x: layout.sidebar.x + SIDEBAR_DIVIDER_X_INSET,
+            y: categories_top + SIDEBAR_DIVIDER_MARGIN_TOP,
+            w: layout.sidebar.w - SIDEBAR_DIVIDER_X_INSET * 2,
             h: 1,
         },
         colors.border,
     );
-    let mut category_y = categories_top + 18;
+    let mut category_row_y =
+        categories_top + SIDEBAR_DIVIDER_MARGIN_TOP + SIDEBAR_DIVIDER_TO_LIST_GAP;
     for category in [
         SidebarCategory::Development,
         SidebarCategory::Internet,
@@ -1292,10 +1295,10 @@ pub fn draw_launcher(
         SidebarCategory::Games,
     ] {
         let label_rect = Rect {
-            x: layout.sidebar.x + 8,
-            y: category_y - 14,
-            w: layout.sidebar.w - 16,
-            h: 24,
+            x: layout.sidebar.x + SIDEBAR_ITEM_X_INSET,
+            y: category_row_y,
+            w: layout.sidebar.w - SIDEBAR_ITEM_W_INSET,
+            h: SIDEBAR_ITEM_H,
         };
         let is_active =
             launcher_state.query.is_empty() && launcher_state.sidebar_category == category;
@@ -1313,16 +1316,16 @@ pub fn draw_launcher(
         painter.text_clipped(
             font,
             category.label(),
-            label_rect.x + 10,
-            category_y,
-            label_rect.w - 20,
+            label_rect.x + SIDEBAR_TEXT_X_OFFSET,
+            label_rect.y + SIDEBAR_TEXT_BASELINE_OFFSET,
+            label_rect.w - SIDEBAR_TEXT_X_OFFSET * 2,
             label_color,
         );
         launcher_state.clicks.push(ClickZone {
             rect: label_rect,
             action: ClickAction::SelectLauncherCategory(category.to_click_id()),
         });
-        category_y += 20;
+        category_row_y += SIDEBAR_ITEM_H + SIDEBAR_ITEM_GAP;
     }
 
     if apps.is_empty() && actions.is_empty() {
