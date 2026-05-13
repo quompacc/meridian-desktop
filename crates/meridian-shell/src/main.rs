@@ -22,6 +22,7 @@ pub const LAUNCHER_WIDTH: u32 = 720;
 pub const LAUNCHER_HEIGHT: u32 = 520;
 pub const CALENDAR_POPUP_WIDTH: u32 = 280;
 pub const CALENDAR_POPUP_HEIGHT: u32 = 220;
+pub const SHELL_POPUP_BOTTOM_MARGIN: i32 = 2;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();

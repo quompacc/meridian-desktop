@@ -18,7 +18,7 @@ use wayland_client::{globals::registry_queue_init, Connection, QueueHandle};
 
 use crate::{
     launcher, panel, TextRenderer, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT,
-    LAUNCHER_WIDTH, PANEL_HEIGHT,
+    LAUNCHER_WIDTH, PANEL_HEIGHT, SHELL_POPUP_BOTTOM_MARGIN,
 };
 
 use super::{CommitReason, CommitStats, CommitSurfaceKind, IpcClient, MeridianShell, SurfaceKind};
@@ -61,7 +61,7 @@ pub(crate) fn initialize(
         None,
     );
     launcher_layer.set_anchor(Anchor::BOTTOM | Anchor::LEFT);
-    launcher_layer.set_margin(0, 0, PANEL_HEIGHT as i32, 8);
+    launcher_layer.set_margin(0, 0, SHELL_POPUP_BOTTOM_MARGIN, 8);
     launcher_layer.set_size(LAUNCHER_WIDTH, LAUNCHER_HEIGHT);
     launcher_layer.set_exclusive_zone(0);
     launcher_layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
@@ -69,7 +69,7 @@ pub(crate) fn initialize(
         "Launcher surface created: namespace=meridian-launcher layer=Overlay anchor=Bottom|Left size={}x{} margin_bottom={} margin_left=8 exclusive_zone=0 keyboard_interactivity=Exclusive",
         LAUNCHER_WIDTH,
         LAUNCHER_HEIGHT,
-        PANEL_HEIGHT
+        SHELL_POPUP_BOTTOM_MARGIN
     );
 
     let calendar_surface = compositor.create_surface(&qh);
@@ -82,7 +82,7 @@ pub(crate) fn initialize(
         None,
     );
     calendar_layer.set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
-    calendar_layer.set_margin(0, 12, PANEL_HEIGHT as i32 + 2, 0);
+    calendar_layer.set_margin(0, 12, SHELL_POPUP_BOTTOM_MARGIN, 0);
     calendar_layer.set_size(CALENDAR_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT);
     calendar_layer.set_exclusive_zone(0);
     calendar_layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
@@ -90,7 +90,7 @@ pub(crate) fn initialize(
         "Calendar popup surface created: namespace=meridian-launcher layer=Overlay anchor=Bottom|Right size={}x{} margin_bottom={} margin_right=12 exclusive_zone=0 keyboard_interactivity=OnDemand",
         CALENDAR_POPUP_WIDTH,
         CALENDAR_POPUP_HEIGHT,
-        PANEL_HEIGHT as i32 + 2
+        SHELL_POPUP_BOTTOM_MARGIN
     );
 
     let meridian_config = MeridianConfig::load();

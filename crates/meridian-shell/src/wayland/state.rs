@@ -528,7 +528,7 @@ impl MeridianShell {
             self.launcher_layer
                 .set_anchor(Anchor::BOTTOM | Anchor::LEFT);
             self.launcher_layer
-                .set_margin(0, 0, crate::PANEL_HEIGHT as i32, 8);
+                .set_margin(0, 0, crate::SHELL_POPUP_BOTTOM_MARGIN, 8);
             self.launcher_layer.set_exclusive_zone(0);
             self.launcher_layer
                 .set_size(crate::LAUNCHER_WIDTH, crate::LAUNCHER_HEIGHT);
@@ -578,7 +578,7 @@ impl MeridianShell {
         self.calendar_layer
             .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
         self.calendar_layer
-            .set_margin(0, 12, crate::PANEL_HEIGHT as i32 + 2, 0);
+            .set_margin(0, 12, crate::SHELL_POPUP_BOTTOM_MARGIN, 0);
         self.calendar_layer.set_exclusive_zone(0);
         self.calendar_layer
             .set_size(crate::CALENDAR_POPUP_WIDTH, crate::CALENDAR_POPUP_HEIGHT);
