@@ -94,6 +94,10 @@ impl OutputRegistry {
             .find(|output| output.geometry.contains(x, y))
     }
 
+    pub fn select_for_point_with_fallback(&self, x: f64, y: f64) -> Option<&OutputInfo> {
+        self.output_at_point(x, y).or_else(|| self.primary())
+    }
+
     pub fn upsert(&mut self, registration: OutputRegistration) -> OutputId {
         if let Some(existing) = self
             .outputs
@@ -163,7 +167,9 @@ impl OutputRegistry {
 mod tests {
     use smithay::utils::Transform;
 
-    use super::{OutputGeometry, OutputId, OutputReconfigure, OutputRegistration, OutputRegistry};
+    use super::{
+        OutputGeometry, OutputId, OutputInfo, OutputReconfigure, OutputRegistration, OutputRegistry,
+    };
 
     fn reg(name: &str, x: i32, y: i32, width: i32, height: i32) -> OutputRegistration {
         OutputRegistration {
@@ -249,6 +255,115 @@ mod tests {
             Some("right")
         );
         assert!(registry.output_at_point(-10.0, 0.0).is_none());
+    }
+
+    #[test]
+    fn select_for_point_with_fallback_prefers_point_match() {
+        let mut registry = OutputRegistry::new();
+        registry.upsert(reg("left", 0, 0, 1920, 1080));
+        registry.upsert(reg("right", 1920, 0, 2560, 1440));
+        assert_eq!(
+            registry
+                .select_for_point_with_fallback(2200.0, 400.0)
+                .map(|info| info.name.as_str()),
+            Some("right")
+        );
+    }
+
+    #[test]
+    fn select_for_point_with_fallback_uses_primary_before_first() {
+        let infos = [
+            OutputInfo {
+                id: OutputId(1),
+                name: "first".to_string(),
+                geometry: OutputGeometry {
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                },
+                scale: 1.0,
+                transform: Transform::Normal,
+                refresh_millihz: Some(60_000),
+                primary: false,
+            },
+            OutputInfo {
+                id: OutputId(2),
+                name: "primary".to_string(),
+                geometry: OutputGeometry {
+                    x: 1920,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                },
+                scale: 1.0,
+                transform: Transform::Normal,
+                refresh_millihz: Some(60_000),
+                primary: true,
+            },
+        ];
+        let registry = OutputRegistry {
+            next_id: 2,
+            outputs: infos.into(),
+        };
+        assert_eq!(
+            registry
+                .select_for_point_with_fallback(-100.0, -100.0)
+                .map(|info| info.name.as_str()),
+            Some("primary")
+        );
+    }
+
+    #[test]
+    fn select_for_point_with_fallback_uses_first_when_no_primary_exists() {
+        let infos = [
+            OutputInfo {
+                id: OutputId(1),
+                name: "first".to_string(),
+                geometry: OutputGeometry {
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                },
+                scale: 1.0,
+                transform: Transform::Normal,
+                refresh_millihz: Some(60_000),
+                primary: false,
+            },
+            OutputInfo {
+                id: OutputId(2),
+                name: "second".to_string(),
+                geometry: OutputGeometry {
+                    x: 1920,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                },
+                scale: 1.0,
+                transform: Transform::Normal,
+                refresh_millihz: Some(60_000),
+                primary: false,
+            },
+        ];
+        let registry = OutputRegistry {
+            next_id: 2,
+            outputs: infos.into(),
+        };
+        assert_eq!(
+            registry
+                .select_for_point_with_fallback(-100.0, -100.0)
+                .map(|info| info.name.as_str()),
+            Some("first")
+        );
+    }
+
+    #[test]
+    fn select_for_point_with_fallback_is_none_when_empty() {
+        let registry = OutputRegistry::new();
+        assert!(registry
+            .select_for_point_with_fallback(100.0, 100.0)
+            .is_none());
     }
 
     #[test]

@@ -294,14 +294,8 @@ fn select_output_from_registry_for_point(
     x: f64,
     y: f64,
 ) -> (Option<&crate::state::OutputInfo>, bool) {
-    if let Some(output) = registry.output_at_point(x, y) {
-        return (Some(output), false);
-    }
-    registry
-        .primary()
-        .or_else(|| registry.first())
-        .map(|output| (Some(output), true))
-        .unwrap_or((None, true))
+    let fallback_used = registry.output_at_point(x, y).is_none();
+    (registry.select_for_point_with_fallback(x, y), fallback_used)
 }
 
 pub(super) fn output_id_at_point_for_focus(
