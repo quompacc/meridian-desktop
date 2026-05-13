@@ -416,7 +416,9 @@ impl MeridianState {
 
 #[cfg(test)]
 mod tests {
-    use meridian_config::{CursorConfig, MeridianConfig, ThemeManager, WallpaperConfig, WallpaperMode};
+    use meridian_config::{
+        CursorConfig, MeridianConfig, ThemeManager, WallpaperConfig, WallpaperMode,
+    };
 
     use super::apply_config_overrides;
 
