@@ -188,6 +188,7 @@ pub(crate) struct LauncherRenderSignature {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) query: String,
+    pub(crate) mode: crate::launcher::LauncherMode,
     pub(crate) sidebar_category: crate::launcher::SidebarCategory,
     pub(crate) pending_action_confirmation: Option<crate::launcher::LauncherAction>,
     pub(crate) selected_index: usize,
@@ -294,7 +295,7 @@ pub(crate) struct MeridianShell {
 #[cfg(test)]
 mod tests {
     use super::{LauncherRenderSignature, ThemeRenderSignature};
-    use crate::launcher::{LauncherAction, SidebarCategory};
+    use crate::launcher::{LauncherAction, LauncherMode, SidebarCategory};
 
     fn base_launcher_signature() -> LauncherRenderSignature {
         LauncherRenderSignature {
@@ -302,6 +303,7 @@ mod tests {
             width: 720,
             height: 520,
             query: String::new(),
+            mode: LauncherMode::Apps,
             sidebar_category: SidebarCategory::System,
             pending_action_confirmation: None,
             selected_index: 0,

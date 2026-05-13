@@ -192,6 +192,19 @@ pub enum LauncherAction {
     ExitMeridian,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LauncherMode {
+    Apps,
+}
+
+impl LauncherMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Apps => "Apps",
+        }
+    }
+}
+
 impl LauncherAction {
     fn label(self) -> &'static str {
         match self {
@@ -702,8 +715,14 @@ impl LauncherState {
         self.pending_action_confirmation
     }
 
+    pub fn current_mode(&self) -> LauncherMode {
+        LauncherMode::Apps
+    }
+
     fn visible_actions(&self) -> Vec<LauncherAction> {
-        vec![LauncherAction::ExitMeridian]
+        match self.current_mode() {
+            LauncherMode::Apps => vec![LauncherAction::ExitMeridian],
+        }
     }
 
     fn visible_apps(&self) -> VisibleApps {
@@ -1494,6 +1513,7 @@ pub fn draw_launcher(
     }
 
     if !actions.is_empty() {
+        let current_mode = launcher_state.current_mode();
         let footer_y = layout.footer.y + FOOTER_BAR_V_PADDING;
         let control_center_y = layout.footer.y + (layout.footer.h - FOOTER_MODE_PILL_H) / 2;
         fill_surface_with_radius(
@@ -1531,7 +1551,7 @@ pub fn draw_launcher(
         );
         painter.text_clipped(
             font,
-            "Apps",
+            current_mode.label(),
             mode_pill_rect.x + 12,
             mode_pill_rect.y + 18,
             mode_pill_rect.w - 24,

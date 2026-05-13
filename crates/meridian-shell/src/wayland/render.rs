@@ -113,6 +113,7 @@ impl MeridianShell {
             width,
             height,
             query: self.launcher_state.query.clone(),
+            mode: self.launcher_state.current_mode(),
             sidebar_category: self.launcher_state.sidebar_category,
             pending_action_confirmation: self.launcher_state.pending_action_confirmation(),
             selected_index: self.launcher_state.selected_index,
