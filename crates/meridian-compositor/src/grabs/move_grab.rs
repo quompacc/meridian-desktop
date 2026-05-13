@@ -221,6 +221,15 @@ fn movement_crosses_restore_threshold(
     dx.hypot(dy) >= DRAG_RESTORE_THRESHOLD_PX
 }
 
+fn restored_initial_window_location(
+    restored_client_location: Point<i32, Logical>,
+    drag_start_location: Point<f64, Logical>,
+    current_pointer_location: Point<f64, Logical>,
+) -> Point<i32, Logical> {
+    let delta = current_pointer_location - drag_start_location;
+    restored_client_location - delta.to_i32_round()
+}
+
 fn pointer_ratio_within_frame_x(pointer_x: f64, frame_left: i32, frame_width: i32) -> f64 {
     if frame_width <= 0 {
         return 0.5;
@@ -444,8 +453,11 @@ impl PointerGrab<MeridianState> for MoveSurfaceGrab {
                 self.start_data.location,
                 event.location,
             ) {
-                let delta = event.location - self.start_data.location;
-                self.initial_window_location = restored_client_location - delta.to_i32_round();
+                self.initial_window_location = restored_initial_window_location(
+                    restored_client_location,
+                    self.start_data.location,
+                    event.location,
+                );
                 self.drag_restore_done = true;
                 self.started_maximized = false;
             } else {
@@ -462,8 +474,11 @@ impl PointerGrab<MeridianState> for MoveSurfaceGrab {
                     self.start_data.location,
                     event.location,
                 ) {
-                    let delta = event.location - self.start_data.location;
-                    self.initial_window_location = restored_client_location - delta.to_i32_round();
+                    self.initial_window_location = restored_initial_window_location(
+                        restored_client_location,
+                        self.start_data.location,
+                        event.location,
+                    );
                     self.drag_restore_done = true;
                 } else {
                     return;
