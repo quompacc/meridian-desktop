@@ -151,7 +151,9 @@ pub(super) fn make_cursor_pixels(width: u32, height: u32) -> Vec<u8> {
     px
 }
 
-fn draw_polyline_cursor(width: u32, height: u32, segments: &[((f32, f32), (f32, f32))]) -> Vec<u8> {
+type CursorSegment = ((f32, f32), (f32, f32));
+
+fn draw_polyline_cursor(width: u32, height: u32, segments: &[CursorSegment]) -> Vec<u8> {
     let mut px = vec![0u8; width as usize * height as usize * 4];
     let min_dim = width.min(height) as f32;
     let core = (min_dim / 24.0).clamp(1.0, 2.0);

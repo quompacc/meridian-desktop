@@ -9,6 +9,12 @@ pub struct WorkspaceManager {
     pub active: usize,
 }
 
+impl Default for WorkspaceManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WorkspaceManager {
     pub fn new() -> Self {
         Self {
