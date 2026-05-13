@@ -15,7 +15,7 @@ use crate::{
     ui::{
         primitives::{
             draw_initial_badge, draw_list_item, draw_panel_button, draw_sidebar_item,
-            fill_surface_with_radius, subtle_border, InteractiveState, SurfaceKind,
+            fill_surface_with_radius, InteractiveState, SurfaceKind,
         },
         tokens,
     },
@@ -1220,10 +1220,9 @@ pub fn draw_launcher(
         painter,
         layout.search,
         theme,
-        SurfaceKind::Background,
+        SurfaceKind::Surface,
         tokens::launcher::SEARCH_RADIUS,
     );
-    subtle_border(painter, layout.search, theme);
     let query_text = if launcher_state.query.is_empty() {
         "Search apps by name or executable"
     } else {
