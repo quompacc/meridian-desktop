@@ -378,7 +378,7 @@ impl MeridianState {
         };
 
         let (window_id, window_title) = match window.toplevel() {
-            Some(toplevel) => (window_id(toplevel.wl_surface()), toplevel_title(&toplevel)),
+            Some(toplevel) => (window_id(toplevel.wl_surface()), toplevel_title(toplevel)),
             None => ("<no-toplevel>".to_string(), "Window".to_string()),
         };
 

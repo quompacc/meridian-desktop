@@ -50,7 +50,7 @@ pub fn handle_keyboard<I: InputBackend>(
                 mods |= Modifiers::ALT;
             }
 
-            if let Some(&sym) = handle.raw_syms().iter().next() {
+            if let Some(&sym) = handle.raw_syms().first() {
                 let keysym = sym.raw();
                 let is_global_shortcut = data.keybind_config.find_action(mods, keysym).is_some()
                     || is_workspace_fallback_shortcut(mods, keysym);

@@ -25,10 +25,10 @@ use crate::{
     },
 };
 
-fn select_pointer_button_output_info<'a>(
-    infos: &'a [OutputInfo],
+fn select_pointer_button_output_info(
+    infos: &[OutputInfo],
     point: Option<Point<f64, Logical>>,
-) -> (Option<&'a OutputInfo>, &'static str) {
+) -> (Option<&OutputInfo>, &'static str) {
     if let Some(pos) = point {
         if let Some(output) = infos
             .iter()

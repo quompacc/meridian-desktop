@@ -50,7 +50,7 @@ impl MeridianState {
                 windows.push(WindowSnapshotEntry {
                     workspace: (idx + 1) as u8,
                     id,
-                    title: super::super::toplevel_title(&toplevel),
+                    title: super::super::toplevel_title(toplevel),
                     minimized: false,
                 });
             }
@@ -65,7 +65,7 @@ impl MeridianState {
             windows.push(WindowSnapshotEntry {
                 workspace: (minimized.workspace + 1) as u8,
                 id: id.clone(),
-                title: super::super::toplevel_title(&toplevel),
+                title: super::super::toplevel_title(toplevel),
                 minimized: true,
             });
         }

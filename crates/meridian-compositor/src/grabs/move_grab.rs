@@ -71,10 +71,10 @@ fn release_edge_action_for_output(
     None
 }
 
-fn select_move_release_output<'a>(
-    infos: &'a [OutputInfo],
+fn select_move_release_output(
+    infos: &[OutputInfo],
     pointer_location: Point<f64, Logical>,
-) -> Option<&'a OutputInfo> {
+) -> Option<&OutputInfo> {
     infos
         .iter()
         .find(|info| {
@@ -342,10 +342,12 @@ fn window_half_snap_direction(
 ) -> Option<(String, HalfSnapDirection)> {
     let toplevel = window.toplevel()?;
     let key = window_id(toplevel.wl_surface());
-    match data.active_window_snap_states.get(&key).copied() {
-        Some(WindowSnapState::Half(direction)) => Some((key, direction)),
-        None => None,
-    }
+    data.active_window_snap_states
+        .get(&key)
+        .copied()
+        .map(|state| match state {
+            WindowSnapState::Half(direction) => (key, direction),
+        })
 }
 
 fn consume_half_snap_restore_geometry(

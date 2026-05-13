@@ -29,7 +29,7 @@ pub(crate) fn toplevel_title(surface: &smithay::wayland::shell::xdg::ToplevelSur
     })
 }
 
-pub(crate) fn client_compositor_state<'a>(client: &'a Client) -> &'a CompositorClientState {
+pub(crate) fn client_compositor_state(client: &Client) -> &CompositorClientState {
     if let Some(state) = client.get_data::<XWaylandClientData>() {
         return &state.compositor_state;
     }
