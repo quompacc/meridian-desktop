@@ -2,6 +2,15 @@
 
 > Hinweis (Stand 2026-05): Dieses Dokument ist ein historischer Masterplan und in Teilen veraltet. Für den aktuellen Ist-Stand bitte primär den aktuellen Commit-Verlauf sowie `README.md` (Build-/Workflow-Checks) heranziehen; für aktive Patch-Regeln gilt `AGENTS.md`.
 
+## Backlog-Status (konsolidiert, Stand 2026-05)
+
+- `P2.3` SplitDir-Duplikation: **resolved** (Config->WM-Mapping zentralisiert; keine geplante Type-Unification).
+- `P2.4` Workspace-Index `u8` vs `usize`: **resolved** (IPC-Konvertierung zentralisiert; IPC-Schema bewusst unverändert).
+- `P2.21` `clamped_w`/`clamped_h` Dead Code: **false positive** (Variablen werden für Tracing-Diagnostik genutzt).
+- `P2.22` `unsafe` ohne `SAFETY`-Kommentare: **resolved** (durch Commit `53512f7`).
+- `P2.5` DPI-Support Shell: **deferred** (größerer Designblock; Compositor aktuell effektiv scale-1-only).
+- `P1.7` `drm_backend.take()/restore` RAII-Guard: **optional follow-up** (auditiert; kein akuter Non-Panic-Restore-Bug gefunden).
+
 ## Projektübersicht
 
 Meridian ist eine vollständige Wayland-Desktop-Umgebung, geschrieben in Rust.
