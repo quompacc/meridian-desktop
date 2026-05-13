@@ -91,16 +91,26 @@ fn apply_output_workspace_snapshot_state(
     *workspace_indicator_dirty = true;
 }
 
+struct OutputWorkspaceChangedInput {
+    output_id: u32,
+    output_name: Option<String>,
+    workspace: usize,
+    focused: bool,
+}
+
 fn apply_output_workspace_changed_state(
     focused_output_id: &mut Option<u32>,
     output_workspaces: &mut Vec<OutputWorkspaceState>,
     output_workspace_state_available: &mut bool,
     workspace_indicator_dirty: &mut bool,
-    output_id: u32,
-    output_name: Option<String>,
-    workspace: usize,
-    focused: bool,
+    input: OutputWorkspaceChangedInput,
 ) {
+    let OutputWorkspaceChangedInput {
+        output_id,
+        output_name,
+        workspace,
+        focused,
+    } = input;
     let workspace = normalize_workspace_1_based(workspace);
 
     if let Some(existing) = output_workspaces
@@ -381,10 +391,12 @@ impl MeridianShell {
                     &mut self.output_workspaces,
                     &mut self.output_workspace_state_available,
                     &mut self.workspace_indicator_dirty,
-                    output_id,
-                    output_name,
-                    workspace,
-                    focused,
+                    OutputWorkspaceChangedInput {
+                        output_id,
+                        output_name,
+                        workspace,
+                        focused,
+                    },
                 );
                 debug!(
                     "output workspace state available: focused_output_id={:?} outputs={}",
@@ -806,7 +818,8 @@ mod tests {
         apply_output_workspace_snapshot_state, apply_window_closed_state,
         apply_window_opened_state, apply_workspace_changed, clear_stale_focused_window_id,
         compute_occupied_workspaces, panel_theme_signature, resolve_shell_theme_from_config,
-        select_panel_active_workspace, WindowInfo, WindowSnapshotEntry,
+        select_panel_active_workspace, OutputWorkspaceChangedInput, WindowInfo,
+        WindowSnapshotEntry,
     };
 
     #[test]
@@ -1128,10 +1141,12 @@ mod tests {
             &mut output_workspaces,
             &mut output_workspace_state_available,
             &mut workspace_indicator_dirty,
-            1,
-            Some("eDP-1".to_string()),
-            3,
-            true,
+            OutputWorkspaceChangedInput {
+                output_id: 1,
+                output_name: Some("eDP-1".to_string()),
+                workspace: 3,
+                focused: true,
+            },
         );
 
         assert_eq!(output_workspaces.len(), 1);
@@ -1153,10 +1168,12 @@ mod tests {
             &mut output_workspaces,
             &mut output_workspace_state_available,
             &mut workspace_indicator_dirty,
-            7,
-            None,
-            5,
-            false,
+            OutputWorkspaceChangedInput {
+                output_id: 7,
+                output_name: None,
+                workspace: 5,
+                focused: false,
+            },
         );
 
         assert_eq!(output_workspaces.len(), 1);
@@ -1186,10 +1203,12 @@ mod tests {
             &mut output_workspaces,
             &mut output_workspace_state_available,
             &mut workspace_indicator_dirty,
-            3,
-            None,
-            42,
-            false,
+            OutputWorkspaceChangedInput {
+                output_id: 3,
+                output_name: None,
+                workspace: 42,
+                focused: false,
+            },
         );
 
         assert_eq!(output_workspaces[0].active_workspace, 9);
