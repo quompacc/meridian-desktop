@@ -15,6 +15,8 @@ use super::{
     time, CommitReason, CommitSurfaceKind, MeridianShell, RepaintReason,
 };
 
+const CANVAS_RETRY_ATTEMPTS: usize = 2;
+
 impl MeridianShell {
     fn signature_hash<T: Hash>(value: &T) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -234,70 +236,80 @@ impl MeridianShell {
         }
 
         let stride = buffer::shm_buffer_stride(width);
-        let buf = buffer::buffer_for(
-            &mut self.pool,
-            &mut self.panel_buffer,
-            width,
-            height,
-            stride,
-        );
-        let Some(buf) = buf else {
-            warn!(
-                "panel buffer unavailable: reason={:?} width={} height={}",
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.panel_buffer,
+                width,
+                height,
+                stride,
+            );
+            let Some(buf) = buf else {
+                warn!(
+                    "panel buffer unavailable: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
+            };
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.panel_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
+                warn!(
+                    "panel canvas unavailable after retry: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
+            };
+
+            let mut painter = Painter::new(canvas, width as i32, height as i32);
+            panel::draw_panel(
+                &mut self.panel_state,
+                &mut painter,
+                panel::PanelDrawInput {
+                    font: &self.font,
+                    theme: &self.theme,
+                    active_workspace: panel_active_workspace,
+                    occupied_workspaces: self
+                        .occupied_state_available
+                        .then_some(&self.occupied_workspaces),
+                    window_entries: &panel_window_entries,
+                    clock: &clock,
+                    width,
+                },
+            );
+            if self.workspace_indicator_dirty {
+                tracing::debug!(
+                    "panel workspace indicator updated: active_workspace={} legacy_active_workspace={}",
+                    panel_active_workspace,
+                    self.active_workspace
+                );
+                self.workspace_indicator_dirty = false;
+            }
+
+            if let Err(err) = buf.attach_to(self.panel.wl_surface()) {
+                warn!(
+                    "panel buffer attach failed: reason={:?} width={} height={} error={}",
+                    reason, width, height, err
+                );
+                return;
+            }
+            self.panel
+                .wl_surface()
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.commit_surface(
+                CommitSurfaceKind::Panel,
+                Self::commit_reason_from_repaint(reason, true),
+            );
+            debug!(
+                "draw_panel committed: reason={:?} width={} height={}",
                 reason, width, height
             );
-            return;
-        };
-        let Some(canvas) = buf.canvas(&mut self.pool) else {
-            self.panel_buffer = None;
-            return self.draw_panel(_qh, reason);
-        };
-
-        let mut painter = Painter::new(canvas, width as i32, height as i32);
-        panel::draw_panel(
-            &mut self.panel_state,
-            &mut painter,
-            panel::PanelDrawInput {
-                font: &self.font,
-                theme: &self.theme,
-                active_workspace: panel_active_workspace,
-                occupied_workspaces: self
-                    .occupied_state_available
-                    .then_some(&self.occupied_workspaces),
-                window_entries: &panel_window_entries,
-                clock: &clock,
-                width,
-            },
-        );
-        if self.workspace_indicator_dirty {
-            tracing::debug!(
-                "panel workspace indicator updated: active_workspace={} legacy_active_workspace={}",
-                panel_active_workspace,
-                self.active_workspace
-            );
-            self.workspace_indicator_dirty = false;
-        }
-
-        if let Err(err) = buf.attach_to(self.panel.wl_surface()) {
-            warn!(
-                "panel buffer attach failed: reason={:?} width={} height={} error={}",
-                reason, width, height, err
-            );
+            self.panel_last_signature = Some(signature);
+            self.panel_dirty = false;
             return;
         }
-        self.panel
-            .wl_surface()
-            .damage_buffer(0, 0, width as i32, height as i32);
-        self.commit_surface(
-            CommitSurfaceKind::Panel,
-            Self::commit_reason_from_repaint(reason, true),
-        );
-        debug!(
-            "draw_panel committed: reason={:?} width={} height={}",
-            reason, width, height
-        );
-        self.panel_last_signature = Some(signature);
-        self.panel_dirty = false;
     }
 
     pub(crate) fn draw_launcher(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
@@ -359,55 +371,65 @@ impl MeridianShell {
         }
 
         let stride = buffer::shm_buffer_stride(width);
-        let buf = buffer::buffer_for(
-            &mut self.pool,
-            &mut self.launcher_buffer,
-            width,
-            height,
-            stride,
-        );
-        let Some(buf) = buf else {
-            warn!(
-                "launcher buffer unavailable: reason={:?} width={} height={}",
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.launcher_buffer,
+                width,
+                height,
+                stride,
+            );
+            let Some(buf) = buf else {
+                warn!(
+                    "launcher buffer unavailable: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
+            };
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.launcher_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
+                warn!(
+                    "launcher canvas unavailable after retry: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
+            };
+
+            let mut painter = Painter::new(canvas, width as i32, height as i32);
+            launcher::draw_launcher(
+                &mut self.launcher_state,
+                &mut painter,
+                &self.font,
+                &self.theme,
+                width,
+                height,
+            );
+
+            self.launcher_layer
+                .wl_surface()
+                .damage_buffer(0, 0, width as i32, height as i32);
+            if let Err(err) = buf.attach_to(self.launcher_layer.wl_surface()) {
+                warn!(
+                    "launcher buffer attach failed: reason={:?} width={} height={} error={}",
+                    reason, width, height, err
+                );
+                return;
+            }
+            self.commit_surface(
+                CommitSurfaceKind::Launcher,
+                Self::commit_reason_from_repaint(reason, false),
+            );
+            debug!(
+                "draw_launcher committed: reason={:?} width={} height={}",
                 reason, width, height
             );
-            return;
-        };
-        let Some(canvas) = buf.canvas(&mut self.pool) else {
-            self.launcher_buffer = None;
-            return self.draw_launcher(_qh, reason);
-        };
-
-        let mut painter = Painter::new(canvas, width as i32, height as i32);
-        launcher::draw_launcher(
-            &mut self.launcher_state,
-            &mut painter,
-            &self.font,
-            &self.theme,
-            width,
-            height,
-        );
-
-        self.launcher_layer
-            .wl_surface()
-            .damage_buffer(0, 0, width as i32, height as i32);
-        if let Err(err) = buf.attach_to(self.launcher_layer.wl_surface()) {
-            warn!(
-                "launcher buffer attach failed: reason={:?} width={} height={} error={}",
-                reason, width, height, err
-            );
+            self.launcher_last_signature = Some(signature);
+            self.launcher_dirty = false;
             return;
         }
-        self.commit_surface(
-            CommitSurfaceKind::Launcher,
-            Self::commit_reason_from_repaint(reason, false),
-        );
-        debug!(
-            "draw_launcher committed: reason={:?} width={} height={}",
-            reason, width, height
-        );
-        self.launcher_last_signature = Some(signature);
-        self.launcher_dirty = false;
     }
 
     pub(crate) fn unmap_launcher(&mut self, reason: CommitReason) {
@@ -443,174 +465,184 @@ impl MeridianShell {
         let width = self.calendar_width.min(CALENDAR_POPUP_WIDTH);
         let height = self.calendar_height.min(CALENDAR_POPUP_HEIGHT);
         let stride = buffer::shm_buffer_stride(width);
-        let buf = buffer::buffer_for(
-            &mut self.pool,
-            &mut self.calendar_buffer,
-            width,
-            height,
-            stride,
-        );
-        let Some(buf) = buf else {
-            warn!(
-                "calendar popup buffer unavailable: reason={:?} width={} height={}",
-                reason, width, height
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.calendar_buffer,
+                width,
+                height,
+                stride,
             );
-            return;
-        };
-        let Some(canvas) = buf.canvas(&mut self.pool) else {
-            self.calendar_buffer = None;
-            return self.draw_calendar_popup(_qh, reason);
-        };
-
-        let mut painter = Painter::new(canvas, width as i32, height as i32);
-        painter.clear(self.theme.colors.background);
-        let card = Rect {
-            x: 4,
-            y: 4,
-            w: width as i32 - 8,
-            h: height as i32 - 8,
-        };
-        painter.roundish_rect_with_radius(card, self.theme.colors.surface, 12);
-        painter.stroke_rect(card, self.theme.colors.border);
-
-        let maybe_model = time::local_date().and_then(|date| {
-            CalendarMonthModel::for_month(
-                date.year,
-                date.month,
-                Some(date.day),
-                self.calendar_display_policy.week_start,
-            )
-        });
-
-        if let Some(model) = maybe_model {
-            let labels = weekday_labels(self.calendar_display_policy.week_start);
-            debug_assert_eq!(
-                model
-                    .cells
-                    .iter()
-                    .position(|cell| cell.is_some())
-                    .unwrap_or(0),
-                usize::from(model.first_weekday_col0)
-            );
-
-            let content = Rect {
-                x: card.x + 12,
-                y: card.y + 8,
-                w: card.w - 24,
-                h: card.h - 16,
+            let Some(buf) = buf else {
+                warn!(
+                    "calendar popup buffer unavailable: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
             };
-            let header_rect = Rect {
-                x: content.x,
-                y: content.y,
-                w: content.w,
-                h: 24,
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.calendar_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
+                warn!(
+                    "calendar popup canvas unavailable after retry: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
             };
-            let header_text = format!("{:02} / {}", model.month, model.year);
-            painter.text_centered(
-                &self.font,
-                &header_text,
-                header_rect,
-                self.theme.colors.text,
-            );
 
-            let weekday_y = header_rect.y + header_rect.h + 8;
-            let weekday_h = 18;
-            for (col, label) in labels.iter().enumerate() {
-                let x0 = content.x + (col as i32 * content.w) / 7;
-                let x1 = content.x + (((col + 1) as i32 * content.w) / 7);
+            let mut painter = Painter::new(canvas, width as i32, height as i32);
+            painter.clear(self.theme.colors.background);
+            let card = Rect {
+                x: 4,
+                y: 4,
+                w: width as i32 - 8,
+                h: height as i32 - 8,
+            };
+            painter.roundish_rect_with_radius(card, self.theme.colors.surface, 12);
+            painter.stroke_rect(card, self.theme.colors.border);
+
+            let maybe_model = time::local_date().and_then(|date| {
+                CalendarMonthModel::for_month(
+                    date.year,
+                    date.month,
+                    Some(date.day),
+                    self.calendar_display_policy.week_start,
+                )
+            });
+
+            if let Some(model) = maybe_model {
+                let labels = weekday_labels(self.calendar_display_policy.week_start);
+                debug_assert_eq!(
+                    model
+                        .cells
+                        .iter()
+                        .position(|cell| cell.is_some())
+                        .unwrap_or(0),
+                    usize::from(model.first_weekday_col0)
+                );
+
+                let content = Rect {
+                    x: card.x + 12,
+                    y: card.y + 8,
+                    w: card.w - 24,
+                    h: card.h - 16,
+                };
+                let header_rect = Rect {
+                    x: content.x,
+                    y: content.y,
+                    w: content.w,
+                    h: 24,
+                };
+                let header_text = format!("{:02} / {}", model.month, model.year);
                 painter.text_centered(
                     &self.font,
-                    label,
-                    Rect {
-                        x: x0,
-                        y: weekday_y,
-                        w: x1 - x0,
-                        h: weekday_h,
-                    },
+                    &header_text,
+                    header_rect,
                     self.theme.colors.text,
                 );
-            }
 
-            let grid_y = weekday_y + weekday_h + 6;
-            let grid_h = (content.y + content.h) - grid_y;
-            for row in 0_usize..6 {
-                let row_i32 = row as i32;
-                let y0 = grid_y + (row_i32 * grid_h) / 6;
-                let y1 = grid_y + (((row_i32 + 1) * grid_h) / 6);
-                for col in 0_usize..7 {
-                    let idx = row * 7 + col;
-                    let Some(day) = model.cells[idx] else {
-                        continue;
-                    };
+                let weekday_y = header_rect.y + header_rect.h + 8;
+                let weekday_h = 18;
+                for (col, label) in labels.iter().enumerate() {
+                    let x0 = content.x + (col as i32 * content.w) / 7;
+                    let x1 = content.x + (((col + 1) as i32 * content.w) / 7);
+                    painter.text_centered(
+                        &self.font,
+                        label,
+                        Rect {
+                            x: x0,
+                            y: weekday_y,
+                            w: x1 - x0,
+                            h: weekday_h,
+                        },
+                        self.theme.colors.text,
+                    );
+                }
 
-                    let col_i32 = col as i32;
-                    let x0 = content.x + (col_i32 * content.w) / 7;
-                    let x1 = content.x + (((col_i32 + 1) * content.w) / 7);
-                    let cell_rect = Rect {
-                        x: x0,
-                        y: y0,
-                        w: x1 - x0,
-                        h: y1 - y0,
-                    };
-                    let is_today = model.today_day == Some(day);
-                    let day_text = day.to_string();
-                    if is_today {
-                        let highlight = Rect {
-                            x: cell_rect.x + 3,
-                            y: cell_rect.y + 2,
-                            w: (cell_rect.w - 6).max(0),
-                            h: (cell_rect.h - 4).max(0),
+                let grid_y = weekday_y + weekday_h + 6;
+                let grid_h = (content.y + content.h) - grid_y;
+                for row in 0_usize..6 {
+                    let row_i32 = row as i32;
+                    let y0 = grid_y + (row_i32 * grid_h) / 6;
+                    let y1 = grid_y + (((row_i32 + 1) * grid_h) / 6);
+                    for col in 0_usize..7 {
+                        let idx = row * 7 + col;
+                        let Some(day) = model.cells[idx] else {
+                            continue;
                         };
-                        if highlight.w > 0 && highlight.h > 0 {
-                            painter.roundish_rect(highlight, self.theme.colors.accent);
+
+                        let col_i32 = col as i32;
+                        let x0 = content.x + (col_i32 * content.w) / 7;
+                        let x1 = content.x + (((col_i32 + 1) * content.w) / 7);
+                        let cell_rect = Rect {
+                            x: x0,
+                            y: y0,
+                            w: x1 - x0,
+                            h: y1 - y0,
+                        };
+                        let is_today = model.today_day == Some(day);
+                        let day_text = day.to_string();
+                        if is_today {
+                            let highlight = Rect {
+                                x: cell_rect.x + 3,
+                                y: cell_rect.y + 2,
+                                w: (cell_rect.w - 6).max(0),
+                                h: (cell_rect.h - 4).max(0),
+                            };
+                            if highlight.w > 0 && highlight.h > 0 {
+                                painter.roundish_rect(highlight, self.theme.colors.accent);
+                            }
+                            painter.text_centered(
+                                &self.font,
+                                &day_text,
+                                cell_rect,
+                                crate::ui::tokens::ACCENT_FOREGROUND,
+                            );
+                        } else {
+                            painter.text_centered(
+                                &self.font,
+                                &day_text,
+                                cell_rect,
+                                self.theme.colors.text,
+                            );
                         }
-                        painter.text_centered(
-                            &self.font,
-                            &day_text,
-                            cell_rect,
-                            crate::ui::tokens::ACCENT_FOREGROUND,
-                        );
-                    } else {
-                        painter.text_centered(
-                            &self.font,
-                            &day_text,
-                            cell_rect,
-                            self.theme.colors.text,
-                        );
                     }
                 }
-            }
-        } else {
-            let time_text = if self.last_clock.is_empty() {
-                time::formatted_time()
             } else {
-                self.last_clock.clone()
-            };
-            let text_rect = Rect {
-                x: card.x + 12,
-                y: card.y + 16,
-                w: card.w - 24,
-                h: 28,
-            };
-            painter.text_centered(&self.font, &time_text, text_rect, self.theme.colors.text);
-        }
+                let time_text = if self.last_clock.is_empty() {
+                    time::formatted_time()
+                } else {
+                    self.last_clock.clone()
+                };
+                let text_rect = Rect {
+                    x: card.x + 12,
+                    y: card.y + 16,
+                    w: card.w - 24,
+                    h: 28,
+                };
+                painter.text_centered(&self.font, &time_text, text_rect, self.theme.colors.text);
+            }
 
-        if let Err(err) = buf.attach_to(self.calendar_layer.wl_surface()) {
-            warn!(
-                "calendar popup buffer attach failed: reason={:?} width={} height={} error={}",
-                reason, width, height, err
+            if let Err(err) = buf.attach_to(self.calendar_layer.wl_surface()) {
+                warn!(
+                    "calendar popup buffer attach failed: reason={:?} width={} height={} error={}",
+                    reason, width, height, err
+                );
+                return;
+            }
+            self.calendar_layer
+                .wl_surface()
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.calendar_layer.commit();
+            debug!(
+                "draw_calendar_popup committed: reason={:?} width={} height={}",
+                reason, width, height
             );
+            self.calendar_dirty = false;
             return;
         }
-        self.calendar_layer
-            .wl_surface()
-            .damage_buffer(0, 0, width as i32, height as i32);
-        self.calendar_layer.commit();
-        debug!(
-            "draw_calendar_popup committed: reason={:?} width={} height={}",
-            reason, width, height
-        );
-        self.calendar_dirty = false;
     }
 
     pub(crate) fn unmap_calendar_popup(&mut self, reason: CommitReason) {
