@@ -11,6 +11,7 @@ pub(super) struct LocalDate {
 }
 
 pub(super) fn local_date() -> Option<LocalDate> {
+    // SAFETY: libc time APIs are called with valid pointers and outputs are validated before use.
     unsafe {
         let now = libc::time(ptr::null_mut());
         let mut tm = std::mem::zeroed::<libc::tm>();
@@ -30,6 +31,7 @@ pub(super) fn local_date() -> Option<LocalDate> {
 }
 
 pub(super) fn formatted_time() -> String {
+    // SAFETY: libc time/strftime calls use valid buffers and checked return values.
     unsafe {
         let now = libc::time(ptr::null_mut());
         let mut tm = std::mem::zeroed::<libc::tm>();

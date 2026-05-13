@@ -70,6 +70,7 @@ impl Drop for TextRenderer {
 }
 
 fn fontconfig_match(pattern: &str) -> Option<PathBuf> {
+    // SAFETY: all Fontconfig pointers are created/checked in this block and destroyed on each exit path.
     unsafe {
         if fc::FcInit() == 0 {
             return None;

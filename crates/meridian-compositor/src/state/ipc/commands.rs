@@ -85,6 +85,7 @@ impl MeridianState {
                     .env(
                         "XDG_RUNTIME_DIR",
                         std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+                            // SAFETY: `geteuid` has no preconditions and reads the current process uid.
                             format!("/run/user/{}", unsafe { libc::geteuid() })
                         }),
                     )

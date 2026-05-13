@@ -201,6 +201,7 @@ pub fn socket_path() -> PathBuf {
         return PathBuf::from(runtime_dir).join(SOCKET_NAME);
     }
 
+    // SAFETY: `geteuid` has no preconditions and returns the effective uid of this process.
     let uid = unsafe { libc::geteuid() };
     PathBuf::from(format!("/run/user/{uid}")).join(SOCKET_NAME)
 }

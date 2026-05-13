@@ -399,6 +399,7 @@ impl MeridianState {
             .insert_source(
                 Generic::new(display, Interest::READ, Mode::Level),
                 |_, display, state| {
+                    // SAFETY: the event loop owns `display`; calloop guarantees serialized access in this callback.
                     unsafe { display.get_mut().dispatch_clients(state) }.map_err(|err| {
                         Error::other(format!("failed to dispatch wayland clients: {err}"))
                     })?;

@@ -51,8 +51,10 @@ impl ShellWatchdog {
             .env("WAYLAND_DISPLAY", &self.wayland_display)
             .env(
                 "XDG_RUNTIME_DIR",
-                std::env::var("XDG_RUNTIME_DIR")
-                    .unwrap_or_else(|_| format!("/run/user/{}", unsafe { libc::geteuid() })),
+                std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+                    // SAFETY: `geteuid` has no preconditions and simply reads the caller's effective uid.
+                    format!("/run/user/{}", unsafe { libc::geteuid() })
+                }),
             )
             .spawn()
         {
@@ -152,6 +154,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Meridian running on socket: {:?}", state.socket_name);
     let socket_name = state.socket_name.to_string_lossy().to_string();
+    // SAFETY: process-global env mutation is intentionally performed during compositor startup.
     unsafe { std::env::set_var("WAYLAND_DISPLAY", &state.socket_name) };
 
     start_xwayland(&mut state);

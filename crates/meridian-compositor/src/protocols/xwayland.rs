@@ -45,6 +45,7 @@ pub fn start_xwayland(state: &mut MeridianState) {
             } => {
                 match X11Wm::start_wm(handle.clone(), &display_handle, x11_socket, client.clone()) {
                     Ok(wm) => {
+                        // SAFETY: this updates process env once XWayland reports its assigned display number.
                         unsafe {
                             std::env::set_var("DISPLAY", format!(":{}", display_number));
                         }

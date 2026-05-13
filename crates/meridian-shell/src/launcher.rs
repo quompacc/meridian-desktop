@@ -1315,6 +1315,7 @@ mod tests {
     impl EnvVarGuard {
         fn set(key: &'static str, value: &str) -> Self {
             let old = std::env::var_os(key);
+            // SAFETY: tests mutate process env in a controlled scope and restore previous values in Drop.
             unsafe {
                 std::env::set_var(key, value);
             }
@@ -1325,12 +1326,18 @@ mod tests {
     impl Drop for EnvVarGuard {
         fn drop(&mut self) {
             match &self.old {
-                Some(value) => unsafe {
-                    std::env::set_var(self.key, value);
-                },
-                None => unsafe {
-                    std::env::remove_var(self.key);
-                },
+                Some(value) => {
+                    // SAFETY: this restores the exact previously captured value for the same key.
+                    unsafe {
+                        std::env::set_var(self.key, value);
+                    }
+                }
+                None => {
+                    // SAFETY: key removal restores the pre-test absence captured in `old`.
+                    unsafe {
+                        std::env::remove_var(self.key);
+                    }
+                }
             }
         }
     }

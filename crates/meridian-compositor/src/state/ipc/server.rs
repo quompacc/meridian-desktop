@@ -317,6 +317,7 @@ fn is_allowed_ipc_peer(stream: &UnixStream) -> bool {
 }
 
 fn current_effective_uid() -> u32 {
+    // SAFETY: `geteuid` has no preconditions and returns the caller's effective uid.
     unsafe { libc::geteuid() as u32 }
 }
 
@@ -326,8 +327,10 @@ fn is_same_uid(peer_uid: u32, effective_uid: u32) -> bool {
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 fn peer_effective_uid(stream: &UnixStream) -> io::Result<Option<u32>> {
+    // SAFETY: zero-initializing `ucred` is valid; kernel fully writes fields on successful `getsockopt`.
     let mut creds: libc::ucred = unsafe { std::mem::zeroed() };
     let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    // SAFETY: pointers target valid writable storage; fd/socket level/option are correct for SO_PEERCRED.
     let rc = unsafe {
         libc::getsockopt(
             stream.as_raw_fd(),

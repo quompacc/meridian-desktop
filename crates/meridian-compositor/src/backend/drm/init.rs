@@ -1064,6 +1064,7 @@ pub fn init_drm(
     }
     if force_drm_legacy_requested() {
         // Smithay reads this env var inside DrmDevice::new() to force legacy KMS path.
+        // SAFETY: this process-scoped env mutation is intentional during one-time backend initialization.
         unsafe {
             env::set_var("SMITHAY_USE_LEGACY", "1");
         }
@@ -1110,8 +1111,10 @@ pub fn init_drm(
     let (mut drm, drm_notifier) = DrmDevice::new(device_fd.clone(), false)?;
 
     let gbm: GbmDevice<DrmDeviceFd> = GbmDevice::new(device_fd.clone())?;
+    // SAFETY: `gbm` is a live GBM device tied to the opened DRM fd.
     let egl_display = unsafe { EGLDisplay::new(gbm.clone())? };
     let context = EGLContext::new(&egl_display)?;
+    // SAFETY: `context` is freshly created from the current EGL display and valid for renderer creation.
     let renderer = unsafe { smithay::backend::renderer::gles::GlesRenderer::new(context)? };
 
     let disable_modifiers = disable_drm_modifiers_requested();

@@ -23,6 +23,7 @@ pub struct GlyphBitmap {
 impl Library {
     pub fn new() -> Result<Self, c_int> {
         let mut library = ptr::null_mut();
+        // SAFETY: `library` is a valid out-pointer; FreeType initializes it when this call succeeds.
         let err = unsafe { FT_Init_FreeType(&mut library) };
         if err == 0 {
             Ok(Self(library))
@@ -34,6 +35,7 @@ impl Library {
 
 impl Drop for Library {
     fn drop(&mut self) {
+        // SAFETY: `self.0` was returned by `FT_Init_FreeType` and is dropped exactly once here.
         unsafe {
             FT_Done_FreeType(self.0);
         }
@@ -44,13 +46,16 @@ impl Face {
     pub fn new(library: &Library, path: &Path, pixels: u32) -> Result<Self, c_int> {
         let path = CString::new(path.to_string_lossy().as_bytes()).map_err(|_| -1)?;
         let mut face = ptr::null_mut();
+        // SAFETY: `library.0` is a live FreeType library and all pointers are valid for this call.
         let err = unsafe { FT_New_Face(library.0, path.as_ptr(), 0, &mut face) };
         if err != 0 {
             return Err(err);
         }
 
+        // SAFETY: `face` is initialized by `FT_New_Face` on success and is valid here.
         let err = unsafe { FT_Set_Pixel_Sizes(face, 0, pixels) };
         if err != 0 {
+            // SAFETY: `face` was created by `FT_New_Face`; freeing it on error prevents leaks.
             unsafe {
                 FT_Done_Face(face);
             }
@@ -61,11 +66,13 @@ impl Face {
     }
 
     pub fn load_char(&mut self, ch: char) -> Option<GlyphBitmap> {
+        // SAFETY: `self.0` is a valid face; FreeType handles the provided character code.
         let err = unsafe { FT_Load_Char(self.0, ch as c_ulong, FT_LOAD_RENDER) };
         if err != 0 {
             return None;
         }
 
+        // SAFETY: after successful `FT_Load_Char`, `self.0` points to a valid glyph slot and bitmap data.
         unsafe {
             let slot = (*self.0).glyph;
             if slot.is_null() {
@@ -94,6 +101,7 @@ impl Face {
 
 impl Drop for Face {
     fn drop(&mut self) {
+        // SAFETY: `self.0` was created by `FT_New_Face` and is released once during drop.
         unsafe {
             FT_Done_Face(self.0);
         }
