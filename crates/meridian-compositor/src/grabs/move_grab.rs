@@ -17,7 +17,7 @@ use smithay::{
 use crate::state::{
     clear_tiled_toplevel_states, half_snap_client_placement_from_output, window_id,
     HalfSnapDirection, HalfSnapRestoreGeometry, MaximizeRestoreGeometry, MeridianState,
-    OutputGeometry, OutputInfo, WindowSnapState,
+    OutputGeometry, OutputInfo, OutputRegistry, WindowSnapState,
 };
 
 const TOP_EDGE_MAXIMIZE_THRESHOLD_PX: f64 = 12.0;
@@ -72,17 +72,10 @@ fn release_edge_action_for_output(
 }
 
 fn select_move_release_output(
-    infos: &[OutputInfo],
+    registry: &OutputRegistry,
     pointer_location: Point<f64, Logical>,
 ) -> Option<&OutputInfo> {
-    infos
-        .iter()
-        .find(|info| {
-            info.geometry
-                .contains(pointer_location.x, pointer_location.y)
-        })
-        .or_else(|| infos.iter().find(|info| info.primary))
-        .or_else(|| infos.first())
+    registry.select_for_point_with_fallback(pointer_location.x, pointer_location.y)
 }
 
 fn release_edge_action_on_move_release(
@@ -90,7 +83,7 @@ fn release_edge_action_on_move_release(
     pointer_location: Option<Point<f64, Logical>>,
 ) -> Option<(OutputGeometry, MoveReleaseEdgeAction)> {
     let pointer_location = pointer_location?;
-    let output = select_move_release_output(data.output_registry.list(), pointer_location)?;
+    let output = select_move_release_output(&data.output_registry, pointer_location)?;
     let action = release_edge_action_for_output(output.geometry, pointer_location)?;
     Some((output.geometry, action))
 }
