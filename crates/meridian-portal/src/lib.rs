@@ -22,6 +22,7 @@ const COMPOSITOR_UNAVAILABLE_MSG: &str = "compositor screenshot bridge unavailab
 const COMPOSITOR_TIMEOUT_MSG: &str = "compositor screenshot bridge timeout";
 const COMPOSITOR_PROTOCOL_MSG: &str = "compositor screenshot bridge protocol error";
 const BRIDGE_TIMEOUT: Duration = Duration::from_secs(2);
+const BRIDGE_MAX_BUFFER_BYTES: usize = 1024 * 1024;
 static REQUEST_MARKER: AtomicU64 = AtomicU64::new(1);
 
 pub type PortalError = ScreenshotBridgeError;
@@ -254,7 +255,12 @@ fn wait_for_bridge_response(
                     COMPOSITOR_UNAVAILABLE_MSG.to_string(),
                 ))
             }
-            Ok(n) => buffer.extend_from_slice(&tmp[..n]),
+            Ok(n) => {
+                buffer.extend_from_slice(&tmp[..n]);
+                if buffer.len() > BRIDGE_MAX_BUFFER_BYTES {
+                    return Err(PortalError::Internal(COMPOSITOR_PROTOCOL_MSG.to_string()));
+                }
+            }
             Err(err)
                 if err.kind() == io::ErrorKind::WouldBlock
                     || err.kind() == io::ErrorKind::TimedOut =>
