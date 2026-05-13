@@ -14,8 +14,8 @@ use tracing::{debug, info, warn};
 use crate::{
     ui::{
         primitives::{
-            draw_initial_badge, draw_list_item, draw_sidebar_item, fill_surface_with_radius,
-            InteractiveState, SurfaceKind,
+            draw_initial_badge, draw_list_item, draw_panel_button, draw_sidebar_item,
+            fill_surface_with_radius, InteractiveState, SurfaceKind,
         },
         tokens,
     },
@@ -54,6 +54,10 @@ const FOOTER_LABEL_OFFSET: i32 = 12;
 const FOOTER_SEPARATOR_OFFSET: i32 = 8;
 const FOOTER_SECTION_GAP: i32 = 12;
 const FOOTER_LEFT_MIN_W: i32 = 120;
+const FOOTER_MODE_PILL_W: i32 = 92;
+const FOOTER_MODE_PILL_H: i32 = 28;
+const FOOTER_ACTION_BUTTON_MIN_W: i32 = 210;
+const FOOTER_ACTION_BUTTON_MAX_W: i32 = 300;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SidebarCategory {
@@ -1486,6 +1490,13 @@ pub fn draw_launcher(
 
     if !actions.is_empty() {
         let footer_y = layout.footer_right.y;
+        fill_surface_with_radius(
+            painter,
+            layout.footer,
+            theme,
+            SurfaceKind::Surface,
+            tokens::launcher::SEARCH_RADIUS,
+        );
         painter.rect(
             Rect {
                 x: layout.footer.x,
@@ -1503,13 +1514,30 @@ pub fn draw_launcher(
             layout.footer.w,
             colors.border,
         );
+
+        let mode_pill_rect = Rect {
+            x: layout.footer_left.x + tokens::launcher::INNER_PADDING,
+            y: footer_y + (tokens::launcher::APP_ROW_H - FOOTER_MODE_PILL_H) / 2,
+            w: FOOTER_MODE_PILL_W.min(
+                (layout.footer_left.w - tokens::launcher::INNER_PADDING * 2)
+                    .max(FOOTER_MODE_PILL_W / 2),
+            ),
+            h: FOOTER_MODE_PILL_H,
+        };
+        fill_surface_with_radius(
+            painter,
+            mode_pill_rect,
+            theme,
+            SurfaceKind::Accent,
+            tokens::launcher::LIST_ROW_RADIUS,
+        );
         painter.text_clipped(
             font,
             "Apps",
-            layout.footer_left.x + tokens::launcher::INNER_PADDING,
-            footer_y + 24,
-            layout.footer_left.w - tokens::launcher::INNER_PADDING,
-            colors.border,
+            mode_pill_rect.x + 12,
+            mode_pill_rect.y + 18,
+            mode_pill_rect.w - 24,
+            crate::ui::primitives::active_accent_foreground(),
         );
 
         let mut action_y = footer_y;
@@ -1517,10 +1545,18 @@ pub fn draw_launcher(
             let index = apps.len() + offset;
             let is_selected = index == selected_idx;
             let awaiting_confirmation = launcher_state.pending_action_confirmation == Some(*action);
+            let action_button_available =
+                (layout.footer_right.w - tokens::launcher::INNER_PADDING * 2).max(0);
+            let action_button_w = if action_button_available < FOOTER_ACTION_BUTTON_MIN_W {
+                action_button_available
+            } else {
+                action_button_available
+                    .clamp(FOOTER_ACTION_BUTTON_MIN_W, FOOTER_ACTION_BUTTON_MAX_W)
+            };
             let rect = Rect {
-                x: layout.footer_right.x,
+                x: layout.footer_right.x + layout.footer_right.w - action_button_w,
                 y: action_y,
-                w: layout.footer_right.w,
+                w: action_button_w,
                 h: tokens::launcher::APP_ROW_H,
             };
             let row_state = if is_selected {
@@ -1528,7 +1564,7 @@ pub fn draw_launcher(
             } else {
                 InteractiveState::Default
             };
-            let text_color = draw_list_item(painter, rect, theme, row_state, true);
+            let text_color = draw_panel_button(painter, rect, theme, row_state);
             let badge_x = rect.x + tokens::launcher::INNER_PADDING - 1;
             let badge_y = rect.y + (rect.h - tokens::badge::SIZE) / 2;
             let text_x = badge_x + tokens::badge::SIZE + tokens::badge::CONTENT_GAP;
