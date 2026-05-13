@@ -35,5 +35,8 @@ jobs:
       - name: Build check
         run: cargo check --workspace
 
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
+
       - name: Test workspace
         run: cargo test --workspace
