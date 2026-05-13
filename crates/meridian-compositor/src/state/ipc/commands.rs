@@ -8,7 +8,7 @@ use smithay::wayland::seat::WaylandFocus;
 use super::conversions::ipc_workspace_to_index;
 use crate::{
     cursor::CursorImage,
-    state::{window_id, MeridianState},
+    state::{window_list_entry, MeridianState},
 };
 
 impl MeridianState {
@@ -192,9 +192,8 @@ impl MeridianState {
             .space_at(idx)
             .elements()
             .find(|window| {
-                window
-                    .toplevel()
-                    .map(|toplevel| window_id(toplevel.wl_surface()) == id)
+                window_list_entry(window)
+                    .map(|(window_id, _)| window_id == id)
                     .unwrap_or(false)
             })
             .cloned();

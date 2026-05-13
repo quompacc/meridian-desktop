@@ -14,7 +14,7 @@ use smithay::{
 };
 use tracing::{error, info, warn};
 
-use crate::state::MeridianState;
+use crate::state::{window_list_entry, MeridianState};
 
 pub fn start_xwayland(state: &mut MeridianState) {
     let (xwayland, client) = match XWayland::spawn(
@@ -92,9 +92,13 @@ impl XwmHandler for MeridianState {
         };
         let win = Window::new_x11_window(window);
         let active = self.workspaces.active;
+        let opened = window_list_entry(&win);
         self.workspaces
             .space_at_mut(active)
             .map_element(win, loc, true);
+        if let Some((id, title)) = opened {
+            self.broadcast_window_opened(id, title);
+        }
         self.mark_all_outputs_dirty("xwayland-map-window");
     }
 
@@ -122,6 +126,9 @@ impl XwmHandler for MeridianState {
             .find(|w| matches!(w.x11_surface(), Some(x) if x == &window))
             .cloned();
         if let Some(win) = maybe {
+            if let Some((id, _)) = window_list_entry(&win) {
+                self.broadcast_window_closed(id);
+            }
             self.workspaces.space_at_mut(active).unmap_elem(&win);
             self.mark_all_outputs_dirty("xwayland-unmap-window");
         }

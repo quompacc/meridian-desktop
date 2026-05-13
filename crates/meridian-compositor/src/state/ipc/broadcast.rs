@@ -2,9 +2,10 @@ use std::collections::HashSet;
 
 use meridian_ipc::{OutputWorkspaceState, ShellEvent, WindowSnapshotEntry};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::wayland::seat::WaylandFocus;
 
 use super::conversions::index_to_legacy_ipc_workspace;
-use crate::state::{window_id, MeridianState, OutputId, OutputInfo};
+use crate::state::{window_id, window_list_entry, MeridianState, OutputId, OutputInfo};
 
 fn build_output_workspace_snapshot(
     outputs: &[OutputInfo],
@@ -41,17 +42,16 @@ impl MeridianState {
         let mut seen_ids = HashSet::new();
         for idx in 0..self.workspaces.count() {
             for window in self.workspaces.space_at(idx).elements() {
-                let Some(toplevel) = window.toplevel() else {
+                let Some((id, title)) = window_list_entry(window) else {
                     continue;
                 };
-                let id = window_id(toplevel.wl_surface());
                 if !seen_ids.insert(id.clone()) {
                     continue;
                 }
                 windows.push(WindowSnapshotEntry {
                     workspace: index_to_legacy_ipc_workspace(idx),
                     id,
-                    title: super::super::toplevel_title(toplevel),
+                    title,
                     minimized: false,
                 });
             }
@@ -60,13 +60,13 @@ impl MeridianState {
             if seen_ids.contains(id) {
                 continue;
             }
-            let Some(toplevel) = minimized.window.toplevel() else {
+            let Some((_, title)) = window_list_entry(&minimized.window) else {
                 continue;
             };
             windows.push(WindowSnapshotEntry {
                 workspace: index_to_legacy_ipc_workspace(minimized.workspace),
                 id: id.clone(),
-                title: super::super::toplevel_title(toplevel),
+                title,
                 minimized: true,
             });
         }
@@ -123,24 +123,41 @@ impl MeridianState {
         &mut self,
         surface: &smithay::wayland::shell::xdg::ToplevelSurface,
     ) {
-        self.ipc.broadcast(&ShellEvent::WindowOpened {
-            id: window_id(surface.wl_surface()),
-            title: super::super::toplevel_title(surface),
-        });
+        self.broadcast_window_opened(
+            window_id(surface.wl_surface()),
+            super::super::toplevel_title(surface),
+        );
+    }
+
+    pub fn broadcast_window_opened(&mut self, id: String, title: String) {
+        self.ipc.broadcast(&ShellEvent::WindowOpened { id, title });
     }
 
     pub fn broadcast_toplevel_closed(
         &mut self,
         surface: &smithay::wayland::shell::xdg::ToplevelSurface,
     ) {
-        self.ipc.broadcast(&ShellEvent::WindowClosed {
-            id: window_id(surface.wl_surface()),
-        });
+        self.broadcast_window_closed(window_id(surface.wl_surface()));
+    }
+
+    pub fn broadcast_window_closed(&mut self, id: String) {
+        self.ipc.broadcast(&ShellEvent::WindowClosed { id });
     }
 
     pub fn broadcast_toplevel_focused(&mut self, surface: &WlSurface) {
+        let idx = self.current_workspace_index();
+        let focused_id = self.workspaces.space_at(idx).elements().find_map(|window| {
+            let matches_focus = window
+                .wl_surface()
+                .is_some_and(|window_surface| window_surface.as_ref() == surface);
+            if !matches_focus {
+                return None;
+            }
+            window_list_entry(window).map(|(id, _)| id)
+        });
+
         self.ipc.broadcast(&ShellEvent::WindowFocused {
-            id: window_id(surface),
+            id: focused_id.unwrap_or_else(|| window_id(surface)),
         });
     }
 

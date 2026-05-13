@@ -1,4 +1,5 @@
 use smithay::{
+    desktop::Window,
     reexports::wayland_server::{protocol::wl_surface::WlSurface, Client, Resource},
     wayland::{
         compositor::{with_states, CompositorClientState},
@@ -11,6 +12,18 @@ use super::ClientState;
 
 pub(crate) fn window_id(surface: &WlSurface) -> String {
     surface.id().to_string()
+}
+
+pub(crate) fn window_list_entry(window: &Window) -> Option<(String, String)> {
+    if let Some(toplevel) = window.toplevel() {
+        return Some((window_id(toplevel.wl_surface()), toplevel_title(toplevel)));
+    }
+
+    window.x11_surface().map(|x11| {
+        let id = format!("x11:{}", x11.window_id());
+        let title = format!("X11 window {}", x11.window_id());
+        (id, title)
+    })
 }
 
 pub(crate) fn toplevel_title(surface: &smithay::wayland::shell::xdg::ToplevelSurface) -> String {
