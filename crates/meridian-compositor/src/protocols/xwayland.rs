@@ -2,6 +2,8 @@ use std::{os::unix::io::OwnedFd, process::Stdio};
 
 use smithay::{
     desktop::Window,
+    input::pointer::Focus,
+    utils::SERIAL_COUNTER,
     utils::{Logical, Rectangle},
     wayland::{
         selection::SelectionTarget,
@@ -14,6 +16,10 @@ use smithay::{
 };
 use tracing::{error, info, warn};
 
+use crate::grabs::{
+    move_grab::MoveSurfaceGrab,
+    resize_grab::{ResizeEdge, ResizeSurfaceGrab},
+};
 use crate::state::{normal_window_workarea_from_output_geometry, window_list_entry, MeridianState};
 
 fn select_output_geometry_for_rect(
@@ -62,6 +68,30 @@ fn panel_safe_normal_xwayland_rect(
     }
     adjusted.loc.y = y;
     adjusted
+}
+
+fn find_active_x11_window(state: &MeridianState, surface: &X11Surface) -> Option<Window> {
+    let active = state.workspaces.active;
+    state
+        .workspaces
+        .space_at(active)
+        .elements()
+        .find(|window| matches!(window.x11_surface(), Some(x11) if x11 == surface))
+        .cloned()
+}
+
+fn window_is_output_fullscreen_shape(state: &MeridianState, window: &Window) -> bool {
+    let active = state.workspaces.active;
+    let Some(loc) = state.workspaces.space_at(active).element_location(window) else {
+        return false;
+    };
+    let rect = Rectangle::new(loc, window.geometry().size);
+    select_output_geometry_for_rect(state, rect)
+        .is_some_and(|output_geometry| rect_matches_output_fullscreen_shape(rect, output_geometry))
+}
+
+fn x11_resize_edge_to_resize_edge(edges: X11ResizeEdge) -> ResizeEdge {
+    ResizeEdge::from_bits(edges as u32).unwrap_or(ResizeEdge::empty())
 }
 
 pub fn start_xwayland(state: &mut MeridianState) {
@@ -256,13 +286,91 @@ impl XwmHandler for MeridianState {
     fn resize_request(
         &mut self,
         _xwm: XwmId,
-        _window: X11Surface,
+        window: X11Surface,
         _button: u32,
-        _edges: X11ResizeEdge,
+        edges: X11ResizeEdge,
     ) {
+        if window.is_override_redirect() {
+            return;
+        }
+        let Some(mapped_window) = find_active_x11_window(self, &window) else {
+            return;
+        };
+        if window_is_output_fullscreen_shape(self, &mapped_window) {
+            return;
+        }
+        let Some(pointer) = self.seat.get_pointer() else {
+            tracing::debug!("ignoring xwayland resize request: seat has no pointer");
+            return;
+        };
+        let Some(start_data) = pointer.grab_start_data() else {
+            tracing::debug!(
+                "ignoring xwayland resize request: pointer grab start data unavailable"
+            );
+            return;
+        };
+        let resize_edges = x11_resize_edge_to_resize_edge(edges);
+        if resize_edges.is_empty() {
+            tracing::debug!("ignoring xwayland resize request: empty resize edges");
+            return;
+        }
+        let Some(initial_window_location) = self
+            .workspaces
+            .space_at(self.workspaces.active)
+            .element_location(&mapped_window)
+        else {
+            tracing::debug!("ignoring xwayland resize request: window location unavailable");
+            return;
+        };
+        let initial_window_size = mapped_window.geometry().size;
+        let grab = ResizeSurfaceGrab::start(
+            start_data,
+            mapped_window,
+            resize_edges,
+            Rectangle::new(initial_window_location, initial_window_size),
+        );
+        let serial = SERIAL_COUNTER.next_serial();
+        pointer.set_grab(self, grab, serial, Focus::Clear);
     }
 
-    fn move_request(&mut self, _xwm: XwmId, _window: X11Surface, _button: u32) {}
+    fn move_request(&mut self, _xwm: XwmId, window: X11Surface, _button: u32) {
+        if window.is_override_redirect() {
+            return;
+        }
+        let Some(mapped_window) = find_active_x11_window(self, &window) else {
+            return;
+        };
+        if window_is_output_fullscreen_shape(self, &mapped_window) {
+            return;
+        }
+        let Some(pointer) = self.seat.get_pointer() else {
+            tracing::debug!("ignoring xwayland move request: seat has no pointer");
+            return;
+        };
+        let Some(start_data) = pointer.grab_start_data() else {
+            tracing::debug!("ignoring xwayland move request: pointer grab start data unavailable");
+            return;
+        };
+        let Some(initial_window_location) = self
+            .workspaces
+            .space_at(self.workspaces.active)
+            .element_location(&mapped_window)
+        else {
+            tracing::debug!("ignoring xwayland move request: window location unavailable");
+            return;
+        };
+        let grab = MoveSurfaceGrab {
+            start_data,
+            window: mapped_window,
+            initial_window_location,
+            latest_pointer_location: None,
+            started_maximized: false,
+            started_fullscreen: false,
+            drag_restore_done: false,
+        };
+        let serial = SERIAL_COUNTER.next_serial();
+        pointer.set_grab(self, grab, serial, Focus::Clear);
+    }
 
     fn send_selection(
         &mut self,
