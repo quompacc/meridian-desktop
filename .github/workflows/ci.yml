@@ -5,7 +5,7 @@ on:
   push:
 
 jobs:
-  test:
+  quality:
     runs-on: ubuntu-latest
 
     steps:
@@ -28,6 +28,12 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Format check
+        run: cargo fmt --check
+
+      - name: Build check
+        run: cargo check --workspace
 
       - name: Test workspace
         run: cargo test --workspace
