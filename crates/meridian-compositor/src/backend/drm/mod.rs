@@ -20,6 +20,7 @@ use crate::{cursor::CursorImage, wallpaper::WallpaperGpuCache};
 mod gpu;
 mod init;
 mod init_env;
+mod mode_selection;
 mod render;
 
 pub use init::init_drm;
