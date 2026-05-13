@@ -5,8 +5,7 @@ use smithay::{
 
 use super::{
     tree::{
-        adjust_split_node, collect_rects, collect_windows, insert_at_last, insert_next_to,
-        remove_from_node, Node,
+        adjust_split_node, collect_rects, collect_windows, insert_unique, remove_from_node, Node,
     },
     SplitDir,
 };
@@ -44,10 +43,8 @@ impl TilingLayout {
                 return;
             }
             Some(root) => {
-                let inserted = focused
-                    .is_some_and(|focused| insert_next_to(root, focused, window.clone(), dir));
-                if !inserted {
-                    insert_at_last(root, window, dir);
+                if !insert_unique(root, focused, window, dir) {
+                    return;
                 }
             }
         }

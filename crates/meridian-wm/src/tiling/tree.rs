@@ -22,6 +22,18 @@ pub(super) fn collect_windows<T: Clone>(node: &Node<T>, out: &mut Vec<T>) {
     }
 }
 
+pub(super) fn contains_window<T>(node: &Node<T>, window: &T) -> bool
+where
+    T: PartialEq,
+{
+    match node {
+        Node::Leaf(existing) => existing == window,
+        Node::Internal { left, right, .. } => {
+            contains_window(left, window) || contains_window(right, window)
+        }
+    }
+}
+
 fn split_rect(
     rect: Rectangle<i32, Logical>,
     dir: SplitDir,
@@ -124,6 +136,28 @@ pub(super) fn insert_at_last<T: Clone>(node: &mut Node<T>, new_window: T, dir: S
         }
         Node::Internal { right, .. } => insert_at_last(right, new_window, dir),
     }
+}
+
+pub(super) fn insert_unique<T>(
+    node: &mut Node<T>,
+    focused: Option<&T>,
+    new_window: T,
+    dir: SplitDir,
+) -> bool
+where
+    T: Clone + PartialEq,
+{
+    if contains_window(node, &new_window) {
+        return false;
+    }
+
+    let inserted =
+        focused.is_some_and(|focused| insert_next_to(node, focused, new_window.clone(), dir));
+    if !inserted {
+        insert_at_last(node, new_window, dir);
+    }
+
+    true
 }
 
 pub(super) fn remove_from_node<T>(node: Box<Node<T>>, window: &T) -> (Option<Box<Node<T>>>, bool)
@@ -229,8 +263,8 @@ mod tests {
     use smithay::utils::Rectangle;
 
     use super::{
-        collect_windows, insert_at_last, insert_next_to, remove_from_node, split_rect, Node,
-        SplitDir,
+        collect_windows, contains_window, insert_at_last, insert_next_to, insert_unique,
+        remove_from_node, split_rect, Node, SplitDir,
     };
 
     fn assert_positive_sizes(
@@ -376,5 +410,45 @@ mod tests {
             Node::Leaf(id) => assert_eq!(id, 2),
             Node::Internal { .. } => panic!("expected collapse to surviving leaf"),
         }
+    }
+
+    #[test]
+    fn contains_window_detects_existing_and_missing_values() {
+        let mut node = Node::Leaf(1_u32);
+        insert_at_last(&mut node, 2, SplitDir::Horizontal);
+        insert_at_last(&mut node, 3, SplitDir::Vertical);
+
+        assert!(contains_window(&node, &1));
+        assert!(contains_window(&node, &2));
+        assert!(contains_window(&node, &3));
+        assert!(!contains_window(&node, &9));
+    }
+
+    #[test]
+    fn insert_unique_skips_duplicate_window() {
+        let mut node = Node::Leaf(1_u32);
+        insert_at_last(&mut node, 2, SplitDir::Horizontal);
+        insert_at_last(&mut node, 3, SplitDir::Vertical);
+
+        let inserted = insert_unique(&mut node, None, 2, SplitDir::Horizontal);
+        assert!(!inserted);
+
+        let mut out = Vec::new();
+        collect_windows(&node, &mut out);
+        assert_eq!(out, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn insert_unique_inserts_new_window() {
+        let mut node = Node::Leaf(1_u32);
+        insert_at_last(&mut node, 2, SplitDir::Horizontal);
+        insert_at_last(&mut node, 3, SplitDir::Vertical);
+
+        let inserted = insert_unique(&mut node, Some(&2), 9, SplitDir::Horizontal);
+        assert!(inserted);
+
+        let mut out = Vec::new();
+        collect_windows(&node, &mut out);
+        assert_eq!(out, vec![1, 2, 9, 3]);
     }
 }
