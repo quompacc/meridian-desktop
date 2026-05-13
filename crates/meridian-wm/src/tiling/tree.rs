@@ -32,25 +32,27 @@ fn split_rect(
     gap: i32,
 ) -> (Rectangle<i32, Logical>, Rectangle<i32, Logical>) {
     let half = gap / 2;
+    let width = rect.size.w.max(1);
+    let height = rect.size.h.max(1);
     match dir {
         SplitDir::Horizontal => {
-            let split = ((rect.size.w as f32 * ratio) as i32).clamp(1, rect.size.w - 1);
+            let split = ((width as f32 * ratio) as i32).clamp(1, (width - 1).max(1));
             let left_w = (split - half).max(1);
             let right_x = rect.loc.x + split + half;
-            let right_w = (rect.size.w - split - half).max(1);
+            let right_w = (width - split - half).max(1);
             (
-                Rectangle::new(rect.loc, (left_w, rect.size.h).into()),
-                Rectangle::new((right_x, rect.loc.y).into(), (right_w, rect.size.h).into()),
+                Rectangle::new(rect.loc, (left_w, height).into()),
+                Rectangle::new((right_x, rect.loc.y).into(), (right_w, height).into()),
             )
         }
         SplitDir::Vertical => {
-            let split = ((rect.size.h as f32 * ratio) as i32).clamp(1, rect.size.h - 1);
+            let split = ((height as f32 * ratio) as i32).clamp(1, (height - 1).max(1));
             let top_h = (split - half).max(1);
             let bot_y = rect.loc.y + split + half;
-            let bot_h = (rect.size.h - split - half).max(1);
+            let bot_h = (height - split - half).max(1);
             (
-                Rectangle::new(rect.loc, (rect.size.w, top_h).into()),
-                Rectangle::new((rect.loc.x, bot_y).into(), (rect.size.w, bot_h).into()),
+                Rectangle::new(rect.loc, (width, top_h).into()),
+                Rectangle::new((rect.loc.x, bot_y).into(), (width, bot_h).into()),
             )
         }
     }
@@ -220,6 +222,16 @@ mod tests {
 
     use super::{split_rect, SplitDir};
 
+    fn assert_positive_sizes(
+        left: Rectangle<i32, super::Logical>,
+        right: Rectangle<i32, super::Logical>,
+    ) {
+        assert!(left.size.w >= 1);
+        assert!(left.size.h >= 1);
+        assert!(right.size.w >= 1);
+        assert!(right.size.h >= 1);
+    }
+
     #[test]
     fn split_rect_horizontal_applies_gap_and_ratio() {
         let rect = Rectangle::new((10, 20).into(), (100, 50).into());
@@ -280,5 +292,33 @@ mod tests {
         assert_eq!(top_max.size.h, 97);
         assert_eq!(bottom_max.loc.y, 101);
         assert_eq!(bottom_max.size.h, 1);
+    }
+
+    #[test]
+    fn split_rect_horizontal_width_zero_keeps_sizes_positive() {
+        let rect = Rectangle::new((0, 0).into(), (0, 10).into());
+        let (left, right) = split_rect(rect, SplitDir::Horizontal, 0.5, 4);
+        assert_positive_sizes(left, right);
+    }
+
+    #[test]
+    fn split_rect_horizontal_width_one_keeps_sizes_positive() {
+        let rect = Rectangle::new((0, 0).into(), (1, 10).into());
+        let (left, right) = split_rect(rect, SplitDir::Horizontal, 0.5, 4);
+        assert_positive_sizes(left, right);
+    }
+
+    #[test]
+    fn split_rect_vertical_height_zero_keeps_sizes_positive() {
+        let rect = Rectangle::new((0, 0).into(), (10, 0).into());
+        let (top, bottom) = split_rect(rect, SplitDir::Vertical, 0.5, 4);
+        assert_positive_sizes(top, bottom);
+    }
+
+    #[test]
+    fn split_rect_vertical_height_one_keeps_sizes_positive() {
+        let rect = Rectangle::new((0, 0).into(), (10, 1).into());
+        let (top, bottom) = split_rect(rect, SplitDir::Vertical, 0.5, 4);
+        assert_positive_sizes(top, bottom);
     }
 }
