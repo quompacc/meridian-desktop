@@ -49,15 +49,16 @@ const PINNED_CANDIDATES: &[&str] = &[
 const XDG_DATA_DIRS_DEFAULT: &str = "/usr/local/share:/usr/share";
 const MERIDIAN_DESKTOP_ENV: &str = "Meridian";
 const SELECTED_EXEC_HINT_COLOR: Color = Color::rgb(0x3a, 0x3a, 0x44);
+const FOOTER_TOP_GAP: i32 = 6;
 const FOOTER_BOTTOM_MARGIN: i32 = 10;
-const FOOTER_LABEL_OFFSET: i32 = 12;
-const FOOTER_SEPARATOR_OFFSET: i32 = 8;
+const FOOTER_BAR_V_PADDING: i32 = 3;
 const FOOTER_SECTION_GAP: i32 = 12;
 const FOOTER_LEFT_MIN_W: i32 = 120;
-const FOOTER_MODE_PILL_W: i32 = 92;
-const FOOTER_MODE_PILL_H: i32 = 28;
-const FOOTER_ACTION_BUTTON_MIN_W: i32 = 210;
-const FOOTER_ACTION_BUTTON_MAX_W: i32 = 300;
+const FOOTER_MODE_PILL_W: i32 = 82;
+const FOOTER_MODE_PILL_H: i32 = 24;
+const FOOTER_ACTION_BUTTON_H: i32 = 28;
+const FOOTER_ACTION_BUTTON_MIN_W: i32 = 150;
+const FOOTER_ACTION_BUTTON_MAX_W: i32 = 220;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SidebarCategory {
@@ -178,21 +179,9 @@ impl LauncherAction {
         }
     }
 
-    fn hint(self) -> &'static str {
-        match self {
-            Self::ExitMeridian => "Exit compositor session",
-        }
-    }
-
     fn confirm_label(self) -> &'static str {
         match self {
-            Self::ExitMeridian => "Confirm Exit Meridian",
-        }
-    }
-
-    fn confirm_hint(self) -> &'static str {
-        match self {
-            Self::ExitMeridian => "Press Enter/click again to exit",
+            Self::ExitMeridian => "Confirm Exit",
         }
     }
 }
@@ -1078,18 +1067,18 @@ fn compute_launcher_layout(width: u32, height: u32, footer_rows: usize) -> Launc
     };
 
     let footer_rows = footer_rows as i32;
-    let footer_content_h = if footer_rows == 0 {
+    let footer_h = if footer_rows == 0 {
         0
     } else {
-        footer_rows * tokens::launcher::APP_ROW_H
+        footer_rows * FOOTER_ACTION_BUTTON_H
             + footer_rows.saturating_sub(1) * tokens::launcher::ROW_GAP
+            + FOOTER_BAR_V_PADDING * 2
     };
-    let footer_content_y = layout.y + layout.h - footer_content_h - FOOTER_BOTTOM_MARGIN;
     let footer = Rect {
         x: content.x,
-        y: footer_content_y - FOOTER_LABEL_OFFSET,
+        y: layout.y + layout.h - footer_h - FOOTER_BOTTOM_MARGIN,
         w: content.w,
-        h: footer_content_h + FOOTER_LABEL_OFFSET,
+        h: footer_h,
     };
 
     let available_split_w = (footer.w - FOOTER_SECTION_GAP).max(0);
@@ -1097,15 +1086,15 @@ fn compute_launcher_layout(width: u32, height: u32, footer_rows: usize) -> Launc
     let right_w = (available_split_w - left_w).max(0);
     let footer_left = Rect {
         x: footer.x,
-        y: footer_content_y,
+        y: footer.y,
         w: left_w,
-        h: footer_content_h,
+        h: footer.h,
     };
     let footer_right = Rect {
         x: footer_left.x + footer_left.w + FOOTER_SECTION_GAP,
-        y: footer_content_y,
+        y: footer.y,
         w: right_w,
-        h: footer_content_h,
+        h: footer.h,
     };
 
     let results_y = search.y + search.h + tokens::launcher::LIST_TOP_GAP + 6;
@@ -1113,7 +1102,7 @@ fn compute_launcher_layout(width: u32, height: u32, footer_rows: usize) -> Launc
         x: content.x,
         y: results_y,
         w: content.w,
-        h: (footer.y - results_y).max(0),
+        h: (footer.y - FOOTER_TOP_GAP - results_y).max(0),
     };
 
     LauncherLayout {
@@ -1489,35 +1478,28 @@ pub fn draw_launcher(
     }
 
     if !actions.is_empty() {
-        let footer_y = layout.footer_right.y;
+        let footer_y = layout.footer.y + FOOTER_BAR_V_PADDING;
+        let control_center_y = layout.footer.y + (layout.footer.h - FOOTER_MODE_PILL_H) / 2;
         fill_surface_with_radius(
             painter,
             layout.footer,
             theme,
-            SurfaceKind::Surface,
-            tokens::launcher::SEARCH_RADIUS,
+            SurfaceKind::Background,
+            tokens::launcher::LIST_ROW_RADIUS,
         );
         painter.rect(
             Rect {
                 x: layout.footer.x,
-                y: footer_y - FOOTER_SEPARATOR_OFFSET,
+                y: layout.footer.y - (FOOTER_TOP_GAP / 2).max(1),
                 w: layout.footer.w,
                 h: 1,
             },
             colors.border,
         );
-        painter.text_clipped(
-            font,
-            "Session",
-            layout.footer.x,
-            layout.footer.y,
-            layout.footer.w,
-            colors.border,
-        );
 
         let mode_pill_rect = Rect {
             x: layout.footer_left.x + tokens::launcher::INNER_PADDING,
-            y: footer_y + (tokens::launcher::APP_ROW_H - FOOTER_MODE_PILL_H) / 2,
+            y: control_center_y,
             w: FOOTER_MODE_PILL_W.min(
                 (layout.footer_left.w - tokens::launcher::INNER_PADDING * 2)
                     .max(FOOTER_MODE_PILL_W / 2),
@@ -1557,7 +1539,7 @@ pub fn draw_launcher(
                 x: layout.footer_right.x + layout.footer_right.w - action_button_w,
                 y: action_y,
                 w: action_button_w,
-                h: tokens::launcher::APP_ROW_H,
+                h: FOOTER_ACTION_BUTTON_H,
             };
             let row_state = if is_selected {
                 InteractiveState::Selected
@@ -1565,45 +1547,18 @@ pub fn draw_launcher(
                 InteractiveState::Default
             };
             let text_color = draw_panel_button(painter, rect, theme, row_state);
-            let badge_x = rect.x + tokens::launcher::INNER_PADDING - 1;
-            let badge_y = rect.y + (rect.h - tokens::badge::SIZE) / 2;
-            let text_x = badge_x + tokens::badge::SIZE + tokens::badge::CONTENT_GAP;
-            let badge_rect = Rect {
-                x: badge_x,
-                y: badge_y,
-                w: tokens::badge::SIZE,
-                h: tokens::badge::SIZE,
-            };
-            draw_initial_badge(painter, font, badge_rect, "!", theme, row_state);
             let label = if awaiting_confirmation {
                 action.confirm_label()
             } else {
                 action.label()
             };
-            let hint = if awaiting_confirmation {
-                action.confirm_hint()
-            } else {
-                action.hint()
-            };
             painter.text_clipped(
                 font,
                 label,
-                text_x,
-                rect.y + 17,
-                rect.w - (text_x - rect.x) - tokens::launcher::INNER_PADDING,
+                rect.x + tokens::launcher::INNER_PADDING,
+                rect.y + 18,
+                rect.w - tokens::launcher::INNER_PADDING * 2,
                 text_color,
-            );
-            painter.text_clipped(
-                font,
-                hint,
-                text_x,
-                rect.y + 32,
-                rect.w - (text_x - rect.x) - tokens::launcher::INNER_PADDING,
-                if is_selected {
-                    SELECTED_EXEC_HINT_COLOR
-                } else {
-                    colors.border
-                },
             );
             launcher_state.clicks.push(ClickZone {
                 rect,
@@ -1655,7 +1610,7 @@ mod tests {
         app_initial, compute_launcher_layout, desktop_app_dirs, is_executable_available,
         parse_exec_argv, ClickAction, ClickZone, DesktopApp, LauncherAction,
         LauncherActionActivationResult, LauncherInputResult, LauncherState, Rect, SidebarCategory,
-        MAX_RESULTS, XDG_DATA_DIRS_DEFAULT,
+        FOOTER_ACTION_BUTTON_H, FOOTER_BAR_V_PADDING, MAX_RESULTS, XDG_DATA_DIRS_DEFAULT,
     };
 
     static TEST_ID: AtomicU64 = AtomicU64::new(1);
@@ -2149,6 +2104,15 @@ Exec=viewer %U
         let layout = compute_launcher_layout(720, 520, 1);
         let results_bottom = layout.results.y + layout.results.h;
         assert!(results_bottom <= layout.footer_right.y);
+    }
+
+    #[test]
+    fn computed_layout_footer_height_is_compact_for_single_action() {
+        let layout = compute_launcher_layout(720, 520, 1);
+        assert_eq!(
+            layout.footer.h,
+            FOOTER_ACTION_BUTTON_H + FOOTER_BAR_V_PADDING * 2
+        );
     }
 
     #[test]
