@@ -49,6 +49,11 @@ const PINNED_CANDIDATES: &[&str] = &[
 const XDG_DATA_DIRS_DEFAULT: &str = "/usr/local/share:/usr/share";
 const MERIDIAN_DESKTOP_ENV: &str = "Meridian";
 const SELECTED_EXEC_HINT_COLOR: Color = Color::rgb(0x3a, 0x3a, 0x44);
+const FOOTER_BOTTOM_MARGIN: i32 = 10;
+const FOOTER_LABEL_OFFSET: i32 = 12;
+const FOOTER_SEPARATOR_OFFSET: i32 = 8;
+const FOOTER_SECTION_GAP: i32 = 12;
+const FOOTER_LEFT_MIN_W: i32 = 120;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SidebarCategory {
@@ -1010,6 +1015,117 @@ pub enum LauncherInputResult {
     Action(LauncherAction),
 }
 
+#[derive(Debug, Clone, Copy)]
+struct LauncherLayout {
+    card: Rect,
+    layout: Rect,
+    sidebar: Rect,
+    content: Rect,
+    header: Rect,
+    search: Rect,
+    results: Rect,
+    footer: Rect,
+    footer_left: Rect,
+    footer_right: Rect,
+}
+
+fn compute_launcher_layout(width: u32, height: u32, footer_rows: usize) -> LauncherLayout {
+    let card = Rect {
+        x: tokens::launcher::OUTER_PADDING / 2,
+        y: tokens::launcher::OUTER_PADDING / 2,
+        w: width as i32 - tokens::launcher::OUTER_PADDING,
+        h: height as i32 - tokens::launcher::OUTER_PADDING,
+    };
+
+    let layout = Rect {
+        x: card.x + tokens::launcher::OUTER_PADDING / 2,
+        y: card.y + tokens::launcher::OUTER_PADDING / 2,
+        w: card.w - tokens::launcher::OUTER_PADDING,
+        h: card.h - tokens::launcher::OUTER_PADDING,
+    };
+
+    let sidebar = Rect {
+        x: layout.x,
+        y: layout.y,
+        w: tokens::launcher::SIDEBAR_W,
+        h: layout.h,
+    };
+
+    let content_x = sidebar.x + sidebar.w + tokens::launcher::OUTER_PADDING;
+    let content = Rect {
+        x: content_x,
+        y: layout.y,
+        w: (layout.x + layout.w) - content_x,
+        h: layout.h,
+    };
+
+    let header = Rect {
+        x: content.x,
+        y: content.y,
+        w: content.w,
+        h: tokens::launcher::HEADER_H,
+    };
+
+    let search = Rect {
+        x: content.x,
+        y: content.y + tokens::launcher::HEADER_H + 6,
+        w: content.w,
+        h: tokens::launcher::SEARCH_H,
+    };
+
+    let footer_rows = footer_rows as i32;
+    let footer_content_h = if footer_rows == 0 {
+        0
+    } else {
+        footer_rows * tokens::launcher::APP_ROW_H
+            + footer_rows.saturating_sub(1) * tokens::launcher::ROW_GAP
+    };
+    let footer_content_y = layout.y + layout.h - footer_content_h - FOOTER_BOTTOM_MARGIN;
+    let footer = Rect {
+        x: content.x,
+        y: footer_content_y - FOOTER_LABEL_OFFSET,
+        w: content.w,
+        h: footer_content_h + FOOTER_LABEL_OFFSET,
+    };
+
+    let available_split_w = (footer.w - FOOTER_SECTION_GAP).max(0);
+    let left_w = ((available_split_w / 3).max(FOOTER_LEFT_MIN_W)).min(available_split_w);
+    let right_w = (available_split_w - left_w).max(0);
+    let footer_left = Rect {
+        x: footer.x,
+        y: footer_content_y,
+        w: left_w,
+        h: footer_content_h,
+    };
+    let footer_right = Rect {
+        x: footer_left.x + footer_left.w + FOOTER_SECTION_GAP,
+        y: footer_content_y,
+        w: right_w,
+        h: footer_content_h,
+    };
+
+    let results_y = search.y + search.h + tokens::launcher::LIST_TOP_GAP + 6;
+    let results = Rect {
+        x: content.x,
+        y: results_y,
+        w: content.w,
+        h: (footer.y - results_y).max(0),
+    };
+
+    LauncherLayout {
+        card,
+        layout,
+        sidebar,
+        content,
+        header,
+        search,
+        results,
+        footer,
+        footer_left,
+        footer_right,
+    }
+}
+
 pub fn draw_launcher(
     launcher_state: &mut LauncherState,
     painter: &mut Painter<'_>,
@@ -1024,49 +1140,31 @@ pub fn draw_launcher(
 
     let colors = &theme.colors;
     painter.clear(colors.surface);
-    let card = Rect {
-        x: tokens::launcher::OUTER_PADDING / 2,
-        y: tokens::launcher::OUTER_PADDING / 2,
-        w: width as i32 - tokens::launcher::OUTER_PADDING,
-        h: height as i32 - tokens::launcher::OUTER_PADDING,
-    };
+    let actions = launcher_state.visible_actions();
+    let layout = compute_launcher_layout(width, height, actions.len());
     fill_surface_with_radius(
         painter,
-        card,
+        layout.card,
         theme,
         SurfaceKind::Background,
         tokens::launcher::CARD_RADIUS,
     );
 
-    let layout_x = card.x + tokens::launcher::OUTER_PADDING / 2;
-    let layout_y = card.y + tokens::launcher::OUTER_PADDING / 2;
-    let layout_w = card.w - tokens::launcher::OUTER_PADDING;
-    let layout_h = card.h - tokens::launcher::OUTER_PADDING;
-
-    let sidebar_rect = Rect {
-        x: layout_x,
-        y: layout_y,
-        w: tokens::launcher::SIDEBAR_W,
-        h: layout_h,
-    };
     fill_surface_with_radius(
         painter,
-        sidebar_rect,
+        layout.sidebar,
         theme,
         SurfaceKind::Background,
         tokens::launcher::SIDEBAR_RADIUS,
     );
 
-    let content_x = sidebar_rect.x + sidebar_rect.w + tokens::launcher::OUTER_PADDING;
-    let content_w = (layout_x + layout_w) - content_x;
-    let content_top = layout_y;
-    let separator_x = content_x - (tokens::launcher::OUTER_PADDING / 2);
+    let separator_x = layout.content.x - (tokens::launcher::OUTER_PADDING / 2);
     painter.rect(
         Rect {
             x: separator_x,
-            y: layout_y + 6,
+            y: layout.layout.y + 6,
             w: 1,
-            h: (layout_h - 12).max(0),
+            h: (layout.layout.h - 12).max(0),
         },
         colors.border,
     );
@@ -1075,23 +1173,16 @@ pub fn draw_launcher(
 
     let visible = launcher_state.visible_apps();
     let apps = visible.apps;
-    let actions = launcher_state.visible_actions();
     let results_total = visible.total_results + actions.len();
     let pinned_count = visible.pinned_count;
     let selected_idx = launcher_state.selected_index_clamped(apps.len() + actions.len());
 
-    let header_rect = Rect {
-        x: content_x,
-        y: content_top,
-        w: content_w,
-        h: tokens::launcher::HEADER_H,
-    };
     painter.text_clipped(
         font,
         "Launcher",
-        header_rect.x,
-        header_rect.y + 16,
-        header_rect.w - 120,
+        layout.header.x,
+        layout.header.y + 16,
+        layout.header.w - 120,
         colors.text,
     );
     let count_text = if results_total == 1 {
@@ -1102,21 +1193,15 @@ pub fn draw_launcher(
     painter.text_clipped(
         font,
         &count_text,
-        header_rect.x + header_rect.w - 110,
-        header_rect.y + tokens::launcher::HEADER_H + 1,
+        layout.header.x + layout.header.w - 110,
+        layout.header.y + tokens::launcher::HEADER_H + 1,
         110,
         colors.border,
     );
 
-    let search_rect = Rect {
-        x: content_x,
-        y: content_top + tokens::launcher::HEADER_H + 6,
-        w: content_w,
-        h: tokens::launcher::SEARCH_H,
-    };
     fill_surface_with_radius(
         painter,
-        search_rect,
+        layout.search,
         theme,
         SurfaceKind::Surface,
         tokens::launcher::SEARCH_RADIUS,
@@ -1134,21 +1219,21 @@ pub fn draw_launcher(
     painter.text_clipped(
         font,
         query_text,
-        search_rect.x + tokens::launcher::INNER_PADDING,
-        search_rect.y + 28,
-        search_rect.w - tokens::launcher::INNER_PADDING * 2,
+        layout.search.x + tokens::launcher::INNER_PADDING,
+        layout.search.y + 28,
+        layout.search.w - tokens::launcher::INNER_PADDING * 2,
         query_color,
     );
 
-    let mut y = search_rect.y + tokens::launcher::SEARCH_H + tokens::launcher::LIST_TOP_GAP + 6;
+    let mut y = layout.results.y;
 
-    let mut sidebar_item_y = sidebar_rect.y + 8;
+    let mut sidebar_item_y = layout.sidebar.y + 8;
     let mut all_apps_label_bottom = sidebar_item_y;
     for category in [SidebarCategory::Favorites, SidebarCategory::AllApps] {
         let label_rect = Rect {
-            x: sidebar_rect.x + 8,
+            x: layout.sidebar.x + 8,
             y: sidebar_item_y,
-            w: sidebar_rect.w - 16,
+            w: layout.sidebar.w - 16,
             h: if category == SidebarCategory::Favorites {
                 26
             } else {
@@ -1197,9 +1282,9 @@ pub fn draw_launcher(
     let categories_top = all_apps_label_bottom + 12;
     painter.rect(
         Rect {
-            x: sidebar_rect.x + 12,
+            x: layout.sidebar.x + 12,
             y: categories_top,
-            w: sidebar_rect.w - 24,
+            w: layout.sidebar.w - 24,
             h: 1,
         },
         colors.border,
@@ -1214,9 +1299,9 @@ pub fn draw_launcher(
         SidebarCategory::Games,
     ] {
         let label_rect = Rect {
-            x: sidebar_rect.x + 8,
+            x: layout.sidebar.x + 8,
             y: category_y - 14,
-            w: sidebar_rect.w - 16,
+            w: layout.sidebar.w - 16,
             h: 24,
         };
         let is_active =
@@ -1254,9 +1339,9 @@ pub fn draw_launcher(
             "No results. Refine your search"
         };
         let empty_rect = Rect {
-            x: content_x,
+            x: layout.content.x,
             y,
-            w: content_w,
+            w: layout.content.w,
             h: tokens::launcher::APP_ROW_H,
         };
         fill_surface_with_radius(
@@ -1281,15 +1366,23 @@ pub fn draw_launcher(
         && launcher_state.sidebar_category == SidebarCategory::Favorites
         && pinned_count > 0;
     if show_pinned_grid {
-        painter.text_clipped(font, "Pinned", content_x, y + 13, content_w, colors.border);
+        painter.text_clipped(
+            font,
+            "Pinned",
+            layout.content.x,
+            y + 13,
+            layout.content.w,
+            colors.border,
+        );
         y += tokens::launcher::SECTION_LABEL_H + 2;
 
-        let card_w = (content_w - tokens::launcher::PINNED_GRID_COL_GAP) / PINNED_GRID_COLS as i32;
+        let card_w =
+            (layout.content.w - tokens::launcher::PINNED_GRID_COL_GAP) / PINNED_GRID_COLS as i32;
         for (index, app) in apps.iter().take(pinned_count).enumerate() {
             let row = index / PINNED_GRID_COLS;
             let col = index % PINNED_GRID_COLS;
             let rect = Rect {
-                x: content_x + col as i32 * (card_w + tokens::launcher::PINNED_GRID_COL_GAP),
+                x: layout.content.x + col as i32 * (card_w + tokens::launcher::PINNED_GRID_COL_GAP),
                 y: y + row as i32
                     * (tokens::launcher::PINNED_CARD_H + tokens::launcher::PINNED_GRID_ROW_GAP),
                 w: card_w,
@@ -1337,9 +1430,9 @@ pub fn draw_launcher(
         for (index, app) in apps.iter().enumerate() {
             let is_selected = index == selected_idx;
             let rect = Rect {
-                x: content_x,
+                x: layout.content.x,
                 y,
-                w: content_w,
+                w: layout.content.w,
                 h: tokens::launcher::APP_ROW_H,
             };
             let row_state = if is_selected {
@@ -1392,15 +1485,12 @@ pub fn draw_launcher(
     }
 
     if !actions.is_empty() {
-        let footer_rows = actions.len() as i32;
-        let footer_h = footer_rows * tokens::launcher::APP_ROW_H
-            + footer_rows.saturating_sub(1) * tokens::launcher::ROW_GAP;
-        let footer_y = layout_y + layout_h - footer_h - 10;
+        let footer_y = layout.footer_right.y;
         painter.rect(
             Rect {
-                x: content_x,
-                y: footer_y - 8,
-                w: content_w,
+                x: layout.footer.x,
+                y: footer_y - FOOTER_SEPARATOR_OFFSET,
+                w: layout.footer.w,
                 h: 1,
             },
             colors.border,
@@ -1408,9 +1498,17 @@ pub fn draw_launcher(
         painter.text_clipped(
             font,
             "Session",
-            content_x,
-            footer_y - 12,
-            content_w,
+            layout.footer.x,
+            layout.footer.y,
+            layout.footer.w,
+            colors.border,
+        );
+        painter.text_clipped(
+            font,
+            "Apps",
+            layout.footer_left.x + tokens::launcher::INNER_PADDING,
+            footer_y + 24,
+            layout.footer_left.w - tokens::launcher::INNER_PADDING,
             colors.border,
         );
 
@@ -1420,9 +1518,9 @@ pub fn draw_launcher(
             let is_selected = index == selected_idx;
             let awaiting_confirmation = launcher_state.pending_action_confirmation == Some(*action);
             let rect = Rect {
-                x: content_x,
+                x: layout.footer_right.x,
                 y: action_y,
-                w: content_w,
+                w: layout.footer_right.w,
                 h: tokens::launcher::APP_ROW_H,
             };
             let row_state = if is_selected {
@@ -1518,9 +1616,10 @@ mod tests {
     };
 
     use super::{
-        app_initial, desktop_app_dirs, is_executable_available, parse_exec_argv, ClickAction,
-        ClickZone, DesktopApp, LauncherAction, LauncherActionActivationResult, LauncherInputResult,
-        LauncherState, Rect, SidebarCategory, MAX_RESULTS, XDG_DATA_DIRS_DEFAULT,
+        app_initial, compute_launcher_layout, desktop_app_dirs, is_executable_available,
+        parse_exec_argv, ClickAction, ClickZone, DesktopApp, LauncherAction,
+        LauncherActionActivationResult, LauncherInputResult, LauncherState, Rect, SidebarCategory,
+        MAX_RESULTS, XDG_DATA_DIRS_DEFAULT,
     };
 
     static TEST_ID: AtomicU64 = AtomicU64::new(1);
@@ -1986,6 +2085,34 @@ Exec=viewer %U
 
         let launch = state.handle_key(None, false, true, false, false, false);
         assert!(matches!(launch, LauncherInputResult::Launch(1)));
+    }
+
+    #[test]
+    fn computed_layout_footer_is_below_results_area() {
+        let layout = compute_launcher_layout(720, 520, 1);
+        let results_bottom = layout.results.y + layout.results.h;
+        assert!(results_bottom <= layout.footer.y);
+    }
+
+    #[test]
+    fn computed_layout_footer_sections_fit_inside_footer_and_do_not_overlap() {
+        let layout = compute_launcher_layout(720, 520, 1);
+        assert!(layout.footer_left.x >= layout.footer.x);
+        assert!(layout.footer_right.x >= layout.footer.x);
+        assert!(layout.footer_left.x + layout.footer_left.w <= layout.footer.x + layout.footer.w);
+        assert!(layout.footer_right.x + layout.footer_right.w <= layout.footer.x + layout.footer.w);
+        assert!(layout.footer_left.y >= layout.footer.y);
+        assert!(layout.footer_right.y >= layout.footer.y);
+        assert!(layout.footer_left.y + layout.footer_left.h <= layout.footer.y + layout.footer.h);
+        assert!(layout.footer_right.y + layout.footer_right.h <= layout.footer.y + layout.footer.h);
+        assert!(layout.footer_left.x + layout.footer_left.w <= layout.footer_right.x);
+    }
+
+    #[test]
+    fn computed_layout_results_end_before_footer_content_starts() {
+        let layout = compute_launcher_layout(720, 520, 1);
+        let results_bottom = layout.results.y + layout.results.h;
+        assert!(results_bottom <= layout.footer_right.y);
     }
 
     #[test]
