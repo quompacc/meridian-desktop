@@ -6,6 +6,12 @@ pub(crate) struct ScreenshotPolicy;
 static LAST_EVALUATED_CLIENT_ID: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 
+#[cfg(test)]
+pub(crate) fn screenshot_policy_test_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ScreenshotPolicyContext {
     pub client_id: u64,
@@ -79,7 +85,10 @@ mod tests {
         ScreenshotBridgeRequest, ScreenshotKind, ScreenshotRequestMetadata, ScreenshotRequestOrigin,
     };
 
-    use super::{ScreenshotPolicy, ScreenshotPolicyContext, ScreenshotPolicyDecision};
+    use super::{
+        screenshot_policy_test_lock, ScreenshotPolicy, ScreenshotPolicyContext,
+        ScreenshotPolicyDecision,
+    };
 
     fn valid_request() -> ScreenshotBridgeRequest {
         ScreenshotBridgeRequest {
@@ -99,6 +108,7 @@ mod tests {
 
     #[test]
     fn valid_full_output_is_denied_by_default() {
+        let _guard = screenshot_policy_test_lock().lock().expect("test lock");
         let decision =
             ScreenshotPolicy::evaluate(&valid_request(), ScreenshotPolicyContext { client_id: 7 });
         assert_eq!(decision, ScreenshotPolicyDecision::Deny);
@@ -106,6 +116,7 @@ mod tests {
 
     #[test]
     fn region_request_is_unsupported() {
+        let _guard = screenshot_policy_test_lock().lock().expect("test lock");
         let mut request = valid_request();
         request.region = Some(meridian_ipc::ScreenshotRegion {
             x: 0,
@@ -125,6 +136,7 @@ mod tests {
 
     #[test]
     fn invalid_request_is_invalid() {
+        let _guard = screenshot_policy_test_lock().lock().expect("test lock");
         let mut request = valid_request();
         request.request_id = " ".to_string();
         let decision =
@@ -137,6 +149,7 @@ mod tests {
 
     #[test]
     fn unknown_requester_is_denied_safely() {
+        let _guard = screenshot_policy_test_lock().lock().expect("test lock");
         let mut request = valid_request();
         request.metadata.requester = None;
         request.metadata.identity_trusted = false;

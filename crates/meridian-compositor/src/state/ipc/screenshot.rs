@@ -34,10 +34,13 @@ mod tests {
     };
 
     use super::handle_screenshot_bridge_request;
-    use crate::state::ipc::screenshot_policy::last_evaluated_client_id_for_test;
+    use crate::state::ipc::screenshot_policy::{
+        last_evaluated_client_id_for_test, screenshot_policy_test_lock,
+    };
 
     #[test]
     fn invalid_request_is_rejected() {
+        let _guard = screenshot_policy_test_lock().lock().expect("test lock");
         let request = ScreenshotBridgeRequest {
             request_id: " ".to_string(),
             kind: ScreenshotKind::FullOutput,
@@ -64,6 +67,7 @@ mod tests {
 
     #[test]
     fn deny_only_response_is_stable_for_valid_request() {
+        let _guard = screenshot_policy_test_lock().lock().expect("test lock");
         let request = ScreenshotBridgeRequest {
             request_id: "req-bridge-1".to_string(),
             kind: ScreenshotKind::FullOutput,
@@ -90,6 +94,7 @@ mod tests {
 
     #[test]
     fn region_request_keeps_unsupported_semantics() {
+        let _guard = screenshot_policy_test_lock().lock().expect("test lock");
         let request = ScreenshotBridgeRequest {
             request_id: "req-bridge-2".to_string(),
             kind: ScreenshotKind::FullOutput,
@@ -121,6 +126,7 @@ mod tests {
 
     #[test]
     fn nonzero_client_id_is_forwarded_to_policy_context() {
+        let _guard = screenshot_policy_test_lock().lock().expect("test lock");
         let request = ScreenshotBridgeRequest {
             request_id: "req-bridge-3".to_string(),
             kind: ScreenshotKind::FullOutput,
