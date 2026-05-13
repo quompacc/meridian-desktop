@@ -91,7 +91,16 @@ fn window_is_output_fullscreen_shape(state: &MeridianState, window: &Window) -> 
 }
 
 fn x11_resize_edge_to_resize_edge(edges: X11ResizeEdge) -> ResizeEdge {
-    ResizeEdge::from_bits(edges as u32).unwrap_or(ResizeEdge::empty())
+    match edges {
+        X11ResizeEdge::Top => ResizeEdge::TOP,
+        X11ResizeEdge::Bottom => ResizeEdge::BOTTOM,
+        X11ResizeEdge::Left => ResizeEdge::LEFT,
+        X11ResizeEdge::Right => ResizeEdge::RIGHT,
+        X11ResizeEdge::TopLeft => ResizeEdge::TOP_LEFT,
+        X11ResizeEdge::TopRight => ResizeEdge::TOP_RIGHT,
+        X11ResizeEdge::BottomLeft => ResizeEdge::BOTTOM_LEFT,
+        X11ResizeEdge::BottomRight => ResizeEdge::BOTTOM_RIGHT,
+    }
 }
 
 pub fn start_xwayland(state: &mut MeridianState) {
