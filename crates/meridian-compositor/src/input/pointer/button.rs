@@ -320,7 +320,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                             .filter_map(|candidate| {
                                 candidate.wl_surface().map(|surface| surface.into_owned())
                             })
-                            .last();
+                            .next_back();
                         if let Some(surface) = fallback_surface {
                             state
                                 .set_keyboard_focus_with_decorations(Some(surface.clone()), serial);
