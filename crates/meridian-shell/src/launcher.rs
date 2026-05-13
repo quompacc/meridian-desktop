@@ -70,6 +70,9 @@ const SIDEBAR_SECTION_GAP: i32 = 12;
 const SIDEBAR_DIVIDER_X_INSET: i32 = 12;
 const SIDEBAR_DIVIDER_MARGIN_TOP: i32 = 10;
 const SIDEBAR_DIVIDER_TO_LIST_GAP: i32 = 10;
+const PINNED_APP_TITLE_BASELINE_OFFSET: i32 = 20;
+const APP_ROW_TITLE_BASELINE_OFFSET: i32 = 16;
+const APP_ROW_SUBTITLE_BASELINE_OFFSET: i32 = 30;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SidebarCategory {
@@ -1394,7 +1397,7 @@ pub fn draw_launcher(
             } else {
                 InteractiveState::Default
             };
-            let text_color = draw_list_item(painter, rect, theme, row_state, true);
+            let text_color = draw_list_item(painter, rect, theme, row_state, false);
             let badge_rect = Rect {
                 x: badge_x,
                 y: badge_y,
@@ -1406,7 +1409,7 @@ pub fn draw_launcher(
                 font,
                 &app.name,
                 text_x,
-                rect.y + 21,
+                rect.y + PINNED_APP_TITLE_BASELINE_OFFSET,
                 rect.w - (text_x - rect.x) - tokens::launcher::INNER_PADDING,
                 text_color,
             );
@@ -1436,7 +1439,7 @@ pub fn draw_launcher(
             } else {
                 InteractiveState::Default
             };
-            let text_color = draw_list_item(painter, rect, theme, row_state, true);
+            let text_color = draw_list_item(painter, rect, theme, row_state, false);
             let badge_x = rect.x + tokens::launcher::INNER_PADDING - 1;
             let badge_y = rect.y + (rect.h - tokens::badge::SIZE) / 2;
             let text_x = badge_x + tokens::badge::SIZE + tokens::badge::CONTENT_GAP;
@@ -1456,7 +1459,7 @@ pub fn draw_launcher(
                 font,
                 &app.name,
                 text_x,
-                rect.y + 17,
+                rect.y + APP_ROW_TITLE_BASELINE_OFFSET,
                 rect.w - (text_x - rect.x) - tokens::launcher::INNER_PADDING,
                 text_color,
             );
@@ -1464,7 +1467,7 @@ pub fn draw_launcher(
                 font,
                 exec_hint,
                 text_x,
-                rect.y + 32,
+                rect.y + APP_ROW_SUBTITLE_BASELINE_OFFSET,
                 rect.w - (text_x - rect.x) - tokens::launcher::INNER_PADDING,
                 if is_selected {
                     SELECTED_EXEC_HINT_COLOR

@@ -148,7 +148,7 @@ pub fn draw_list_item(
                 painter,
                 rect,
                 theme,
-                SurfaceKind::Surface,
+                SurfaceKind::Background,
                 tokens::launcher::LIST_ROW_RADIUS,
             );
             theme.colors.text
@@ -164,10 +164,10 @@ pub fn draw_list_item(
             if with_selected_marker {
                 painter.rect(
                     Rect {
-                        x: rect.x + 2,
-                        y: rect.y + 2,
-                        w: 3,
-                        h: rect.h - 4,
+                        x: rect.x + 3,
+                        y: rect.y + 3,
+                        w: 2,
+                        h: rect.h - 6,
                     },
                     theme.colors.text,
                 );
