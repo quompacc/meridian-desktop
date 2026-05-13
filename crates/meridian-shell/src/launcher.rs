@@ -685,17 +685,12 @@ impl LauncherState {
     }
 
     fn visible_actions(&self) -> Vec<LauncherAction> {
-        if !self.query.is_empty() {
-            return Vec::new();
-        }
-        if self.sidebar_category == SidebarCategory::System {
-            return vec![LauncherAction::ExitMeridian];
-        }
-        Vec::new()
+        vec![LauncherAction::ExitMeridian]
     }
 
     fn visible_apps(&self) -> VisibleApps {
         let query = self.query.to_lowercase();
+        let app_limit = MAX_RESULTS.saturating_sub(self.visible_actions().len());
         let matching = self
             .apps
             .iter()
@@ -713,7 +708,7 @@ impl LauncherState {
             });
             return VisibleApps {
                 total_results: ranked.len(),
-                apps: ranked.into_iter().take(MAX_RESULTS).collect(),
+                apps: ranked.into_iter().take(app_limit).collect(),
                 pinned_count: 0,
             };
         }
@@ -721,7 +716,7 @@ impl LauncherState {
         if self.sidebar_category == SidebarCategory::AllApps {
             return VisibleApps {
                 total_results: matching.len(),
-                apps: matching.into_iter().take(MAX_RESULTS).collect(),
+                apps: matching.into_iter().take(app_limit).collect(),
                 pinned_count: 0,
             };
         }
@@ -731,7 +726,6 @@ impl LauncherState {
                 .into_iter()
                 .filter(|app| app_matches_sidebar_category(app, self.sidebar_category))
                 .collect::<Vec<_>>();
-            let app_limit = MAX_RESULTS.saturating_sub(self.visible_actions().len());
             return VisibleApps {
                 total_results: filtered.len(),
                 apps: filtered.into_iter().take(app_limit).collect(),
@@ -754,7 +748,7 @@ impl LauncherState {
         if pinned.is_empty() {
             return VisibleApps {
                 total_results: matching.len(),
-                apps: matching.into_iter().take(MAX_RESULTS).collect(),
+                apps: matching.into_iter().take(app_limit).collect(),
                 pinned_count: 0,
             };
         }
@@ -1339,64 +1333,62 @@ pub fn draw_launcher(
         y += 10;
     }
 
-    if show_pinned_grid {
-        return;
-    }
-
-    for (index, app) in apps.iter().enumerate() {
-        let is_selected = index == selected_idx;
-        let rect = Rect {
-            x: content_x,
-            y,
-            w: content_w,
-            h: tokens::launcher::APP_ROW_H,
-        };
-        let row_state = if is_selected {
-            InteractiveState::Selected
-        } else {
-            InteractiveState::Default
-        };
-        let text_color = draw_list_item(painter, rect, theme, row_state, true);
-        let badge_x = rect.x + tokens::launcher::INNER_PADDING - 1;
-        let badge_y = rect.y + (rect.h - tokens::badge::SIZE) / 2;
-        let text_x = badge_x + tokens::badge::SIZE + tokens::badge::CONTENT_GAP;
-        let initial = app_initial(&app.name);
-        let badge_rect = Rect {
-            x: badge_x,
-            y: badge_y,
-            w: tokens::badge::SIZE,
-            h: tokens::badge::SIZE,
-        };
-        draw_initial_badge(painter, font, badge_rect, &initial, theme, row_state);
-        let exec_hint = Path::new(&app.program)
-            .file_name()
-            .and_then(|name| name.to_str())
-            .unwrap_or(&app.program);
-        painter.text_clipped(
-            font,
-            &app.name,
-            text_x,
-            rect.y + 17,
-            rect.w - (text_x - rect.x) - tokens::launcher::INNER_PADDING,
-            text_color,
-        );
-        painter.text_clipped(
-            font,
-            exec_hint,
-            text_x,
-            rect.y + 32,
-            rect.w - (text_x - rect.x) - tokens::launcher::INNER_PADDING,
-            if is_selected {
-                SELECTED_EXEC_HINT_COLOR
+    if !show_pinned_grid {
+        for (index, app) in apps.iter().enumerate() {
+            let is_selected = index == selected_idx;
+            let rect = Rect {
+                x: content_x,
+                y,
+                w: content_w,
+                h: tokens::launcher::APP_ROW_H,
+            };
+            let row_state = if is_selected {
+                InteractiveState::Selected
             } else {
-                colors.border
-            },
-        );
-        launcher_state.clicks.push(ClickZone {
-            rect,
-            action: ClickAction::LaunchApp(index),
-        });
-        y += tokens::launcher::APP_ROW_H + tokens::launcher::ROW_GAP;
+                InteractiveState::Default
+            };
+            let text_color = draw_list_item(painter, rect, theme, row_state, true);
+            let badge_x = rect.x + tokens::launcher::INNER_PADDING - 1;
+            let badge_y = rect.y + (rect.h - tokens::badge::SIZE) / 2;
+            let text_x = badge_x + tokens::badge::SIZE + tokens::badge::CONTENT_GAP;
+            let initial = app_initial(&app.name);
+            let badge_rect = Rect {
+                x: badge_x,
+                y: badge_y,
+                w: tokens::badge::SIZE,
+                h: tokens::badge::SIZE,
+            };
+            draw_initial_badge(painter, font, badge_rect, &initial, theme, row_state);
+            let exec_hint = Path::new(&app.program)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or(&app.program);
+            painter.text_clipped(
+                font,
+                &app.name,
+                text_x,
+                rect.y + 17,
+                rect.w - (text_x - rect.x) - tokens::launcher::INNER_PADDING,
+                text_color,
+            );
+            painter.text_clipped(
+                font,
+                exec_hint,
+                text_x,
+                rect.y + 32,
+                rect.w - (text_x - rect.x) - tokens::launcher::INNER_PADDING,
+                if is_selected {
+                    SELECTED_EXEC_HINT_COLOR
+                } else {
+                    colors.border
+                },
+            );
+            launcher_state.clicks.push(ClickZone {
+                rect,
+                action: ClickAction::LaunchApp(index),
+            });
+            y += tokens::launcher::APP_ROW_H + tokens::launcher::ROW_GAP;
+        }
     }
 
     if !actions.is_empty() {
@@ -2013,7 +2005,7 @@ Exec=viewer %U
     }
 
     #[test]
-    fn exit_action_is_hidden_outside_system_or_when_query_is_non_empty() {
+    fn exit_action_is_visible_across_categories_and_query() {
         let mut state = LauncherState {
             open: true,
             query: String::new(),
@@ -2027,13 +2019,13 @@ Exec=viewer %U
             )],
             pending_action_confirmation: None,
         };
-        assert!(state.visible_actions().is_empty());
+        assert_eq!(state.visible_actions(), vec![LauncherAction::ExitMeridian]);
 
         state.sidebar_category = SidebarCategory::System;
         assert_eq!(state.visible_actions(), vec![LauncherAction::ExitMeridian]);
 
         state.query = "alpha".to_string();
-        assert!(state.visible_actions().is_empty());
+        assert_eq!(state.visible_actions(), vec![LauncherAction::ExitMeridian]);
     }
 
     #[test]
@@ -2088,13 +2080,13 @@ Exec=viewer %U
     }
 
     #[test]
-    fn system_category_reserves_visible_slot_for_exit_action_when_app_results_hit_cap() {
+    fn global_footer_reserves_visible_slot_when_app_results_hit_cap() {
         let mut apps = Vec::new();
         for idx in 0..(MAX_RESULTS + 4) {
-            apps.push(app_with_categories(
-                &format!("System App {}", idx),
-                &format!("system-app-{}", idx),
-                &["settings"],
+            apps.push(DesktopApp::new(
+                format!("App {}", idx),
+                vec![format!("app-{}", idx)],
+                false,
             ));
         }
 
@@ -2102,7 +2094,7 @@ Exec=viewer %U
             open: true,
             query: String::new(),
             selected_index: 0,
-            sidebar_category: SidebarCategory::System,
+            sidebar_category: SidebarCategory::AllApps,
             clicks: Vec::new(),
             apps,
             pending_action_confirmation: None,
@@ -2335,7 +2327,10 @@ Exec=viewer %U
         };
 
         let result = state.handle_key(None, false, true, false, false, false);
-        assert!(matches!(result, LauncherInputResult::None));
+        assert!(matches!(
+            result,
+            LauncherInputResult::Action(LauncherAction::ExitMeridian)
+        ));
         assert_eq!(state.selected_index, 5);
     }
 
@@ -2355,7 +2350,10 @@ Exec=viewer %U
         };
 
         let result = state.handle_key(None, false, true, false, false, false);
-        assert!(matches!(result, LauncherInputResult::Launch(1)));
+        assert!(matches!(
+            result,
+            LauncherInputResult::Action(LauncherAction::ExitMeridian)
+        ));
     }
 
     #[test]
