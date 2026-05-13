@@ -12,7 +12,7 @@ use super::{
 };
 
 pub struct TilingLayout {
-    root: Option<Box<Node>>,
+    root: Option<Box<Node<Window>>>,
     pub next_split: SplitDir,
 }
 

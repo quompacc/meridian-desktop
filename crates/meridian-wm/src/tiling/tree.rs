@@ -1,21 +1,18 @@
-use smithay::{
-    desktop::Window,
-    utils::{Logical, Rectangle},
-};
+use smithay::utils::{Logical, Rectangle};
 
 use super::types::SplitDir;
 
-pub(super) enum Node {
-    Leaf(Window),
+pub(super) enum Node<T> {
+    Leaf(T),
     Internal {
         dir: SplitDir,
         ratio: f32,
-        left: Box<Node>,
-        right: Box<Node>,
+        left: Box<Node<T>>,
+        right: Box<Node<T>>,
     },
 }
 
-pub(super) fn collect_windows(node: &Node, out: &mut Vec<Window>) {
+pub(super) fn collect_windows<T: Clone>(node: &Node<T>, out: &mut Vec<T>) {
     match node {
         Node::Leaf(window) => out.push(window.clone()),
         Node::Internal { left, right, .. } => {
@@ -58,12 +55,14 @@ fn split_rect(
     }
 }
 
-pub(super) fn collect_rects(
-    node: &Node,
+pub(super) fn collect_rects<T>(
+    node: &Node<T>,
     rect: Rectangle<i32, Logical>,
     gap: i32,
-    out: &mut Vec<(Window, Rectangle<i32, Logical>)>,
-) {
+    out: &mut Vec<(T, Rectangle<i32, Logical>)>,
+) where
+    T: Clone,
+{
     match node {
         Node::Leaf(window) => out.push((window.clone(), rect)),
         Node::Internal {
@@ -79,12 +78,15 @@ pub(super) fn collect_rects(
     }
 }
 
-pub(super) fn insert_next_to(
-    node: &mut Node,
-    focused: &Window,
-    new_window: Window,
+pub(super) fn insert_next_to<T>(
+    node: &mut Node<T>,
+    focused: &T,
+    new_window: T,
     dir: SplitDir,
-) -> bool {
+) -> bool
+where
+    T: Clone + PartialEq,
+{
     let is_target = matches!(node, Node::Leaf(window) if window == focused);
     if is_target {
         let existing = match node {
@@ -109,7 +111,7 @@ pub(super) fn insert_next_to(
     }
 }
 
-pub(super) fn insert_at_last(node: &mut Node, new_window: Window, dir: SplitDir) {
+pub(super) fn insert_at_last<T: Clone>(node: &mut Node<T>, new_window: T, dir: SplitDir) {
     match node {
         Node::Leaf(window) => {
             let existing = window.clone();
@@ -124,7 +126,10 @@ pub(super) fn insert_at_last(node: &mut Node, new_window: Window, dir: SplitDir)
     }
 }
 
-pub(super) fn remove_from_node(node: Box<Node>, window: &Window) -> (Option<Box<Node>>, bool) {
+pub(super) fn remove_from_node<T>(node: Box<Node<T>>, window: &T) -> (Option<Box<Node<T>>>, bool)
+where
+    T: PartialEq,
+{
     if matches!(node.as_ref(), Node::Leaf(w) if w == window) {
         return (None, true);
     }
@@ -185,12 +190,15 @@ pub(super) fn remove_from_node(node: Box<Node>, window: &Window) -> (Option<Box<
     }
 }
 
-pub(super) fn adjust_split_node(
-    node: &mut Node,
-    window: &Window,
+pub(super) fn adjust_split_node<T>(
+    node: &mut Node<T>,
+    window: &T,
     split_dir: SplitDir,
     delta: f32,
-) -> bool {
+) -> bool
+where
+    T: PartialEq,
+{
     match node {
         Node::Leaf(w) => w == window,
         Node::Internal {
@@ -220,7 +228,10 @@ pub(super) fn adjust_split_node(
 mod tests {
     use smithay::utils::Rectangle;
 
-    use super::{split_rect, SplitDir};
+    use super::{
+        collect_windows, insert_at_last, insert_next_to, remove_from_node, split_rect, Node,
+        SplitDir,
+    };
 
     fn assert_positive_sizes(
         left: Rectangle<i32, super::Logical>,
@@ -320,5 +331,50 @@ mod tests {
         let rect = Rectangle::new((0, 0).into(), (10, 1).into());
         let (top, bottom) = split_rect(rect, SplitDir::Vertical, 0.5, 4);
         assert_positive_sizes(top, bottom);
+    }
+
+    #[test]
+    fn insert_at_last_keeps_deterministic_in_order() {
+        let mut node = Node::Leaf(1_u32);
+        insert_at_last(&mut node, 2, SplitDir::Horizontal);
+        insert_at_last(&mut node, 3, SplitDir::Vertical);
+
+        let mut out = Vec::new();
+        collect_windows(&node, &mut out);
+        assert_eq!(out, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn insert_next_to_inserts_beside_focused_leaf() {
+        let mut node = Node::Leaf(1_u32);
+        insert_at_last(&mut node, 2, SplitDir::Horizontal);
+        insert_at_last(&mut node, 3, SplitDir::Vertical);
+
+        let inserted = insert_next_to(&mut node, &2, 9, SplitDir::Horizontal);
+        assert!(inserted);
+
+        let mut out = Vec::new();
+        collect_windows(&node, &mut out);
+        assert_eq!(out, vec![1, 2, 9, 3]);
+    }
+
+    #[test]
+    fn remove_from_node_collapses_parent_when_child_removed() {
+        let node = Box::new(Node::Internal {
+            dir: SplitDir::Horizontal,
+            ratio: 0.5,
+            left: Box::new(Node::Leaf(1_u32)),
+            right: Box::new(Node::Leaf(2_u32)),
+        });
+
+        let (new_root, removed) = remove_from_node(node, &1);
+        assert!(removed);
+        let Some(new_root) = new_root else {
+            panic!("expected collapsed surviving child");
+        };
+        match *new_root {
+            Node::Leaf(id) => assert_eq!(id, 2),
+            Node::Internal { .. } => panic!("expected collapse to surviving leaf"),
+        }
     }
 }
