@@ -37,6 +37,7 @@ pub enum Action {
     ResizeTile { dir: SplitDir, delta: f32 },
     CloseWindow,
     ToggleLauncher,
+    ReloadConfig,
     Quit,
 }
 
@@ -159,5 +160,25 @@ mod tests {
             let action = cfg.find_action(mods, keysym);
             assert_eq!(action, Some(&Action::MoveToWorkspace(idx)));
         }
+    }
+
+    #[test]
+    fn reload_config_action_is_bindable() {
+        let mut raw = HashMap::new();
+        raw.insert("Super+R".to_string(), "reload-config".to_string());
+        let cfg = KeybindConfig::from_map(&raw).expect("valid reload-config keybind");
+        assert_eq!(
+            cfg.find_action(Modifiers::SUPER, 0x72),
+            Some(&Action::ReloadConfig)
+        );
+    }
+
+    #[test]
+    fn defaults_do_not_include_reload_config_binding() {
+        let cfg = KeybindConfig::default();
+        assert!(!cfg
+            .bindings()
+            .iter()
+            .any(|(_, action)| matches!(action, Action::ReloadConfig)));
     }
 }

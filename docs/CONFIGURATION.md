@@ -49,13 +49,15 @@ mode = "fill"
 "Super+Down" = "resize-tile vertical 5%"
 "Super+Space" = "toggle-launcher"
 "Super+Q" = "close-window"
+"Super+Shift+R" = "reload-config"
 ```
 
 ## Keybinding-Hinweise
 
 - Die obigen Workspace-Bindings (`Super+1..9`, `Super+Shift+1..9`) sind bereits Teil der Defaults.
 - Zusätzlich existiert im Keyboard-Handler ein Fallback für Workspace-Switch/-Move, falls ein Custom-Keybind-Set diese Einträge nicht enthält.
-- Es gibt aktuell kein Default-Keybinding für `ReloadConfig`. Reload läuft über den bestehenden Shell->Compositor-IPC-Pfad.
+- `reload-config` ist als bindbare Action verfügbar (z. B. `"Super+Shift+R" = "reload-config"`).
+- Es gibt weiterhin **kein Default-Keybinding** für `ReloadConfig`; ohne eigenes Binding läuft Reload wie bisher über den bestehenden Shell->Compositor-IPC-Pfad.
 
 ## Reload-Semantik
 

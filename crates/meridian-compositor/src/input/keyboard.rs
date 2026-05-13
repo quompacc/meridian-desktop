@@ -179,6 +179,9 @@ pub fn handle_keyboard<I: InputBackend>(
         Action::ToggleLauncher => {
             state.broadcast_toggle_launcher();
         }
+        Action::ReloadConfig => {
+            state.reload_config();
+        }
         Action::Quit => {
             state.loop_signal.stop();
         }
