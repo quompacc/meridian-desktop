@@ -1,7 +1,7 @@
 # Meridian Agent Rules
 
 ## Projekt (Kurz)
-Meridian ist ein Wayland-Compositor mit separatem Shell-Prozess. Workspace ist Rust-Multi-Crate mit `meridian-compositor`, `meridian-shell`, `meridian-config`, `meridian-ipc`, `meridian-wm`.
+Meridian ist ein Wayland-Compositor mit separatem Shell-Prozess. Workspace ist Rust-Multi-Crate mit `meridian-compositor`, `meridian-shell`, `meridian-config`, `meridian-ipc`, `meridian-wm`, `meridian-portal`.
 
 ## Harte Regeln für Codex
 1. Keine Feature-Änderung ohne expliziten Auftrag.
