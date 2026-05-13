@@ -37,8 +37,7 @@ meridian/
 │   │       └── protocols/
 │   │           ├── mod.rs
 │   │           ├── xdg_shell.rs
-│   │           ├── xwayland.rs
-│   │           └── output.rs
+│   │           └── xwayland.rs
 │   ├── meridian-wm/            # Fenstermanager
 │   │   ├── Cargo.toml
 │   │   └── src/
@@ -143,7 +142,7 @@ smithay = {
 - NVIDIA-kompatibel: Atomic KMS, GBM (kein EGLStreams)
 - `linux-drm-syncobj-v1` für Explicit Sync (NVIDIA Pflicht)
 
-### Schritt 10 – Multi-Monitor (meridian-compositor/src/protocols/output.rs)
+### Schritt 10 – Multi-Monitor (meridian-compositor output/state paths)
 - Mehrere DRM-Outputs gleichzeitig
 - `xdg-output` Protokoll
 - Hot-Plug Support

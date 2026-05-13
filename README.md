@@ -70,6 +70,7 @@ Before opening or updating a patch:
 cargo fmt --check
 cargo check --workspace
 cargo test --workspace
+cargo clippy --workspace -- -D warnings
 git diff --check
 ```
 
