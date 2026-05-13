@@ -70,6 +70,7 @@ const SIDEBAR_SECTION_GAP: i32 = 12;
 const SIDEBAR_DIVIDER_X_INSET: i32 = 12;
 const SIDEBAR_DIVIDER_MARGIN_TOP: i32 = 10;
 const SIDEBAR_DIVIDER_TO_LIST_GAP: i32 = 10;
+const SEARCH_TEXT_BASELINE_OFFSET: i32 = 28;
 const PINNED_APP_TITLE_BASELINE_OFFSET: i32 = 20;
 const APP_ROW_TITLE_BASELINE_OFFSET: i32 = 16;
 const APP_ROW_SUBTITLE_BASELINE_OFFSET: i32 = 30;
@@ -1210,7 +1211,7 @@ pub fn draw_launcher(
         painter,
         layout.search,
         theme,
-        SurfaceKind::Surface,
+        SurfaceKind::Background,
         tokens::launcher::SEARCH_RADIUS,
     );
     let query_text = if launcher_state.query.is_empty() {
@@ -1227,7 +1228,7 @@ pub fn draw_launcher(
         font,
         query_text,
         layout.search.x + tokens::launcher::INNER_PADDING,
-        layout.search.y + 28,
+        layout.search.y + SEARCH_TEXT_BASELINE_OFFSET,
         layout.search.w - tokens::launcher::INNER_PADDING * 2,
         query_color,
     );
