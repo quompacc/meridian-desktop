@@ -16,7 +16,7 @@ use wayland_client::protocol::{wl_keyboard, wl_pointer};
 
 use crate::{launcher, panel, panel::PanelWindowEntry, TextRenderer};
 
-use super::{types::WindowInfo, IpcClient, SurfaceKind};
+use super::{calendar::CalendarDisplayPolicy, types::WindowInfo, IpcClient, SurfaceKind};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum RepaintReason {
@@ -271,6 +271,7 @@ pub(crate) struct MeridianShell {
     pub(crate) launcher_dirty: bool,
     pub(crate) calendar_dirty: bool,
     pub(crate) calendar_popup_open: bool,
+    pub(crate) calendar_display_policy: CalendarDisplayPolicy,
     pub(crate) panel_last_signature: Option<PanelRenderSignature>,
     pub(crate) launcher_last_signature: Option<LauncherRenderSignature>,
     pub(crate) repaint_stats: RepaintStats,

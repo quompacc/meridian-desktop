@@ -10,7 +10,7 @@ use crate::{
 };
 
 use super::{
-    calendar::CalendarMonthModel,
+    calendar::{weekday_labels, CalendarMonthModel},
     shell::{LauncherRenderSignature, PanelRenderSignature, ThemeRenderSignature},
     time, CommitReason, CommitSurfaceKind, MeridianShell, RepaintReason,
 };
@@ -470,18 +470,24 @@ impl MeridianShell {
         painter.roundish_rect_with_radius(card, self.theme.colors.surface, 12);
         painter.stroke_rect(card, self.theme.colors.border);
 
-        let maybe_model = time::local_date()
-            .and_then(|date| CalendarMonthModel::for_month(date.year, date.month, Some(date.day)));
+        let maybe_model = time::local_date().and_then(|date| {
+            CalendarMonthModel::for_month(
+                date.year,
+                date.month,
+                Some(date.day),
+                self.calendar_display_policy.week_start,
+            )
+        });
 
         if let Some(model) = maybe_model {
-            const WEEKDAY_LABELS: [&str; 7] = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+            let labels = weekday_labels(self.calendar_display_policy.week_start);
             debug_assert_eq!(
                 model
                     .cells
                     .iter()
                     .position(|cell| cell.is_some())
                     .unwrap_or(0),
-                usize::from(model.first_weekday_monday0)
+                usize::from(model.first_weekday_col0)
             );
 
             let content = Rect {
@@ -506,7 +512,7 @@ impl MeridianShell {
 
             let weekday_y = header_rect.y + header_rect.h + 8;
             let weekday_h = 18;
-            for (col, label) in WEEKDAY_LABELS.iter().enumerate() {
+            for (col, label) in labels.iter().enumerate() {
                 let x0 = content.x + (col as i32 * content.w) / 7;
                 let x1 = content.x + (((col + 1) as i32 * content.w) / 7);
                 painter.text_centered(

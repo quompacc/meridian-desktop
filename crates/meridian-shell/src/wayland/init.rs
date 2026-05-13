@@ -21,7 +21,10 @@ use crate::{
     LAUNCHER_WIDTH, PANEL_HEIGHT, SHELL_POPUP_BOTTOM_MARGIN,
 };
 
-use super::{CommitReason, CommitStats, CommitSurfaceKind, IpcClient, MeridianShell, SurfaceKind};
+use super::{
+    calendar::CalendarDisplayPolicy, CommitReason, CommitStats, CommitSurfaceKind, IpcClient,
+    MeridianShell, SurfaceKind,
+};
 
 pub(crate) fn initialize(
     event_loop: &mut EventLoop<'_, MeridianShell>,
@@ -184,6 +187,7 @@ pub(crate) fn initialize(
         launcher_dirty: true,
         calendar_dirty: true,
         calendar_popup_open: false,
+        calendar_display_policy: CalendarDisplayPolicy::default(),
         panel_last_signature: None,
         launcher_last_signature: None,
         repaint_stats: Default::default(),
