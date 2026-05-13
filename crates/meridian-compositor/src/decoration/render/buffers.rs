@@ -6,6 +6,8 @@ use super::super::{
 };
 use super::geometry::{SsdChromeMetrics, SsdFrameMetrics};
 
+// Keep explicit decoration/render parameters to avoid risky context bundling in render code.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn update_buffers(
     deco: &mut WindowDecoration,
     theme: &Decorations,

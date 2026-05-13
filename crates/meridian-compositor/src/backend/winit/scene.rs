@@ -28,6 +28,9 @@ fn render_window_space_elements(
         .unwrap_or_default()
 }
 
+// Keep explicit render inputs to make frame wiring and ordering dependencies obvious.
+// A context struct here would be mostly mechanical churn on a hot render path.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn render_elements_for_output(
     state: &mut MeridianState,
     renderer: &mut GlesRenderer,
