@@ -119,3 +119,31 @@ impl Default for WmWorkspace {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{WmWorkspace, WorkspaceMode};
+    use crate::SplitDir;
+
+    #[test]
+    fn new_sets_expected_defaults() {
+        let workspace = WmWorkspace::new();
+
+        assert_eq!(workspace.mode, WorkspaceMode::Floating);
+        assert!(workspace.tiling.is_empty());
+        assert_eq!(workspace.tiling.next_split, SplitDir::Horizontal);
+    }
+
+    #[test]
+    fn toggle_mode_switches_between_floating_and_tiling() {
+        let mut workspace = WmWorkspace::new();
+
+        let first = workspace.toggle_mode();
+        assert_eq!(first, WorkspaceMode::Tiling);
+        assert_eq!(workspace.mode, WorkspaceMode::Tiling);
+
+        let second = workspace.toggle_mode();
+        assert_eq!(second, WorkspaceMode::Floating);
+        assert_eq!(workspace.mode, WorkspaceMode::Floating);
+    }
+}

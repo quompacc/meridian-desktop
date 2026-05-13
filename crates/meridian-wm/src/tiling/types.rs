@@ -12,3 +12,18 @@ impl SplitDir {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SplitDir;
+
+    #[test]
+    fn other_flips_horizontal_to_vertical() {
+        assert_eq!(SplitDir::Horizontal.other(), SplitDir::Vertical);
+    }
+
+    #[test]
+    fn other_flips_vertical_to_horizontal() {
+        assert_eq!(SplitDir::Vertical.other(), SplitDir::Horizontal);
+    }
+}
