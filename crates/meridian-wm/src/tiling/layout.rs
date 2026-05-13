@@ -44,9 +44,8 @@ impl TilingLayout {
                 return;
             }
             Some(root) => {
-                let inserted = focused.map_or(false, |focused| {
-                    insert_next_to(root, focused, window.clone(), dir)
-                });
+                let inserted = focused
+                    .is_some_and(|focused| insert_next_to(root, focused, window.clone(), dir));
                 if !inserted {
                     insert_at_last(root, window, dir);
                 }
