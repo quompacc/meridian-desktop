@@ -13,7 +13,7 @@ pub enum WorkspaceMode {
 
 pub struct WmWorkspace {
     pub mode: WorkspaceMode,
-    pub tiling: TilingLayout,
+    tiling: TilingLayout,
     /// Windows that stay floating even when the workspace is in Tiling mode
     /// (dialogs, pop-overs, etc.).
     floating_windows: Vec<Window>,
@@ -53,6 +53,16 @@ impl WmWorkspace {
     pub fn remove_window(&mut self, window: &Window) {
         self.tiling.remove(window);
         self.floating_windows.retain(|w| w != window);
+    }
+
+    /// Return the current set of windows tracked in the tiling tree.
+    pub fn tiled_windows(&self) -> Vec<Window> {
+        self.tiling.windows()
+    }
+
+    /// Remove a window from the tiling tree only.
+    pub fn remove_tiled(&mut self, window: &Window) {
+        self.tiling.remove(window);
     }
 
     /// Mark or unmark a window as individually floating within a tiling workspace.

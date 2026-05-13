@@ -30,12 +30,12 @@ impl MeridianState {
 
         let space_windows: Vec<Window> =
             self.workspaces.space_at(idx).elements().cloned().collect();
-        for window in self.wm_workspaces[idx].tiling.windows() {
+        for window in self.wm_workspaces[idx].tiled_windows() {
             if !space_windows
                 .iter()
                 .any(|space_window| space_window == &window)
             {
-                self.wm_workspaces[idx].tiling.remove(&window);
+                self.wm_workspaces[idx].remove_tiled(&window);
             }
         }
 
