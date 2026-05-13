@@ -1,12 +1,12 @@
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
-use smithay::utils::{Logical, Point};
+use smithay::utils::{Logical, Point, Size};
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::state::{
     clear_tiled_toplevel_states, maximized_client_loc_from_output,
-    remember_maximize_restore_geometry, resolve_unmaximize_restore_client_loc,
-    take_maximize_restore_geometry, window_id, MaximizeRestoreGeometry, MeridianState,
-    OutputGeometry, OutputInfo,
+    normal_window_workarea_from_output_geometry, remember_maximize_restore_geometry,
+    resolve_unmaximize_restore_client_loc, take_maximize_restore_geometry, window_id,
+    MaximizeRestoreGeometry, MeridianState, OutputGeometry, OutputInfo,
 };
 
 use super::window::find_active_window;
@@ -23,8 +23,7 @@ pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: Toplev
             selected.name,
             selected.fallback_reason
         );
-        let size = (selected.geometry.width, selected.geometry.height).into();
-        let loc: Point<i32, Logical> = (selected.geometry.x, selected.geometry.y).into();
+        let (loc, size) = normal_maximize_frame_for_output(selected.geometry);
         surface.with_pending_state(|state| {
             clear_tiled_toplevel_states(state);
             state.states.set(xdg_toplevel::State::Maximized);
@@ -59,6 +58,16 @@ pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: Toplev
         tracing::debug!("selected output for maximize: none (registry empty)");
     }
     surface.send_pending_configure();
+}
+
+fn normal_maximize_frame_for_output(
+    output_geometry: OutputGeometry,
+) -> (Point<i32, Logical>, Size<i32, Logical>) {
+    let workarea = normal_window_workarea_from_output_geometry(output_geometry);
+    (
+        (workarea.x, workarea.y).into(),
+        (workarea.width, workarea.height).into(),
+    )
 }
 
 pub(crate) fn handle_unmaximize_request(state: &mut MeridianState, surface: ToplevelSurface) {
@@ -202,7 +211,7 @@ mod tests {
 
     use crate::state::{OutputGeometry, OutputId, OutputInfo};
 
-    use super::select_output_from_infos_for_point;
+    use super::{normal_maximize_frame_for_output, select_output_from_infos_for_point};
 
     fn info(id: u32, name: &str, primary: bool, x: i32) -> OutputInfo {
         OutputInfo {
@@ -241,5 +250,19 @@ mod tests {
     #[test]
     fn empty_infos_is_safe() {
         assert!(select_output_from_infos_for_point(&[], None).is_none());
+    }
+
+    #[test]
+    fn normal_maximize_frame_uses_panel_safe_height() {
+        let output = OutputGeometry {
+            x: 42,
+            y: 7,
+            width: 1600,
+            height: 900,
+        };
+        let (loc, size) = normal_maximize_frame_for_output(output);
+        assert_eq!(loc, (42, 7).into());
+        assert_eq!(size.w, 1600);
+        assert_eq!(size.h, 864);
     }
 }

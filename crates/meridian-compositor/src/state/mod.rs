@@ -9,7 +9,7 @@ use smithay::{
     reexports::calloop::{LoopHandle, LoopSignal},
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
     reexports::wayland_server::{protocol::wl_surface::WlSurface, DisplayHandle},
-    utils::{Logical, Point, Size},
+    utils::{Logical, Point, Rectangle, Size},
     wayland::{
         compositor::CompositorState,
         output::OutputManagerState,
@@ -129,6 +129,36 @@ pub(crate) fn maximized_client_loc_from_output(
     ))
 }
 
+// Temporary fixed bottom reservation for normal-window workarea.
+// Keep this local so we can later replace it with layer-shell exclusive-zone derived workarea.
+pub(crate) const NORMAL_WINDOW_BOTTOM_RESERVED_PX: i32 = 36;
+
+pub(crate) fn normal_window_workarea_from_output_geometry(
+    output_geometry: OutputGeometry,
+) -> OutputGeometry {
+    OutputGeometry {
+        x: output_geometry.x,
+        y: output_geometry.y,
+        width: output_geometry.width,
+        height: (output_geometry.height - NORMAL_WINDOW_BOTTOM_RESERVED_PX).max(1),
+    }
+}
+
+pub(crate) fn normal_window_workarea_from_rect(
+    rect: Rectangle<i32, Logical>,
+) -> Rectangle<i32, Logical> {
+    let workarea = normal_window_workarea_from_output_geometry(OutputGeometry {
+        x: rect.loc.x,
+        y: rect.loc.y,
+        width: rect.size.w,
+        height: rect.size.h,
+    });
+    Rectangle::new(
+        (workarea.x, workarea.y).into(),
+        (workarea.width, workarea.height).into(),
+    )
+}
+
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn half_snap_client_placement_from_output(
     output_geometry: OutputGeometry,
@@ -226,13 +256,14 @@ pub(crate) use utils::{client_compositor_state, toplevel_title, window_id};
 
 #[cfg(test)]
 mod tests {
-    use smithay::utils::{Logical, Point, Size};
+    use smithay::utils::{Logical, Point, Rectangle, Size};
 
     use super::{
         clear_tiled_toplevel_states, half_snap_client_placement_from_output,
-        maximized_client_loc_from_output, remember_maximize_restore_geometry,
+        maximized_client_loc_from_output, normal_window_workarea_from_output_geometry,
+        normal_window_workarea_from_rect, remember_maximize_restore_geometry,
         resolve_unmaximize_restore_client_loc, restore_client_loc_or_fallback, HalfSnapDirection,
-        MaximizeRestoreGeometry, OutputGeometry,
+        MaximizeRestoreGeometry, OutputGeometry, NORMAL_WINDOW_BOTTOM_RESERVED_PX,
     };
 
     #[test]
@@ -283,6 +314,36 @@ mod tests {
         let output_loc: Point<i32, Logical> = (100, 200).into();
         let mapped = maximized_client_loc_from_output(output_loc, (2, 34));
         assert_eq!(mapped, Point::from((102, 234)));
+    }
+
+    #[test]
+    fn normal_window_workarea_subtracts_bottom_panel_reservation() {
+        let output = OutputGeometry {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        let workarea = normal_window_workarea_from_output_geometry(output);
+        assert_eq!(workarea.x, output.x);
+        assert_eq!(workarea.y, output.y);
+        assert_eq!(workarea.width, output.width);
+        assert_eq!(
+            workarea.height,
+            output.height - NORMAL_WINDOW_BOTTOM_RESERVED_PX
+        );
+    }
+
+    #[test]
+    fn normal_window_workarea_rect_preserves_origin_and_width() {
+        let rect = Rectangle::new((50, 20).into(), (1600, 900).into());
+        let workarea = normal_window_workarea_from_rect(rect);
+        assert_eq!(workarea.loc, rect.loc);
+        assert_eq!(workarea.size.w, rect.size.w);
+        assert_eq!(
+            workarea.size.h,
+            rect.size.h - NORMAL_WINDOW_BOTTOM_RESERVED_PX
+        );
     }
 
     #[test]

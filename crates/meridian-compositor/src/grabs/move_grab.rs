@@ -15,9 +15,10 @@ use smithay::{
 };
 
 use crate::state::{
-    clear_tiled_toplevel_states, half_snap_client_placement_from_output, window_id,
-    HalfSnapDirection, HalfSnapRestoreGeometry, MaximizeRestoreGeometry, MeridianState,
-    OutputGeometry, OutputInfo, OutputRegistry, WindowSnapState,
+    clear_tiled_toplevel_states, half_snap_client_placement_from_output,
+    normal_window_workarea_from_output_geometry, window_id, HalfSnapDirection,
+    HalfSnapRestoreGeometry, MaximizeRestoreGeometry, MeridianState, OutputGeometry, OutputInfo,
+    OutputRegistry, WindowSnapState,
 };
 
 const TOP_EDGE_MAXIMIZE_THRESHOLD_PX: f64 = 12.0;
@@ -78,14 +79,19 @@ fn select_move_release_output(
     registry.select_for_point_with_fallback(pointer_location.x, pointer_location.y)
 }
 
+fn move_release_workarea_geometry(output_geometry: OutputGeometry) -> OutputGeometry {
+    normal_window_workarea_from_output_geometry(output_geometry)
+}
+
 fn release_edge_action_on_move_release(
     data: &MeridianState,
     pointer_location: Option<Point<f64, Logical>>,
 ) -> Option<(OutputGeometry, MoveReleaseEdgeAction)> {
     let pointer_location = pointer_location?;
     let output = select_move_release_output(&data.output_registry, pointer_location)?;
-    let action = release_edge_action_for_output(output.geometry, pointer_location)?;
-    Some((output.geometry, action))
+    let workarea = move_release_workarea_geometry(output.geometry);
+    let action = release_edge_action_for_output(workarea, pointer_location)?;
+    Some((workarea, action))
 }
 
 fn should_maximize_on_move_release(window: &Window, action: Option<MoveReleaseEdgeAction>) -> bool {
@@ -642,8 +648,9 @@ mod tests {
         anchored_client_location_from_pointer, apply_half_snap_drag_restore_states,
         apply_half_snap_tiled_states, consume_half_snap_restore_geometry,
         drag_restore_anchor_from_start_pointer, half_snap_restore_geometry_source,
-        is_pointer_near_output_top_edge, movement_crosses_restore_threshold,
-        release_edge_action_for_output, HalfSnapDirection, MoveReleaseEdgeAction,
+        is_pointer_near_output_top_edge, move_release_workarea_geometry,
+        movement_crosses_restore_threshold, release_edge_action_for_output, HalfSnapDirection,
+        MoveReleaseEdgeAction,
     };
 
     fn point(x: f64, y: f64) -> Point<f64, Logical> {
@@ -828,6 +835,21 @@ mod tests {
             release_edge_action_for_output(output, point(800.0, 400.0)),
             None
         );
+    }
+
+    #[test]
+    fn move_release_workarea_subtracts_panel_reservation() {
+        let output = OutputGeometry {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1080,
+        };
+        let workarea = move_release_workarea_geometry(output);
+        assert_eq!(workarea.x, 0);
+        assert_eq!(workarea.y, 0);
+        assert_eq!(workarea.width, 1920);
+        assert_eq!(workarea.height, 1044);
     }
 
     #[test]

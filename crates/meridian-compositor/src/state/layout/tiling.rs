@@ -6,7 +6,9 @@ use smithay::{
 };
 
 use super::super::MeridianState;
-use crate::state::{OutputGeometry, OutputId, OutputInfo};
+use crate::state::{
+    normal_window_workarea_from_output_geometry, OutputGeometry, OutputId, OutputInfo,
+};
 
 impl MeridianState {
     pub fn tile_workspace(&mut self, idx: usize) {
@@ -81,6 +83,7 @@ struct SelectedTilingOutput {
 }
 
 fn output_geometry_to_rect(geometry: OutputGeometry) -> Rectangle<i32, Logical> {
+    let geometry = normal_window_workarea_from_output_geometry(geometry);
     Rectangle::new(
         (geometry.x, geometry.y).into(),
         (geometry.width, geometry.height).into(),
@@ -136,6 +139,7 @@ mod tests {
         let selected = select_tiling_output_from_infos(&infos).expect("selection");
         assert_eq!(selected.id.0, 2);
         assert_eq!(selected.fallback_reason, "primary");
+        assert_eq!(selected.geometry.size.h, 1044);
     }
 
     #[test]

@@ -19,9 +19,9 @@ use crate::{
     state::OutputInfo,
     state::{
         clear_tiled_toplevel_states, maximized_client_loc_from_output,
-        remember_maximize_restore_geometry, resolve_unmaximize_restore_client_loc,
-        take_maximize_restore_geometry, window_id, MaximizeRestoreGeometry, MeridianState,
-        MinimizedWindowEntry,
+        normal_window_workarea_from_rect, remember_maximize_restore_geometry,
+        resolve_unmaximize_restore_client_loc, take_maximize_restore_geometry, window_id,
+        MaximizeRestoreGeometry, MeridianState, MinimizedWindowEntry,
     },
 };
 
@@ -156,7 +156,9 @@ pub fn handle_pointer_button<I: InputBackend>(
                         info.name
                     );
                 }
-                mapped.and_then(|output| space.output_geometry(output))
+                mapped
+                    .and_then(|output| space.output_geometry(output))
+                    .map(normal_window_workarea_from_rect)
             });
 
             let hit_for_window =
