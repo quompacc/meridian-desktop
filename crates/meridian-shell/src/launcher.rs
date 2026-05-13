@@ -48,6 +48,7 @@ const PINNED_CANDIDATES: &[&str] = &[
 ];
 const XDG_DATA_DIRS_DEFAULT: &str = "/usr/local/share:/usr/share";
 const MERIDIAN_DESKTOP_ENV: &str = "Meridian";
+const SELECTED_EXEC_HINT_COLOR: Color = Color::rgb(0x3a, 0x3a, 0x44);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SidebarCategory {
@@ -1255,7 +1256,7 @@ pub fn draw_launcher(
             rect.y + 32,
             rect.w - (text_x - rect.x) - tokens::launcher::INNER_PADDING,
             if is_selected {
-                Color::rgb(0x3a, 0x3a, 0x44)
+                SELECTED_EXEC_HINT_COLOR
             } else {
                 colors.border
             },
