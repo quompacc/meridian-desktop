@@ -43,15 +43,11 @@ pub(crate) fn handle_move_request(
             return;
         };
         let started_maximized = surface.with_committed_state(|s| {
-            s.map_or(false, |ts| {
-                ts.states.contains(xdg_toplevel::State::Maximized)
-            })
+            s.is_some_and(|ts| ts.states.contains(xdg_toplevel::State::Maximized))
         }) || surface
             .with_pending_state(|s| s.states.contains(xdg_toplevel::State::Maximized));
         let started_fullscreen = surface.with_committed_state(|s| {
-            s.map_or(false, |ts| {
-                ts.states.contains(xdg_toplevel::State::Fullscreen)
-            })
+            s.is_some_and(|ts| ts.states.contains(xdg_toplevel::State::Fullscreen))
         }) || surface
             .with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen));
         let grab = MoveSurfaceGrab {

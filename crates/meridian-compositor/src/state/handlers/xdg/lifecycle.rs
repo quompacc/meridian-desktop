@@ -61,9 +61,7 @@ pub(super) fn handle_new_toplevel(state: &mut MeridianState, surface: ToplevelSu
             .decoration_offset(&wl_surface, theme);
         let initial_client_origin: Point<i32, Logical> = (x_off, y_off).into();
         let starts_maximized = surface.with_committed_state(|s| {
-            s.map_or(false, |ts| {
-                ts.states.contains(xdg_toplevel::State::Maximized)
-            })
+            s.is_some_and(|ts| ts.states.contains(xdg_toplevel::State::Maximized))
         }) || surface
             .with_pending_state(|s| s.states.contains(xdg_toplevel::State::Maximized));
 

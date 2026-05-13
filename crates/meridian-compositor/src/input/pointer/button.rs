@@ -179,7 +179,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                 DecorationHit::MaximizeButton => {
                     if let Some(toplevel) = window.toplevel() {
                         let is_maxed = toplevel.with_committed_state(|s| {
-                            s.map_or(false, |ts| {
+                            s.is_some_and(|ts| {
                                 ts.states.contains(
                                     smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State::Maximized,
                                 )
@@ -375,14 +375,14 @@ pub fn handle_pointer_button<I: InputBackend>(
                         let (started_maximized, started_fullscreen) =
                             if let Some(toplevel) = window.toplevel() {
                                 let maximized = toplevel.with_committed_state(|s| {
-                                    s.map_or(false, |ts| {
+                                    s.is_some_and(|ts| {
                                         ts.states.contains(xdg_toplevel::State::Maximized)
                                     })
                                 }) || toplevel.with_pending_state(|s| {
                                     s.states.contains(xdg_toplevel::State::Maximized)
                                 });
                                 let fullscreen = toplevel.with_committed_state(|s| {
-                                    s.map_or(false, |ts| {
+                                    s.is_some_and(|ts| {
                                         ts.states.contains(xdg_toplevel::State::Fullscreen)
                                     })
                                 }) || toplevel.with_pending_state(|s| {

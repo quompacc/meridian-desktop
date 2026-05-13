@@ -49,7 +49,7 @@ impl CompositorHandler for MeridianState {
             if let Some(window) = self.workspaces.active_space().elements().find(|window| {
                 window
                     .wl_surface()
-                    .map_or(false, |wl_surface| *wl_surface == root)
+                    .is_some_and(|wl_surface| *wl_surface == root)
             }) {
                 window.on_commit();
             }

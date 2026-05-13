@@ -105,7 +105,7 @@ fn should_maximize_on_move_release(window: &Window, action: Option<MoveReleaseEd
     };
 
     let is_fullscreen = toplevel.with_committed_state(|state| {
-        state.map_or(false, |toplevel_state| {
+        state.is_some_and(|toplevel_state| {
             toplevel_state
                 .states
                 .contains(xdg_toplevel::State::Fullscreen)
@@ -117,7 +117,7 @@ fn should_maximize_on_move_release(window: &Window, action: Option<MoveReleaseEd
     }
 
     let is_maximized = toplevel.with_committed_state(|state| {
-        state.map_or(false, |toplevel_state| {
+        state.is_some_and(|toplevel_state| {
             toplevel_state
                 .states
                 .contains(xdg_toplevel::State::Maximized)

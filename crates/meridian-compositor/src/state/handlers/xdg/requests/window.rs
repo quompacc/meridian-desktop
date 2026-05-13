@@ -11,9 +11,9 @@ pub(super) fn find_active_window(
         .active_space()
         .elements()
         .find(|window| {
-            window.toplevel().map_or(false, |toplevel| {
-                toplevel.wl_surface() == surface.wl_surface()
-            })
+            window
+                .toplevel()
+                .is_some_and(|toplevel| toplevel.wl_surface() == surface.wl_surface())
         })
         .cloned()
 }

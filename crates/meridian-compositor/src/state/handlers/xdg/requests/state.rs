@@ -14,9 +14,7 @@ use super::window::find_active_window;
 pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: ToplevelSurface) {
     tracing::debug!("maximize geometry requested");
     let is_maxed = surface.with_committed_state(|s| {
-        s.map_or(false, |ts| {
-            ts.states.contains(xdg_toplevel::State::Maximized)
-        })
+        s.is_some_and(|ts| ts.states.contains(xdg_toplevel::State::Maximized))
     });
     if let Some(selected) = select_output_for_surface(state, &surface) {
         tracing::debug!(

@@ -10,7 +10,7 @@ pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: 
     // Initialen configure an neue Toplevels senden (Wayland only — X11 windows have no toplevel)
     if let Some(window) = space
         .elements()
-        .find(|w| w.toplevel().map_or(false, |t| t.wl_surface() == surface))
+        .find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == surface))
         .cloned()
     {
         let toplevel = match window.toplevel() {

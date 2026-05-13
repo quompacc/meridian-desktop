@@ -164,7 +164,7 @@ impl MeridianState {
             .find(|window| {
                 window
                     .toplevel()
-                    .map_or(false, |toplevel| toplevel.wl_surface() == surface)
+                    .is_some_and(|toplevel| toplevel.wl_surface() == surface)
             })
             .and_then(|window| {
                 let location = space.element_location(window)?;
@@ -339,7 +339,7 @@ impl MeridianState {
                 .find(|window| {
                     window
                         .toplevel()
-                        .map_or(false, |toplevel| toplevel.wl_surface() == &focus_surface)
+                        .is_some_and(|toplevel| toplevel.wl_surface() == &focus_surface)
                 })
                 .cloned()
                 .map(|window| (idx, window))
