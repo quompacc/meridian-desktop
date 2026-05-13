@@ -692,6 +692,14 @@ impl LauncherState {
             }
         }
 
+        if pinned.is_empty() {
+            return VisibleApps {
+                total_results: matching.len(),
+                apps: matching.into_iter().take(MAX_RESULTS).collect(),
+                pinned_count: 0,
+            };
+        }
+
         VisibleApps {
             total_results: pinned.len(),
             pinned_count: pinned.len(),
@@ -2147,6 +2155,28 @@ Exec=viewer %U
         assert_eq!(visible.apps.len(), 2);
         assert_eq!(visible.apps[0].name, "Firefox");
         assert_eq!(visible.apps[1].name, "Terminal");
+    }
+
+    #[test]
+    fn empty_query_favorites_falls_back_to_all_apps_when_no_pinned_match_exists() {
+        let state = LauncherState {
+            open: true,
+            query: String::new(),
+            selected_index: 0,
+            sidebar_category: SidebarCategory::Favorites,
+            clicks: Vec::new(),
+            apps: vec![
+                DesktopApp::new("Alpha".to_string(), vec!["alpha".to_string()], false),
+                DesktopApp::new("Browser".to_string(), vec!["browser".to_string()], false),
+            ],
+        };
+
+        let visible = state.visible_apps();
+        assert_eq!(visible.pinned_count, 0);
+        assert_eq!(visible.total_results, 2);
+        assert_eq!(visible.apps.len(), 2);
+        assert_eq!(visible.apps[0].name, "Alpha");
+        assert_eq!(visible.apps[1].name, "Browser");
     }
 
     #[test]
