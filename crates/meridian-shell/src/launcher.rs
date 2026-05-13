@@ -619,6 +619,9 @@ impl LauncherState {
 
     pub fn toggle(&mut self) -> bool {
         self.open = !self.open;
+        if self.open {
+            self.apps = DesktopApp::load_system();
+        }
         self.query.clear();
         self.selected_index = 0;
         self.sidebar_category = SidebarCategory::Favorites;
@@ -1305,7 +1308,10 @@ mod tests {
     use std::{
         fs,
         path::PathBuf,
-        sync::atomic::{AtomicU64, Ordering as AtomicOrdering},
+        sync::{
+            atomic::{AtomicU64, Ordering as AtomicOrdering},
+            Mutex, OnceLock,
+        },
     };
 
     use super::{
@@ -1315,6 +1321,7 @@ mod tests {
     };
 
     static TEST_ID: AtomicU64 = AtomicU64::new(1);
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
     struct EnvVarGuard {
         key: &'static str,
@@ -1362,6 +1369,31 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).expect("create test dir");
         dir
+    }
+
+    fn env_lock() -> &'static Mutex<()> {
+        ENV_LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn write_desktop_entry(
+        applications_dir: &std::path::Path,
+        file_name: &str,
+        name: &str,
+        exec: &str,
+    ) {
+        fs::write(
+            applications_dir.join(file_name),
+            format!(
+                r#"
+[Desktop Entry]
+Type=Application
+Name={}
+Exec={}
+"#,
+                name, exec
+            ),
+        )
+        .expect("write desktop entry");
     }
 
     fn app_with_categories(name: &str, program: &str, categories: &[&str]) -> DesktopApp {
@@ -1666,6 +1698,7 @@ Exec=viewer %U
     #[test]
     fn try_exec_accepts_absolute_executable_and_path_lookup() {
         use std::os::unix::fs::PermissionsExt;
+        let _env_lock = env_lock().lock().expect("env lock");
 
         let bin_dir = unique_test_dir("tryexec-bin");
         let bin = bin_dir.join("demo-bin");
@@ -1705,6 +1738,7 @@ Exec=viewer %U
 
     #[test]
     fn desktop_app_dirs_uses_xdg_data_dirs_default_when_empty() {
+        let _env_lock = env_lock().lock().expect("env lock");
         let _xdg_data_dirs = EnvVarGuard::set("XDG_DATA_DIRS", "");
         let _xdg_data_home = EnvVarGuard::set("XDG_DATA_HOME", "/tmp/meridian-xdg-home");
         let dirs = desktop_app_dirs();
@@ -2201,5 +2235,104 @@ Exec=viewer %U
         assert_eq!(visible.apps.len(), 2);
         assert_eq!(visible.apps[0].name, "Firefox");
         assert_eq!(visible.apps[1].name, "Terminal");
+    }
+
+    #[test]
+    fn opening_launcher_rescans_and_picks_up_new_desktop_file() {
+        let _env_lock = env_lock().lock().expect("env lock");
+        let xdg_home = unique_test_dir("toggle-rescan-add-home");
+        let xdg_dirs = unique_test_dir("toggle-rescan-add-dirs");
+        let applications_dir = xdg_home.join("applications");
+        fs::create_dir_all(&applications_dir).expect("create applications dir");
+
+        write_desktop_entry(&applications_dir, "alpha.desktop", "Alpha", "alpha");
+
+        let _xdg_data_home =
+            EnvVarGuard::set("XDG_DATA_HOME", xdg_home.to_str().expect("home utf8"));
+        let _xdg_data_dirs =
+            EnvVarGuard::set("XDG_DATA_DIRS", xdg_dirs.to_str().expect("dirs utf8"));
+
+        let mut state = LauncherState::new();
+        assert!(state.apps.iter().any(|app| app.name == "Alpha"));
+        assert!(!state.apps.iter().any(|app| app.name == "Beta"));
+
+        state.toggle();
+        state.toggle();
+        write_desktop_entry(&applications_dir, "beta.desktop", "Beta", "beta");
+        state.toggle();
+
+        assert!(state.apps.iter().any(|app| app.name == "Alpha"));
+        assert!(state.apps.iter().any(|app| app.name == "Beta"));
+
+        let _ = fs::remove_dir_all(xdg_home);
+        let _ = fs::remove_dir_all(xdg_dirs);
+    }
+
+    #[test]
+    fn opening_launcher_rescans_and_drops_removed_desktop_file() {
+        let _env_lock = env_lock().lock().expect("env lock");
+        let xdg_home = unique_test_dir("toggle-rescan-remove-home");
+        let xdg_dirs = unique_test_dir("toggle-rescan-remove-dirs");
+        let applications_dir = xdg_home.join("applications");
+        fs::create_dir_all(&applications_dir).expect("create applications dir");
+
+        write_desktop_entry(&applications_dir, "alpha.desktop", "Alpha", "alpha");
+        write_desktop_entry(&applications_dir, "beta.desktop", "Beta", "beta");
+
+        let _xdg_data_home =
+            EnvVarGuard::set("XDG_DATA_HOME", xdg_home.to_str().expect("home utf8"));
+        let _xdg_data_dirs =
+            EnvVarGuard::set("XDG_DATA_DIRS", xdg_dirs.to_str().expect("dirs utf8"));
+
+        let mut state = LauncherState::new();
+        assert!(state.apps.iter().any(|app| app.name == "Beta"));
+
+        state.toggle();
+        state.toggle();
+        fs::remove_file(applications_dir.join("beta.desktop")).expect("remove beta desktop file");
+        state.toggle();
+
+        assert!(state.apps.iter().any(|app| app.name == "Alpha"));
+        assert!(!state.apps.iter().any(|app| app.name == "Beta"));
+
+        let _ = fs::remove_dir_all(xdg_home);
+        let _ = fs::remove_dir_all(xdg_dirs);
+    }
+
+    #[test]
+    fn query_and_category_changes_do_not_rescan_desktop_entries() {
+        let _env_lock = env_lock().lock().expect("env lock");
+        let xdg_home = unique_test_dir("toggle-rescan-query-category-home");
+        let xdg_dirs = unique_test_dir("toggle-rescan-query-category-dirs");
+        let applications_dir = xdg_home.join("applications");
+        fs::create_dir_all(&applications_dir).expect("create applications dir");
+
+        write_desktop_entry(&applications_dir, "alpha.desktop", "Alpha", "alpha");
+
+        let _xdg_data_home =
+            EnvVarGuard::set("XDG_DATA_HOME", xdg_home.to_str().expect("home utf8"));
+        let _xdg_data_dirs =
+            EnvVarGuard::set("XDG_DATA_DIRS", xdg_dirs.to_str().expect("dirs utf8"));
+
+        let mut state = LauncherState::new();
+        state.toggle();
+        assert!(state.apps.iter().any(|app| app.name == "Alpha"));
+        assert!(!state.apps.iter().any(|app| app.name == "Beta"));
+
+        write_desktop_entry(&applications_dir, "beta.desktop", "Beta", "beta");
+
+        state.handle_key(Some('a'), false, false, false, false, false);
+        assert_eq!(state.query, "a");
+        assert!(!state.apps.iter().any(|app| app.name == "Beta"));
+
+        assert!(state.set_sidebar_category_from_click(SidebarCategory::AllApps.to_click_id()));
+        assert!(!state.apps.iter().any(|app| app.name == "Beta"));
+
+        state.toggle();
+        state.toggle();
+        assert!(state.apps.iter().any(|app| app.name == "Beta"));
+
+        let _ = fs::remove_dir_all(xdg_home);
+        let _ = fs::remove_dir_all(xdg_dirs);
     }
 }
