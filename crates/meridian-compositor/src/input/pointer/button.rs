@@ -64,6 +64,22 @@ fn surface_belongs_to_layer(state: &MeridianState, surface: &WlSurface) -> bool 
     false
 }
 
+fn started_move_grab_window_states(window: &smithay::desktop::Window) -> (bool, bool) {
+    if let Some(toplevel) = window.toplevel() {
+        let maximized = toplevel.with_committed_state(|s| {
+            s.is_some_and(|ts| ts.states.contains(xdg_toplevel::State::Maximized))
+        }) || toplevel
+            .with_pending_state(|s| s.states.contains(xdg_toplevel::State::Maximized));
+        let fullscreen = toplevel.with_committed_state(|s| {
+            s.is_some_and(|ts| ts.states.contains(xdg_toplevel::State::Fullscreen))
+        }) || toplevel
+            .with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen));
+        (maximized, fullscreen)
+    } else {
+        (false, false)
+    }
+}
+
 pub fn handle_pointer_button<I: InputBackend>(
     state: &mut MeridianState,
     event: &impl PointerButtonEvent<I>,
@@ -373,25 +389,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                     pointer.frame(state);
                     if let Some(start_data) = pointer.grab_start_data() {
                         let (started_maximized, started_fullscreen) =
-                            if let Some(toplevel) = window.toplevel() {
-                                let maximized = toplevel.with_committed_state(|s| {
-                                    s.is_some_and(|ts| {
-                                        ts.states.contains(xdg_toplevel::State::Maximized)
-                                    })
-                                }) || toplevel.with_pending_state(|s| {
-                                    s.states.contains(xdg_toplevel::State::Maximized)
-                                });
-                                let fullscreen = toplevel.with_committed_state(|s| {
-                                    s.is_some_and(|ts| {
-                                        ts.states.contains(xdg_toplevel::State::Fullscreen)
-                                    })
-                                }) || toplevel.with_pending_state(|s| {
-                                    s.states.contains(xdg_toplevel::State::Fullscreen)
-                                });
-                                (maximized, fullscreen)
-                            } else {
-                                (false, false)
-                            };
+                            started_move_grab_window_states(&window);
                         let grab = MoveSurfaceGrab {
                             start_data,
                             window: window.clone(),
