@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use meridian_ipc::{OutputWorkspaceState, ShellEvent, WindowSnapshotEntry};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 
+use super::conversions::index_to_legacy_ipc_workspace;
 use crate::state::{window_id, MeridianState, OutputId, OutputInfo};
 
 fn build_output_workspace_snapshot(
@@ -31,7 +32,7 @@ fn build_output_workspace_snapshot(
 impl MeridianState {
     pub fn broadcast_workspace(&mut self) {
         self.ipc.broadcast(&ShellEvent::WorkspaceChanged {
-            workspace: (self.workspaces.active + 1) as u8,
+            workspace: index_to_legacy_ipc_workspace(self.workspaces.active),
         });
     }
 
@@ -48,7 +49,7 @@ impl MeridianState {
                     continue;
                 }
                 windows.push(WindowSnapshotEntry {
-                    workspace: (idx + 1) as u8,
+                    workspace: index_to_legacy_ipc_workspace(idx),
                     id,
                     title: super::super::toplevel_title(toplevel),
                     minimized: false,
@@ -63,7 +64,7 @@ impl MeridianState {
                 continue;
             };
             windows.push(WindowSnapshotEntry {
-                workspace: (minimized.workspace + 1) as u8,
+                workspace: index_to_legacy_ipc_workspace(minimized.workspace),
                 id: id.clone(),
                 title: super::super::toplevel_title(toplevel),
                 minimized: true,
@@ -76,7 +77,7 @@ impl MeridianState {
             windows.len()
         );
         self.ipc.broadcast(&ShellEvent::WindowSnapshot {
-            active_workspace: (self.workspaces.active + 1) as u8,
+            active_workspace: index_to_legacy_ipc_workspace(self.workspaces.active),
             windows,
         });
         self.broadcast_output_workspace_snapshot();

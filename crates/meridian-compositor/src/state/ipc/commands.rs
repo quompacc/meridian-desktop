@@ -5,6 +5,7 @@ use meridian_ipc::{ShellCommand, ShellEvent};
 use smithay::utils::SERIAL_COUNTER;
 use smithay::wayland::seat::WaylandFocus;
 
+use super::conversions::ipc_workspace_to_index;
 use crate::{
     cursor::CursorImage,
     state::{window_id, MeridianState},
@@ -50,7 +51,7 @@ impl MeridianState {
     fn handle_shell_command(&mut self, command: ShellCommand) {
         match command {
             ShellCommand::SwitchWorkspace { workspace } => {
-                let idx = usize::from(workspace.saturating_sub(1).min(8));
+                let idx = ipc_workspace_to_index(workspace);
                 self.switch_workspace(idx);
             }
             ShellCommand::FocusWindow { id } => {
