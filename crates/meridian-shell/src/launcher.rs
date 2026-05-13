@@ -222,7 +222,7 @@ impl DesktopApp {
             }
         }
 
-        apps.sort_by(|a, b| cmp_apps(a, b));
+        apps.sort_by(cmp_apps);
         apps
     }
 
