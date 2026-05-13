@@ -257,14 +257,17 @@ impl MeridianShell {
         panel::draw_panel(
             &mut self.panel_state,
             &mut painter,
-            &self.font,
-            &self.theme,
-            panel_active_workspace,
-            self.occupied_state_available
-                .then_some(&self.occupied_workspaces),
-            &panel_window_entries,
-            &clock,
-            width,
+            panel::PanelDrawInput {
+                font: &self.font,
+                theme: &self.theme,
+                active_workspace: panel_active_workspace,
+                occupied_workspaces: self
+                    .occupied_state_available
+                    .then_some(&self.occupied_workspaces),
+                window_entries: &panel_window_entries,
+                clock: &clock,
+                width,
+            },
         );
         if self.workspace_indicator_dirty {
             tracing::debug!(

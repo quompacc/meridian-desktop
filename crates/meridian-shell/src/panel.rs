@@ -25,6 +25,16 @@ pub struct PanelWindowEntry {
     pub minimized: bool,
 }
 
+pub struct PanelDrawInput<'a> {
+    pub font: &'a RefCell<Option<TextRenderer>>,
+    pub theme: &'a ThemeConfig,
+    pub active_workspace: u8,
+    pub occupied_workspaces: Option<&'a [bool; 9]>,
+    pub window_entries: &'a [PanelWindowEntry],
+    pub clock: &'a str,
+    pub width: u32,
+}
+
 impl PanelState {
     pub fn new() -> Self {
         Self { clicks: Vec::new() }
@@ -34,14 +44,17 @@ impl PanelState {
 pub fn draw_panel(
     panel_state: &mut PanelState,
     painter: &mut Painter<'_>,
-    font: &RefCell<Option<TextRenderer>>,
-    theme: &ThemeConfig,
-    active_workspace: u8,
-    occupied_workspaces: Option<&[bool; 9]>,
-    window_entries: &[PanelWindowEntry],
-    clock: &str,
-    width: u32,
+    input: PanelDrawInput<'_>,
 ) {
+    let PanelDrawInput {
+        font,
+        theme,
+        active_workspace,
+        occupied_workspaces,
+        window_entries,
+        clock,
+        width,
+    } = input;
     let colors = &theme.colors;
     painter.clear(colors.surface);
     panel_state.clicks.clear();
