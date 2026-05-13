@@ -7,7 +7,7 @@
 - `crates/meridian-config`: Theme/Keybind-Konfiguration.
 - `crates/meridian-ipc`: IPC-Protokoll (`ShellCommand`, `ShellEvent`) + gemeinsame Screenshot-Bridge-Contract-Typen.
 - `crates/meridian-wm`: Tiling/Floating-Workspace-Logik.
-- `crates/meridian-portal`: separates Portal-Backend-Binary (aktuell Scaffold ohne Featurelogik).
+- `crates/meridian-portal`: separates Portal-Backend-Binary (D-Bus-Skeleton + deny-only Screenshot-Bridge über bestehenden IPC-Pfad).
 
 ## Modulstruktur (aktuell)
 - `meridian-compositor/backend/drm/*`: Init/GPU/Render (inkl. `render/layers.rs`, `render/stack.rs`)
@@ -16,6 +16,7 @@
 - `meridian-compositor/wallpaper/*`: `manager`, `compose`, `gpu`
 - `meridian-shell/wayland/*`: `init`, `render`, `state`, `handlers/*`, `ipc`
 - `meridian-shell/draw/*`: `painter`, `text`, `bitmap`, `ft`, `fc`
+- `meridian-portal/*`: `main` (Bootstrap/Runloop), `lib` (D-Bus-Screenshot-Interface + Bridge-Request/Response-Mapping)
 
 ## Startpfad
 1. `src/main.rs`
