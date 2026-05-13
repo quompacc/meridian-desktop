@@ -222,10 +222,10 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
 
         let cursor_count = cursor_elements.len();
         let mut elements: Vec<MeridianRenderElements> = Vec::new();
-        elements.extend(cursor_elements.into_iter());
-        elements.extend(upper_layer_elements.into_iter());
-        elements.extend(normal_window_elements.into_iter());
-        elements.extend(lower_layer_elements.into_iter());
+        elements.extend(cursor_elements);
+        elements.extend(upper_layer_elements);
+        elements.extend(normal_window_elements);
+        elements.extend(lower_layer_elements);
         elements.extend(
             wallpaper_elem
                 .into_iter()

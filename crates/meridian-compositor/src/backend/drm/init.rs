@@ -385,11 +385,11 @@ fn calculate_mode_refresh_millihz(mode: smithay::reexports::drm::control::Mode) 
 }
 
 fn mode_refresh_millihz_with_fallback(mode: smithay::reexports::drm::control::Mode) -> i32 {
-    calculate_mode_refresh_millihz(mode).unwrap_or_else(|| mode.vrefresh().max(0) as i32 * 1000)
+    calculate_mode_refresh_millihz(mode).unwrap_or_else(|| mode.vrefresh() as i32 * 1000)
 }
 
 fn mode_conservative_key(mode: smithay::reexports::drm::control::Mode) -> (u8, u32, u32, u8) {
-    let refresh = mode.vrefresh().max(0) as u32;
+    let refresh = mode.vrefresh();
     let exact_60_penalty = if refresh == 60 { 0 } else { 1 };
     let refresh_distance = refresh.abs_diff(60);
     (
@@ -463,7 +463,7 @@ fn select_safe_mode(
         (
             w as u32 * h as u32,
             mode_conservative_key(*mode),
-            mode.vrefresh().max(0) as u32,
+            mode.vrefresh(),
             mode.clock(),
         )
     })

@@ -33,12 +33,24 @@ pub fn render_stack_order(
             + bottom_layer_count
             + wallpaper_count,
     );
-    roles.extend(std::iter::repeat(RenderStackRole::Cursor).take(cursor_count));
-    roles.extend(std::iter::repeat(RenderStackRole::TopLayer).take(top_layer_count));
-    roles.extend(std::iter::repeat(RenderStackRole::Decoration).take(decoration_count));
-    roles.extend(std::iter::repeat(RenderStackRole::Window).take(window_count));
-    roles.extend(std::iter::repeat(RenderStackRole::BottomLayer).take(bottom_layer_count));
-    roles.extend(std::iter::repeat(RenderStackRole::Wallpaper).take(wallpaper_count));
+    roles.extend(std::iter::repeat_n(RenderStackRole::Cursor, cursor_count));
+    roles.extend(std::iter::repeat_n(
+        RenderStackRole::TopLayer,
+        top_layer_count,
+    ));
+    roles.extend(std::iter::repeat_n(
+        RenderStackRole::Decoration,
+        decoration_count,
+    ));
+    roles.extend(std::iter::repeat_n(RenderStackRole::Window, window_count));
+    roles.extend(std::iter::repeat_n(
+        RenderStackRole::BottomLayer,
+        bottom_layer_count,
+    ));
+    roles.extend(std::iter::repeat_n(
+        RenderStackRole::Wallpaper,
+        wallpaper_count,
+    ));
     roles
 }
 
