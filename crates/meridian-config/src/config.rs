@@ -55,6 +55,7 @@ impl Default for WallpaperConfig {
     }
 }
 
+#[derive(Default)]
 pub struct MeridianConfig {
     pub keybinds: KeybindConfig,
     pub general: GeneralConfig,
@@ -138,17 +139,6 @@ impl MeridianConfig {
                 );
                 Self::default()
             }
-        }
-    }
-}
-
-impl Default for MeridianConfig {
-    fn default() -> Self {
-        Self {
-            keybinds: KeybindConfig::default(),
-            general: GeneralConfig::default(),
-            cursor: None,
-            wallpaper: None,
         }
     }
 }
