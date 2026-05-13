@@ -1,7 +1,7 @@
 use smithay::{
     backend::input::{ButtonState, InputBackend, PointerButtonEvent},
     desktop::{layer_map_for_output, WindowSurfaceType},
-    input::pointer::{ButtonEvent, Focus},
+    input::pointer::{ButtonEvent, Focus, MotionEvent},
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{Logical, Point},
@@ -62,6 +62,28 @@ fn surface_belongs_to_layer(state: &MeridianState, surface: &WlSurface) -> bool 
         current = get_parent(&candidate);
     }
     false
+}
+
+fn xwayland_override_redirect_window_under_pointer(
+    state: &MeridianState,
+    location: Point<f64, Logical>,
+    under: &(WlSurface, Point<f64, Logical>),
+) -> Option<smithay::desktop::Window> {
+    let (surface, _) = under;
+    let space = state.workspaces.active_space();
+    space
+        .element_under(location)
+        .and_then(|(window, window_location)| {
+            let local = location - window_location.to_f64();
+            let window_surface = window
+                .surface_under(local, smithay::desktop::WindowSurfaceType::ALL)?
+                .0;
+            (window_surface == *surface).then(|| window.clone())
+        })
+        .and_then(|window| match window.x11_surface() {
+            Some(x11) if x11.is_override_redirect() => Some(window),
+            _ => None,
+        })
 }
 
 fn started_move_grab_window_states(window: &smithay::desktop::Window) -> (bool, bool) {
@@ -535,6 +557,33 @@ pub fn handle_pointer_button<I: InputBackend>(
             });
             state.set_keyboard_focus_with_decorations(Option::<WlSurface>::None, serial);
             state.broadcast_toplevel_focus_cleared();
+        }
+    }
+
+    if button_state == ButtonState::Released && !pointer.is_grabbed() {
+        let location = pointer.current_location();
+        if let Some(under) = state.surface_under(location) {
+            if let Some(window) =
+                xwayland_override_redirect_window_under_pointer(state, location, &under)
+            {
+                if let Some(x11) = window.x11_surface() {
+                    debug!(
+                        event = "pointer.button.xwayland_release_retarget",
+                        window_id = x11.window_id(),
+                        pointer_location = ?location,
+                        "retargeting button release to mapped xwayland override-redirect surface"
+                    );
+                }
+                pointer.motion(
+                    state,
+                    Some(under),
+                    &MotionEvent {
+                        location,
+                        serial,
+                        time: event.time_msec(),
+                    },
+                );
+            }
         }
     }
 
