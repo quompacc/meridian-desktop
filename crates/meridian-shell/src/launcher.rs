@@ -267,10 +267,8 @@ impl DesktopApp {
             let value = value.trim();
 
             match key {
-                "Name" => {
-                    if !value.is_empty() {
-                        name.get_or_insert_with(|| value.to_string());
-                    }
+                "Name" if !value.is_empty() => {
+                    name.get_or_insert_with(|| value.to_string());
                 }
                 "Exec" => {
                     let argv = parse_exec_argv(value);
@@ -281,26 +279,18 @@ impl DesktopApp {
                 "Terminal" => terminal = value.eq_ignore_ascii_case("true"),
                 "Hidden" => hidden = value.eq_ignore_ascii_case("true"),
                 "NoDisplay" => no_display = value.eq_ignore_ascii_case("true"),
-                "TryExec" => {
-                    if !value.is_empty() {
-                        try_exec.get_or_insert_with(|| value.to_string());
-                    }
+                "TryExec" if !value.is_empty() => {
+                    try_exec.get_or_insert_with(|| value.to_string());
                 }
-                "OnlyShowIn" => {
-                    if !value.is_empty() {
-                        only_show_in.get_or_insert_with(|| value.to_string());
-                    }
+                "OnlyShowIn" if !value.is_empty() => {
+                    only_show_in.get_or_insert_with(|| value.to_string());
                 }
-                "NotShowIn" => {
-                    if !value.is_empty() {
-                        not_show_in.get_or_insert_with(|| value.to_string());
-                    }
+                "NotShowIn" if !value.is_empty() => {
+                    not_show_in.get_or_insert_with(|| value.to_string());
                 }
                 "Type" => desktop_type = Some(value.to_string()),
-                "Categories" => {
-                    if !value.is_empty() {
-                        categories.get_or_insert_with(|| value.to_string());
-                    }
+                "Categories" if !value.is_empty() => {
+                    categories.get_or_insert_with(|| value.to_string());
                 }
                 _ => {}
             };
@@ -549,10 +539,9 @@ fn is_executable_file(path: &Path) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        return path
-            .metadata()
+        path.metadata()
             .map(|meta| meta.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false);
+            .unwrap_or(false)
     }
     #[cfg(not(unix))]
     {
