@@ -21,7 +21,7 @@ use crate::{
         clear_tiled_toplevel_states, maximized_client_loc_from_output,
         normal_window_workarea_from_rect, remember_maximize_restore_geometry,
         resolve_unmaximize_restore_client_loc, take_maximize_restore_geometry, window_id,
-        MaximizeRestoreGeometry, MeridianState, MinimizedWindowEntry,
+        MaximizeRestoreGeometry, MeridianState, MinimizedWindowEntry, XwaylandOrDiagPointerEvent,
     },
 };
 
@@ -528,6 +528,7 @@ pub fn handle_pointer_button<I: InputBackend>(
         };
 
         if let Some(window) = window_under {
+            let focus_before = state.keyboard_focus_diag_target();
             if button == BTN_LEFT {
                 if let Some(x11) = window.x11_surface() {
                     debug!(
@@ -547,8 +548,56 @@ pub fn handle_pointer_button<I: InputBackend>(
                     .workspaces
                     .active_space_mut()
                     .raise_element(&window, false);
+                if let Some(x11) = window.x11_surface() {
+                    let focus_after = state.keyboard_focus_diag_target();
+                    let focus_changed = focus_before != focus_after;
+                    debug!(
+                        event = "xwayland.or_diag.pointer_press",
+                        phase = "press",
+                        target_window_id = x11.window_id(),
+                        target_kind = "or",
+                        focus_before = ?focus_before,
+                        focus_after = ?focus_after,
+                        focus_changed,
+                        focus_change_reason = "or_policy_no_keyboard_focus",
+                        "xwayland.or_diag: pointer press on OR x11 window"
+                    );
+                    if let Some(entry) = state.xwayland_or_diag.get_mut(&x11.window_id()) {
+                        entry.last_pointer_event = Some(XwaylandOrDiagPointerEvent {
+                            phase: "press",
+                            target_window_id: x11.window_id(),
+                            target_kind: "or",
+                            focus_changed,
+                            focus_change_reason: "or_policy_no_keyboard_focus",
+                        });
+                    }
+                }
             } else {
                 raise_window_and_focus(state, &window, serial);
+                if let Some(x11) = window.x11_surface() {
+                    let focus_after = state.keyboard_focus_diag_target();
+                    let focus_changed = focus_before != focus_after;
+                    debug!(
+                        event = "xwayland.or_diag.pointer_press",
+                        phase = "press",
+                        target_window_id = x11.window_id(),
+                        target_kind = "managed",
+                        focus_before = ?focus_before,
+                        focus_after = ?focus_after,
+                        focus_changed,
+                        focus_change_reason = "managed_raise_and_focus_path",
+                        "xwayland.or_diag: pointer press on managed x11 window"
+                    );
+                    if let Some(entry) = state.xwayland_or_diag.get_mut(&x11.window_id()) {
+                        entry.last_pointer_event = Some(XwaylandOrDiagPointerEvent {
+                            phase: "press",
+                            target_window_id: x11.window_id(),
+                            target_kind: "managed",
+                            focus_changed,
+                            focus_change_reason: "managed_raise_and_focus_path",
+                        });
+                    }
+                }
             }
             state.workspaces.active_space().elements().for_each(|w| {
                 if let Some(t) = w.toplevel() {
@@ -582,12 +631,35 @@ pub fn handle_pointer_button<I: InputBackend>(
                 xwayland_override_redirect_window_under_pointer(state, location, &under)
             {
                 if let Some(x11) = window.x11_surface() {
+                    let focus_before = state.keyboard_focus_diag_target();
                     debug!(
                         event = "pointer.button.xwayland_release_retarget",
                         window_id = x11.window_id(),
                         pointer_location = ?location,
                         "retargeting button release to mapped xwayland override-redirect surface"
                     );
+                    let focus_after = state.keyboard_focus_diag_target();
+                    let focus_changed = focus_before != focus_after;
+                    debug!(
+                        event = "xwayland.or_diag.pointer_release",
+                        phase = "release",
+                        target_window_id = x11.window_id(),
+                        target_kind = "or",
+                        focus_before = ?focus_before,
+                        focus_after = ?focus_after,
+                        focus_changed,
+                        focus_change_reason = "release_retarget_no_direct_focus_path",
+                        "xwayland.or_diag: pointer release retargeted to OR x11 window"
+                    );
+                    if let Some(entry) = state.xwayland_or_diag.get_mut(&x11.window_id()) {
+                        entry.last_pointer_event = Some(XwaylandOrDiagPointerEvent {
+                            phase: "release",
+                            target_window_id: x11.window_id(),
+                            target_kind: "or",
+                            focus_changed,
+                            focus_change_reason: "release_retarget_no_direct_focus_path",
+                        });
+                    }
                 }
                 pointer.motion(
                     state,

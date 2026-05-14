@@ -13,6 +13,7 @@ use smithay::{
     wayland::{
         compositor::CompositorState,
         output::OutputManagerState,
+        seat::WaylandFocus,
         selection::data_device::DataDeviceState,
         shell::{
             wlr_layer::WlrLayerShellState,
@@ -95,6 +96,55 @@ pub struct MinimizedWindowEntry {
     pub window: Window,
     pub workspace: usize,
     pub restore_loc: Point<i32, Logical>,
+}
+
+#[derive(Debug, Clone)]
+pub struct XwaylandOrDiagConfigureRequest {
+    pub x: Option<i32>,
+    pub y: Option<i32>,
+    pub w: Option<u32>,
+    pub h: Option<u32>,
+    pub reorder: Option<String>,
+    pub above_hint: Option<u32>,
+    pub configure_called: bool,
+    pub configure_ok: bool,
+    pub configure_error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct XwaylandOrDiagConfigureNotify {
+    pub geometry: Rectangle<i32, Logical>,
+    pub above_hint: Option<u32>,
+    pub space_position_changed: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct XwaylandOrDiagPointerEvent {
+    pub phase: &'static str,
+    pub target_window_id: u32,
+    pub target_kind: &'static str,
+    pub focus_changed: bool,
+    pub focus_change_reason: &'static str,
+}
+
+#[derive(Debug, Clone)]
+pub struct XwaylandOrDiagEntry {
+    pub window_id: u32,
+    pub mapped_window_id: Option<u32>,
+    pub announce_at: Instant,
+    pub map_at: Option<Instant>,
+    pub title: String,
+    pub class: String,
+    pub instance: String,
+    pub window_type: Option<String>,
+    pub transient_for: Option<u32>,
+    pub transient_for_mapped: Option<u32>,
+    pub is_popup: bool,
+    pub last_geometry: Rectangle<i32, Logical>,
+    pub last_map_location: Option<Point<i32, Logical>>,
+    pub last_configure_request: Option<XwaylandOrDiagConfigureRequest>,
+    pub last_configure_notify: Option<XwaylandOrDiagConfigureNotify>,
+    pub last_pointer_event: Option<XwaylandOrDiagPointerEvent>,
 }
 
 pub(crate) fn remember_maximize_restore_geometry(
@@ -239,6 +289,7 @@ pub struct MeridianState {
     pub half_snap_restore_locations: HashMap<String, HalfSnapRestoreGeometry>,
     pub active_window_snap_states: HashMap<String, WindowSnapState>,
     pub minimized_windows: HashMap<String, MinimizedWindowEntry>,
+    pub xwayland_or_diag: HashMap<u32, XwaylandOrDiagEntry>,
 }
 
 impl MeridianState {
@@ -247,6 +298,39 @@ impl MeridianState {
         self.maximize_restore_locations.remove(window_key);
         self.half_snap_restore_locations.remove(window_key);
         self.active_window_snap_states.remove(window_key);
+    }
+
+    pub fn keyboard_focus_diag_target(&self) -> Option<String> {
+        let keyboard = self.seat.get_keyboard()?;
+        let focus_surface = keyboard.current_focus()?;
+        let focus_surface_id = window_id(&focus_surface);
+
+        for workspace in 0..self.workspaces.count() {
+            if let Some(window) = self
+                .workspaces
+                .space_at(workspace)
+                .elements()
+                .find(|window| {
+                    window
+                        .wl_surface()
+                        .map(|surface| surface.into_owned())
+                        .as_ref()
+                        == Some(&focus_surface)
+                })
+            {
+                if let Some(x11) = window.x11_surface() {
+                    return Some(format!(
+                        "x11:{} mapped={:?} or={}",
+                        x11.window_id(),
+                        x11.mapped_window_id(),
+                        x11.is_override_redirect()
+                    ));
+                }
+                return Some(format!("wl:{}", focus_surface_id));
+            }
+        }
+
+        Some(format!("wl:{}", focus_surface_id))
     }
 }
 
