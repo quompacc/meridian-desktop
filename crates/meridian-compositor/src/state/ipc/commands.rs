@@ -232,6 +232,15 @@ impl MeridianState {
                 return;
             }
 
+            if let Some(x11) = minimized.window.x11_surface() {
+                if let Err(err) = x11.set_hidden(false) {
+                    tracing::warn!(
+                        "focus-window restore minimized x11 window: set_hidden(false) failed: {}",
+                        err
+                    );
+                }
+            }
+
             self.workspaces.space_at_mut(idx).map_element(
                 minimized.window.clone(),
                 minimized.restore_loc,
