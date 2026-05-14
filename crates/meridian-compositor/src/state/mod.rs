@@ -128,6 +128,30 @@ pub struct XwaylandOrDiagPointerEvent {
 }
 
 #[derive(Debug, Clone)]
+pub struct XwaylandOrDiagReleaseCandidate {
+    pub window_id: u32,
+    pub window_type: Option<String>,
+    pub geometry: Rectangle<i32, Logical>,
+    pub map_location: Option<Point<i32, Logical>>,
+    pub elapsed_since_map_ms: u128,
+    pub pointer_inside_geometry: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct XwaylandOrDiagReleaseState {
+    pub pointer_location: Point<f64, Logical>,
+    pub surface_under: Option<String>,
+    pub target_kind: &'static str,
+    pub target_x11_window_id: Option<u32>,
+    pub keyboard_focus: Option<String>,
+    pub recent_candidates: Vec<XwaylandOrDiagReleaseCandidate>,
+    pub retarget_triggered: bool,
+    pub retarget_selected_window_id: Option<u32>,
+    pub retarget_reason: String,
+    pub final_dispatch_target_kind: &'static str,
+}
+
+#[derive(Debug, Clone)]
 pub struct XwaylandOrDiagEntry {
     pub window_id: u32,
     pub mapped_window_id: Option<u32>,
@@ -145,6 +169,7 @@ pub struct XwaylandOrDiagEntry {
     pub last_configure_request: Option<XwaylandOrDiagConfigureRequest>,
     pub last_configure_notify: Option<XwaylandOrDiagConfigureNotify>,
     pub last_pointer_event: Option<XwaylandOrDiagPointerEvent>,
+    pub last_release_diag: Option<XwaylandOrDiagReleaseState>,
 }
 
 pub(crate) fn remember_maximize_restore_geometry(

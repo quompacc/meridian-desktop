@@ -357,6 +357,7 @@ impl XwmHandler for MeridianState {
                 last_configure_request: None,
                 last_configure_notify: None,
                 last_pointer_event: None,
+                last_release_diag: None,
             },
         );
         debug!(
