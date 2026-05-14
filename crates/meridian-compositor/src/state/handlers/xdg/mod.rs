@@ -78,4 +78,8 @@ impl XdgShellHandler for MeridianState {
     fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
         requests::handle_unfullscreen_request(self, surface);
     }
+
+    fn minimize_request(&mut self, surface: ToplevelSurface) {
+        requests::handle_minimize_request(self, surface);
+    }
 }

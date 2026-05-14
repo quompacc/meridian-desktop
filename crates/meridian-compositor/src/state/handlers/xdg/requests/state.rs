@@ -1,12 +1,13 @@
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
-use smithay::utils::{Logical, Point, Size};
+use smithay::utils::{Logical, Point, Size, SERIAL_COUNTER};
+use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::state::{
     clear_tiled_toplevel_states, maximized_client_loc_from_output,
     normal_window_workarea_from_output_geometry, remember_maximize_restore_geometry,
     resolve_unmaximize_restore_client_loc, take_maximize_restore_geometry, window_id,
-    MaximizeRestoreGeometry, MeridianState, OutputGeometry, OutputInfo,
+    MaximizeRestoreGeometry, MeridianState, MinimizedWindowEntry, OutputGeometry, OutputInfo,
 };
 
 use super::window::find_active_window;
@@ -148,6 +149,78 @@ pub(crate) fn handle_unfullscreen_request(state: &mut MeridianState, surface: To
         state.size = None;
     });
     surface.send_pending_configure();
+}
+
+pub(crate) fn handle_minimize_request(state: &mut MeridianState, surface: ToplevelSurface) {
+    let Some(window) = find_active_window(state, &surface) else {
+        return;
+    };
+
+    let workspace = state.workspaces.active;
+    let restore_loc = state
+        .workspaces
+        .space_at(workspace)
+        .element_location(&window)
+        .unwrap_or_default();
+    let window_key = window_id(surface.wl_surface());
+
+    state.minimized_windows.insert(
+        window_key,
+        MinimizedWindowEntry {
+            window: window.clone(),
+            workspace,
+            restore_loc,
+        },
+    );
+    state.workspaces.space_at_mut(workspace).unmap_elem(&window);
+
+    let serial = SERIAL_COUNTER.next_serial();
+    let window_surface = window
+        .wl_surface()
+        .map(|wl_surface| wl_surface.into_owned());
+    let was_focused = window_surface.as_ref().is_some_and(|window_surface| {
+        state
+            .seat
+            .get_keyboard()
+            .and_then(|keyboard| keyboard.current_focus())
+            .as_ref()
+            == Some(window_surface)
+    });
+    if was_focused {
+        let fallback_surface = state
+            .workspaces
+            .space_at(workspace)
+            .elements()
+            .filter_map(|candidate| {
+                candidate
+                    .wl_surface()
+                    .map(|wl_surface| wl_surface.into_owned())
+            })
+            .next_back();
+        if let Some(fallback_surface) = fallback_surface {
+            state.set_keyboard_focus_with_decorations(Some(fallback_surface.clone()), serial);
+            state.update_focused_output_from_surface(
+                &fallback_surface,
+                "keyboard-focus-xdg-minimize-fallback",
+            );
+            state.broadcast_toplevel_focused(&fallback_surface);
+        } else {
+            state.set_keyboard_focus_with_decorations(None, serial);
+            state.broadcast_toplevel_focus_cleared();
+        }
+    }
+
+    state
+        .workspaces
+        .space_at(workspace)
+        .elements()
+        .for_each(|window| {
+            if let Some(toplevel) = window.toplevel() {
+                toplevel.send_pending_configure();
+            }
+        });
+    state.mark_all_outputs_dirty("xdg-minimize-request");
+    state.broadcast_window_snapshot();
 }
 
 #[derive(Debug, Clone)]
