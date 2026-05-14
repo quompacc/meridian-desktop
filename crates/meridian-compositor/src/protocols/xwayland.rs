@@ -15,7 +15,7 @@ use smithay::{
         X11Surface, X11Wm, XWayland, XWaylandEvent, XwmHandler,
     },
 };
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use crate::grabs::{
     move_grab::MoveSurfaceGrab,
@@ -360,7 +360,7 @@ impl XwmHandler for MeridianState {
                 last_release_diag: None,
             },
         );
-        debug!(
+        trace!(
             event = "xwayland.or_diag.new_override_redirect_window",
             window_id,
             mapped_window_id = ?mapped_window_id,
@@ -433,6 +433,8 @@ impl XwmHandler for MeridianState {
         self.mark_all_outputs_dirty("xwayland-map-window");
     }
 
+    fn map_window_notify(&mut self, _xwm: XwmId, _window: X11Surface) {}
+
     fn mapped_override_redirect_window(&mut self, _xwm: XwmId, window: X11Surface) {
         let window_id = window.window_id();
         let is_override_redirect = window.is_override_redirect();
@@ -453,7 +455,7 @@ impl XwmHandler for MeridianState {
             entry.last_geometry = geo;
             entry.last_map_location = Some(loc);
         });
-        debug!(
+        trace!(
             event = "xwayland.or_diag.mapped_override_redirect_window",
             window_id,
             mapped_window_id = ?window.mapped_window_id(),
@@ -490,7 +492,7 @@ impl XwmHandler for MeridianState {
                     )
                 })
                 .unwrap_or((None, None, None));
-            debug!(
+            trace!(
                 event = "xwayland.or_diag.unmapped_window",
                 window_id,
                 elapsed_since_announce_ms = ?elapsed_since_announce_ms,
@@ -554,7 +556,7 @@ impl XwmHandler for MeridianState {
                     )
                 })
                 .unwrap_or((None, None, None));
-            debug!(
+            trace!(
                 event = "xwayland.or_diag.destroyed_window",
                 window_id,
                 elapsed_since_announce_ms = ?elapsed_since_announce_ms,
@@ -623,7 +625,7 @@ impl XwmHandler for MeridianState {
         }
         if is_override_redirect {
             let above_hint = reorder_above_hint(reorder);
-            debug!(
+            trace!(
                 event = "xwayland.or_diag.configure_request",
                 window_id,
                 geometry_before = ?base_rect,
@@ -754,7 +756,7 @@ impl XwmHandler for MeridianState {
                 .map_element(win.clone(), loc, false);
             let space_position_changed = previous_loc != Some(loc);
             if is_override_redirect {
-                debug!(
+                trace!(
                     event = "xwayland.or_diag.configure_notify",
                     window_id,
                     geometry = ?geometry,
