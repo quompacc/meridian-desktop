@@ -902,6 +902,17 @@ impl LauncherState {
                     Command::new(&app.program)
                 };
 
+                if let Ok(wayland_display) = std::env::var("WAYLAND_DISPLAY") {
+                    local.env("WAYLAND_DISPLAY", wayland_display);
+                }
+                if let Ok(xdg_runtime_dir) = std::env::var("XDG_RUNTIME_DIR") {
+                    local.env("XDG_RUNTIME_DIR", xdg_runtime_dir);
+                }
+                local
+                    .env("XDG_SESSION_TYPE", "wayland")
+                    .env("XDG_CURRENT_DESKTOP", "Meridian")
+                    .env("DESKTOP_SESSION", "meridian");
+
                 match local.args(&app.args).spawn() {
                     Ok(child) => info!("local launch pid: {}", child.id()),
                     Err(err) if err.kind() == std::io::ErrorKind::NotFound => {

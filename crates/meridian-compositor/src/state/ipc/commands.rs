@@ -76,21 +76,24 @@ impl MeridianState {
                     spec.program,
                     spec.args
                 );
-                if let Err(err) = Command::new(&spec.program)
+                let xdg_runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+                    // SAFETY: `geteuid` has no preconditions and reads the current process uid.
+                    format!("/run/user/{}", unsafe { libc::geteuid() })
+                });
+
+                let mut launch = Command::new(&spec.program);
+                launch
                     .args(&spec.args)
                     .env(
                         "WAYLAND_DISPLAY",
                         self.socket_name.to_string_lossy().as_ref(),
                     )
-                    .env(
-                        "XDG_RUNTIME_DIR",
-                        std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
-                            // SAFETY: `geteuid` has no preconditions and reads the current process uid.
-                            format!("/run/user/{}", unsafe { libc::geteuid() })
-                        }),
-                    )
-                    .spawn()
-                {
+                    .env("XDG_RUNTIME_DIR", xdg_runtime_dir)
+                    .env("XDG_SESSION_TYPE", "wayland")
+                    .env("XDG_CURRENT_DESKTOP", "Meridian")
+                    .env("DESKTOP_SESSION", "meridian");
+
+                if let Err(err) = launch.spawn() {
                     if err.kind() == std::io::ErrorKind::NotFound {
                         tracing::warn!(
                             "failed to launch app: program not found: {:?}",

@@ -56,6 +56,9 @@ impl ShellWatchdog {
                     format!("/run/user/{}", unsafe { libc::geteuid() })
                 }),
             )
+            .env("XDG_SESSION_TYPE", "wayland")
+            .env("XDG_CURRENT_DESKTOP", "Meridian")
+            .env("DESKTOP_SESSION", "meridian")
             .spawn()
         {
             Ok(child) => {
