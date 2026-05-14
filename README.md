@@ -1,6 +1,10 @@
 # Meridian Desktop
 
-Rust-based Wayland desktop environment focused on a polished, opinionated, gaming-friendly Linux desktop experience.
+Meridian is a calm, modern Wayland desktop positioned between GNOME and KDE.
+
+Wayland-first, toolkit-neutral, and opinionated in sensible defaults, Meridian focuses on productive workflows without configuration overload.
+
+Meridian is a calm, Wayland-first desktop for users who want polish without rigidity and power without clutter.
 
 ## Vision
 
@@ -8,6 +12,11 @@ Meridian aims to be a full desktop environment, not just a compositor plus loose
 The project focuses on a curated UX, strong runtime behavior, and practical performance on real hardware.
 
 Long-term, Meridian targets a polished Linux desktop that feels coherent out of the box and remains responsive for everyday use and gaming-oriented workflows.
+
+## Design Manifesto
+
+- [Meridian Design Manifesto](docs/design-manifesto.md)
+- [Technical Design Guidelines](docs/technical-design-guidelines.md)
 
 ## Current Status
 
@@ -106,6 +115,8 @@ The goal is cohesion and reliability over endless surface-level tweakability.
 
 ## Documentation
 
+- [Meridian Design Manifesto](docs/design-manifesto.md)
+- [Technical Design Guidelines](docs/technical-design-guidelines.md)
 - [Project status](docs/PROJECT_STATUS.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Testing guide](docs/TESTING.md)
