@@ -68,10 +68,11 @@ impl DndGrabHandler for MeridianState {}
 impl XdgDecorationHandler for MeridianState {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
         toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(DecorationMode::ServerSide);
+            state.decoration_mode = None;
         });
         toplevel.send_configure();
-        self.decoration_manager.set_ssd(toplevel.wl_surface(), true);
+        self.decoration_manager
+            .set_ssd(toplevel.wl_surface(), false);
     }
 
     fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
@@ -85,9 +86,10 @@ impl XdgDecorationHandler for MeridianState {
 
     fn unset_mode(&mut self, toplevel: ToplevelSurface) {
         toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(DecorationMode::ServerSide);
+            state.decoration_mode = None;
         });
-        self.decoration_manager.set_ssd(toplevel.wl_surface(), true);
+        self.decoration_manager
+            .set_ssd(toplevel.wl_surface(), false);
         toplevel.send_configure();
     }
 }
