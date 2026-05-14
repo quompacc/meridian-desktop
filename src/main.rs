@@ -58,6 +58,7 @@ impl ShellWatchdog {
             )
             .env("XDG_SESSION_TYPE", "wayland")
             .env("XDG_CURRENT_DESKTOP", "Meridian")
+            .env("XDG_SESSION_DESKTOP", "meridian")
             .env("DESKTOP_SESSION", "meridian")
             .spawn()
         {

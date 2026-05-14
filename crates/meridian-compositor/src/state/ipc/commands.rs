@@ -91,6 +91,7 @@ impl MeridianState {
                     .env("XDG_RUNTIME_DIR", xdg_runtime_dir)
                     .env("XDG_SESSION_TYPE", "wayland")
                     .env("XDG_CURRENT_DESKTOP", "Meridian")
+                    .env("XDG_SESSION_DESKTOP", "meridian")
                     .env("DESKTOP_SESSION", "meridian");
                 if is_firefox_program(&spec.program)
                     && std::env::var_os("MOZ_ENABLE_WAYLAND").is_none()
