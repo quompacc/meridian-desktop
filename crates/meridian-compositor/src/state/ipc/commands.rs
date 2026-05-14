@@ -1,4 +1,4 @@
-use std::{env, process::Command};
+use std::{env, path::Path, process::Command};
 
 use meridian_config::MeridianConfig;
 use meridian_ipc::{ShellCommand, ShellEvent};
@@ -92,6 +92,11 @@ impl MeridianState {
                     .env("XDG_SESSION_TYPE", "wayland")
                     .env("XDG_CURRENT_DESKTOP", "Meridian")
                     .env("DESKTOP_SESSION", "meridian");
+                if is_firefox_program(&spec.program)
+                    && std::env::var_os("MOZ_ENABLE_WAYLAND").is_none()
+                {
+                    launch.env("MOZ_ENABLE_WAYLAND", "1");
+                }
 
                 if let Err(err) = launch.spawn() {
                     if err.kind() == std::io::ErrorKind::NotFound {
@@ -279,4 +284,13 @@ impl MeridianState {
 
         tracing::warn!("focus-window requested unknown id: {}", id);
     }
+}
+
+fn is_firefox_program(program: &str) -> bool {
+    Path::new(program)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| {
+            name.eq_ignore_ascii_case("firefox") || name.eq_ignore_ascii_case("firefox-esr")
+        })
 }

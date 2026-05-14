@@ -633,6 +633,15 @@ fn terminal_program() -> Option<String> {
         })
 }
 
+fn is_firefox_program(program: &str) -> bool {
+    Path::new(program)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| {
+            name.eq_ignore_ascii_case("firefox") || name.eq_ignore_ascii_case("firefox-esr")
+        })
+}
+
 pub struct LauncherState {
     pub open: bool,
     pub query: String,
@@ -912,6 +921,9 @@ impl LauncherState {
                     .env("XDG_SESSION_TYPE", "wayland")
                     .env("XDG_CURRENT_DESKTOP", "Meridian")
                     .env("DESKTOP_SESSION", "meridian");
+                if is_firefox_program(&app.program) && env::var_os("MOZ_ENABLE_WAYLAND").is_none() {
+                    local.env("MOZ_ENABLE_WAYLAND", "1");
+                }
 
                 match local.args(&app.args).spawn() {
                     Ok(child) => info!("local launch pid: {}", child.id()),
