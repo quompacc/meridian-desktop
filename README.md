@@ -126,6 +126,7 @@ The goal is cohesion and reliability over endless surface-level tweakability.
 - [Multi-monitor audit](docs/MULTI_MONITOR.md)
 - [Workspace policy](docs/WORKSPACES.md)
 - [XDG portals plan](docs/XDG_PORTALS.md)
+- [Desktop settings contract](docs/DESKTOP_SETTINGS_CONTRACT.md)
 
 ## License
 
