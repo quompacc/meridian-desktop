@@ -30,13 +30,6 @@ pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: Toplev
             state.states.set(xdg_toplevel::State::Maximized);
             state.size = Some(size);
         });
-        let sent_states = surface.with_pending_state(|s| Vec::from(s.states.clone()));
-        tracing::info!(
-            title = %crate::state::toplevel_title(&surface),
-            sent_states = ?sent_states,
-            sent_size = ?size,
-            "diagnostic: maximize configure"
-        );
         state
             .decoration_manager
             .set_maximized(surface.wl_surface(), true);

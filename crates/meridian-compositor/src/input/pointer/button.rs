@@ -154,10 +154,9 @@ pub fn handle_pointer_button<I: InputBackend>(
         {
             state.update_focused_output_from_point(location, "pointer-button", true);
         }
-        let (selected_output_info_ref, fallback_reason) =
+        let (selected_output_info, fallback_reason) =
             select_pointer_button_output_info(state.output_registry.list(), Some(location));
-        let selected_output_info = selected_output_info_ref.cloned();
-        if let Some(info) = selected_output_info.as_ref() {
+        if let Some(info) = selected_output_info {
             debug!(
                 "pointer button output selection requested: x={:.2} y={:.2} selected_output_id={} name={} fallback_reason={}",
                 location.x, location.y, info.id.0, info.name, fallback_reason
@@ -185,7 +184,7 @@ pub fn handle_pointer_button<I: InputBackend>(
         } else {
             let space = state.workspaces.active_space();
             let theme = &state.theme_manager.current().config.decorations;
-            let output_geo = selected_output_info.as_ref().and_then(|info| {
+            let output_geo = selected_output_info.and_then(|info| {
                 let mapped = state
                     .outputs
                     .iter()

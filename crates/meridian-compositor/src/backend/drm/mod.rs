@@ -524,7 +524,6 @@ pub struct DrmOutput {
     pub scratch_upper_layer_data: Vec<render::LayerRenderData>,
     pub scratch_lower_layer_elements: Vec<render::MeridianRenderElements>,
     pub scratch_upper_layer_elements: Vec<render::MeridianRenderElements>,
-    pub last_logged_cursor_branch: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

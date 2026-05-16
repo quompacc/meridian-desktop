@@ -19,6 +19,8 @@ use smithay::{
         shell::xdg::{decoration::XdgDecorationHandler, ToplevelSurface},
     },
 };
+use tracing::debug;
+
 use crate::state::{normal_window_workarea_from_output_geometry, MeridianState};
 
 fn clamp_client_loc_for_visible_frame(
@@ -143,12 +145,7 @@ impl SeatHandler for MeridianState {
     }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
-        let summary = match &image {
-            CursorImageStatus::Hidden => "Hidden".to_string(),
-            CursorImageStatus::Named(icon) => format!("Named({})", icon.name()),
-            CursorImageStatus::Surface(_) => "Surface(...)".to_string(),
-        };
-        tracing::info!(status = %summary, "diagnostic: cursor_image client request");
+        debug!(?image, "cursor image update received from client");
         self.cursor_status = image;
         self.mark_all_outputs_dirty("cursor-status-changed");
     }
@@ -214,10 +211,6 @@ impl DndGrabHandler for MeridianState {}
 
 impl XdgDecorationHandler for MeridianState {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
-        tracing::info!(
-            title = %crate::state::toplevel_title(&toplevel),
-            "diagnostic: xdg_decoration new_decoration (client opted into protocol)"
-        );
         toplevel.with_pending_state(|state| {
             state.decoration_mode = None;
         });
@@ -228,11 +221,6 @@ impl XdgDecorationHandler for MeridianState {
     }
 
     fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
-        tracing::info!(
-            title = %crate::state::toplevel_title(&toplevel),
-            requested_mode = ?mode,
-            "diagnostic: xdg_decoration request_mode"
-        );
         let ssd = mode == DecorationMode::ServerSide;
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(mode);
@@ -243,10 +231,6 @@ impl XdgDecorationHandler for MeridianState {
     }
 
     fn unset_mode(&mut self, toplevel: ToplevelSurface) {
-        tracing::info!(
-            title = %crate::state::toplevel_title(&toplevel),
-            "diagnostic: xdg_decoration unset_mode"
-        );
         toplevel.with_pending_state(|state| {
             state.decoration_mode = None;
         });
@@ -321,13 +305,6 @@ impl MeridianState {
         };
 
         let old_focus = keyboard.current_focus();
-        let old_focus_str = old_focus.as_ref().map(|s| format!("{:?}", s.id()));
-        let new_focus_str = new_focus.as_ref().map(|s| format!("{:?}", s.id()));
-        tracing::info!(
-            old = ?old_focus_str,
-            new = ?new_focus_str,
-            "diagnostic: keyboard focus change"
-        );
         if old_focus != new_focus {
             self.update_focus_decoration(old_focus.as_ref(), new_focus.as_ref());
             self.mark_all_outputs_dirty("keyboard-focus-change");

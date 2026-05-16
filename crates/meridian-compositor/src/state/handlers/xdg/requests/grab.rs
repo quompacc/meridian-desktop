@@ -96,11 +96,6 @@ pub(crate) fn handle_resize_request(
         surface.with_pending_state(|state| {
             state.states.set(xdg_toplevel::State::Resizing);
         });
-        tracing::info!(
-            title = %crate::state::toplevel_title(&surface),
-            edges = ?edges,
-            "diagnostic: xdg resize_request from client"
-        );
         surface.send_pending_configure();
         let grab = ResizeSurfaceGrab::start(
             start_data,

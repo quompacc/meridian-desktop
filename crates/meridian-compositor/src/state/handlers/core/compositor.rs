@@ -4,7 +4,7 @@ use smithay::{
     desktop::{layer_map_for_output, WindowSurfaceType},
     reexports::wayland_server::{
         protocol::{wl_buffer::WlBuffer, wl_surface::WlSurface},
-        Client, Resource,
+        Client,
     },
     utils::SERIAL_COUNTER,
     wayland::{
@@ -46,28 +46,12 @@ impl CompositorHandler for MeridianState {
             while let Some(parent) = get_parent(&root) {
                 root = parent;
             }
-            let mut committed_window = None;
             if let Some(window) = self.workspaces.active_space().elements().find(|window| {
                 window
                     .wl_surface()
                     .is_some_and(|wl_surface| *wl_surface == root)
             }) {
                 window.on_commit();
-                committed_window = Some(window.clone());
-            }
-
-            if let Some(window) = committed_window {
-                if let Some(toplevel) = window.toplevel() {
-                    let toplevel_id = toplevel.wl_surface().id();
-                    if self.diag_logged_toplevels.insert(toplevel_id) {
-                        tracing::info!(
-                            title = %crate::state::toplevel_title(toplevel),
-                            window_geometry = ?window.geometry(),
-                            window_bbox = ?window.bbox(),
-                            "diagnostic: first commit window/buffer snapshot"
-                        );
-                    }
-                }
             }
         }
 
