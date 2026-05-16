@@ -1,7 +1,8 @@
 use std::time::{Duration, Instant};
 
 use smithay::backend::renderer::element::{
-    render_elements, surface::WaylandSurfaceRenderElement, AsRenderElements,
+    render_elements, surface::render_elements_from_surface_tree,
+    surface::WaylandSurfaceRenderElement, AsRenderElements,
 };
 use smithay::{
     backend::renderer::{
@@ -12,8 +13,9 @@ use smithay::{
         gles::{GlesRenderer, GlesTexture},
     },
     desktop::{layer_map_for_output, space::SpaceRenderElements, Window},
+    input::pointer::{CursorImageStatus, CursorImageSurfaceData},
     utils::Scale,
-    wayland::seat::WaylandFocus,
+    wayland::{compositor::with_states, seat::WaylandFocus},
 };
 use tracing::{debug, error};
 
@@ -94,6 +96,8 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
         ref mut outputs,
         ref cursor_image,
         ref cursor_buffer,
+        ref mut named_cursor_cache,
+        ref cursor_icon,
         ref mut dirty_stats,
         ref mut last_pointer_location,
         ..
@@ -208,20 +212,83 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                     let cursor_pos = (pointer_location - output_geo.loc.to_f64())
                         .to_physical(scale)
                         .to_i32_round::<i32>();
-                    let mut cursor_loc = cursor_pos;
-                    cursor_loc.x -= cursor_image.xhot as i32;
-                    cursor_loc.y -= cursor_image.yhot as i32;
-                    if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
-                        renderer,
-                        cursor_loc.to_f64(),
-                        cursor_buffer,
-                        None,
-                        None,
-                        None,
-                        Kind::Cursor,
-                    ) {
-                        out.scratch_cursor
-                            .push(MeridianRenderElements::Cursor(element));
+                    match &state.cursor_status {
+                        CursorImageStatus::Hidden => {}
+                        CursorImageStatus::Named(icon_name) => {
+                            // Preserve compositor-managed resize cursors for SSD/X11 edge hit-tests.
+                            if !matches!(cursor_icon, super::DrmCursorIcon::Default) {
+                                let mut cursor_loc = cursor_pos;
+                                cursor_loc.x -= cursor_image.xhot as i32;
+                                cursor_loc.y -= cursor_image.yhot as i32;
+                                if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
+                                    renderer,
+                                    cursor_loc.to_f64(),
+                                    cursor_buffer,
+                                    None,
+                                    None,
+                                    None,
+                                    Kind::Cursor,
+                                ) {
+                                    out.scratch_cursor
+                                        .push(MeridianRenderElements::Cursor(element));
+                                }
+                            } else {
+                                let cursor_cfg = &state.theme_manager.current().config.cursor;
+                                let (named_buffer, hotspot) = named_cursor_cache
+                                    .entry(icon_name.name().to_string())
+                                    .or_insert_with(|| {
+                                        let cursor =
+                                            crate::cursor::CursorImage::load_theme_cursor_icon(
+                                                &cursor_cfg.theme,
+                                                cursor_cfg.size,
+                                                *icon_name,
+                                            );
+                                        (
+                                            cursor.to_memory_buffer(),
+                                            smithay::utils::Point::from((
+                                                cursor.xhot as i32,
+                                                cursor.yhot as i32,
+                                            )),
+                                        )
+                                    });
+                                let mut cursor_loc = cursor_pos;
+                                cursor_loc.x -= hotspot.x;
+                                cursor_loc.y -= hotspot.y;
+                                if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
+                                    renderer,
+                                    cursor_loc.to_f64(),
+                                    named_buffer,
+                                    None,
+                                    None,
+                                    None,
+                                    Kind::Cursor,
+                                ) {
+                                    out.scratch_cursor
+                                        .push(MeridianRenderElements::Cursor(element));
+                                }
+                            }
+                        }
+                        CursorImageStatus::Surface(surface) => {
+                            let hotspot = with_states(surface, |states| {
+                                states
+                                    .data_map
+                                    .get::<CursorImageSurfaceData>()
+                                    .map(|attrs| attrs.lock().unwrap().hotspot)
+                                    .unwrap_or_default()
+                            });
+                            let hotspot = hotspot.to_f64().to_physical(scale).to_i32_round::<i32>();
+                            let cursor_loc = smithay::utils::Point::from((
+                                cursor_pos.x - hotspot.x,
+                                cursor_pos.y - hotspot.y,
+                            ));
+                            out.scratch_cursor
+                                .extend(render_elements_from_surface_tree::<
+                                    GlesRenderer,
+                                    MeridianRenderElements,
+                                >(
+                                    renderer, surface, cursor_loc, scale, 1.0, Kind::Cursor
+                                ));
+                        }
                     }
                 }
             }

@@ -1,5 +1,6 @@
 use smithay::{
     backend::{allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer},
+    input::pointer::CursorIcon,
     utils::Transform,
 };
 use tracing::info;
@@ -92,6 +93,13 @@ impl CursorImage {
                 embedded_name_for_icon_names(icon_names),
             )
         }
+    }
+
+    pub fn load_theme_cursor_icon(theme_name: &str, requested_size: u32, icon: CursorIcon) -> Self {
+        let mut icon_names = Vec::with_capacity(1 + icon.alt_names().len());
+        icon_names.push(icon.name());
+        icon_names.extend_from_slice(icon.alt_names());
+        Self::load_theme_icon(theme_name, requested_size, &icon_names)
     }
 
     pub fn embedded() -> Self {

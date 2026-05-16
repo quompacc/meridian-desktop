@@ -12,6 +12,7 @@ use smithay::{
     desktop::Window,
     output::Output,
     reexports::drm::control::{connector, crtc},
+    utils::{Logical, Point},
 };
 
 use crate::state::OutputId;
@@ -544,6 +545,7 @@ pub struct DrmBackend {
     pub outputs: Vec<DrmOutput>,
     pub cursor_image: CursorImage,
     pub cursor_buffer: MemoryRenderBuffer,
+    pub named_cursor_cache: HashMap<String, (MemoryRenderBuffer, Point<i32, Logical>)>,
     pub cursor_icon: DrmCursorIcon,
     pub dirty_stats: DrmDirtyStats,
     pub last_pointer_location: Option<(f64, f64)>,

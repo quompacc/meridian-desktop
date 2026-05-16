@@ -189,6 +189,7 @@ impl MeridianState {
             );
             drm.cursor_buffer = cursor_image.to_memory_buffer();
             drm.cursor_image = cursor_image;
+            drm.named_cursor_cache.clear();
         } else {
             tracing::debug!("cursor runtime reload skipped: drm backend not active");
         }

@@ -1014,6 +1014,7 @@ pub fn init_drm(
         outputs: drm_outputs,
         cursor_image,
         cursor_buffer,
+        named_cursor_cache: std::collections::HashMap::new(),
         cursor_icon: super::DrmCursorIcon::Default,
         dirty_stats: super::DrmDirtyStats::new(dirty_stats_enabled),
         last_pointer_location: None,
