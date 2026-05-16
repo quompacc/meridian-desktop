@@ -27,6 +27,16 @@ pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: 
                 .initial_configure_sent
         });
         if !initial_configure_sent {
+            let snapshot_states = toplevel.with_pending_state(|s| Vec::from(s.states.clone()));
+            let snapshot_size = toplevel.with_pending_state(|s| s.size);
+            let snapshot_bounds = toplevel.with_pending_state(|s| s.bounds);
+            tracing::info!(
+                title = %crate::state::toplevel_title(toplevel),
+                states = ?snapshot_states,
+                size = ?snapshot_size,
+                bounds = ?snapshot_bounds,
+                "diagnostic: sending initial xdg_toplevel.configure"
+            );
             toplevel.send_configure();
         }
     }
