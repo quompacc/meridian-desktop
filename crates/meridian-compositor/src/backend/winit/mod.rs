@@ -15,7 +15,7 @@ use smithay::{
     desktop::{layer_map_for_output, space::render_output, space::SpaceRenderElements, Window},
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::EventLoop,
-    utils::{Rectangle, Transform},
+    utils::{Rectangle, Scale, Transform},
 };
 
 use crate::{
@@ -26,7 +26,7 @@ use crate::{
 mod layers;
 mod scene;
 
-use layers::{collect_layer_data, send_layer_frames};
+use layers::{collect_layer_data, render_layer_elements, send_layer_frames};
 
 render_elements! {
     pub WinitRenderElements<=GlesRenderer>;
@@ -41,6 +41,10 @@ pub(super) struct WinitRenderScratch {
     pub normal: Vec<WinitRenderElements>,
     pub final_elements: Vec<WinitRenderElements>,
     pub windows: Vec<Window>,
+    pub lower_layer_data: Vec<layers::LayerRenderData>,
+    pub upper_layer_data: Vec<layers::LayerRenderData>,
+    pub lower_layer_elements: Vec<WinitRenderElements>,
+    pub upper_layer_elements: Vec<WinitRenderElements>,
 }
 
 pub fn init_winit(
@@ -139,16 +143,31 @@ pub fn init_winit(
                 let size = backend.window_size();
                 let damage = Rectangle::from_size(size);
                 let age = backend.buffer_age().unwrap_or(0);
-                let (lower_layer_data, upper_layer_data) = collect_layer_data(&output);
+                collect_layer_data(
+                    &output,
+                    &mut render_scratch.lower_layer_data,
+                    &mut render_scratch.upper_layer_data,
+                );
 
                 {
                     let (renderer, mut framebuffer) = backend.bind().unwrap();
+                    let scale = Scale::from(1.0f64);
+                    render_layer_elements(
+                        renderer,
+                        &render_scratch.lower_layer_data,
+                        scale,
+                        &mut render_scratch.lower_layer_elements,
+                    );
+                    render_layer_elements(
+                        renderer,
+                        &render_scratch.upper_layer_data,
+                        scale,
+                        &mut render_scratch.upper_layer_elements,
+                    );
                     scene::render_elements_for_output(
                         state,
                         renderer,
                         &output,
-                        &lower_layer_data,
-                        &upper_layer_data,
                         &mut wallpaper_cache,
                         size.w as u32,
                         size.h as u32,
@@ -182,7 +201,12 @@ pub fn init_winit(
                             Some(output.clone())
                         });
                     });
-                send_layer_frames(&output, time, &lower_layer_data, &upper_layer_data);
+                send_layer_frames(
+                    &output,
+                    time,
+                    &render_scratch.lower_layer_data,
+                    &render_scratch.upper_layer_data,
+                );
 
                 state.workspaces.active_space_mut().refresh();
                 state.popups.cleanup();

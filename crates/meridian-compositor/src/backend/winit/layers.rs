@@ -19,10 +19,14 @@ fn is_upper_layer(namespace: &str, layer: WlrLayer) -> bool {
     namespace == "meridian-launcher" || matches!(layer, WlrLayer::Top | WlrLayer::Overlay)
 }
 
-pub(super) fn collect_layer_data(output: &Output) -> (Vec<LayerRenderData>, Vec<LayerRenderData>) {
+pub(super) fn collect_layer_data(
+    output: &Output,
+    lower: &mut Vec<LayerRenderData>,
+    upper: &mut Vec<LayerRenderData>,
+) {
     let layer_map = layer_map_for_output(output);
-    let mut lower = Vec::new();
-    let mut upper = Vec::new();
+    lower.clear();
+    upper.clear();
 
     for layer_surface in layer_map.layers() {
         let geo = match layer_map.layer_geometry(layer_surface) {
@@ -35,8 +39,6 @@ pub(super) fn collect_layer_data(output: &Output) -> (Vec<LayerRenderData>, Vec<
             lower.push((layer_surface.clone(), geo));
         }
     }
-
-    (lower, upper)
 }
 
 #[cfg(test)]
@@ -64,21 +66,23 @@ pub(super) fn render_layer_elements(
     renderer: &mut GlesRenderer,
     layer_data: &[LayerRenderData],
     scale: Scale<f64>,
-) -> Vec<WinitRenderElements> {
-    layer_data
-        .iter()
-        .flat_map(|(layer, geo)| {
-            let loc = geo.loc.to_f64().to_physical(scale).to_i32_round();
-            render_elements_from_surface_tree::<GlesRenderer, WinitRenderElements>(
-                renderer,
-                layer.wl_surface(),
-                loc,
-                scale,
-                1.0,
-                Kind::Unspecified,
-            )
-        })
-        .collect()
+    out: &mut Vec<WinitRenderElements>,
+) {
+    out.clear();
+    for (layer, geo) in layer_data {
+        let loc = geo.loc.to_f64().to_physical(scale).to_i32_round();
+        out.extend(render_elements_from_surface_tree::<
+            GlesRenderer,
+            WinitRenderElements,
+        >(
+            renderer,
+            layer.wl_surface(),
+            loc,
+            scale,
+            1.0,
+            Kind::Unspecified,
+        ));
+    }
 }
 
 pub(super) fn send_layer_frames(

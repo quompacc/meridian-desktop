@@ -71,13 +71,17 @@ fn layer_render_state(
     })
 }
 
-pub(super) type LayerRenderData = (LayerSurface, Rectangle<i32, Logical>);
+pub(crate) type LayerRenderData = (LayerSurface, Rectangle<i32, Logical>);
 
 fn is_upper_layer(namespace: &str, layer: WlrLayer) -> bool {
     namespace == "meridian-launcher" || matches!(layer, WlrLayer::Top | WlrLayer::Overlay)
 }
 
-pub(super) fn collect_layer_data(output: &Output) -> (Vec<LayerRenderData>, Vec<LayerRenderData>) {
+pub(super) fn collect_layer_data(
+    output: &Output,
+    lower: &mut Vec<LayerRenderData>,
+    upper: &mut Vec<LayerRenderData>,
+) {
     let layer_map = layer_map_for_output(output);
     let layer_count = layer_map.len();
     debug!(
@@ -86,8 +90,8 @@ pub(super) fn collect_layer_data(output: &Output) -> (Vec<LayerRenderData>, Vec<
         layer_count
     );
 
-    let mut lower = Vec::new();
-    let mut upper = Vec::new();
+    lower.clear();
+    upper.clear();
     for layer_surface in layer_map.layers() {
         let render_state = layer_render_state(layer_surface.wl_surface());
         let geo = match layer_map.layer_geometry(layer_surface) {
@@ -134,16 +138,15 @@ pub(super) fn collect_layer_data(output: &Output) -> (Vec<LayerRenderData>, Vec<
             lower.push((layer_surface.clone(), geo));
         }
     }
-
-    (lower, upper)
 }
 
 pub(super) fn render_layer_elements(
     renderer: &mut GlesRenderer,
     layer_data: &[LayerRenderData],
     scale: Scale<f64>,
-) -> Vec<MeridianRenderElements> {
-    let mut elements: Vec<MeridianRenderElements> = Vec::new();
+    out: &mut Vec<MeridianRenderElements>,
+) {
+    out.clear();
     for (layer, geo) in layer_data {
         let loc = geo.loc.to_f64().to_physical(scale).to_i32_round();
         let layer_elements =
@@ -161,9 +164,8 @@ pub(super) fn render_layer_elements(
             layer.layer(),
             layer_elements.len()
         );
-        elements.extend(layer_elements);
+        out.extend(layer_elements);
     }
-    elements
 }
 
 pub(super) fn send_layer_frames(

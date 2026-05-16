@@ -11,9 +11,7 @@ use smithay::{
 
 use crate::{state::MeridianState, wallpaper::WallpaperGpuCache};
 
-use super::{
-    layers::render_layer_elements, layers::LayerRenderData, WinitRenderElements, WinitRenderScratch,
-};
+use super::{WinitRenderElements, WinitRenderScratch};
 
 fn render_window_space_elements<C>(
     renderer: &mut GlesRenderer,
@@ -45,8 +43,6 @@ pub(super) fn render_elements_for_output(
     state: &mut MeridianState,
     renderer: &mut GlesRenderer,
     _output: &Output,
-    lower_layer_data: &[LayerRenderData],
-    upper_layer_data: &[LayerRenderData],
     wallpaper_cache: &mut Option<WallpaperGpuCache>,
     out_w: u32,
     out_h: u32,
@@ -105,8 +101,6 @@ pub(super) fn render_elements_for_output(
         render_window_space_elements(renderer, window, loc, scale, &mut scratch.normal);
     }
 
-    let lower_layer_elems = render_layer_elements(renderer, lower_layer_data, scale);
-    let upper_layer_elems = render_layer_elements(renderer, upper_layer_data, scale);
     let wallpaper_elem = wallpaper_cache
         .as_ref()
         .map(WallpaperGpuCache::render_element);
@@ -116,7 +110,11 @@ pub(super) fn render_elements_for_output(
             .into_iter()
             .map(WinitRenderElements::Wallpaper),
     );
-    scratch.final_elements.extend(lower_layer_elems);
+    scratch
+        .final_elements
+        .append(&mut scratch.lower_layer_elements);
     scratch.final_elements.append(&mut scratch.normal);
-    scratch.final_elements.extend(upper_layer_elems);
+    scratch
+        .final_elements
+        .append(&mut scratch.upper_layer_elements);
 }

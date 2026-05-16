@@ -24,6 +24,7 @@ use super::{DrmBackend, RenderPassMetrics};
 mod layers;
 mod stack;
 
+pub(super) use self::layers::LayerRenderData;
 pub use stack::{layer_role, render_stack_order, RenderStackRole};
 
 use self::layers::{collect_layer_data, render_layer_elements, send_layer_frames};
@@ -218,9 +219,23 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
             }
         }
 
-        let (lower_layer_data, upper_layer_data) = collect_layer_data(&out.output);
-        let lower_layer_elements = render_layer_elements(renderer, &lower_layer_data, scale);
-        let upper_layer_elements = render_layer_elements(renderer, &upper_layer_data, scale);
+        collect_layer_data(
+            &out.output,
+            &mut out.scratch_lower_layer_data,
+            &mut out.scratch_upper_layer_data,
+        );
+        render_layer_elements(
+            renderer,
+            &out.scratch_lower_layer_data,
+            scale,
+            &mut out.scratch_lower_layer_elements,
+        );
+        render_layer_elements(
+            renderer,
+            &out.scratch_upper_layer_data,
+            scale,
+            &mut out.scratch_upper_layer_elements,
+        );
 
         let wallpaper_elem = out
             .wallpaper
@@ -229,15 +244,23 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
 
         let cursor_count = out.scratch_cursor.len();
         {
-            let (scratch_final, scratch_cursor, scratch_normal) = (
+            let (
+                scratch_final,
+                scratch_cursor,
+                scratch_normal,
+                scratch_lower_layer_elements,
+                scratch_upper_layer_elements,
+            ) = (
                 &mut out.scratch_final,
                 &mut out.scratch_cursor,
                 &mut out.scratch_normal,
+                &mut out.scratch_lower_layer_elements,
+                &mut out.scratch_upper_layer_elements,
             );
             scratch_final.append(scratch_cursor);
-            scratch_final.extend(upper_layer_elements);
+            scratch_final.append(scratch_upper_layer_elements);
             scratch_final.append(scratch_normal);
-            scratch_final.extend(lower_layer_elements);
+            scratch_final.append(scratch_lower_layer_elements);
             scratch_final.extend(
                 wallpaper_elem
                     .into_iter()
@@ -247,14 +270,15 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
 
         let elements = out.scratch_final.as_slice();
 
-        let layer_surface_count = lower_layer_data.len() + upper_layer_data.len();
+        let layer_surface_count =
+            out.scratch_lower_layer_data.len() + out.scratch_upper_layer_data.len();
         let render_element_count = elements.len();
         let logged_element_count = render_element_count + layer_surface_count;
         #[cfg(debug_assertions)]
         {
             let render_order = render_stack_order(
                 cursor_count,
-                upper_layer_data.len(),
+                out.scratch_upper_layer_data.len(),
                 elements
                     .iter()
                     .filter(|element| matches!(element, MeridianRenderElements::Decoration(_)))
@@ -264,7 +288,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                     .iter()
                     .filter(|element| matches!(element, MeridianRenderElements::Space(_)))
                     .count(),
-                lower_layer_data.len(),
+                out.scratch_lower_layer_data.len(),
                 elements
                     .iter()
                     .filter(|element| matches!(element, MeridianRenderElements::Wallpaper(_)))
@@ -381,7 +405,12 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                     Some(out_clone.clone())
                 });
             });
-            send_layer_frames(&out_clone, time, &lower_layer_data, &upper_layer_data);
+            send_layer_frames(
+                &out_clone,
+                time,
+                &out.scratch_lower_layer_data,
+                &out.scratch_upper_layer_data,
+            );
         }
         metrics.output_pass_duration += output_pass_started.elapsed();
     }

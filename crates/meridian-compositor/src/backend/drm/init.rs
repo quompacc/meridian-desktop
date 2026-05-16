@@ -499,6 +499,10 @@ fn add_drm_output_via_hotplug_pipeline(
         scratch_cursor: Vec::new(),
         scratch_final: Vec::new(),
         scratch_windows: Vec::new(),
+        scratch_lower_layer_data: Vec::new(),
+        scratch_upper_layer_data: Vec::new(),
+        scratch_lower_layer_elements: Vec::new(),
+        scratch_upper_layer_elements: Vec::new(),
     });
     drm_backend
         .dirty_stats
@@ -940,6 +944,10 @@ pub fn init_drm(
             scratch_cursor: Vec::new(),
             scratch_final: Vec::new(),
             scratch_windows: Vec::new(),
+            scratch_lower_layer_data: Vec::new(),
+            scratch_upper_layer_data: Vec::new(),
+            scratch_lower_layer_elements: Vec::new(),
+            scratch_upper_layer_elements: Vec::new(),
         });
         info!(
             "Initialized output {}x{} @ {}Hz (calc_refresh_millihz={})",
