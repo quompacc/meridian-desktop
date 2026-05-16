@@ -94,7 +94,7 @@ pub struct Cursor {
 impl Default for Cursor {
     fn default() -> Self {
         Self {
-            theme: "default".to_string(),
+            theme: "Vanilla-DMZ".to_string(),
             size: 24,
         }
     }
