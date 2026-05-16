@@ -250,28 +250,31 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
         let layer_surface_count = lower_layer_data.len() + upper_layer_data.len();
         let render_element_count = elements.len();
         let logged_element_count = render_element_count + layer_surface_count;
-        let render_order = render_stack_order(
-            cursor_count,
-            upper_layer_data.len(),
-            elements
-                .iter()
-                .filter(|element| matches!(element, MeridianRenderElements::Decoration(_)))
-                .count()
-                .saturating_sub(cursor_count),
-            elements
-                .iter()
-                .filter(|element| matches!(element, MeridianRenderElements::Space(_)))
-                .count(),
-            lower_layer_data.len(),
-            elements
-                .iter()
-                .filter(|element| matches!(element, MeridianRenderElements::Wallpaper(_)))
-                .count(),
-        );
-        debug_assert!(
-            !render_order.contains(&RenderStackRole::Cursor)
-                || render_order.first() == Some(&RenderStackRole::Cursor)
-        );
+        #[cfg(debug_assertions)]
+        {
+            let render_order = render_stack_order(
+                cursor_count,
+                upper_layer_data.len(),
+                elements
+                    .iter()
+                    .filter(|element| matches!(element, MeridianRenderElements::Decoration(_)))
+                    .count()
+                    .saturating_sub(cursor_count),
+                elements
+                    .iter()
+                    .filter(|element| matches!(element, MeridianRenderElements::Space(_)))
+                    .count(),
+                lower_layer_data.len(),
+                elements
+                    .iter()
+                    .filter(|element| matches!(element, MeridianRenderElements::Wallpaper(_)))
+                    .count(),
+            );
+            debug_assert!(
+                !render_order.contains(&RenderStackRole::Cursor)
+                    || render_order.first() == Some(&RenderStackRole::Cursor)
+            );
+        }
 
         let bg = [0.0_f32; 4];
         let commit_started = Instant::now();
