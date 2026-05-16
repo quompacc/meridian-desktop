@@ -14,7 +14,7 @@ use smithay::{
         compositor::CompositorState,
         output::OutputManagerState,
         seat::WaylandFocus,
-        selection::data_device::DataDeviceState,
+        selection::{data_device::DataDeviceState, primary_selection::PrimarySelectionState},
         shell::{
             wlr_layer::WlrLayerShellState,
             xdg::{self, XdgShellState},
@@ -307,6 +307,7 @@ pub struct MeridianState {
     pub seat_state: SeatState<Self>,
     pub output_manager_state: OutputManagerState,
     pub data_device_state: DataDeviceState,
+    pub primary_selection_state: PrimarySelectionState,
     pub xwayland_shell_state: XWaylandShellState,
     pub xwm: Option<X11Wm>,
     pub drm_backend: Option<DrmBackend>,

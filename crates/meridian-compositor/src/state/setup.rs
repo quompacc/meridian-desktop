@@ -12,7 +12,7 @@ use smithay::{
     wayland::{
         compositor::CompositorState,
         output::OutputManagerState,
-        selection::data_device::DataDeviceState,
+        selection::{data_device::DataDeviceState, primary_selection::PrimarySelectionState},
         shell::{wlr_layer::WlrLayerShellState, xdg::XdgShellState},
         shm::ShmState,
         socket::ListeningSocketSource,
@@ -177,6 +177,7 @@ impl MeridianState {
         let shm_state = ShmState::new::<Self>(&display_handle, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&display_handle);
         let data_device_state = DataDeviceState::new::<Self>(&display_handle);
+        let primary_selection_state = PrimarySelectionState::new::<Self>(&display_handle);
         let xwayland_shell_state = XWaylandShellState::new::<Self>(&display_handle);
 
         let mut seat_state = SeatState::new();
@@ -221,6 +222,7 @@ impl MeridianState {
             seat_state,
             output_manager_state,
             data_device_state,
+            primary_selection_state,
             xwayland_shell_state,
             xwm: None,
             drm_backend: None,

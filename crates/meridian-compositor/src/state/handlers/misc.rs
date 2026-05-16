@@ -11,6 +11,7 @@ use smithay::{
         output::OutputHandler,
         selection::{
             data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler},
+            primary_selection::{PrimarySelectionHandler, PrimarySelectionState},
             SelectionHandler,
         },
         shell::xdg::{decoration::XdgDecorationHandler, ToplevelSurface},
@@ -159,6 +160,12 @@ impl OutputHandler for MeridianState {}
 
 impl SelectionHandler for MeridianState {
     type SelectionUserData = ();
+}
+
+impl PrimarySelectionHandler for MeridianState {
+    fn primary_selection_state(&mut self) -> &mut PrimarySelectionState {
+        &mut self.primary_selection_state
+    }
 }
 
 impl WaylandDndGrabHandler for MeridianState {}
