@@ -9,6 +9,7 @@ use smithay::{
         drm::{compositor::DrmCompositor, exporter::gbm::GbmFramebufferExporter, DrmDeviceFd},
         renderer::{element::memory::MemoryRenderBuffer, gles::GlesRenderer},
     },
+    desktop::Window,
     output::Output,
     reexports::drm::control::{connector, crtc},
 };
@@ -514,6 +515,10 @@ pub struct DrmOutput {
     pub wallpaper: Option<WallpaperGpuCache>,
     pub frame_in_flight: bool,
     pub needs_repaint: bool,
+    pub scratch_normal: Vec<render::MeridianRenderElements>,
+    pub scratch_cursor: Vec<render::MeridianRenderElements>,
+    pub scratch_final: Vec<render::MeridianRenderElements>,
+    pub scratch_windows: Vec<Window>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

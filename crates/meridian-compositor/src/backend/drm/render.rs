@@ -57,17 +57,24 @@ fn clear_output_dirty(
     }
 }
 
-fn render_window_space_elements(
+fn render_window_space_elements<C>(
     renderer: &mut GlesRenderer,
     output: &Output,
     window: &Window,
     window_loc: smithay::utils::Point<i32, smithay::utils::Logical>,
-) -> Vec<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>> {
+    out: &mut Vec<C>,
+) where
+    C: From<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>>,
+{
     let mut window_space = Space::<Window>::default();
     window_space.map_output(output, (0, 0));
     window_space.map_element(window.clone(), window_loc, false);
-    space_render_elements::<GlesRenderer, Window, _>(renderer, [&window_space], output, 1.0)
-        .unwrap_or_default()
+    out.extend(
+        space_render_elements::<GlesRenderer, Window, _>(renderer, [&window_space], output, 1.0)
+            .unwrap_or_default()
+            .into_iter()
+            .map(C::from),
+    );
 }
 
 pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
@@ -141,11 +148,15 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
         let theme = &state.theme_manager.current().config;
         let scale = Scale::from(1.0f64);
 
-        let mut normal_window_elements: Vec<MeridianRenderElements> = Vec::new();
+        out.scratch_normal.clear();
+        out.scratch_cursor.clear();
+        out.scratch_final.clear();
+        out.scratch_windows.clear();
+        out.scratch_windows.extend(space.elements().cloned());
+
         let mut decoration_element_count = 0usize;
         let mut space_element_count = 0usize;
-        let windows: Vec<_> = space.elements().cloned().collect();
-        for window in windows.iter().rev() {
+        for window in out.scratch_windows.iter().rev() {
             let loc = match space.element_location(window) {
                 Some(l) => l,
                 None => continue,
@@ -168,24 +179,25 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                     scale,
                 );
                 decoration_element_count += window_deco_elements.len();
-                normal_window_elements.extend(
+                out.scratch_normal.extend(
                     window_deco_elements
                         .into_iter()
                         .map(MeridianRenderElements::Decoration),
                 );
             }
 
-            let window_space_elements =
-                render_window_space_elements(renderer, &out.output, window, loc);
-            space_element_count += window_space_elements.len();
-            normal_window_elements.extend(
-                window_space_elements
-                    .into_iter()
-                    .map(MeridianRenderElements::Space),
+            let space_start = out.scratch_normal.len();
+            render_window_space_elements(
+                renderer,
+                &out.output,
+                window,
+                loc,
+                &mut out.scratch_normal,
             );
+            let appended_space = out.scratch_normal.len().saturating_sub(space_start);
+            space_element_count += appended_space;
         }
 
-        let mut cursor_elements: Vec<MeridianRenderElements> = Vec::new();
         if let Some(pointer) = state.seat.get_pointer() {
             let pointer_location = pointer.current_location();
             if let Some(output_geo) = space.output_geometry(&out.output) {
@@ -205,7 +217,8 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                         None,
                         Kind::Cursor,
                     ) {
-                        cursor_elements.push(MeridianRenderElements::Cursor(element));
+                        out.scratch_cursor
+                            .push(MeridianRenderElements::Cursor(element));
                     }
                 }
             }
@@ -220,17 +233,25 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
             .as_ref()
             .map(WallpaperGpuCache::render_element);
 
-        let cursor_count = cursor_elements.len();
-        let mut elements: Vec<MeridianRenderElements> = Vec::new();
-        elements.extend(cursor_elements);
-        elements.extend(upper_layer_elements);
-        elements.extend(normal_window_elements);
-        elements.extend(lower_layer_elements);
-        elements.extend(
-            wallpaper_elem
-                .into_iter()
-                .map(MeridianRenderElements::Wallpaper),
-        );
+        let cursor_count = out.scratch_cursor.len();
+        {
+            let (scratch_final, scratch_cursor, scratch_normal) = (
+                &mut out.scratch_final,
+                &mut out.scratch_cursor,
+                &mut out.scratch_normal,
+            );
+            scratch_final.append(scratch_cursor);
+            scratch_final.extend(upper_layer_elements);
+            scratch_final.append(scratch_normal);
+            scratch_final.extend(lower_layer_elements);
+            scratch_final.extend(
+                wallpaper_elem
+                    .into_iter()
+                    .map(MeridianRenderElements::Wallpaper),
+            );
+        }
+
+        let elements = out.scratch_final.as_slice();
 
         let layer_surface_count = lower_layer_data.len() + upper_layer_data.len();
         let render_element_count = elements.len();
@@ -265,7 +286,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
             .compositor
             .render_frame::<GlesRenderer, MeridianRenderElements>(
                 renderer,
-                &elements,
+                elements,
                 bg,
                 smithay::backend::drm::compositor::FrameFlags::DEFAULT,
             ) {

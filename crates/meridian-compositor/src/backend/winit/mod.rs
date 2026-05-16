@@ -36,6 +36,13 @@ render_elements! {
     Layer=WaylandSurfaceRenderElement<GlesRenderer>,
 }
 
+#[derive(Default)]
+pub(super) struct WinitRenderScratch {
+    pub normal: Vec<WinitRenderElements>,
+    pub final_elements: Vec<WinitRenderElements>,
+    pub windows: Vec<Window>,
+}
+
 pub fn init_winit(
     event_loop: &mut EventLoop<MeridianState>,
     state: &mut MeridianState,
@@ -81,6 +88,7 @@ pub fn init_winit(
 
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
     let mut wallpaper_cache: Option<WallpaperGpuCache> = None;
+    let mut render_scratch = WinitRenderScratch::default();
 
     event_loop
         .handle()
@@ -135,7 +143,7 @@ pub fn init_winit(
 
                 {
                     let (renderer, mut framebuffer) = backend.bind().unwrap();
-                    let all_elements = scene::render_elements_for_output(
+                    scene::render_elements_for_output(
                         state,
                         renderer,
                         &output,
@@ -144,6 +152,7 @@ pub fn init_winit(
                         &mut wallpaper_cache,
                         size.w as u32,
                         size.h as u32,
+                        &mut render_scratch,
                     );
 
                     let bg = [0.0_f32; 4];
@@ -154,7 +163,7 @@ pub fn init_winit(
                         1.0,
                         age,
                         std::iter::empty::<&smithay::desktop::Space<Window>>(),
-                        &all_elements,
+                        &render_scratch.final_elements,
                         &mut damage_tracker,
                         bg,
                     )

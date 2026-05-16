@@ -495,6 +495,10 @@ fn add_drm_output_via_hotplug_pipeline(
         wallpaper: None,
         frame_in_flight: false,
         needs_repaint: true,
+        scratch_normal: Vec::new(),
+        scratch_cursor: Vec::new(),
+        scratch_final: Vec::new(),
+        scratch_windows: Vec::new(),
     });
     drm_backend
         .dirty_stats
@@ -932,6 +936,10 @@ pub fn init_drm(
             wallpaper: None,
             frame_in_flight: false,
             needs_repaint: true,
+            scratch_normal: Vec::new(),
+            scratch_cursor: Vec::new(),
+            scratch_final: Vec::new(),
+            scratch_windows: Vec::new(),
         });
         info!(
             "Initialized output {}x{} @ {}Hz (calc_refresh_millihz={})",
