@@ -1,8 +1,11 @@
 use smithay::{
     desktop::{PopupKind, Window},
-    reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
+    reexports::{wayland_protocols::xdg::shell::server::xdg_toplevel, wayland_server::Resource},
     utils::{Logical, Point, SERIAL_COUNTER},
-    wayland::shell::xdg::{PopupSurface, PositionerState, ToplevelSurface},
+    wayland::{
+        compositor::with_states,
+        shell::xdg::{PopupSurface, PositionerState, ToplevelSurface, XdgToplevelSurfaceData},
+    },
 };
 
 use meridian_wm::WorkspaceMode;
@@ -38,6 +41,23 @@ pub(super) fn handle_new_toplevel(state: &mut MeridianState, surface: ToplevelSu
     tracing::info!(
         "new xdg toplevel: {}",
         crate::state::toplevel_title(&surface)
+    );
+    let initial_states = surface.with_pending_state(|s| Vec::from(s.states.clone()));
+    let initial_size = surface.with_pending_state(|s| s.size);
+    let initial_bounds = surface.with_pending_state(|s| s.bounds);
+    let initial_app_id = with_states(surface.wl_surface(), |states| {
+        states
+            .data_map
+            .get::<XdgToplevelSurfaceData>()
+            .and_then(|data| data.lock().unwrap().app_id.clone())
+    });
+    tracing::info!(
+        title = %crate::state::toplevel_title(&surface),
+        app_id = ?initial_app_id,
+        pending_states = ?initial_states,
+        pending_size = ?initial_size,
+        pending_bounds = ?initial_bounds,
+        "diagnostic: new xdg toplevel pending state"
     );
     state.broadcast_toplevel_opened(&surface);
     let wl_surface = surface.wl_surface().clone();
@@ -108,6 +128,9 @@ pub(super) fn handle_new_popup(
 
 pub(super) fn handle_toplevel_destroyed(state: &mut MeridianState, surface: ToplevelSurface) {
     let id = window_id(surface.wl_surface());
+    state
+        .diag_logged_toplevels
+        .remove(&surface.wl_surface().id());
     state.clear_window_runtime_state(&id);
     state.decoration_manager.remove(surface.wl_surface());
     state.broadcast_toplevel_closed(&surface);

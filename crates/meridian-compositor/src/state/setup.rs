@@ -231,6 +231,7 @@ impl MeridianState {
             active_window_snap_states: std::collections::HashMap::new(),
             minimized_windows: std::collections::HashMap::new(),
             xwayland_or_diag: std::collections::HashMap::new(),
+            diag_logged_toplevels: std::collections::HashSet::new(),
         })
     }
 

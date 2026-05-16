@@ -1,4 +1,8 @@
-use std::{collections::HashMap, ffi::OsString, time::Instant};
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::OsString,
+    time::Instant,
+};
 
 use meridian_config::{KeybindConfig, ThemeManager};
 use meridian_wm::WmWorkspace;
@@ -8,7 +12,9 @@ use smithay::{
     output::Output,
     reexports::calloop::{LoopHandle, LoopSignal},
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
-    reexports::wayland_server::{protocol::wl_surface::WlSurface, DisplayHandle},
+    reexports::wayland_server::{
+        backend::ObjectId, protocol::wl_surface::WlSurface, DisplayHandle,
+    },
     utils::{Logical, Point, Rectangle, Size},
     wayland::{
         compositor::CompositorState,
@@ -316,6 +322,7 @@ pub struct MeridianState {
     pub active_window_snap_states: HashMap<String, WindowSnapState>,
     pub minimized_windows: HashMap<String, MinimizedWindowEntry>,
     pub xwayland_or_diag: HashMap<u32, XwaylandOrDiagEntry>,
+    pub diag_logged_toplevels: HashSet<ObjectId>,
 }
 
 impl MeridianState {

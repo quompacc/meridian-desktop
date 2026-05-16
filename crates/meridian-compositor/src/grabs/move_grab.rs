@@ -195,6 +195,10 @@ fn apply_half_snap_from_move_release(
         apply_half_snap_tiled_states(state, direction);
         state.size = Some(placement.client_size);
     });
+    tracing::info!(
+        direction = ?direction,
+        "diagnostic: snap-tile configure with tiled states"
+    );
     data.decoration_manager
         .set_maximized(toplevel.wl_surface(), false);
     data.workspaces
