@@ -34,7 +34,7 @@ pub struct CursorConfig {
 impl Default for CursorConfig {
     fn default() -> Self {
         Self {
-            theme: "default".to_string(),
+            theme: "Vanilla-DMZ".to_string(),
             size: 24,
         }
     }
@@ -228,7 +228,9 @@ mod tests {
 theme = "catppuccin-mocha"
 
 [cursor]
-theme = "default"
+# Cursor-Theme aus /usr/share/icons/<Theme>/cursors/
+# Fallback-Stack: <theme> -> Adwaita -> default -> embedded
+theme = "Vanilla-DMZ"
 size = 24
 
 [wallpaper]
@@ -240,7 +242,7 @@ mode = "fill"
         let config = MeridianConfig::load_from(&path).expect("valid config");
         assert_eq!(config.general.theme, "catppuccin-mocha");
         let cursor = config.cursor.expect("cursor section");
-        assert_eq!(cursor.theme, "default");
+        assert_eq!(cursor.theme, "Vanilla-DMZ");
         assert_eq!(cursor.size, 24);
         let wallpaper = config.wallpaper.expect("wallpaper section");
         assert_eq!(wallpaper.path, "/tmp/wall.png");
@@ -264,7 +266,9 @@ mode = "fill"
             &path,
             r#"
 [cursor]
-theme = "Breeze"
+# Cursor-Theme aus /usr/share/icons/<Theme>/cursors/
+# Fallback-Stack: <theme> -> Adwaita -> default -> embedded
+theme = "Vanilla-DMZ"
 size = 32
 
 [wallpaper]
@@ -274,7 +278,7 @@ mode = "fit"
         );
         let config = MeridianConfig::load_from(&path).expect("valid config");
         let cursor = config.cursor.expect("cursor");
-        assert_eq!(cursor.theme, "Breeze");
+        assert_eq!(cursor.theme, "Vanilla-DMZ");
         assert_eq!(cursor.size, 32);
         let wallpaper = config.wallpaper.expect("wallpaper");
         assert_eq!(wallpaper.path, "~/wallpapers/space.png");
@@ -291,7 +295,9 @@ mode = "fit"
 theme = "catppuccin-mocha"
 
 [cursor]
-theme = "default"
+# Cursor-Theme aus /usr/share/icons/<Theme>/cursors/
+# Fallback-Stack: <theme> -> Adwaita -> default -> embedded
+theme = "Vanilla-DMZ"
 size = 28
 
 [wallpaper]
@@ -304,7 +310,7 @@ mode = "tile"
         config.reload_from_path(&path).expect("reload valid");
         assert_eq!(config.general.theme, "catppuccin-mocha");
         let cursor = config.cursor.expect("cursor");
-        assert_eq!(cursor.theme, "default");
+        assert_eq!(cursor.theme, "Vanilla-DMZ");
         assert_eq!(cursor.size, 28);
         let wallpaper = config.wallpaper.expect("wallpaper");
         assert_eq!(wallpaper.path, "");

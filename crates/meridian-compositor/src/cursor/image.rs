@@ -46,6 +46,9 @@ impl CursorImage {
     }
 
     pub fn load_theme_icon(theme_name: &str, requested_size: u32, icon_names: &[&str]) -> Self {
+        #[cfg(feature = "xcursor-themes")]
+        const FALLBACK_THEMES: &[&str] = &["Adwaita", "default"];
+
         if theme_name.is_empty() {
             info!(
                 "cursor fallback used: empty theme name, using embedded cursor size={}",
@@ -60,25 +63,42 @@ impl CursorImage {
 
         #[cfg(feature = "xcursor-themes")]
         {
-            super::xcursor::load_xcursor_with_names(theme_name, requested_size, icon_names)
-                .or_else(|err| {
-                    warn!(
-                        "Cannot load xcursor theme={} size={} icon_names={:?}: {}; trying \"default\"",
-                        theme_name, requested_size, icon_names, err
-                    );
-                    super::xcursor::load_xcursor_with_names("default", requested_size, icon_names)
-                })
-                .unwrap_or_else(|err| {
-                    warn!(
-                        "cursor fallback used: xcursor load failed for theme={} size={} icon_names={:?}: {}",
-                        theme_name, requested_size, icon_names, err
-                    );
-                    Self::embedded_sized_with_kind(
-                        requested_size,
-                        embedded_kind_for_icon_names(icon_names),
-                        embedded_name_for_icon_names(icon_names),
-                    )
-                })
+            let mut themes_to_try: Vec<&str> = vec![theme_name];
+            for fallback in FALLBACK_THEMES {
+                if !themes_to_try.contains(fallback) {
+                    themes_to_try.push(fallback);
+                }
+            }
+
+            for theme in themes_to_try {
+                match super::xcursor::load_xcursor_with_names(theme, requested_size, icon_names) {
+                    Ok(cursor) => {
+                        if theme != theme_name {
+                            info!(
+                                "cursor theme fallback: requested='{}' loaded='{}' icon_names={:?}",
+                                theme_name, theme, icon_names
+                            );
+                        }
+                        return cursor;
+                    }
+                    Err(err) => {
+                        warn!(
+                            "cursor theme miss: theme='{}' size={} icon_names={:?}: {}",
+                            theme, requested_size, icon_names, err
+                        );
+                    }
+                }
+            }
+
+            warn!(
+                "cursor fallback used: all themes failed for icon_names={:?}, using embedded",
+                icon_names
+            );
+            Self::embedded_sized_with_kind(
+                requested_size,
+                embedded_kind_for_icon_names(icon_names),
+                embedded_name_for_icon_names(icon_names),
+            )
         }
 
         #[cfg(not(feature = "xcursor-themes"))]
