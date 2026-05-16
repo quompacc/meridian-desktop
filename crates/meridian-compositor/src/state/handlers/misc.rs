@@ -6,7 +6,7 @@ use smithay::{
     input::{dnd::DndGrabHandler, pointer::CursorImageStatus, Seat, SeatHandler},
     reexports::{
         wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode,
-        wayland_server::protocol::wl_surface::WlSurface,
+        wayland_server::{protocol::wl_surface::WlSurface, Resource},
     },
     utils::{Logical, Point, Rectangle, Serial},
     wayland::{
@@ -135,6 +135,13 @@ impl SeatHandler for MeridianState {
 
     fn seat_state(&mut self) -> &mut smithay::input::SeatState<Self> {
         &mut self.seat_state
+    }
+
+    fn focus_changed(&mut self, seat: &Seat<Self>, focused: Option<&WlSurface>) {
+        let dh = &self.display_handle;
+        let client = focused.and_then(|surface| dh.get_client(surface.id()).ok());
+        smithay::wayland::selection::data_device::set_data_device_focus(dh, seat, client.clone());
+        smithay::wayland::selection::primary_selection::set_primary_focus(dh, seat, client);
     }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
