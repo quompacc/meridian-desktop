@@ -8,7 +8,16 @@ use smithay::{
     utils::{Logical, Rectangle, Size},
     wayland::{
         seat::WaylandFocus,
-        selection::SelectionTarget,
+        selection::{
+            data_device::{
+                clear_data_device_selection, current_data_device_selection_userdata,
+                set_data_device_selection,
+            },
+            primary_selection::{
+                clear_primary_selection, current_primary_selection_userdata, set_primary_selection,
+            },
+            SelectionTarget,
+        },
         xwayland_shell::{XWaylandShellHandler, XWaylandShellState},
     },
     xwayland::{
@@ -1569,6 +1578,32 @@ impl XwmHandler for MeridianState {
         };
         let serial = SERIAL_COUNTER.next_serial();
         pointer.set_grab(self, grab, serial, Focus::Clear);
+    }
+
+    fn new_selection(&mut self, _xwm: XwmId, selection: SelectionTarget, mime_types: Vec<String>) {
+        match selection {
+            SelectionTarget::Clipboard => {
+                set_data_device_selection(&self.display_handle, &self.seat, mime_types, ())
+            }
+            SelectionTarget::Primary => {
+                set_primary_selection(&self.display_handle, &self.seat, mime_types, ())
+            }
+        }
+    }
+
+    fn cleared_selection(&mut self, _xwm: XwmId, selection: SelectionTarget) {
+        match selection {
+            SelectionTarget::Clipboard => {
+                if current_data_device_selection_userdata(&self.seat).is_some() {
+                    clear_data_device_selection(&self.display_handle, &self.seat);
+                }
+            }
+            SelectionTarget::Primary => {
+                if current_primary_selection_userdata(&self.seat).is_some() {
+                    clear_primary_selection(&self.display_handle, &self.seat);
+                }
+            }
+        }
     }
 
     fn send_selection(
