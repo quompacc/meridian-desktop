@@ -145,23 +145,9 @@ impl SeatHandler for MeridianState {
     }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
-        match image {
-            CursorImageStatus::Named(icon) => {
-                debug!(
-                    "Cursor update: client requested named cursor ({:?}); compositor cursor path remains active",
-                    icon
-                );
-            }
-            CursorImageStatus::Hidden => {
-                debug!("Cursor update: client requested hidden cursor");
-            }
-            CursorImageStatus::Surface(surface) => {
-                debug!(
-                    "Cursor update: client requested surface cursor ({:?}); compositor cursor path remains active",
-                    surface
-                );
-            }
-        }
+        debug!(?image, "cursor image update received from client");
+        self.cursor_status = image;
+        self.mark_all_outputs_dirty("cursor-status-changed");
     }
 }
 

@@ -234,6 +234,7 @@ impl MeridianState {
             diag_logged_toplevels: std::collections::HashSet::new(),
             last_diag_pointer_pos: None,
             last_diag_pointer_log_at: None,
+            cursor_status: smithay::input::pointer::CursorImageStatus::default_named(),
         })
     }
 

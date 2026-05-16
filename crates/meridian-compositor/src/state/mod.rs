@@ -8,7 +8,7 @@ use meridian_config::{KeybindConfig, ThemeManager};
 use meridian_wm::WmWorkspace;
 use smithay::{
     desktop::{PopupManager, Window},
-    input::{Seat, SeatState},
+    input::{pointer::CursorImageStatus, Seat, SeatState},
     output::Output,
     reexports::calloop::{LoopHandle, LoopSignal},
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
@@ -325,6 +325,7 @@ pub struct MeridianState {
     pub diag_logged_toplevels: HashSet<ObjectId>,
     pub last_diag_pointer_pos: Option<(f64, f64)>,
     pub last_diag_pointer_log_at: Option<Instant>,
+    pub cursor_status: CursorImageStatus,
 }
 
 impl MeridianState {
