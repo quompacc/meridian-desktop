@@ -230,9 +230,10 @@ impl XdgDecorationHandler for MeridianState {
             "diagnostic: xdg_decoration new_decoration (client opted into protocol)"
         );
         toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(DecorationMode::ServerSide);
+            state.decoration_mode = None;
         });
-        self.decoration_manager.set_ssd(toplevel.wl_surface(), true);
+        self.decoration_manager
+            .set_ssd(toplevel.wl_surface(), false);
         reposition_xdg_window_for_visible_frame(self, &toplevel);
         toplevel.send_configure();
     }

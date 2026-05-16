@@ -63,8 +63,8 @@ pub(super) fn handle_new_toplevel(state: &mut MeridianState, surface: ToplevelSu
     let wl_surface = surface.wl_surface().clone();
     let window = Window::new_wayland_window(surface.clone());
 
-    // Default to server-side decorations until a client decoration mode is negotiated.
-    state.decoration_manager.set_ssd(&wl_surface, true);
+    // Default to no compositor-side decorations until a client decoration mode is negotiated.
+    state.decoration_manager.set_ssd(&wl_surface, false);
 
     let active = state.workspaces.active;
     if state.wm_workspaces[active].mode == WorkspaceMode::Tiling {
