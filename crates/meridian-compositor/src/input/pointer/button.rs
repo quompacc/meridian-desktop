@@ -8,13 +8,17 @@ use smithay::{
     utils::{Rectangle, SERIAL_COUNTER},
     wayland::{compositor::get_parent, seat::WaylandFocus},
 };
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use crate::{
     decoration::{DecorationHit, DecorationResizeEdge},
     grabs::{
         move_grab::MoveSurfaceGrab,
         resize_grab::{ResizeEdge, ResizeSurfaceGrab},
+    },
+    protocols::xwayland::{
+        apply_x11_maximize, apply_x11_unmaximize, clear_managed_xwayland_maximized_state,
+        x11_window_key,
     },
     state::OutputInfo,
     state::{
@@ -232,6 +236,10 @@ pub fn handle_pointer_button<I: InputBackend>(
                 DecorationHit::CloseButton => {
                     if let Some(toplevel) = window.toplevel() {
                         toplevel.send_close();
+                    } else if let Some(x11) = window.x11_surface() {
+                        if let Err(err) = x11.close() {
+                            error!("x11 close failed: {}", err);
+                        }
                     }
                     pointer.button(
                         state,
@@ -246,6 +254,25 @@ pub fn handle_pointer_button<I: InputBackend>(
                     return;
                 }
                 DecorationHit::MaximizeButton => {
+                    if let Some(x11) = window.x11_surface() {
+                        if x11.is_maximized() {
+                            apply_x11_unmaximize(state, x11);
+                        } else {
+                            apply_x11_maximize(state, x11);
+                        }
+                        pointer.button(
+                            state,
+                            &ButtonEvent {
+                                button,
+                                state: button_state,
+                                serial,
+                                time: event.time_msec(),
+                            },
+                        );
+                        pointer.frame(state);
+                        return;
+                    }
+
                     if let Some(toplevel) = window.toplevel() {
                         let is_maxed = toplevel.with_committed_state(|s| {
                             s.is_some_and(|ts| {
@@ -341,7 +368,8 @@ pub fn handle_pointer_button<I: InputBackend>(
                 DecorationHit::MinimizeButton => {
                     let window_key = window
                         .toplevel()
-                        .map(|toplevel| window_id(toplevel.wl_surface()));
+                        .map(|toplevel| window_id(toplevel.wl_surface()))
+                        .or_else(|| window.x11_surface().map(x11_window_key));
                     pointer.button(
                         state,
                         &ButtonEvent {
@@ -476,6 +504,15 @@ pub fn handle_pointer_button<I: InputBackend>(
                                 Rectangle::new(initial_window_location, window.geometry().size),
                             );
                             pointer.set_grab(state, grab, serial, Focus::Clear);
+                        } else if let Some(x11) = window.x11_surface() {
+                            clear_managed_xwayland_maximized_state(state, x11);
+                            let grab = ResizeSurfaceGrab::start(
+                                start_data,
+                                window.clone(),
+                                resize_edges,
+                                Rectangle::new(initial_window_location, window.geometry().size),
+                            );
+                            pointer.set_grab(state, grab, serial, Focus::Clear);
                         }
                     }
                     return;
@@ -501,6 +538,9 @@ pub fn handle_pointer_button<I: InputBackend>(
                 );
                 pointer.frame(state);
                 if let Some(start_data) = pointer.grab_start_data() {
+                    if let Some(x11) = window.x11_surface() {
+                        clear_managed_xwayland_maximized_state(state, x11);
+                    }
                     let grab = ResizeSurfaceGrab::start(
                         start_data,
                         window.clone(),

@@ -3,8 +3,9 @@ use std::{os::unix::io::OwnedFd, process::Stdio};
 use smithay::{
     desktop::Window,
     input::pointer::Focus,
+    reexports::wayland_server::{protocol::wl_surface::WlSurface, Resource},
     utils::SERIAL_COUNTER,
-    utils::{Logical, Rectangle},
+    utils::{Logical, Rectangle, Size},
     wayland::{
         seat::WaylandFocus,
         selection::SelectionTarget,
@@ -22,9 +23,9 @@ use crate::grabs::{
     resize_grab::{ResizeEdge, ResizeSurfaceGrab},
 };
 use crate::state::{
-    normal_window_workarea_from_output_geometry, remember_maximize_restore_geometry,
-    window_list_entry, MaximizeRestoreGeometry, MeridianState, XwaylandOrDiagConfigureNotify,
-    XwaylandOrDiagConfigureRequest, XwaylandOrDiagEntry,
+    maximized_client_loc_from_output, normal_window_workarea_from_output_geometry,
+    remember_maximize_restore_geometry, window_list_entry, MaximizeRestoreGeometry, MeridianState,
+    XwaylandOrDiagConfigureNotify, XwaylandOrDiagConfigureRequest, XwaylandOrDiagEntry,
 };
 
 fn select_output_geometry_for_rect(
@@ -109,6 +110,40 @@ fn adjusted_configure_request_rect(
     output_geometry
         .map(|geometry| panel_safe_normal_xwayland_rect(requested_rect, geometry))
         .unwrap_or(requested_rect)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ManagedConfigureRequestAction {
+    PassThrough,
+    DenyNoOp,
+    ImplicitUnmaximize,
+    ImplicitUnfullscreen,
+}
+
+pub(crate) fn classify_managed_configure_request(
+    is_override_redirect: bool,
+    is_maximized: bool,
+    is_fullscreen: bool,
+    requested_rect: Rectangle<i32, Logical>,
+    workarea_rect: Rectangle<i32, Logical>,
+    output_rect: Rectangle<i32, Logical>,
+) -> ManagedConfigureRequestAction {
+    if is_override_redirect {
+        return ManagedConfigureRequestAction::PassThrough;
+    }
+    if is_fullscreen {
+        if requested_rect == output_rect {
+            return ManagedConfigureRequestAction::DenyNoOp;
+        }
+        return ManagedConfigureRequestAction::ImplicitUnfullscreen;
+    }
+    if is_maximized {
+        if requested_rect == workarea_rect {
+            return ManagedConfigureRequestAction::DenyNoOp;
+        }
+        return ManagedConfigureRequestAction::ImplicitUnmaximize;
+    }
+    ManagedConfigureRequestAction::PassThrough
 }
 
 fn find_active_x11_window(state: &MeridianState, surface: &X11Surface) -> Option<Window> {
@@ -247,12 +282,189 @@ fn x11_resize_edge_to_resize_edge(edges: X11ResizeEdge) -> ResizeEdge {
     }
 }
 
-fn x11_window_key(window: &X11Surface) -> String {
+pub(crate) fn x11_window_key(window: &X11Surface) -> String {
     format!("x11:{}", window.window_id())
 }
 
 fn x11_fullscreen_restore_key(window: &X11Surface) -> String {
     format!("x11-fullscreen:{}", window.window_id())
+}
+
+fn maximized_x11_content_size(
+    workarea_size: Size<i32, Logical>,
+    decoration_offset: (i32, i32),
+) -> Size<i32, Logical> {
+    let width = workarea_size
+        .w
+        .saturating_sub(decoration_offset.0.saturating_mul(2))
+        .max(1);
+    let height = workarea_size
+        .h
+        .saturating_sub(decoration_offset.1.saturating_add(decoration_offset.0))
+        .max(1);
+    (width, height).into()
+}
+
+trait DecorationSyncTarget {
+    fn set_ssd(&mut self, ssd: bool);
+    fn set_focused(&mut self, focused: bool);
+    fn set_maximized(&mut self, maximized: bool);
+    fn set_fullscreen(&mut self, fullscreen: bool);
+}
+
+struct SurfaceDecorationSyncTarget<'a> {
+    decoration_manager: &'a mut crate::decoration::DecorationManager,
+    wl_surface: &'a WlSurface,
+}
+
+impl DecorationSyncTarget for SurfaceDecorationSyncTarget<'_> {
+    fn set_ssd(&mut self, ssd: bool) {
+        self.decoration_manager.set_ssd(self.wl_surface, ssd);
+    }
+
+    fn set_focused(&mut self, focused: bool) {
+        self.decoration_manager
+            .set_focused(self.wl_surface, focused);
+    }
+
+    fn set_maximized(&mut self, maximized: bool) {
+        self.decoration_manager
+            .set_maximized(self.wl_surface, maximized);
+    }
+
+    fn set_fullscreen(&mut self, fullscreen: bool) {
+        self.decoration_manager
+            .set_fullscreen(self.wl_surface, fullscreen);
+    }
+}
+
+fn apply_managed_map_ssd(
+    target: &mut impl DecorationSyncTarget,
+    maximized: bool,
+    fullscreen: bool,
+) {
+    target.set_ssd(true);
+    target.set_focused(false);
+    target.set_maximized(maximized);
+    target.set_fullscreen(fullscreen);
+}
+
+fn apply_override_redirect_ssd(target: &mut impl DecorationSyncTarget) {
+    target.set_ssd(false);
+}
+
+pub(crate) fn clear_managed_xwayland_maximized_state(
+    state: &mut MeridianState,
+    window: &X11Surface,
+) {
+    if window.is_override_redirect() || !window.is_maximized() {
+        return;
+    }
+    if let Err(err) = window.set_maximized(false) {
+        error!(
+            "xwayland resize start: set_maximized(false) failed: {}",
+            err
+        );
+    }
+    state
+        .maximize_restore_locations
+        .remove(&x11_window_key(window));
+}
+
+pub(crate) fn apply_x11_maximize(state: &mut MeridianState, window: &X11Surface) {
+    if window.is_override_redirect() {
+        return;
+    }
+
+    let Some(mapped_window) = find_active_x11_window(state, window) else {
+        return;
+    };
+    let Some(current_loc) = state
+        .workspaces
+        .space_at(state.workspaces.active)
+        .element_location(&mapped_window)
+    else {
+        return;
+    };
+    let current_size = mapped_window.geometry().size;
+    let requested_rect = Rectangle::new(current_loc, current_size);
+    let Some(output_geometry) = select_output_geometry_for_rect(state, requested_rect) else {
+        return;
+    };
+    let workarea = normal_window_workarea_from_output_geometry(output_geometry);
+
+    let decoration_offset = if let Some(wl_surface) = window.wl_surface() {
+        state.decoration_manager.decoration_offset(
+            &wl_surface,
+            &state.theme_manager.current().config.decorations,
+        )
+    } else {
+        (0, 0)
+    };
+    let content_loc =
+        maximized_client_loc_from_output((workarea.x, workarea.y).into(), decoration_offset);
+    let content_size = maximized_x11_content_size(
+        (workarea.width.max(1), workarea.height.max(1)).into(),
+        decoration_offset,
+    );
+    let target_rect = Rectangle::new(content_loc, content_size);
+
+    remember_maximize_restore_geometry(
+        &mut state.maximize_restore_locations,
+        x11_window_key(window),
+        MaximizeRestoreGeometry::new(current_loc, Some(current_size)),
+    );
+    if let Err(err) = window.set_maximized(true) {
+        error!("xwayland maximize request: set_maximized failed: {}", err);
+    }
+    if let Some(wl_surface) = window.wl_surface() {
+        state.decoration_manager.set_maximized(&wl_surface, true);
+    }
+    if let Err(err) = window.configure(target_rect) {
+        error!("xwayland maximize request: configure failed: {}", err);
+        return;
+    }
+    state
+        .workspaces
+        .space_at_mut(state.workspaces.active)
+        .map_element(mapped_window, content_loc, true);
+    state.mark_all_outputs_dirty("xwayland-maximize-request");
+}
+
+pub(crate) fn apply_x11_unmaximize(state: &mut MeridianState, window: &X11Surface) {
+    if window.is_override_redirect() {
+        return;
+    }
+
+    let Some(mapped_window) = find_active_x11_window(state, window) else {
+        return;
+    };
+    if let Err(err) = window.set_maximized(false) {
+        error!("xwayland unmaximize request: set_maximized failed: {}", err);
+    }
+    if let Some(wl_surface) = window.wl_surface() {
+        state.decoration_manager.set_maximized(&wl_surface, false);
+    }
+
+    let restore = state
+        .maximize_restore_locations
+        .remove(&x11_window_key(window));
+    let Some(restore) = restore else {
+        return;
+    };
+    let restore_size = restore
+        .client_size
+        .unwrap_or_else(|| mapped_window.geometry().size);
+    let restore_rect = Rectangle::new(restore.client_loc, restore_size);
+    if let Err(err) = window.configure(restore_rect) {
+        error!("xwayland unmaximize request: configure failed: {}", err);
+        return;
+    }
+    state
+        .workspaces
+        .space_at_mut(state.workspaces.active)
+        .map_element(mapped_window, restore.client_loc, true);
+    state.mark_all_outputs_dirty("xwayland-unmaximize-request");
 }
 
 pub fn start_xwayland(state: &mut MeridianState) {
@@ -304,6 +516,33 @@ pub fn start_xwayland(state: &mut MeridianState) {
 impl XWaylandShellHandler for MeridianState {
     fn xwayland_shell_state(&mut self) -> &mut XWaylandShellState {
         &mut self.xwayland_shell_state
+    }
+
+    fn surface_associated(&mut self, _xwm: XwmId, wl_surface: WlSurface, window: X11Surface) {
+        let is_override_redirect = window.is_override_redirect();
+        let is_maximized = window.is_maximized();
+        let is_fullscreen = window.is_fullscreen();
+
+        let mut decoration_target = SurfaceDecorationSyncTarget {
+            decoration_manager: &mut self.decoration_manager,
+            wl_surface: &wl_surface,
+        };
+
+        if is_override_redirect {
+            apply_override_redirect_ssd(&mut decoration_target);
+        } else {
+            apply_managed_map_ssd(&mut decoration_target, is_maximized, is_fullscreen);
+        }
+
+        info!(
+            event = "xwayland.surface_associated",
+            window_id = window.window_id(),
+            override_redirect = is_override_redirect,
+            maximized = is_maximized,
+            fullscreen = is_fullscreen,
+            wl_surface_id = wl_surface.id().protocol_id(),
+            "applied SSD state on surface_associated"
+        );
     }
 }
 
@@ -427,6 +666,28 @@ impl XwmHandler for MeridianState {
         self.workspaces
             .space_at_mut(active)
             .map_element(win, clamped_loc, true);
+        if let Some(wl_surface) = window.wl_surface() {
+            let is_maximized = window.is_maximized();
+            let is_fullscreen = window.is_fullscreen();
+            let mut decoration_target = SurfaceDecorationSyncTarget {
+                decoration_manager: &mut self.decoration_manager,
+                wl_surface: &wl_surface,
+            };
+            apply_managed_map_ssd(&mut decoration_target, is_maximized, is_fullscreen);
+            info!(
+                event = "xwayland.ssd.applied_at_map_request",
+                window_id,
+                maximized = is_maximized,
+                fullscreen = is_fullscreen,
+                wl_surface_id = wl_surface.id().protocol_id(),
+                "applied SSD state in map_window_request"
+            );
+        } else {
+            info!(
+                event = "xwayland.ssd.no_wl_surface",
+                window_id, "managed xwayland window had no wl_surface for ssd sync"
+            );
+        }
         if let Some((id, title)) = opened {
             self.broadcast_window_opened(id, title);
         }
@@ -449,6 +710,19 @@ impl XwmHandler for MeridianState {
         self.workspaces
             .space_at_mut(active)
             .map_element(win, loc, false);
+        if let Some(wl_surface) = window.wl_surface() {
+            let mut decoration_target = SurfaceDecorationSyncTarget {
+                decoration_manager: &mut self.decoration_manager,
+                wl_surface: &wl_surface,
+            };
+            apply_override_redirect_ssd(&mut decoration_target);
+            info!(
+                event = "xwayland.ssd.override_redirect_applied",
+                window_id,
+                wl_surface_id = wl_surface.id().protocol_id(),
+                "applied no-ssd state for override-redirect window"
+            );
+        }
         update_or_diag_entry(self, &window, |entry| {
             entry.mapped_window_id = window.mapped_window_id();
             entry.map_at = Some(std::time::Instant::now());
@@ -480,6 +754,9 @@ impl XwmHandler for MeridianState {
     fn unmapped_window(&mut self, _xwm: XwmId, window: X11Surface) {
         let window_id = window.window_id();
         let is_override_redirect = window.is_override_redirect();
+        if let Some(wl_surface) = window.wl_surface() {
+            self.decoration_manager.remove(&wl_surface);
+        }
         if is_override_redirect {
             let (elapsed_since_announce_ms, elapsed_since_map_ms, last_state) = self
                 .xwayland_or_diag
@@ -544,6 +821,9 @@ impl XwmHandler for MeridianState {
 
     fn destroyed_window(&mut self, _xwm: XwmId, window: X11Surface) {
         let window_id = window.window_id();
+        if let Some(wl_surface) = window.wl_surface() {
+            self.decoration_manager.remove(&wl_surface);
+        }
         if window.is_override_redirect() {
             let (elapsed_since_announce_ms, elapsed_since_map_ms, last_state) = self
                 .xwayland_or_diag
@@ -590,6 +870,81 @@ impl XwmHandler for MeridianState {
         let is_override_redirect = window.is_override_redirect();
         let base_rect = window.geometry();
         let requested_rect = configure_request_rect(base_rect, x, y, w, h);
+        if !is_override_redirect {
+            let classification_output = select_output_geometry_for_rect(self, requested_rect);
+            if let Some(output_geometry) = classification_output {
+                let workarea = normal_window_workarea_from_output_geometry(output_geometry);
+                let workarea_rect = Rectangle::new(
+                    (workarea.x, workarea.y).into(),
+                    (workarea.width.max(1), workarea.height.max(1)).into(),
+                );
+                let output_rect = Rectangle::new(
+                    (output_geometry.x, output_geometry.y).into(),
+                    (output_geometry.width.max(1), output_geometry.height.max(1)).into(),
+                );
+                let action = classify_managed_configure_request(
+                    is_override_redirect,
+                    window.is_maximized(),
+                    window.is_fullscreen(),
+                    requested_rect,
+                    workarea_rect,
+                    output_rect,
+                );
+                match action {
+                    ManagedConfigureRequestAction::DenyNoOp => {
+                        if let Err(e) = window.configure(None) {
+                            error!("configure_request: configure(None) failed: {}", e);
+                        }
+                        debug!(
+                            event = "xwayland.configure_request.deny_noop",
+                            window_id,
+                            is_maximized = window.is_maximized(),
+                            is_fullscreen = window.is_fullscreen(),
+                            requested_rect = ?requested_rect,
+                            workarea_rect = ?workarea_rect,
+                            output_rect = ?output_rect,
+                            "configure request matched existing maximize/fullscreen rect; acked without change"
+                        );
+                        return;
+                    }
+                    ManagedConfigureRequestAction::ImplicitUnmaximize => {
+                        if let Err(err) = window.set_maximized(false) {
+                            error!(
+                                "configure_request: implicit set_maximized(false) failed: {}",
+                                err
+                            );
+                        }
+                        self.maximize_restore_locations
+                            .remove(&x11_window_key(&window));
+                        debug!(
+                            event = "xwayland.configure_request.implicit_unmaximize",
+                            window_id,
+                            requested_rect = ?requested_rect,
+                            workarea_rect = ?workarea_rect,
+                            "implicit unmaximize triggered by non-workarea ConfigureRequest on maximized managed window"
+                        );
+                    }
+                    ManagedConfigureRequestAction::ImplicitUnfullscreen => {
+                        if let Err(err) = window.set_fullscreen(false) {
+                            error!(
+                                "configure_request: implicit set_fullscreen(false) failed: {}",
+                                err
+                            );
+                        }
+                        self.maximize_restore_locations
+                            .remove(&x11_fullscreen_restore_key(&window));
+                        debug!(
+                            event = "xwayland.configure_request.implicit_unfullscreen",
+                            window_id,
+                            requested_rect = ?requested_rect,
+                            output_rect = ?output_rect,
+                            "implicit unfullscreen triggered by non-output-shape ConfigureRequest on fullscreen managed window"
+                        );
+                    }
+                    ManagedConfigureRequestAction::PassThrough => {}
+                }
+            }
+        }
         let output_geometry = select_output_geometry_for_rect(self, requested_rect);
         let adjusted_rect =
             adjusted_configure_request_rect(requested_rect, output_geometry, is_override_redirect);
@@ -800,79 +1155,11 @@ impl XwmHandler for MeridianState {
     }
 
     fn maximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
-        if window.is_override_redirect() {
-            return;
-        }
-
-        let Some(mapped_window) = find_active_x11_window(self, &window) else {
-            return;
-        };
-        let Some(current_loc) = self
-            .workspaces
-            .space_at(self.workspaces.active)
-            .element_location(&mapped_window)
-        else {
-            return;
-        };
-        let current_size = mapped_window.geometry().size;
-        let requested_rect = Rectangle::new(current_loc, current_size);
-        let Some(output_geometry) = select_output_geometry_for_rect(self, requested_rect) else {
-            return;
-        };
-        let workarea = normal_window_workarea_from_output_geometry(output_geometry);
-        let target_rect = Rectangle::new(
-            (workarea.x, workarea.y).into(),
-            (workarea.width.max(1), workarea.height.max(1)).into(),
-        );
-
-        remember_maximize_restore_geometry(
-            &mut self.maximize_restore_locations,
-            x11_window_key(&window),
-            MaximizeRestoreGeometry::new(current_loc, Some(current_size)),
-        );
-        if let Err(err) = window.set_maximized(true) {
-            error!("xwayland maximize request: set_maximized failed: {}", err);
-        }
-        if let Err(err) = window.configure(target_rect) {
-            error!("xwayland maximize request: configure failed: {}", err);
-            return;
-        }
-        self.workspaces
-            .space_at_mut(self.workspaces.active)
-            .map_element(mapped_window, target_rect.loc, true);
-        self.mark_all_outputs_dirty("xwayland-maximize-request");
+        apply_x11_maximize(self, &window);
     }
 
     fn unmaximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
-        if window.is_override_redirect() {
-            return;
-        }
-
-        let Some(mapped_window) = find_active_x11_window(self, &window) else {
-            return;
-        };
-        if let Err(err) = window.set_maximized(false) {
-            error!("xwayland unmaximize request: set_maximized failed: {}", err);
-        }
-
-        let restore = self
-            .maximize_restore_locations
-            .remove(&x11_window_key(&window));
-        let Some(restore) = restore else {
-            return;
-        };
-        let restore_size = restore
-            .client_size
-            .unwrap_or_else(|| mapped_window.geometry().size);
-        let restore_rect = Rectangle::new(restore.client_loc, restore_size);
-        if let Err(err) = window.configure(restore_rect) {
-            error!("xwayland unmaximize request: configure failed: {}", err);
-            return;
-        }
-        self.workspaces
-            .space_at_mut(self.workspaces.active)
-            .map_element(mapped_window, restore.client_loc, true);
-        self.mark_all_outputs_dirty("xwayland-unmaximize-request");
+        apply_x11_unmaximize(self, &window);
     }
 
     fn fullscreen_request(&mut self, _xwm: XwmId, window: X11Surface) {
@@ -911,6 +1198,9 @@ impl XwmHandler for MeridianState {
                 err
             );
         }
+        if let Some(wl_surface) = window.wl_surface() {
+            self.decoration_manager.set_fullscreen(&wl_surface, true);
+        }
         if let Err(err) = window.configure(target_rect) {
             error!("xwayland fullscreen request: configure failed: {}", err);
             return;
@@ -934,6 +1224,9 @@ impl XwmHandler for MeridianState {
                 "xwayland unfullscreen request: set_fullscreen failed: {}",
                 err
             );
+        }
+        if let Some(wl_surface) = window.wl_surface() {
+            self.decoration_manager.set_fullscreen(&wl_surface, false);
         }
 
         let restore = self
@@ -1181,6 +1474,7 @@ impl XwmHandler for MeridianState {
             return;
         };
         let initial_window_size = mapped_window.geometry().size;
+        clear_managed_xwayland_maximized_state(self, &window);
         debug!(
             event = "xwayland.resize_request.grab",
             window_id,
@@ -1294,13 +1588,41 @@ impl XwmHandler for MeridianState {
 
 #[cfg(test)]
 mod tests {
-    use smithay::utils::Rectangle;
+    use smithay::utils::{Rectangle, Size};
 
     use crate::state::{OutputGeometry, NORMAL_WINDOW_BOTTOM_RESERVED_PX};
 
     use super::{
-        adjusted_configure_request_rect, configure_request_rect, panel_safe_normal_xwayland_rect,
+        adjusted_configure_request_rect, apply_managed_map_ssd, apply_override_redirect_ssd,
+        classify_managed_configure_request, configure_request_rect, maximized_x11_content_size,
+        panel_safe_normal_xwayland_rect, DecorationSyncTarget, ManagedConfigureRequestAction,
     };
+
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    struct MockDecorationSyncTarget {
+        ssd: Option<bool>,
+        focused: Option<bool>,
+        maximized: Option<bool>,
+        fullscreen: Option<bool>,
+    }
+
+    impl DecorationSyncTarget for MockDecorationSyncTarget {
+        fn set_ssd(&mut self, ssd: bool) {
+            self.ssd = Some(ssd);
+        }
+
+        fn set_focused(&mut self, focused: bool) {
+            self.focused = Some(focused);
+        }
+
+        fn set_maximized(&mut self, maximized: bool) {
+            self.maximized = Some(maximized);
+        }
+
+        fn set_fullscreen(&mut self, fullscreen: bool) {
+            self.fullscreen = Some(fullscreen);
+        }
+    }
 
     #[test]
     fn normal_xwayland_rect_is_clamped_to_panel_safe_bottom() {
@@ -1370,5 +1692,162 @@ mod tests {
         let adjusted = adjusted_configure_request_rect(requested, Some(output), false);
         assert_eq!(adjusted.loc.y, 844);
         assert_eq!(adjusted.size.h, 200);
+    }
+
+    #[test]
+    fn override_redirect_always_passes_through() {
+        let r = Rectangle::new((0, 0).into(), (100, 100).into());
+        let workarea = Rectangle::new((0, 0).into(), (1920, 1044).into());
+        let output = Rectangle::new((0, 0).into(), (1920, 1080).into());
+        for max in [false, true] {
+            for fs in [false, true] {
+                assert_eq!(
+                    classify_managed_configure_request(true, max, fs, r, workarea, output),
+                    ManagedConfigureRequestAction::PassThrough
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn managed_normal_window_passes_through() {
+        let r = Rectangle::new((0, 0).into(), (100, 100).into());
+        let workarea = Rectangle::new((0, 0).into(), (1920, 1044).into());
+        let output = Rectangle::new((0, 0).into(), (1920, 1080).into());
+        assert_eq!(
+            classify_managed_configure_request(false, false, false, r, workarea, output),
+            ManagedConfigureRequestAction::PassThrough
+        );
+    }
+
+    #[test]
+    fn managed_maximized_request_matching_workarea_is_deny_noop() {
+        let workarea = Rectangle::new((0, 0).into(), (1920, 1044).into());
+        let output = Rectangle::new((0, 0).into(), (1920, 1080).into());
+        assert_eq!(
+            classify_managed_configure_request(false, true, false, workarea, workarea, output),
+            ManagedConfigureRequestAction::DenyNoOp
+        );
+    }
+
+    #[test]
+    fn managed_maximized_request_with_other_rect_is_implicit_unmaximize() {
+        let workarea = Rectangle::new((0, 0).into(), (1920, 1044).into());
+        let output = Rectangle::new((0, 0).into(), (1920, 1080).into());
+        let other = Rectangle::new((100, 100).into(), (800, 600).into());
+        assert_eq!(
+            classify_managed_configure_request(false, true, false, other, workarea, output),
+            ManagedConfigureRequestAction::ImplicitUnmaximize
+        );
+    }
+
+    #[test]
+    fn managed_maximized_request_with_same_size_but_other_loc_is_implicit_unmaximize() {
+        let workarea = Rectangle::new((0, 0).into(), (1920, 1044).into());
+        let output = Rectangle::new((0, 0).into(), (1920, 1080).into());
+        let same_size_shifted = Rectangle::new((100, 50).into(), (1920, 1044).into());
+        assert_eq!(
+            classify_managed_configure_request(
+                false,
+                true,
+                false,
+                same_size_shifted,
+                workarea,
+                output
+            ),
+            ManagedConfigureRequestAction::ImplicitUnmaximize
+        );
+    }
+
+    #[test]
+    fn managed_fullscreen_request_matching_output_is_deny_noop() {
+        let workarea = Rectangle::new((0, 0).into(), (1920, 1044).into());
+        let output = Rectangle::new((0, 0).into(), (1920, 1080).into());
+        assert_eq!(
+            classify_managed_configure_request(false, false, true, output, workarea, output),
+            ManagedConfigureRequestAction::DenyNoOp
+        );
+    }
+
+    #[test]
+    fn managed_fullscreen_request_with_other_rect_is_implicit_unfullscreen() {
+        let workarea = Rectangle::new((0, 0).into(), (1920, 1044).into());
+        let output = Rectangle::new((0, 0).into(), (1920, 1080).into());
+        let other = Rectangle::new((100, 100).into(), (800, 600).into());
+        assert_eq!(
+            classify_managed_configure_request(false, false, true, other, workarea, output),
+            ManagedConfigureRequestAction::ImplicitUnfullscreen
+        );
+    }
+
+    #[test]
+    fn managed_fullscreen_takes_priority_over_maximized() {
+        let workarea = Rectangle::new((0, 0).into(), (1920, 1044).into());
+        let output = Rectangle::new((0, 0).into(), (1920, 1080).into());
+        let other = Rectangle::new((100, 100).into(), (800, 600).into());
+        assert_eq!(
+            classify_managed_configure_request(false, true, true, other, workarea, output),
+            ManagedConfigureRequestAction::ImplicitUnfullscreen
+        );
+    }
+
+    #[test]
+    fn decoration_state_sync_after_map_managed() {
+        let mut target = MockDecorationSyncTarget::default();
+        apply_managed_map_ssd(&mut target, true, false);
+        assert_eq!(target.ssd, Some(true));
+        assert_eq!(target.focused, Some(false));
+        assert_eq!(target.maximized, Some(true));
+        assert_eq!(target.fullscreen, Some(false));
+    }
+
+    #[test]
+    fn decoration_state_sync_for_override_redirect_is_no_ssd() {
+        let mut target = MockDecorationSyncTarget {
+            ssd: Some(true),
+            ..Default::default()
+        };
+        apply_override_redirect_ssd(&mut target);
+        assert_eq!(target.ssd, Some(false));
+        assert_eq!(target.focused, None);
+        assert_eq!(target.maximized, None);
+        assert_eq!(target.fullscreen, None);
+    }
+
+    #[test]
+    fn apply_managed_map_ssd_is_idempotent_when_called_twice() {
+        let mut target = MockDecorationSyncTarget::default();
+        apply_managed_map_ssd(&mut target, true, false);
+        let after_once = target;
+        apply_managed_map_ssd(&mut target, true, false);
+        assert_eq!(target, after_once);
+        assert_eq!(target.ssd, Some(true));
+        assert_eq!(target.maximized, Some(true));
+    }
+
+    #[test]
+    fn apply_override_redirect_ssd_overrides_prior_managed_state() {
+        let mut target = MockDecorationSyncTarget::default();
+        apply_managed_map_ssd(&mut target, true, true);
+        apply_override_redirect_ssd(&mut target);
+        assert_eq!(target.ssd, Some(false));
+    }
+
+    #[test]
+    fn maximized_x11_content_size_subtracts_frame_insets_in_both_axes() {
+        let content_size = maximized_x11_content_size(Size::from((1920, 1080)), (2, 34));
+        assert_eq!(content_size, Size::from((1916, 1044)));
+    }
+
+    #[test]
+    fn maximized_x11_content_size_clamps_minimum_dimension_to_one() {
+        let content_size = maximized_x11_content_size(Size::from((2, 30)), (2, 34));
+        assert_eq!(content_size, Size::from((1, 1)));
+    }
+
+    #[test]
+    fn maximized_x11_content_size_with_zero_decoration_offset_equals_workarea() {
+        let content_size = maximized_x11_content_size(Size::from((1920, 1080)), (0, 0));
+        assert_eq!(content_size, Size::from((1920, 1080)));
     }
 }

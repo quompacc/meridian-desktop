@@ -16,9 +16,9 @@ use smithay::{
 
 use crate::state::{
     clear_tiled_toplevel_states, half_snap_client_placement_from_output,
-    normal_window_workarea_from_output_geometry, window_id, HalfSnapDirection,
-    HalfSnapRestoreGeometry, MaximizeRestoreGeometry, MeridianState, OutputGeometry, OutputInfo,
-    OutputRegistry, WindowSnapState,
+    maximized_client_loc_from_output, normal_window_workarea_from_output_geometry, window_id,
+    HalfSnapDirection, HalfSnapRestoreGeometry, MaximizeRestoreGeometry, MeridianState,
+    OutputGeometry, OutputInfo, OutputRegistry, WindowSnapState,
 };
 
 const TOP_EDGE_MAXIMIZE_THRESHOLD_PX: f64 = 12.0;
@@ -284,7 +284,46 @@ fn apply_xwayland_snap_from_move_release(
         }
     }
 
-    let target_rect = xwayland_snap_rect_for_action(output_geometry, action);
+    let target_rect = if let Some(wl_surface) = x11.wl_surface() {
+        let theme = &data.theme_manager.current().config.decorations;
+        match action {
+            MoveReleaseEdgeAction::Maximize => {
+                let decoration_offset = data
+                    .decoration_manager
+                    .decoration_offset(&wl_surface, theme);
+                let content_loc = maximized_client_loc_from_output(
+                    (output_geometry.x, output_geometry.y).into(),
+                    decoration_offset,
+                );
+                let content_size = Size::from((
+                    output_geometry
+                        .width
+                        .saturating_sub(decoration_offset.0.saturating_mul(2))
+                        .max(1),
+                    output_geometry
+                        .height
+                        .saturating_sub(decoration_offset.1.saturating_add(decoration_offset.0))
+                        .max(1),
+                ));
+                Rectangle::new(content_loc, content_size)
+            }
+            MoveReleaseEdgeAction::HalfSnap(direction) => {
+                let decoration_offset = data
+                    .decoration_manager
+                    .decoration_offset(&wl_surface, theme);
+                let decoration_inset = data.decoration_manager.decoration_inset(&wl_surface, theme);
+                let placement = half_snap_client_placement_from_output(
+                    output_geometry,
+                    direction,
+                    decoration_offset,
+                    decoration_inset,
+                );
+                Rectangle::new(placement.client_loc, placement.client_size)
+            }
+        }
+    } else {
+        xwayland_snap_rect_for_action(output_geometry, action)
+    };
     if let Err(err) = x11.configure(target_rect) {
         tracing::error!("xwayland move-release snap configure failed: {}", err);
         return false;
