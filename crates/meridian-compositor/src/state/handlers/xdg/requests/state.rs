@@ -26,8 +26,11 @@ pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: Toplev
         );
         let (loc, size) = normal_maximize_frame_for_output(selected.geometry);
         surface.with_pending_state(|state| {
-            clear_tiled_toplevel_states(state);
             state.states.set(xdg_toplevel::State::Maximized);
+            state.states.set(xdg_toplevel::State::TiledLeft);
+            state.states.set(xdg_toplevel::State::TiledRight);
+            state.states.set(xdg_toplevel::State::TiledTop);
+            state.states.set(xdg_toplevel::State::TiledBottom);
             state.size = Some(size);
         });
         let sent_states = surface.with_pending_state(|s| Vec::from(s.states.clone()));
@@ -84,6 +87,10 @@ pub(crate) fn handle_unmaximize_request(state: &mut MeridianState, surface: Topl
         .set_maximized(surface.wl_surface(), false);
     surface.with_pending_state(|state| {
         state.states.unset(xdg_toplevel::State::Maximized);
+        state.states.unset(xdg_toplevel::State::TiledLeft);
+        state.states.unset(xdg_toplevel::State::TiledRight);
+        state.states.unset(xdg_toplevel::State::TiledTop);
+        state.states.unset(xdg_toplevel::State::TiledBottom);
         state.size = None;
     });
     if let Some(window) = find_active_window(state, &surface) {
