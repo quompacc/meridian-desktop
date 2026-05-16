@@ -323,6 +323,8 @@ pub struct MeridianState {
     pub minimized_windows: HashMap<String, MinimizedWindowEntry>,
     pub xwayland_or_diag: HashMap<u32, XwaylandOrDiagEntry>,
     pub diag_logged_toplevels: HashSet<ObjectId>,
+    pub last_diag_pointer_pos: Option<(f64, f64)>,
+    pub last_diag_pointer_log_at: Option<Instant>,
 }
 
 impl MeridianState {

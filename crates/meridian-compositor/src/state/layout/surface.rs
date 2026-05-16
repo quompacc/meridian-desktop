@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use smithay::{
     desktop::{layer_map_for_output, WindowSurfaceType},
     reexports::wayland_server::protocol::wl_surface::WlSurface,
@@ -33,8 +35,34 @@ fn select_surface_output_info(
 }
 
 impl MeridianState {
+    fn should_log_surface_under_pointer_diag(&mut self, pos: Point<f64, Logical>) -> bool {
+        const MIN_DELTA_PX: f64 = 5.0;
+        const MIN_INTERVAL: Duration = Duration::from_millis(100);
+
+        let moved_enough = self
+            .last_diag_pointer_pos
+            .map(|(last_x, last_y)| {
+                (pos.x - last_x).abs() >= MIN_DELTA_PX || (pos.y - last_y).abs() >= MIN_DELTA_PX
+            })
+            .unwrap_or(true);
+
+        let now = Instant::now();
+        let interval_elapsed = self
+            .last_diag_pointer_log_at
+            .map(|last| now.duration_since(last) >= MIN_INTERVAL)
+            .unwrap_or(true);
+
+        if moved_enough && interval_elapsed {
+            self.last_diag_pointer_pos = Some((pos.x, pos.y));
+            self.last_diag_pointer_log_at = Some(now);
+            return true;
+        }
+
+        false
+    }
+
     pub fn surface_under(
-        &self,
+        &mut self,
         pos: Point<f64, Logical>,
     ) -> Option<(WlSurface, Point<f64, Logical>)> {
         let (selected_info, fallback_reason) =
@@ -62,10 +90,10 @@ impl MeridianState {
                     info.name
                 );
             }
-            mapped
+            mapped.cloned()
         });
 
-        if let Some(output) = output {
+        if let Some(output) = output.as_ref() {
             let output_geo = self.workspaces.active_space().output_geometry(output)?;
             let layer_map = layer_map_for_output(output);
             let local = pos - output_geo.loc.to_f64();
@@ -101,21 +129,36 @@ impl MeridianState {
             }
         }
 
-        let window_surface =
-            self.workspaces
-                .active_space()
+        let window_hit = {
+            let space = self.workspaces.active_space();
+            space
                 .element_under(pos)
-                .and_then(|(window, location)| {
-                    window
-                        .surface_under(pos - location.to_f64(), WindowSurfaceType::ALL)
-                        .map(|(surface, point)| (surface, (point + location).to_f64()))
-                });
+                .map(|(window, location)| (window.clone(), location))
+        };
+        let window_surface = window_hit.and_then(|(window, location)| {
+            let geometry = window.geometry();
+            let bbox = window.bbox();
+            let local = pos - location.to_f64();
+            if self.should_log_surface_under_pointer_diag(pos) {
+                tracing::info!(
+                    input_pos = ?(pos.x, pos.y),
+                    window_location = ?(location.x, location.y),
+                    window_geometry = ?(geometry.loc.x, geometry.loc.y, geometry.size.w, geometry.size.h),
+                    window_bbox = ?(bbox.loc.x, bbox.loc.y, bbox.size.w, bbox.size.h),
+                    local_pointer = ?(local.x, local.y),
+                    "diagnostic: surface_under pointer trace"
+                );
+            }
+            window
+                .surface_under(local, WindowSurfaceType::ALL)
+                .map(|(surface, point)| (surface, (point + location).to_f64()))
+        });
 
         if window_surface.is_some() {
             return window_surface;
         }
 
-        if let Some(output) = output {
+        if let Some(output) = output.as_ref() {
             let output_geo = self.workspaces.active_space().output_geometry(output)?;
             let layer_map = layer_map_for_output(output);
             let local = pos - output_geo.loc.to_f64();

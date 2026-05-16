@@ -232,6 +232,8 @@ impl MeridianState {
             minimized_windows: std::collections::HashMap::new(),
             xwayland_or_diag: std::collections::HashMap::new(),
             diag_logged_toplevels: std::collections::HashSet::new(),
+            last_diag_pointer_pos: None,
+            last_diag_pointer_log_at: None,
         })
     }
 
