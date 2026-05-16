@@ -2,7 +2,7 @@ use smithay::{
     desktop::{PopupKind, Window},
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
     utils::{Logical, Point, SERIAL_COUNTER},
-    wayland::shell::xdg::{PopupSurface, ToplevelSurface},
+    wayland::shell::xdg::{PopupSurface, PositionerState, ToplevelSurface},
 };
 
 use meridian_wm::WorkspaceMode;
@@ -97,7 +97,12 @@ pub(super) fn handle_new_toplevel(state: &mut MeridianState, surface: ToplevelSu
     state.mark_all_outputs_dirty("xdg-new-toplevel");
 }
 
-pub(super) fn handle_new_popup(state: &mut MeridianState, surface: PopupSurface) {
+pub(super) fn handle_new_popup(
+    state: &mut MeridianState,
+    surface: PopupSurface,
+    positioner: PositionerState,
+) {
+    super::configure_popup_pending_state(state, &surface, positioner);
     let _ = state.popups.track_popup(PopupKind::Xdg(surface));
 }
 
