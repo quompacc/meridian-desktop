@@ -1,4 +1,9 @@
 use smithay::{
+    desktop::{
+        find_popup_root_surface, PopupKeyboardGrab, PopupKind, PopupPointerGrab,
+        PopupUngrabStrategy,
+    },
+    input::{pointer::Focus, Seat},
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::protocol::{wl_output::WlOutput, wl_seat::WlSeat},
@@ -39,7 +44,54 @@ impl XdgShellHandler for MeridianState {
         lifecycle::handle_surface_metadata_changed(self, surface);
     }
 
-    fn grab(&mut self, _surface: PopupSurface, _seat: WlSeat, _serial: Serial) {}
+    fn grab(&mut self, surface: PopupSurface, seat: WlSeat, serial: Serial) {
+        let Some(seat) = Seat::<Self>::from_resource(&seat) else {
+            tracing::warn!("popup grab: wl_seat not associated with a known seat");
+            return;
+        };
+
+        let kind = PopupKind::Xdg(surface);
+        let root_surface = match find_popup_root_surface(&kind) {
+            Ok(surface) => surface,
+            Err(err) => {
+                tracing::debug!("popup grab: cannot find root surface: {:?}", err);
+                return;
+            }
+        };
+
+        let mut grab = match self.popups.grab_popup(root_surface, kind, &seat, serial) {
+            Ok(grab) => grab,
+            Err(err) => {
+                tracing::debug!("popup grab denied: {:?}", err);
+                return;
+            }
+        };
+
+        if let Some(keyboard) = seat.get_keyboard() {
+            if keyboard.is_grabbed()
+                && !(keyboard.has_grab(serial)
+                    || keyboard.has_grab(grab.previous_serial().unwrap_or(serial)))
+            {
+                tracing::debug!("popup grab: keyboard already grabbed by other serial");
+                grab.ungrab(PopupUngrabStrategy::All);
+                return;
+            }
+            keyboard.set_focus(self, grab.current_grab(), serial);
+            keyboard.set_grab(self, PopupKeyboardGrab::new(&grab), serial);
+        }
+
+        if let Some(pointer) = seat.get_pointer() {
+            if pointer.is_grabbed()
+                && !(pointer.has_grab(serial)
+                    || pointer.has_grab(grab.previous_serial().unwrap_or_else(|| grab.serial())))
+            {
+                tracing::debug!("popup grab: pointer already grabbed by other serial");
+                grab.ungrab(PopupUngrabStrategy::All);
+                return;
+            }
+            pointer.set_grab(self, PopupPointerGrab::new(&grab), serial, Focus::Keep);
+        }
+    }
 
     fn reposition_request(
         &mut self,
