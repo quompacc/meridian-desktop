@@ -34,7 +34,7 @@ impl CursorImage {
                 .ok()
                 .and_then(|v| v.parse::<u32>().ok())
                 .unwrap_or(24);
-            return Self::load_theme(&theme_name, requested_size);
+            Self::load_theme(&theme_name, requested_size)
         }
         #[cfg(not(feature = "xcursor-themes"))]
         Self::embedded()

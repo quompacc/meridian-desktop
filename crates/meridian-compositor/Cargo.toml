@@ -16,6 +16,7 @@ tracing = { workspace = true }
 xcursor = { version = "0.3", optional = true }
 
 [features]
+default = ["xcursor-themes"]
 xcursor-themes = ["dep:xcursor"]
 
 [build-dependencies]

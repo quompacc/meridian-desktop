@@ -18,6 +18,7 @@ fn build_xcursor_path() -> String {
     .join(":")
 }
 
+#[cfg(test)]
 pub(super) fn load_xcursor(theme_name: &str, requested_size: u32) -> Result<CursorImage, String> {
     const CURSOR_NAMES: &[&str] = &["left_ptr", "default", "arrow"];
     load_xcursor_with_names(theme_name, requested_size, CURSOR_NAMES)
