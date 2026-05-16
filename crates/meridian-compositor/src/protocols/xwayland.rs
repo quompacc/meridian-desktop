@@ -11,10 +11,11 @@ use smithay::{
         selection::{
             data_device::{
                 clear_data_device_selection, current_data_device_selection_userdata,
-                set_data_device_selection,
+                request_data_device_client_selection, set_data_device_selection,
             },
             primary_selection::{
-                clear_primary_selection, current_primary_selection_userdata, set_primary_selection,
+                clear_primary_selection, current_primary_selection_userdata,
+                request_primary_client_selection, set_primary_selection,
             },
             SelectionTarget,
         },
@@ -1580,6 +1581,30 @@ impl XwmHandler for MeridianState {
         pointer.set_grab(self, grab, serial, Focus::Clear);
     }
 
+    fn allow_selection_access(&mut self, xwm: XwmId, _selection: SelectionTarget) -> bool {
+        let Some(keyboard) = self.seat.get_keyboard() else {
+            return false;
+        };
+        let Some(focused_surface) = keyboard.current_focus() else {
+            return false;
+        };
+
+        (0..self.workspaces.count()).any(|workspace| {
+            self.workspaces
+                .space_at(workspace)
+                .elements()
+                .find(|window| {
+                    window
+                        .wl_surface()
+                        .map(|surface| surface.into_owned())
+                        .as_ref()
+                        == Some(&focused_surface)
+                })
+                .and_then(|window| window.x11_surface())
+                .is_some_and(|surface| surface.xwm_id().is_some_and(|id| id == xwm))
+        })
+    }
+
     fn new_selection(&mut self, _xwm: XwmId, selection: SelectionTarget, mime_types: Vec<String>) {
         match selection {
             SelectionTarget::Clipboard => {
@@ -1609,10 +1634,28 @@ impl XwmHandler for MeridianState {
     fn send_selection(
         &mut self,
         _xwm: XwmId,
-        _selection: SelectionTarget,
-        _mime_type: String,
-        _fd: OwnedFd,
+        selection: SelectionTarget,
+        mime_type: String,
+        fd: OwnedFd,
     ) {
+        match selection {
+            SelectionTarget::Clipboard => {
+                if let Err(err) = request_data_device_client_selection(&self.seat, mime_type, fd) {
+                    warn!(
+                        ?err,
+                        "failed to request current wayland clipboard selection for x11 transfer"
+                    );
+                }
+            }
+            SelectionTarget::Primary => {
+                if let Err(err) = request_primary_client_selection(&self.seat, mime_type, fd) {
+                    warn!(
+                        ?err,
+                        "failed to request current wayland primary selection for x11 transfer"
+                    );
+                }
+            }
+        }
     }
 
     fn disconnected(&mut self, _xwm: XwmId) {
