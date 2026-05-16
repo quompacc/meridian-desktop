@@ -212,6 +212,30 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                     let cursor_pos = (pointer_location - output_geo.loc.to_f64())
                         .to_physical(scale)
                         .to_i32_round::<i32>();
+                    let branch_name = match &state.cursor_status {
+                        CursorImageStatus::Hidden => "hidden",
+                        CursorImageStatus::Named(_)
+                            if !matches!(cursor_icon, super::DrmCursorIcon::Default) =>
+                        {
+                            "named-with-resize-override"
+                        }
+                        CursorImageStatus::Named(_) => "named-cache",
+                        CursorImageStatus::Surface(_) => "surface",
+                    };
+                    if out.last_logged_cursor_branch != Some(branch_name) {
+                        let status_summary = match &state.cursor_status {
+                            CursorImageStatus::Hidden => "Hidden".to_string(),
+                            CursorImageStatus::Named(icon) => format!("Named({})", icon.name()),
+                            CursorImageStatus::Surface(_) => "Surface".to_string(),
+                        };
+                        tracing::info!(
+                            branch = branch_name,
+                            cursor_status = %status_summary,
+                            cursor_icon = ?cursor_icon,
+                            "diagnostic: cursor render branch"
+                        );
+                        out.last_logged_cursor_branch = Some(branch_name);
+                    }
                     match &state.cursor_status {
                         CursorImageStatus::Hidden => {}
                         CursorImageStatus::Named(icon_name) => {
@@ -243,6 +267,13 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                                                 cursor_cfg.size,
                                                 *icon_name,
                                             );
+                                        tracing::info!(
+                                            requested_icon = %icon_name.name(),
+                                            requested_theme = %cursor_cfg.theme,
+                                            loaded_theme = %cursor.theme,
+                                            loaded_size = %format!("{}x{}", cursor.width, cursor.height),
+                                            "diagnostic: named cursor cache load"
+                                        );
                                         (
                                             cursor.to_memory_buffer(),
                                             smithay::utils::Point::from((

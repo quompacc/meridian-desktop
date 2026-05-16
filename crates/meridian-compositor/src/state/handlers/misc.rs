@@ -19,8 +19,6 @@ use smithay::{
         shell::xdg::{decoration::XdgDecorationHandler, ToplevelSurface},
     },
 };
-use tracing::debug;
-
 use crate::state::{normal_window_workarea_from_output_geometry, MeridianState};
 
 fn clamp_client_loc_for_visible_frame(
@@ -145,7 +143,12 @@ impl SeatHandler for MeridianState {
     }
 
     fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
-        debug!(?image, "cursor image update received from client");
+        let summary = match &image {
+            CursorImageStatus::Hidden => "Hidden".to_string(),
+            CursorImageStatus::Named(icon) => format!("Named({})", icon.name()),
+            CursorImageStatus::Surface(_) => "Surface(...)".to_string(),
+        };
+        tracing::info!(status = %summary, "diagnostic: cursor_image client request");
         self.cursor_status = image;
         self.mark_all_outputs_dirty("cursor-status-changed");
     }
