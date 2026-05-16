@@ -116,9 +116,18 @@ impl CursorImage {
     }
 
     pub fn load_theme_cursor_icon(theme_name: &str, requested_size: u32, icon: CursorIcon) -> Self {
-        let mut icon_names = Vec::with_capacity(1 + icon.alt_names().len());
+        let mut icon_names = Vec::with_capacity(1 + icon.alt_names().len() + 2);
         icon_names.push(icon.name());
         icon_names.extend_from_slice(icon.alt_names());
+        // Classic themes (Vanilla-DMZ, etc.) usually expose X11 names, not "default".
+        if matches!(icon, CursorIcon::Default) {
+            if !icon_names.contains(&"left_ptr") {
+                icon_names.push("left_ptr");
+            }
+            if !icon_names.contains(&"arrow") {
+                icon_names.push("arrow");
+            }
+        }
         Self::load_theme_icon(theme_name, requested_size, &icon_names)
     }
 
