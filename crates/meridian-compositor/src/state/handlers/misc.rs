@@ -1,3 +1,5 @@
+use std::os::unix::io::OwnedFd;
+
 use smithay::{
     delegate_dispatch2,
     desktop::Window,
@@ -12,7 +14,7 @@ use smithay::{
         selection::{
             data_device::{DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler},
             primary_selection::{PrimarySelectionHandler, PrimarySelectionState},
-            SelectionHandler,
+            SelectionHandler, SelectionSource, SelectionTarget,
         },
         shell::xdg::{decoration::XdgDecorationHandler, ToplevelSurface},
     },
@@ -160,6 +162,42 @@ impl OutputHandler for MeridianState {}
 
 impl SelectionHandler for MeridianState {
     type SelectionUserData = ();
+
+    fn new_selection(
+        &mut self,
+        ty: SelectionTarget,
+        source: Option<SelectionSource>,
+        _seat: Seat<Self>,
+    ) {
+        if let Some(xwm) = self.xwm.as_mut() {
+            if let Err(err) = xwm.new_selection(ty, source.map(|source| source.mime_types())) {
+                tracing::warn!(
+                    ?err,
+                    ?ty,
+                    "failed to set xwayland selection from wayland owner"
+                );
+            }
+        }
+    }
+
+    fn send_selection(
+        &mut self,
+        ty: SelectionTarget,
+        mime_type: String,
+        fd: OwnedFd,
+        _seat: Seat<Self>,
+        _user_data: &Self::SelectionUserData,
+    ) {
+        if let Some(xwm) = self.xwm.as_mut() {
+            if let Err(err) = xwm.send_selection(ty, mime_type, fd) {
+                tracing::warn!(
+                    ?err,
+                    ?ty,
+                    "failed to send x11 selection data to wayland requestor"
+                );
+            }
+        }
+    }
 }
 
 impl PrimarySelectionHandler for MeridianState {
