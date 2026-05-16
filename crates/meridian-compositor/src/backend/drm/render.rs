@@ -162,13 +162,15 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                 Some(l) => l,
                 None => continue,
             };
+            let geometry = window.geometry();
+            let render_loc =
+                smithay::utils::Point::from((loc.x - geometry.loc.x, loc.y - geometry.loc.y));
 
             if let Some(wl_surf) = window.wl_surface().map(|s| s.into_owned()) {
-                let geo = window.geometry();
                 let metrics = state.decoration_manager.ssd_render_metrics(
                     &wl_surf,
                     loc,
-                    geo.size,
+                    geometry.size,
                     &theme.decorations,
                 );
                 let window_deco_elements = state.decoration_manager.render_elements(
@@ -188,7 +190,13 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
             }
 
             let space_start = out.scratch_normal.len();
-            render_window_space_elements(renderer, window, loc, scale, &mut out.scratch_normal);
+            render_window_space_elements(
+                renderer,
+                window,
+                render_loc,
+                scale,
+                &mut out.scratch_normal,
+            );
             let appended_space = out.scratch_normal.len().saturating_sub(space_start);
             space_element_count += appended_space;
         }

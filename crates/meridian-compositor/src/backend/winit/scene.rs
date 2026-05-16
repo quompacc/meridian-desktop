@@ -74,13 +74,15 @@ pub(super) fn render_elements_for_output(
             Some(l) => l,
             None => continue,
         };
+        let geometry = window.geometry();
+        let render_loc =
+            smithay::utils::Point::from((loc.x - geometry.loc.x, loc.y - geometry.loc.y));
 
         if let Some(wl_surf) = window.wl_surface().map(|s| s.into_owned()) {
-            let geo = window.geometry();
             let metrics = state.decoration_manager.ssd_render_metrics(
                 &wl_surf,
                 loc,
-                geo.size,
+                geometry.size,
                 &theme.decorations,
             );
             let window_deco_elements = state.decoration_manager.render_elements(
@@ -98,7 +100,7 @@ pub(super) fn render_elements_for_output(
             );
         }
 
-        render_window_space_elements(renderer, window, loc, scale, &mut scratch.normal);
+        render_window_space_elements(renderer, window, render_loc, scale, &mut scratch.normal);
     }
 
     let wallpaper_elem = wallpaper_cache
