@@ -1,6 +1,8 @@
 use std::time::{Duration, Instant};
 
-use smithay::backend::renderer::element::{render_elements, surface::WaylandSurfaceRenderElement};
+use smithay::backend::renderer::element::{
+    render_elements, surface::WaylandSurfaceRenderElement, AsRenderElements,
+};
 use smithay::{
     backend::renderer::{
         element::{
@@ -9,12 +11,7 @@ use smithay::{
         },
         gles::{GlesRenderer, GlesTexture},
     },
-    desktop::{
-        layer_map_for_output,
-        space::{space_render_elements, SpaceRenderElements},
-        Space, Window,
-    },
-    output::Output,
+    desktop::{layer_map_for_output, space::SpaceRenderElements, Window},
     utils::Scale,
     wayland::seat::WaylandFocus,
 };
@@ -59,20 +56,23 @@ fn clear_output_dirty(
 
 fn render_window_space_elements<C>(
     renderer: &mut GlesRenderer,
-    output: &Output,
     window: &Window,
     window_loc: smithay::utils::Point<i32, smithay::utils::Logical>,
+    scale: Scale<f64>,
     out: &mut Vec<C>,
 ) where
     C: From<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>>,
 {
-    let mut window_space = Space::<Window>::default();
-    window_space.map_output(output, (0, 0));
-    window_space.map_element(window.clone(), window_loc, false);
     out.extend(
-        space_render_elements::<GlesRenderer, Window, _>(renderer, [&window_space], output, 1.0)
-            .unwrap_or_default()
+        window
+            .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                renderer,
+                window_loc.to_physical_precise_round(scale),
+                scale,
+                1.0,
+            )
             .into_iter()
+            .map(SpaceRenderElements::from)
             .map(C::from),
     );
 }
@@ -187,13 +187,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
             }
 
             let space_start = out.scratch_normal.len();
-            render_window_space_elements(
-                renderer,
-                &out.output,
-                window,
-                loc,
-                &mut out.scratch_normal,
-            );
+            render_window_space_elements(renderer, window, loc, scale, &mut out.scratch_normal);
             let appended_space = out.scratch_normal.len().saturating_sub(space_start);
             space_element_count += appended_space;
         }

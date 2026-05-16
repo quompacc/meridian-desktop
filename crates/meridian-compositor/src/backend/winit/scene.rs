@@ -1,6 +1,9 @@
 use smithay::{
-    backend::renderer::{element::surface::WaylandSurfaceRenderElement, gles::GlesRenderer},
-    desktop::{space::space_render_elements, space::SpaceRenderElements, Space, Window},
+    backend::renderer::{
+        element::{surface::WaylandSurfaceRenderElement, AsRenderElements},
+        gles::GlesRenderer,
+    },
+    desktop::{space::SpaceRenderElements, Window},
     output::Output,
     utils::Scale,
     wayland::seat::WaylandFocus,
@@ -14,20 +17,23 @@ use super::{
 
 fn render_window_space_elements<C>(
     renderer: &mut GlesRenderer,
-    output: &Output,
     window: &Window,
     window_loc: smithay::utils::Point<i32, smithay::utils::Logical>,
+    scale: Scale<f64>,
     out: &mut Vec<C>,
 ) where
     C: From<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>>,
 {
-    let mut window_space = Space::<Window>::default();
-    window_space.map_output(output, (0, 0));
-    window_space.map_element(window.clone(), window_loc, false);
     out.extend(
-        space_render_elements::<GlesRenderer, Window, _>(renderer, [&window_space], output, 1.0)
-            .unwrap_or_default()
+        window
+            .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                renderer,
+                window_loc.to_physical_precise_round(scale),
+                scale,
+                1.0,
+            )
             .into_iter()
+            .map(SpaceRenderElements::from)
             .map(C::from),
     );
 }
@@ -38,7 +44,7 @@ fn render_window_space_elements<C>(
 pub(super) fn render_elements_for_output(
     state: &mut MeridianState,
     renderer: &mut GlesRenderer,
-    output: &Output,
+    _output: &Output,
     lower_layer_data: &[LayerRenderData],
     upper_layer_data: &[LayerRenderData],
     wallpaper_cache: &mut Option<WallpaperGpuCache>,
@@ -96,7 +102,7 @@ pub(super) fn render_elements_for_output(
             );
         }
 
-        render_window_space_elements(renderer, output, window, loc, &mut scratch.normal);
+        render_window_space_elements(renderer, window, loc, scale, &mut scratch.normal);
     }
 
     let lower_layer_elems = render_layer_elements(renderer, lower_layer_data, scale);
