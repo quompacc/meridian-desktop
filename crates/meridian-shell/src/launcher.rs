@@ -12,6 +12,7 @@ use meridian_ipc::ShellCommand;
 use tracing::{debug, info, warn};
 
 use crate::{
+    icons::IconCache,
     ui::{
         primitives::{
             draw_active_indicator, draw_initial_badge, draw_list_item, draw_panel_button,
@@ -80,6 +81,8 @@ const SEARCH_TEXT_BASELINE_OFFSET: i32 = 28;
 const PINNED_APP_TITLE_BASELINE_OFFSET: i32 = 20;
 const APP_ROW_TITLE_BASELINE_OFFSET: i32 = 16;
 const APP_ROW_SUBTITLE_BASELINE_OFFSET: i32 = 30;
+const LAUNCHER_ICON_SIZE: u32 = 24;
+const LAUNCHER_ICON_SLOT: i32 = 24;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SidebarCategory {
@@ -236,6 +239,7 @@ pub struct DesktopApp {
     pub args: Vec<String>,
     pub terminal: bool,
     pub categories: Vec<String>,
+    pub icon_name: Option<String>,
     name_key: String,
     exec_key: String,
 }
@@ -258,6 +262,7 @@ impl DesktopApp {
             args,
             terminal,
             categories: Vec::new(),
+            icon_name: None,
         }
     }
 
@@ -313,6 +318,7 @@ impl DesktopApp {
         let mut no_display = false;
         let mut desktop_type = None;
         let mut categories = None;
+        let mut icon_name = None;
 
         for line in raw.lines() {
             let line = line.trim();
@@ -356,6 +362,9 @@ impl DesktopApp {
                 "Categories" if !value.is_empty() => {
                     categories.get_or_insert_with(|| value.to_string());
                 }
+                "Icon" => {
+                    icon_name = normalize_icon_name(value);
+                }
                 _ => {}
             };
         }
@@ -392,6 +401,7 @@ impl DesktopApp {
         if let Some(raw_categories) = categories {
             app.categories = parse_categories(&raw_categories);
         }
+        app.icon_name = icon_name;
         if app.name.is_empty() || app.program.is_empty() {
             return Err("empty-name-or-exec");
         }
@@ -410,6 +420,23 @@ fn parse_categories(raw: &str) -> Vec<String> {
         .filter(|token| !token.is_empty())
         .map(|token| token.to_ascii_lowercase())
         .collect()
+}
+
+fn normalize_icon_name(raw: &str) -> Option<String> {
+    let value = raw.trim();
+    if value.is_empty() {
+        return None;
+    }
+    if value.starts_with('/') {
+        return Some(value.to_string());
+    }
+
+    let lowered = value.to_ascii_lowercase();
+    if lowered.ends_with(".png") || lowered.ends_with(".svg") || lowered.ends_with(".xpm") {
+        return value.rsplit_once('.').map(|(base, _)| base.to_string());
+    }
+
+    Some(value.to_string())
 }
 
 fn parse_exec_argv(exec: &str) -> Vec<String> {
@@ -685,14 +712,19 @@ fn search_match_rank(app: &DesktopApp, query: &str) -> u8 {
 }
 
 impl LauncherState {
+    #[allow(dead_code)]
     pub fn new() -> Self {
+        Self::new_with_apps(DesktopApp::load_system())
+    }
+
+    pub fn new_with_apps(apps: Vec<DesktopApp>) -> Self {
         Self {
             open: false,
             query: String::new(),
             selected_index: 0,
             sidebar_category: SidebarCategory::Favorites,
             clicks: Vec::new(),
-            apps: DesktopApp::load_system(),
+            apps,
             pending_action_confirmation: None,
         }
     }
@@ -1190,6 +1222,7 @@ pub fn draw_launcher(
     painter: &mut Painter<'_>,
     font: &RefCell<Option<TextRenderer>>,
     theme: &ThemeConfig,
+    icon_cache: &IconCache,
     width: u32,
     height: u32,
 ) {
@@ -1445,23 +1478,30 @@ pub fn draw_launcher(
                 h: tokens::launcher::PINNED_CARD_H,
             };
             let is_selected = index == selected_idx;
-            let badge_x = rect.x + tokens::launcher::INNER_PADDING - 1;
-            let badge_y = rect.y + (rect.h - tokens::badge::SIZE) / 2;
-            let text_x = badge_x + tokens::badge::SIZE + tokens::badge::CONTENT_GAP;
-            let initial = app_initial(&app.name);
+            let slot_x = rect.x + tokens::launcher::INNER_PADDING;
+            let slot_y = rect.y + (rect.h - LAUNCHER_ICON_SLOT) / 2;
+            let text_x = slot_x + LAUNCHER_ICON_SLOT + tokens::badge::CONTENT_GAP;
             let row_state = if is_selected {
                 InteractiveState::Selected
             } else {
                 InteractiveState::Default
             };
             let text_color = draw_list_item(painter, rect, theme, row_state, false);
-            let badge_rect = Rect {
-                x: badge_x,
-                y: badge_y,
-                w: tokens::badge::SIZE,
-                h: tokens::badge::SIZE,
+            let icon_slot_rect = Rect {
+                x: slot_x,
+                y: slot_y,
+                w: LAUNCHER_ICON_SLOT,
+                h: LAUNCHER_ICON_SLOT,
             };
-            draw_initial_badge(painter, font, badge_rect, &initial, theme, row_state);
+            draw_launcher_app_visual(
+                painter,
+                font,
+                icon_cache,
+                icon_slot_rect,
+                app,
+                theme,
+                row_state,
+            );
             painter.text_clipped(
                 font,
                 &app.name,
@@ -1497,17 +1537,24 @@ pub fn draw_launcher(
                 InteractiveState::Default
             };
             let text_color = draw_list_item(painter, rect, theme, row_state, false);
-            let badge_x = rect.x + tokens::launcher::INNER_PADDING - 1;
-            let badge_y = rect.y + (rect.h - tokens::badge::SIZE) / 2;
-            let text_x = badge_x + tokens::badge::SIZE + tokens::badge::CONTENT_GAP;
-            let initial = app_initial(&app.name);
-            let badge_rect = Rect {
-                x: badge_x,
-                y: badge_y,
-                w: tokens::badge::SIZE,
-                h: tokens::badge::SIZE,
+            let slot_x = rect.x + tokens::launcher::INNER_PADDING;
+            let slot_y = rect.y + (rect.h - LAUNCHER_ICON_SLOT) / 2;
+            let text_x = slot_x + LAUNCHER_ICON_SLOT + tokens::badge::CONTENT_GAP;
+            let icon_slot_rect = Rect {
+                x: slot_x,
+                y: slot_y,
+                w: LAUNCHER_ICON_SLOT,
+                h: LAUNCHER_ICON_SLOT,
             };
-            draw_initial_badge(painter, font, badge_rect, &initial, theme, row_state);
+            draw_launcher_app_visual(
+                painter,
+                font,
+                icon_cache,
+                icon_slot_rect,
+                app,
+                theme,
+                row_state,
+            );
             let exec_hint = Path::new(&app.program)
                 .file_name()
                 .and_then(|name| name.to_str())
@@ -1636,6 +1683,34 @@ pub fn draw_launcher(
     }
 }
 
+fn draw_launcher_app_visual(
+    painter: &mut Painter<'_>,
+    font: &RefCell<Option<TextRenderer>>,
+    icon_cache: &IconCache,
+    slot_rect: Rect,
+    app: &DesktopApp,
+    theme: &ThemeConfig,
+    row_state: InteractiveState,
+) {
+    if let Some(image) = app
+        .icon_name
+        .as_deref()
+        .and_then(|name| icon_cache.lookup(name, LAUNCHER_ICON_SIZE))
+    {
+        painter.draw_image(slot_rect, image);
+        return;
+    }
+
+    let initial = app_initial(&app.name);
+    let badge_rect = Rect {
+        x: slot_rect.x + (slot_rect.w - tokens::badge::SIZE) / 2,
+        y: slot_rect.y + (slot_rect.h - tokens::badge::SIZE) / 2,
+        w: tokens::badge::SIZE,
+        h: tokens::badge::SIZE,
+    };
+    draw_initial_badge(painter, font, badge_rect, &initial, theme, row_state);
+}
+
 fn app_initial(name: &str) -> String {
     name.chars()
         .find(|ch| !ch.is_whitespace())
@@ -1662,6 +1737,7 @@ fn is_pinned_candidate(app: &DesktopApp) -> bool {
 #[cfg(test)]
 mod tests {
     use std::{
+        cell::RefCell,
         fs,
         path::PathBuf,
         sync::{
@@ -1676,6 +1752,7 @@ mod tests {
         LauncherActionActivationResult, LauncherInputResult, LauncherState, Rect, SidebarCategory,
         FOOTER_ACTION_BUTTON_H, FOOTER_BAR_V_PADDING, MAX_RESULTS, XDG_DATA_DIRS_DEFAULT,
     };
+    use crate::{icons::IconCache, Painter};
 
     static TEST_ID: AtomicU64 = AtomicU64::new(1);
     static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -1824,6 +1901,131 @@ Exec=foot
         .expect("valid desktop entry without categories");
 
         assert!(app.categories.is_empty());
+    }
+
+    #[test]
+    fn icon_field_theme_name_is_parsed() {
+        let app = DesktopApp::from_desktop_entry_str_with_reason(
+            r#"
+[Desktop Entry]
+Type=Application
+Name=Firefox
+Exec=firefox
+Icon=firefox
+"#,
+        )
+        .expect("valid icon field");
+
+        assert_eq!(app.icon_name.as_deref(), Some("firefox"));
+    }
+
+    #[test]
+    fn icon_field_with_png_extension_is_stripped() {
+        let app = DesktopApp::from_desktop_entry_str_with_reason(
+            r#"
+[Desktop Entry]
+Type=Application
+Name=Firefox
+Exec=firefox
+Icon=firefox.png
+"#,
+        )
+        .expect("valid png icon field");
+
+        assert_eq!(app.icon_name.as_deref(), Some("firefox"));
+    }
+
+    #[test]
+    fn icon_field_with_absolute_path_is_kept_verbatim() {
+        let app = DesktopApp::from_desktop_entry_str_with_reason(
+            r#"
+[Desktop Entry]
+Type=Application
+Name=Custom
+Exec=custom
+Icon=/usr/share/foo/icon.png
+"#,
+        )
+        .expect("valid absolute icon path");
+
+        assert_eq!(app.icon_name.as_deref(), Some("/usr/share/foo/icon.png"));
+    }
+
+    #[test]
+    fn icon_field_empty_is_none() {
+        let app = DesktopApp::from_desktop_entry_str_with_reason(
+            r#"
+[Desktop Entry]
+Type=Application
+Name=Custom
+Exec=custom
+Icon=
+"#,
+        )
+        .expect("valid empty icon field");
+
+        assert_eq!(app.icon_name, None);
+    }
+
+    #[test]
+    fn missing_icon_field_is_none() {
+        let app = DesktopApp::from_desktop_entry_str_with_reason(
+            r#"
+[Desktop Entry]
+Type=Application
+Name=Terminal
+Exec=foot
+"#,
+        )
+        .expect("valid desktop entry without icon");
+
+        assert_eq!(app.icon_name, None);
+    }
+
+    #[test]
+    fn launcher_state_new_with_apps_uses_provided_list() {
+        let apps = vec![DesktopApp::new(
+            "Provided".to_string(),
+            vec!["provided-app".to_string()],
+            false,
+        )];
+        let state = LauncherState::new_with_apps(apps);
+        assert_eq!(state.apps.len(), 1);
+        assert_eq!(state.apps[0].name, "Provided");
+    }
+
+    #[test]
+    fn draw_launcher_app_visual_falls_back_to_initial_badge_on_cache_miss() {
+        let app = DesktopApp::new(
+            "Fallback".to_string(),
+            vec!["fallback-app".to_string()],
+            false,
+        );
+        let mut buffer = vec![0u8; 32 * 32 * 4];
+        let mut painter = Painter::new(&mut buffer, 32, 32);
+        let font = RefCell::new(None);
+        let cache = IconCache::new();
+        let theme = meridian_config::ThemeConfig::default();
+        let slot = Rect {
+            x: 4,
+            y: 4,
+            w: 24,
+            h: 24,
+        };
+        super::draw_launcher_app_visual(
+            &mut painter,
+            &font,
+            &cache,
+            slot,
+            &app,
+            &theme,
+            super::InteractiveState::Default,
+        );
+
+        let center_x = slot.x + slot.w / 2;
+        let center_y = slot.y + slot.h / 2;
+        let offset = ((center_y * 32 + center_x) * 4) as usize;
+        assert_ne!(&buffer[offset..offset + 4], &[0, 0, 0, 0]);
     }
 
     #[test]

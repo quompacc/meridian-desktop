@@ -99,6 +99,7 @@ impl MeridianShell {
             app.program.hash(&mut hasher);
             app.args.hash(&mut hasher);
             app.terminal.hash(&mut hasher);
+            app.icon_name.hash(&mut hasher);
         }
         hasher.finish()
     }
@@ -410,6 +411,7 @@ impl MeridianShell {
                 &mut painter,
                 &self.font,
                 &self.theme,
+                &self.icon_cache,
                 width,
                 height,
             );

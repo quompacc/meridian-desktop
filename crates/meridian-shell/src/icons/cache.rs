@@ -38,7 +38,12 @@ impl IconCache {
                 continue;
             }
 
-            let entry = match self.loader.load_icon(name, size) {
+            let loaded = if name.starts_with('/') {
+                self.loader.load_icon_from_absolute_path(name, size)
+            } else {
+                self.loader.load_icon(name, size)
+            };
+            let entry = match loaded {
                 Some(image) => CacheEntry::Found(image),
                 None => CacheEntry::Missing,
             };
@@ -203,5 +208,47 @@ mod tests {
         let first = cache.lookup("utilities-terminal", 22).expect("first") as *const _;
         let second = cache.lookup("utilities-terminal", 22).expect("second") as *const _;
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn absolute_path_warm_finds_file() {
+        let (temp, loader) = create_loader_env();
+        let path = temp
+            .path()
+            .join("icons/Adwaita/22x22/apps/utilities-terminal.png");
+        write_png(&path, 24, 24, [1, 2, 3, 255]);
+
+        let mut cache = IconCache::new_for_tests(loader);
+        let icon_path = path.to_string_lossy().to_string();
+        cache.warm(&[icon_path.as_str()], 24);
+
+        assert!(cache.lookup(icon_path.as_str(), 24).is_some());
+    }
+
+    #[test]
+    fn absolute_path_warm_missing_file_negative_cache() {
+        let (temp, loader) = create_loader_env();
+        let path = temp.path().join("icons/Adwaita/22x22/apps/missing.png");
+        let icon_path = path.to_string_lossy().to_string();
+
+        let mut cache = IconCache::new_for_tests(loader);
+        cache.warm(&[icon_path.as_str()], 24);
+        assert!(cache.lookup(icon_path.as_str(), 24).is_none());
+    }
+
+    #[test]
+    fn absolute_path_warm_downscale_resizes_to_requested() {
+        let (temp, loader) = create_loader_env();
+        let path = temp.path().join("icons/Adwaita/22x22/apps/large.png");
+        write_png(&path, 32, 32, [10, 20, 30, 255]);
+        let icon_path = path.to_string_lossy().to_string();
+
+        let mut cache = IconCache::new_for_tests(loader);
+        cache.warm(&[icon_path.as_str()], 24);
+        let image = cache
+            .lookup(icon_path.as_str(), 24)
+            .expect("downscaled icon");
+        assert_eq!(image.width, 24);
+        assert_eq!(image.height, 24);
     }
 }

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, time::Instant};
+use std::{cell::RefCell, collections::HashSet, time::Instant};
 
 use meridian_config::{MeridianConfig, ThemeManager};
 use smithay_client_toolkit::{
@@ -146,6 +146,23 @@ pub(crate) fn initialize(
         &["utilities-terminal", "firefox", "system-file-manager"],
         22,
     );
+    let launcher_apps = launcher::DesktopApp::load_system();
+    let mut seen_icons = HashSet::new();
+    let mut launcher_icons = Vec::new();
+    for app in &launcher_apps {
+        if let Some(icon_name) = app.icon_name.as_deref() {
+            if !icon_name.is_empty() && seen_icons.insert(icon_name.to_string()) {
+                launcher_icons.push(icon_name.to_string());
+            }
+        }
+    }
+    if !launcher_icons.is_empty() {
+        let icon_refs = launcher_icons
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        icon_cache.warm(&icon_refs, 24);
+    }
 
     let commit_stats_enabled = std::env::var("MERIDIAN_SHELL_COMMIT_STATS")
         .map(|value| {
@@ -201,7 +218,7 @@ pub(crate) fn initialize(
         ipc: IpcClient::connect(),
         panel_state: panel::PanelState::new(),
         pinned_apps: default_pinned_apps(),
-        launcher_state: launcher::LauncherState::new(),
+        launcher_state: launcher::LauncherState::new_with_apps(launcher_apps),
         workspace_state: crate::workspaces::WorkspacePopupState::new(),
         focused_window_id: None,
         focused_title: None,

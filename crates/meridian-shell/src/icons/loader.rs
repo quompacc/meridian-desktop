@@ -68,6 +68,17 @@ impl IconLoader {
         self.load_from_pixmaps(name, requested_size)
     }
 
+    pub(crate) fn load_icon_from_absolute_path(
+        &self,
+        path: &str,
+        requested_size: u32,
+    ) -> Option<IconImage> {
+        if requested_size == 0 || !path.starts_with('/') {
+            return None;
+        }
+        self.decode_icon_file(Path::new(path), requested_size)
+    }
+
     fn load_icon_from_theme(
         &self,
         theme_name: &str,
@@ -544,6 +555,21 @@ mod tests {
         assert_eq!(icon.width, 22);
         assert_eq!(icon.height, 22);
         assert_eq!(&icon.bgra[0..4], &[0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn absolute_path_loader_loads_png() {
+        let temp = TempDir::new("absolute-path");
+        let png_path = temp.path().join("standalone.png");
+        write_png_rgba(&png_path, 24, 24, [1, 2, 3, 255]);
+
+        let loader = IconLoader::new_for_tests("Adwaita", vec![], vec![]);
+        let icon = loader
+            .load_icon_from_absolute_path(png_path.to_str().expect("utf8 path"), 24)
+            .expect("icon from absolute path");
+        assert_eq!(icon.width, 24);
+        assert_eq!(icon.height, 24);
+        assert_eq!(&icon.bgra[0..4], &[3, 2, 1, 255]);
     }
 
     #[test]
