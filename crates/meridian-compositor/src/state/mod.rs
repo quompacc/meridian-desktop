@@ -1,6 +1,6 @@
 use std::{collections::HashMap, ffi::OsString, time::Instant};
 
-use meridian_config::{KeybindConfig, ThemeManager};
+use meridian_config::{KeybindConfig, OutputEntry, ThemeManager};
 use meridian_wm::WmWorkspace;
 use smithay::{
     desktop::{PopupManager, Window},
@@ -41,7 +41,8 @@ mod utils;
 mod workspace_output_state;
 
 pub use output_layout::{
-    ConnectedOutput, OutputLayout, OutputPlacement, OutputPosition, ResolvedOutput,
+    parse_output_transform, ConnectedOutput, OutputLayout, OutputPlacement, OutputPosition,
+    ResolvedOutput,
 };
 pub use output_registry::{
     OutputGeometry, OutputId, OutputInfo, OutputReconfigure, OutputRegistration, OutputRegistry,
@@ -295,6 +296,7 @@ pub struct MeridianState {
     pub workspaces: WorkspaceManager,
     pub outputs: Vec<Output>,
     pub output_layout: OutputLayout,
+    pub output_config_entries: Vec<OutputEntry>,
     pub output_registry: OutputRegistry,
     pub workspace_output_state: WorkspaceOutputState,
     pub popups: PopupManager,
@@ -326,7 +328,32 @@ pub struct MeridianState {
 
 impl MeridianState {
     pub fn resolve_output_layout(&self, connected: &[ConnectedOutput]) -> Vec<ResolvedOutput> {
-        self.output_layout.resolve(connected)
+        let mut resolved = self.output_layout.resolve(connected);
+        Self::enforce_at_least_one_enabled(&mut resolved);
+        resolved
+    }
+
+    pub(crate) fn enforce_at_least_one_enabled(resolved: &mut [ResolvedOutput]) {
+        if resolved.is_empty() {
+            return;
+        }
+        if resolved.iter().any(|output| output.enabled) {
+            return;
+        }
+
+        tracing::warn!(
+            "output layout has zero enabled outputs ({} connected) — forcing all to enabled to keep display alive",
+            resolved.len()
+        );
+        for output in resolved.iter_mut() {
+            output.enabled = true;
+        }
+
+        if !resolved.iter().any(|output| output.primary) {
+            if let Some(first) = resolved.first_mut() {
+                first.primary = true;
+            }
+        }
     }
 
     pub fn clear_window_runtime_state(&mut self, window_key: &str) {

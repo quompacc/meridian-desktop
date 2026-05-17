@@ -1,5 +1,7 @@
 use std::env;
 
+use meridian_config::OutputModeConfig;
+
 use super::init_env::env_flag_enabled;
 
 pub(super) fn select_add_mode(
@@ -87,6 +89,93 @@ pub(super) fn select_add_mode(
         .first()
         .copied()
         .map(|mode| (mode, "safe-fallback-first".to_string()))
+}
+
+pub(super) fn select_mode_with_override(
+    modes: &[smithay::reexports::drm::control::Mode],
+    override_mode: Option<&OutputModeConfig>,
+    output_name: &str,
+) -> Option<(smithay::reexports::drm::control::Mode, String)> {
+    if let Some(requested) = override_mode {
+        let req_w = match u16::try_from(requested.width) {
+            Ok(value) => value,
+            Err(_) => {
+                tracing::warn!(
+                    "output {} TOML mode width {} invalid for drm mode matching — falling back to auto selection",
+                    output_name,
+                    requested.width
+                );
+                return select_add_mode(modes);
+            }
+        };
+        let req_h = match u16::try_from(requested.height) {
+            Ok(value) => value,
+            Err(_) => {
+                tracing::warn!(
+                    "output {} TOML mode height {} invalid for drm mode matching — falling back to auto selection",
+                    output_name,
+                    requested.height
+                );
+                return select_add_mode(modes);
+            }
+        };
+
+        let candidates = modes
+            .iter()
+            .map(|mode| {
+                let (width, height) = mode.size();
+                (width, height, mode_refresh_millihz_with_fallback(*mode))
+            })
+            .collect::<Vec<_>>();
+
+        if let Some(index) =
+            pick_best_mode_for_request(&candidates, (req_w, req_h, requested.refresh_millihz))
+        {
+            let selected = modes[index];
+            return Some((
+                selected,
+                format!("toml-override({}x{})", requested.width, requested.height),
+            ));
+        }
+
+        tracing::warn!(
+            "output {} TOML mode {}x{}@{:?} not found in connector modes — falling back to auto selection",
+            output_name,
+            requested.width,
+            requested.height,
+            requested.refresh_millihz
+        );
+    }
+
+    select_add_mode(modes)
+}
+
+fn pick_best_mode_for_request(
+    candidates: &[(u16, u16, i32)],
+    request: (u16, u16, Option<i32>),
+) -> Option<usize> {
+    let (req_w, req_h, req_refresh) = request;
+    let matching = candidates
+        .iter()
+        .enumerate()
+        .filter(|(_, (width, height, _))| *width == req_w && *height == req_h)
+        .collect::<Vec<_>>();
+
+    if matching.is_empty() {
+        return None;
+    }
+
+    if let Some(target_refresh) = req_refresh {
+        return matching
+            .into_iter()
+            .min_by_key(|(_, (_, _, refresh))| (*refresh - target_refresh).abs())
+            .map(|(index, _)| index);
+    }
+
+    matching
+        .into_iter()
+        .max_by_key(|(_, (_, _, refresh))| *refresh)
+        .map(|(index, _)| index)
 }
 
 fn mode_flags_weird_penalty(mode: smithay::reexports::drm::control::Mode) -> u8 {
@@ -241,4 +330,57 @@ pub(super) fn forced_mode_index_from_env() -> Option<usize> {
     env::var("MERIDIAN_DRM_MODE_INDEX")
         .ok()
         .and_then(|value| value.trim().parse::<usize>().ok())
+}
+
+#[cfg(test)]
+mod tests {
+    use meridian_config::OutputModeConfig;
+
+    use super::{pick_best_mode_for_request, select_add_mode, select_mode_with_override};
+
+    #[test]
+    fn toml_mode_override_picks_matching_size() {
+        let candidates = vec![(1920, 1080, 60_000), (2560, 1440, 144_000)];
+        let index = pick_best_mode_for_request(&candidates, (2560, 1440, None));
+        assert_eq!(index, Some(1));
+    }
+
+    #[test]
+    fn toml_mode_override_picks_closest_refresh_when_specified() {
+        let candidates = vec![
+            (1920, 1080, 60_000),
+            (1920, 1080, 143_000),
+            (1920, 1080, 165_000),
+        ];
+        let index = pick_best_mode_for_request(&candidates, (1920, 1080, Some(144_000)));
+        assert_eq!(index, Some(1));
+    }
+
+    #[test]
+    fn toml_mode_override_falls_back_when_size_unavailable() {
+        let candidates = vec![(1920, 1080, 60_000), (2560, 1440, 144_000)];
+        let index = pick_best_mode_for_request(&candidates, (1280, 720, Some(60_000)));
+        assert_eq!(index, None);
+    }
+
+    #[test]
+    fn toml_mode_override_none_delegates_to_select_add_mode() {
+        let modes: Vec<smithay::reexports::drm::control::Mode> = Vec::new();
+        let delegated = select_add_mode(&modes);
+        let selected = select_mode_with_override(&modes, None, "drm-0");
+        assert!(delegated.is_none());
+        assert!(selected.is_none());
+    }
+
+    #[test]
+    fn toml_mode_override_invalid_dimensions_delegate_to_auto_selection() {
+        let modes: Vec<smithay::reexports::drm::control::Mode> = Vec::new();
+        let override_mode = OutputModeConfig {
+            width: -1,
+            height: 1080,
+            refresh_millihz: None,
+        };
+        assert!(select_add_mode(&modes).is_none());
+        assert!(select_mode_with_override(&modes, Some(&override_mode), "drm-0").is_none());
+    }
 }

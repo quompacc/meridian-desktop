@@ -21,7 +21,7 @@ use smithay::{
         session::{libseat::LibSeatSession, Event as SessionEvent, Session},
     },
     desktop::layer_map_for_output,
-    output::{Mode as OutputMode, Output, PhysicalProperties, Subpixel},
+    output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
         calloop::{
             timer::{TimeoutAction, Timer},
@@ -37,7 +37,8 @@ use tracing::{info, warn};
 use crate::{
     cursor::CursorImage,
     state::{
-        ConnectedOutput, MeridianState, OutputReconfigure, OutputRegistration, ResolvedOutput,
+        parse_output_transform, ConnectedOutput, MeridianState, OutputReconfigure,
+        OutputRegistration, ResolvedOutput,
     },
 };
 
@@ -53,7 +54,7 @@ use super::{
     },
     mode_selection::{
         forced_mode_index_from_env, forced_mode_size_from_env, mode_refresh_millihz_with_fallback,
-        select_add_mode,
+        select_add_mode, select_mode_with_override,
     },
     render::render_outputs,
     DrmBackend, DrmOutput,
@@ -92,6 +93,8 @@ struct PendingInitOutput {
     height: i32,
     refresh_millihz: i32,
     phys_size: (i32, i32),
+    transform: Transform,
+    scale: f64,
 }
 
 fn sync_primary_flags_from_resolved_layout(state: &mut MeridianState, resolved: &[ResolvedOutput]) {
@@ -128,6 +131,27 @@ fn sync_primary_flags_from_resolved_layout(state: &mut MeridianState, resolved: 
             },
         );
     }
+}
+
+fn parse_output_scale(scale_value: f64, output_name: &str) -> f64 {
+    if !scale_value.is_finite() || scale_value <= 0.0 {
+        tracing::warn!(
+            "output {} scale {:?} invalid — using 1.0",
+            output_name,
+            scale_value
+        );
+        return 1.0;
+    }
+
+    scale_value
+}
+
+fn output_scale_from_value(scale_value: f64) -> Scale {
+    if (scale_value - scale_value.round()).abs() < f64::EPSILON {
+        return Scale::Integer(scale_value as i32);
+    }
+
+    Scale::Fractional(scale_value)
 }
 
 fn classify_drm_connector_changes(
@@ -392,9 +416,29 @@ fn add_drm_output_via_hotplug_pipeline(
         return false;
     }
 
+    let output_name = format!("drm-{}", state.outputs.len());
+    let output_mode_override = state
+        .output_config_entries
+        .iter()
+        .find(|entry| entry.name == output_name)
+        .and_then(|entry| entry.mode.clone());
+    let output_transform_override = state
+        .output_config_entries
+        .iter()
+        .find(|entry| entry.name == output_name)
+        .and_then(|entry| entry.transform.clone());
+    let output_scale_override = state
+        .output_config_entries
+        .iter()
+        .find(|entry| entry.name == output_name)
+        .map(|entry| entry.scale)
+        .unwrap_or(1.0);
+
     let modes = conn.modes();
     log_connector_modes("drm output add connector mode", connector, modes);
-    let Some((mode, mode_reason)) = select_add_mode(modes) else {
+    let Some((mode, mode_reason)) =
+        select_mode_with_override(modes, output_mode_override.as_ref(), &output_name)
+    else {
         tracing::warn!(
             "drm output add skipped reason=no-mode connector={:?}",
             connector
@@ -457,7 +501,6 @@ fn add_drm_output_via_hotplug_pipeline(
         color_formats
     );
 
-    let output_name = format!("drm-{}", state.outputs.len());
     let mut pending: Vec<ConnectedOutput> = state
         .output_registry
         .list()
@@ -485,6 +528,27 @@ fn add_drm_output_via_hotplug_pipeline(
         x,
         y
     );
+    if !new_resolved.enabled {
+        tracing::info!(
+            "output {} skipped: enabled=false per TOML config",
+            output_name
+        );
+        return false;
+    }
+
+    let transform = output_transform_override
+        .as_deref()
+        .map(parse_output_transform)
+        .unwrap_or(Transform::Normal);
+    if transform != Transform::Normal {
+        tracing::debug!(
+            "output {} uses non-normal transform {:?}; geometry tracking remains mode-size based",
+            output_name,
+            transform
+        );
+    }
+    let scale_value = parse_output_scale(output_scale_override, &output_name);
+    let output_scale = output_scale_from_value(scale_value);
 
     let phys_size = conn.size().map_or((0, 0), |s| (s.0 as i32, s.1 as i32));
     let output = Output::new(
@@ -504,9 +568,9 @@ fn add_drm_output_via_hotplug_pipeline(
     };
     output.change_current_state(
         Some(out_mode),
-        Some(Transform::Normal),
-        None,
-        Some((0, 0).into()),
+        Some(transform),
+        Some(output_scale),
+        Some((x, y).into()),
     );
     output.set_preferred(out_mode);
 
@@ -541,8 +605,8 @@ fn add_drm_output_via_hotplug_pipeline(
     let output_id = state.handle_output_added_or_updated(OutputRegistration {
         name: output_name.clone(),
         geometry: MeridianState::output_geometry_for_registry(x, y, width as i32, height as i32),
-        scale: 1.0,
-        transform: Transform::Normal,
+        scale: scale_value,
+        transform,
         refresh_millihz: Some(refresh_millihz),
     });
     sync_primary_flags_from_resolved_layout(state, &resolved);
@@ -901,7 +965,15 @@ pub fn init_drm(
             continue;
         }
         log_connector_modes("drm connector mode", *conn_handle, modes);
-        let Some((mode, mode_reason)) = select_add_mode(modes) else {
+        let output_name = format!("drm-{}", pending_outputs.len());
+        let config_entry = state
+            .output_config_entries
+            .iter()
+            .find(|entry| entry.name == output_name);
+        let mode_override = config_entry.and_then(|entry| entry.mode.as_ref());
+        let Some((mode, mode_reason)) =
+            select_mode_with_override(modes, mode_override, &output_name)
+        else {
             continue;
         };
         log_mode_details("drm mode selected", *conn_handle, mode);
@@ -926,8 +998,16 @@ pub fn init_drm(
 
         let (w, h) = mode.size();
         let phys_size = conn.size().map_or((0, 0), |s| (s.0 as i32, s.1 as i32));
+        let transform = config_entry
+            .and_then(|entry| entry.transform.as_deref())
+            .map(parse_output_transform)
+            .unwrap_or(Transform::Normal);
+        let scale = parse_output_scale(
+            config_entry.map(|entry| entry.scale).unwrap_or(1.0),
+            &output_name,
+        );
         pending_outputs.push(PendingInitOutput {
-            output_name: format!("drm-{}", pending_outputs.len()),
+            output_name,
             connector: *conn_handle,
             crtc: crtc_handle,
             mode,
@@ -935,6 +1015,8 @@ pub fn init_drm(
             height: h as i32,
             refresh_millihz: selected_mode_refresh_millihz,
             phys_size,
+            transform,
+            scale,
         });
     }
 
@@ -959,6 +1041,20 @@ pub fn init_drm(
             resolved.x,
             resolved.y
         );
+        if !resolved.enabled {
+            tracing::info!(
+                "output {} skipped: enabled=false per TOML config",
+                pending.output_name
+            );
+            continue;
+        }
+        if pending.transform != Transform::Normal {
+            tracing::debug!(
+                "output {} uses non-normal transform {:?}; geometry tracking remains mode-size based",
+                pending.output_name,
+                pending.transform
+            );
+        }
         let surface = drm.create_surface(pending.crtc, pending.mode, &[pending.connector])?;
         let (mode_w, mode_h) = pending.mode.size();
         info!(
@@ -999,9 +1095,9 @@ pub fn init_drm(
         };
         output.change_current_state(
             Some(out_mode),
-            Some(Transform::Normal),
-            None,
-            Some((0, 0).into()),
+            Some(pending.transform),
+            Some(output_scale_from_value(pending.scale)),
+            Some((resolved.x, resolved.y).into()),
         );
         output.set_preferred(out_mode);
 
@@ -1018,8 +1114,8 @@ pub fn init_drm(
                 pending.width,
                 pending.height,
             ),
-            scale: 1.0,
-            transform: Transform::Normal,
+            scale: pending.scale,
+            transform: pending.transform,
             refresh_millihz: Some(pending.refresh_millihz),
         });
 

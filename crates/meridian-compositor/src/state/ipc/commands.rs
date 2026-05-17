@@ -136,6 +136,9 @@ impl MeridianState {
 
         let changes = super::super::setup::apply_config_overrides(&mut self.theme_manager, &config);
         self.keybind_config = config.keybinds;
+        // TODO(P1.5+): output layout changes from reload do not propagate to
+        // running DRM compositors yet. Requires re-resolving all outputs and
+        // applying position/scale/transform/mode changes mid-session.
 
         if changes.theme_changed {
             tracing::info!(
