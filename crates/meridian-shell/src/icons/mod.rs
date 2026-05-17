@@ -1,5 +1,6 @@
 mod cache;
 mod loader;
+mod rcc;
 pub mod svg;
 mod theme_index;
 

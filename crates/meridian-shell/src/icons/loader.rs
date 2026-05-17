@@ -2,12 +2,15 @@ use std::{
     cmp::Reverse,
     collections::{HashSet, VecDeque},
     fs,
+    io::Cursor,
     path::{Path, PathBuf},
 };
 
 use png::{BitDepth, ColorType, Decoder, Transformations};
+use tracing::info;
 
 use super::{
+    rcc::RccArchive,
     svg::decode_svg,
     theme_index::{parse_index_theme, IconDirectory, IconDirectoryType, IconTheme},
     IconImage,
@@ -18,6 +21,13 @@ pub(crate) struct IconLoader {
     theme_name: String,
     search_paths: Vec<PathBuf>,
     pixmaps_paths: Vec<PathBuf>,
+    rcc_sources: Vec<RccSource>,
+}
+
+#[derive(Debug, Clone)]
+struct RccSource {
+    archive: RccArchive,
+    file_paths: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -33,12 +43,27 @@ struct IconCandidate {
     exact: bool,
 }
 
+#[derive(Debug, Clone)]
+struct RccCandidate {
+    path: String,
+    nominal_size: u32,
+    extension: String,
+}
+
 impl IconLoader {
     pub(crate) fn new(theme_name: &str) -> Self {
+        let search_paths = standard_icon_search_paths();
+        let (rcc_sources, total_files) = discover_rcc_sources(&search_paths);
+        info!(
+            "loaded {} rcc archives with {} total files",
+            rcc_sources.len(),
+            total_files
+        );
         Self {
             theme_name: theme_name.to_string(),
-            search_paths: standard_icon_search_paths(),
+            search_paths,
             pixmaps_paths: vec![PathBuf::from("/usr/share/pixmaps")],
+            rcc_sources,
         }
     }
 
@@ -48,10 +73,12 @@ impl IconLoader {
         search_paths: Vec<PathBuf>,
         pixmaps_paths: Vec<PathBuf>,
     ) -> Self {
+        let (rcc_sources, _) = discover_rcc_sources(&search_paths);
         Self {
             theme_name: theme_name.to_string(),
             search_paths,
             pixmaps_paths,
+            rcc_sources,
         }
     }
 
@@ -67,6 +94,7 @@ impl IconLoader {
         }
 
         self.load_from_pixmaps(name, requested_size)
+            .or_else(|| self.load_from_rcc(name, requested_size))
     }
 
     pub(crate) fn load_icon_from_absolute_path(
@@ -115,6 +143,25 @@ impl IconLoader {
 
         let selected = pick_best_candidate(candidates, requested_size)?;
         self.decode_icon_path(&selected.path, requested_size)
+    }
+
+    fn load_from_rcc(&self, name: &str, requested_size: u32) -> Option<IconImage> {
+        let mut candidates = Vec::new();
+        for source in &self.rcc_sources {
+            candidates.extend(select_rcc_candidates(
+                &source.file_paths,
+                name,
+                requested_size,
+            ));
+        }
+        let selected = pick_best_rcc_candidate(candidates, requested_size)?;
+        for source in &self.rcc_sources {
+            let Some(bytes) = source.archive.read_file(&selected.path) else {
+                continue;
+            };
+            return self.decode_icon_bytes(&selected.extension, &bytes, requested_size);
+        }
+        None
     }
 
     fn load_theme(&self, theme_name: &str) -> Option<ThemeLocation> {
@@ -193,8 +240,26 @@ impl IconLoader {
     }
 
     fn decode_png_file(&self, path: &Path, requested_size: u32) -> Option<IconImage> {
-        let file = fs::File::open(path).ok()?;
-        let mut decoder = Decoder::new(file);
+        let data = fs::read(path).ok()?;
+        self.decode_png_bytes(&data, requested_size)
+    }
+
+    fn decode_icon_bytes(
+        &self,
+        extension: &str,
+        bytes: &[u8],
+        requested_size: u32,
+    ) -> Option<IconImage> {
+        match extension {
+            "svg" => decode_svg(bytes, requested_size),
+            "png" => self.decode_png_bytes(bytes, requested_size),
+            _ => None,
+        }
+    }
+
+    fn decode_png_bytes(&self, bytes: &[u8], requested_size: u32) -> Option<IconImage> {
+        let cursor = Cursor::new(bytes);
+        let mut decoder = Decoder::new(cursor);
         decoder.set_transformations(Transformations::EXPAND | Transformations::STRIP_16);
         let mut reader = decoder.read_info().ok()?;
         if reader.info().color_type == ColorType::Indexed {
@@ -233,6 +298,148 @@ impl IconLoader {
             height: requested_size,
             bgra: resized,
         })
+    }
+}
+
+fn discover_rcc_sources(search_paths: &[PathBuf]) -> (Vec<RccSource>, usize) {
+    let mut sources = Vec::new();
+    let mut total_files = 0usize;
+
+    for root in search_paths {
+        let Ok(theme_dirs) = fs::read_dir(root) else {
+            continue;
+        };
+        for theme_entry in theme_dirs.flatten() {
+            let Ok(file_type) = theme_entry.file_type() else {
+                continue;
+            };
+            if !file_type.is_dir() {
+                continue;
+            }
+            let theme_dir = theme_entry.path();
+            let Ok(entries) = fs::read_dir(&theme_dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let is_rcc = path
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext.eq_ignore_ascii_case("rcc"))
+                    .unwrap_or(false);
+                if !is_rcc {
+                    continue;
+                }
+
+                let Some(archive) = RccArchive::open(&path) else {
+                    continue;
+                };
+                let file_paths = archive.list_files();
+                total_files = total_files.saturating_add(file_paths.len());
+                sources.push(RccSource {
+                    archive,
+                    file_paths,
+                });
+            }
+        }
+    }
+
+    (sources, total_files)
+}
+
+fn select_rcc_candidates(
+    file_paths: &[String],
+    icon_name: &str,
+    requested_size: u32,
+) -> Vec<RccCandidate> {
+    let mut candidates = Vec::new();
+    for file_path in file_paths {
+        let Some((base_name, extension)) = split_basename_and_extension(file_path) else {
+            continue;
+        };
+        if base_name != icon_name {
+            continue;
+        }
+        if extension != "png" && extension != "svg" {
+            continue;
+        }
+        let nominal_size = infer_nominal_size(file_path, requested_size);
+        candidates.push(RccCandidate {
+            path: file_path.clone(),
+            nominal_size,
+            extension: extension.to_string(),
+        });
+    }
+    candidates
+}
+
+fn pick_best_rcc_candidate(
+    candidates: Vec<RccCandidate>,
+    requested_size: u32,
+) -> Option<RccCandidate> {
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let mut preferred: Vec<RccCandidate> = candidates
+        .iter()
+        .filter(|candidate| candidate.extension == "png")
+        .cloned()
+        .collect();
+    if preferred.is_empty() {
+        preferred = candidates;
+    }
+
+    let (larger_or_equal, smaller): (Vec<_>, Vec<_>) = preferred
+        .into_iter()
+        .partition(|candidate| candidate.nominal_size >= requested_size);
+    if !larger_or_equal.is_empty() {
+        return larger_or_equal
+            .into_iter()
+            .min_by_key(|candidate| candidate.nominal_size);
+    }
+
+    smaller
+        .into_iter()
+        .max_by_key(|candidate| candidate.nominal_size)
+}
+
+fn split_basename_and_extension(path: &str) -> Option<(&str, &str)> {
+    let filename = path.rsplit('/').next()?;
+    let dot_index = filename.rfind('.')?;
+    let base = &filename[..dot_index];
+    let extension = &filename[dot_index + 1..];
+    if base.is_empty() || extension.is_empty() {
+        return None;
+    }
+    Some((base, extension))
+}
+
+fn infer_nominal_size(path: &str, default: u32) -> u32 {
+    for segment in path.split('/') {
+        let trimmed = segment.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Ok(value) = trimmed.parse::<u32>() {
+            return value;
+        }
+    }
+    default
+}
+
+impl IconLoader {
+    #[cfg(test)]
+    pub(crate) fn rcc_archive_count(&self) -> usize {
+        self.rcc_sources.len()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn rcc_total_file_count(&self) -> usize {
+        self.rcc_sources
+            .iter()
+            .map(|source| source.file_paths.len())
+            .sum()
     }
 }
 
@@ -567,6 +774,78 @@ mod tests {
         }
     }
 
+    fn build_chain_rcc(internal_path: &str, payload: &[u8], file_flags: u16) -> Vec<u8> {
+        const DIRECTORY_FLAG: u16 = 0x02;
+        let segments: Vec<&str> = internal_path
+            .split('/')
+            .filter(|segment| !segment.trim().is_empty())
+            .collect();
+        assert!(
+            !segments.is_empty(),
+            "path must contain at least one segment"
+        );
+
+        let node_count = segments.len() + 1;
+        let mut names_section = Vec::new();
+        let mut name_offsets = Vec::with_capacity(node_count);
+
+        name_offsets.push(0u32);
+        names_section.extend_from_slice(&0u16.to_be_bytes());
+        names_section.extend_from_slice(&0u32.to_be_bytes());
+
+        for segment in &segments {
+            let offset = names_section.len() as u32;
+            name_offsets.push(offset);
+            let utf16: Vec<u16> = segment.encode_utf16().collect();
+            names_section.extend_from_slice(&(utf16.len() as u16).to_be_bytes());
+            names_section.extend_from_slice(&0u32.to_be_bytes());
+            for unit in utf16 {
+                names_section.extend_from_slice(&unit.to_be_bytes());
+            }
+        }
+
+        let mut data_section = Vec::new();
+        data_section.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+        data_section.extend_from_slice(payload);
+
+        let mut tree_section = Vec::new();
+        for index in 0..node_count {
+            tree_section.extend_from_slice(&name_offsets[index].to_be_bytes());
+            if index < node_count - 1 {
+                tree_section.extend_from_slice(&DIRECTORY_FLAG.to_be_bytes());
+                tree_section.extend_from_slice(&1u32.to_be_bytes());
+                tree_section.extend_from_slice(&((index + 1) as u32).to_be_bytes());
+                tree_section.extend_from_slice(&0u64.to_be_bytes());
+            } else {
+                tree_section.extend_from_slice(&file_flags.to_be_bytes());
+                tree_section.extend_from_slice(&0u16.to_be_bytes());
+                tree_section.extend_from_slice(&0u16.to_be_bytes());
+                tree_section.extend_from_slice(&0u32.to_be_bytes());
+                tree_section.extend_from_slice(&0u64.to_be_bytes());
+            }
+        }
+
+        let data_offset = 24u32;
+        let tree_offset = data_offset + data_section.len() as u32;
+        let names_offset = tree_offset + tree_section.len() as u32;
+
+        let mut out = Vec::new();
+        out.extend_from_slice(&0x7172_6573u32.to_be_bytes());
+        out.extend_from_slice(&3u32.to_be_bytes());
+        out.extend_from_slice(&tree_offset.to_be_bytes());
+        out.extend_from_slice(&data_offset.to_be_bytes());
+        out.extend_from_slice(&names_offset.to_be_bytes());
+        out.extend_from_slice(&0u32.to_be_bytes());
+        out.extend_from_slice(&data_section);
+        out.extend_from_slice(&tree_section);
+        out.extend_from_slice(&names_section);
+        out
+    }
+
+    fn write_rcc_file(path: &Path, internal_path: &str, payload: &[u8], file_flags: u16) {
+        fs::write(path, build_chain_rcc(internal_path, payload, file_flags)).expect("write rcc");
+    }
+
     #[test]
     fn lookup_finds_icon_in_theme_directory() {
         let temp = TempDir::new("lookup-theme");
@@ -796,5 +1075,75 @@ mod tests {
 
         let loader = IconLoader::new_for_tests("Adwaita", vec![icons_root], vec![]);
         assert!(loader.load_icon("palette", 22).is_none());
+    }
+
+    #[test]
+    fn rcc_archives_are_discovered_in_theme_directory() {
+        let temp = TempDir::new("rcc-discovery");
+        let icons_root = temp.path().join("icons");
+        let theme_root = icons_root.join("breeze");
+        fs::create_dir_all(&theme_root).expect("create theme root");
+        write_rcc_file(
+            &theme_root.join("breeze-icons.rcc"),
+            "icons/breeze/actions/22/run.svg",
+            b"<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22'></svg>",
+            0x00,
+        );
+
+        let loader = IconLoader::new_for_tests("Adwaita", vec![icons_root], vec![]);
+        assert_eq!(loader.rcc_archive_count(), 1);
+        assert!(loader.rcc_total_file_count() >= 1);
+    }
+
+    #[test]
+    fn lookup_falls_back_to_rcc_after_fs_exhausted() {
+        let temp = TempDir::new("rcc-fallback");
+        let icons_root = temp.path().join("icons");
+        fs::create_dir_all(&icons_root).expect("create icons root");
+        make_theme_root(&icons_root, "Adwaita", &["22x22/apps"], "");
+
+        let breeze_theme_root = icons_root.join("breeze");
+        fs::create_dir_all(&breeze_theme_root).expect("create breeze theme root");
+        write_rcc_file(
+            &breeze_theme_root.join("breeze-icons.rcc"),
+            "icons/breeze/apps/22/rcc-only.svg",
+            b"<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22'><rect width='22' height='22' fill='#ff0000'/></svg>",
+            0x00,
+        );
+
+        let loader = IconLoader::new_for_tests("Adwaita", vec![icons_root], vec![]);
+        let icon = loader.load_icon("rcc-only", 22).expect("icon from rcc");
+        assert_eq!(icon.width, 22);
+        assert_eq!(icon.height, 22);
+    }
+
+    #[test]
+    fn lookup_prefers_fs_over_rcc_when_both_present() {
+        let temp = TempDir::new("rcc-priority");
+        let icons_root = temp.path().join("icons");
+        fs::create_dir_all(&icons_root).expect("create icons root");
+        make_theme_root(&icons_root, "Adwaita", &["22x22/apps"], "");
+        write_png_rgba(
+            &icons_root
+                .join("Adwaita")
+                .join("22x22/apps")
+                .join("shared.png"),
+            22,
+            22,
+            [1, 2, 3, 255],
+        );
+
+        let breeze_theme_root = icons_root.join("breeze");
+        fs::create_dir_all(&breeze_theme_root).expect("create breeze theme root");
+        write_rcc_file(
+            &breeze_theme_root.join("breeze-icons.rcc"),
+            "icons/breeze/apps/22/shared.svg",
+            b"<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22'><rect width='22' height='22' fill='#00ff00'/></svg>",
+            0x00,
+        );
+
+        let loader = IconLoader::new_for_tests("Adwaita", vec![icons_root], vec![]);
+        let icon = loader.load_icon("shared", 22).expect("icon");
+        assert_eq!(&icon.bgra[0..4], &[3, 2, 1, 255]);
     }
 }
