@@ -18,11 +18,13 @@ pub(crate) fn rasterize_corner(radius_px: u32, base_alpha: f32) -> Vec<u8> {
     }
 
     let sr = radius_px as f32;
+    let inner_x = (radius_px - 1) as f32;
+    let inner_y = (radius_px - 1) as f32;
     let mut out = vec![0u8; (radius_px * radius_px * 4) as usize];
     for y in 0..radius_px {
         for x in 0..radius_px {
-            let dx = x as f32;
-            let dy = y as f32;
+            let dx = inner_x - x as f32;
+            let dy = inner_y - y as f32;
             let dist = (dx * dx + dy * dy).sqrt() / sr;
             let alpha = base_alpha * gaussian_falloff(dist.min(1.0));
             let a = alpha_to_u8(alpha);
@@ -114,16 +116,16 @@ mod tests {
     #[test]
     fn test_rasterize_corner_inner_corner_is_max_alpha() {
         let alpha = 0.5;
-        let pixels = rasterize_corner(16, alpha);
-        assert_eq!(pixels[3], (alpha * 255.0).round() as u8);
+        let r = 16u32;
+        let pixels = rasterize_corner(r, alpha);
+        let off = ((r * r - 1) * 4 + 3) as usize;
+        assert_eq!(pixels[off], (alpha * 255.0).round() as u8);
     }
 
     #[test]
     fn test_rasterize_corner_outer_corner_is_transparent() {
-        let r = 16u32;
-        let pixels = rasterize_corner(r, 0.5);
-        let off = ((r * r - 1) * 4 + 3) as usize;
-        assert_eq!(pixels[off], 0);
+        let pixels = rasterize_corner(16, 0.5);
+        assert_eq!(pixels[3], 0);
     }
 
     #[test]

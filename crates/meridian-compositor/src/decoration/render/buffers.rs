@@ -83,10 +83,12 @@ pub(super) fn update_buffers(
                 .border_top
                 .update((total_w.max(1), bw), border_f32);
         }
-        deco.buffers.border_left.update((bw, ch.max(1)), border_f32);
+        deco.buffers
+            .border_left
+            .update((bw, (ch + bw).max(1)), border_f32);
         deco.buffers
             .border_right
-            .update((bw, ch.max(1)), border_f32);
+            .update((bw, (ch + bw).max(1)), border_f32);
         deco.buffers
             .border_bottom
             .update((total_w.max(1), bw), border_f32);
