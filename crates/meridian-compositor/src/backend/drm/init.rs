@@ -36,7 +36,9 @@ use tracing::{info, warn};
 
 use crate::{
     cursor::CursorImage,
-    state::{MeridianState, OutputReconfigure, OutputRegistration},
+    state::{
+        ConnectedOutput, MeridianState, OutputReconfigure, OutputRegistration, ResolvedOutput,
+    },
 };
 
 use super::{
@@ -78,6 +80,54 @@ struct DrmConnectorChangeSet {
 struct DrmConnectorRemoveCandidate {
     connector: smithay::reexports::drm::control::connector::Handle,
     output_id: Option<crate::state::OutputId>,
+}
+
+#[derive(Debug, Clone)]
+struct PendingInitOutput {
+    output_name: String,
+    connector: smithay::reexports::drm::control::connector::Handle,
+    crtc: smithay::reexports::drm::control::crtc::Handle,
+    mode: smithay::reexports::drm::control::Mode,
+    width: i32,
+    height: i32,
+    refresh_millihz: i32,
+    phys_size: (i32, i32),
+}
+
+fn sync_primary_flags_from_resolved_layout(state: &mut MeridianState, resolved: &[ResolvedOutput]) {
+    let current_by_name: HashMap<_, _> = state
+        .output_registry
+        .list()
+        .iter()
+        .map(|info| {
+            (
+                info.name.clone(),
+                (
+                    info.geometry,
+                    info.scale,
+                    info.transform,
+                    info.refresh_millihz,
+                ),
+            )
+        })
+        .collect();
+
+    for output in resolved {
+        let Some((geometry, scale, transform, refresh_millihz)) = current_by_name.get(&output.name)
+        else {
+            continue;
+        };
+        let _ = state.output_registry.reconfigure_by_name(
+            &output.name,
+            OutputReconfigure {
+                geometry: *geometry,
+                scale: *scale,
+                transform: *transform,
+                refresh_millihz: *refresh_millihz,
+                primary: Some(output.primary),
+            },
+        );
+    }
 }
 
 fn classify_drm_connector_changes(
@@ -407,12 +457,35 @@ fn add_drm_output_via_hotplug_pipeline(
         color_formats
     );
 
-    let x_offset: i32 = state
-        .outputs
-        .iter()
-        .map(|o| o.current_mode().map_or(0, |m| m.size.w))
-        .sum();
     let output_name = format!("drm-{}", state.outputs.len());
+    let mut pending: Vec<ConnectedOutput> = state
+        .output_registry
+        .list()
+        .iter()
+        .map(|info| ConnectedOutput {
+            name: info.name.clone(),
+            width: info.geometry.width,
+            height: info.geometry.height,
+        })
+        .collect();
+    pending.push(ConnectedOutput {
+        name: output_name.clone(),
+        width: width as i32,
+        height: height as i32,
+    });
+    let resolved = state.resolve_output_layout(&pending);
+    let new_resolved = resolved
+        .iter()
+        .find(|entry| entry.name == output_name)
+        .expect("new output in resolver result");
+    let (x, y) = (new_resolved.x, new_resolved.y);
+    tracing::debug!(
+        "resolved layout for hotplug output {}: x={} y={}",
+        output_name,
+        x,
+        y
+    );
+
     let phys_size = conn.size().map_or((0, 0), |s| (s.0 as i32, s.1 as i32));
     let output = Output::new(
         output_name.clone(),
@@ -462,21 +535,17 @@ fn add_drm_output_via_hotplug_pipeline(
     state
         .workspaces
         .active_space_mut()
-        .map_output(&output, (x_offset, 0));
+        .map_output(&output, (x, y));
     state.outputs.push(output.clone());
 
     let output_id = state.handle_output_added_or_updated(OutputRegistration {
-        name: output_name,
-        geometry: MeridianState::output_geometry_for_registry(
-            x_offset,
-            0,
-            width as i32,
-            height as i32,
-        ),
+        name: output_name.clone(),
+        geometry: MeridianState::output_geometry_for_registry(x, y, width as i32, height as i32),
         scale: 1.0,
         transform: Transform::Normal,
         refresh_millihz: Some(refresh_millihz),
     });
+    sync_primary_flags_from_resolved_layout(state, &resolved);
 
     let Some(drm_backend) = state.drm_backend.as_mut() else {
         tracing::warn!(
@@ -815,6 +884,7 @@ pub fn init_drm(
 
     let resources = drm.resource_handles()?;
     let mut drm_outputs: Vec<DrmOutput> = Vec::new();
+    let mut pending_outputs: Vec<PendingInitOutput> = Vec::new();
     let mut occupied_crtcs: Vec<smithay::reexports::drm::control::crtc::Handle> = Vec::new();
     let mut first_selected_mode_refresh_millihz: Option<i32> = None;
 
@@ -854,16 +924,51 @@ pub fn init_drm(
         };
         occupied_crtcs.push(crtc_handle);
 
-        let surface = drm.create_surface(crtc_handle, mode, &[*conn_handle])?;
-        let (mode_w, mode_h) = mode.size();
+        let (w, h) = mode.size();
+        let phys_size = conn.size().map_or((0, 0), |s| (s.0 as i32, s.1 as i32));
+        pending_outputs.push(PendingInitOutput {
+            output_name: format!("drm-{}", pending_outputs.len()),
+            connector: *conn_handle,
+            crtc: crtc_handle,
+            mode,
+            width: w as i32,
+            height: h as i32,
+            refresh_millihz: selected_mode_refresh_millihz,
+            phys_size,
+        });
+    }
+
+    if pending_outputs.is_empty() {
+        return Err("no connected displays found".into());
+    }
+
+    let pending_connected = pending_outputs
+        .iter()
+        .map(|pending| ConnectedOutput {
+            name: pending.output_name.clone(),
+            width: pending.width,
+            height: pending.height,
+        })
+        .collect::<Vec<_>>();
+    let resolved_layout = state.resolve_output_layout(&pending_connected);
+
+    for (pending, resolved) in pending_outputs.iter().zip(resolved_layout.iter()) {
+        tracing::debug!(
+            "resolved layout for init output {}: x={} y={}",
+            pending.output_name,
+            resolved.x,
+            resolved.y
+        );
+        let surface = drm.create_surface(pending.crtc, pending.mode, &[pending.connector])?;
+        let (mode_w, mode_h) = pending.mode.size();
         info!(
             "drm kms surface created: connector={:?} crtc={:?} mode={}x{}@{}Hz calc_refresh_millihz={}",
-            conn_handle,
-            crtc_handle,
+            pending.connector,
+            pending.crtc,
             mode_w,
             mode_h,
-            mode.vrefresh(),
-            selected_mode_refresh_millihz
+            pending.mode.vrefresh(),
+            pending.refresh_millihz
         );
         let allocator = GbmAllocator::new(
             gbm.clone(),
@@ -877,12 +982,10 @@ pub fn init_drm(
             force_format, color_formats
         );
 
-        let (w, h) = mode.size();
-        let phys_size = conn.size().map_or((0, 0), |s| (s.0 as i32, s.1 as i32));
         let output = Output::new(
-            format!("drm-{}", drm_outputs.len()),
+            pending.output_name.clone(),
             PhysicalProperties {
-                size: phys_size.into(),
+                size: pending.phys_size.into(),
                 subpixel: Subpixel::Unknown,
                 make: "Unknown".into(),
                 model: "Unknown".into(),
@@ -891,8 +994,8 @@ pub fn init_drm(
         );
         let _global = output.create_global::<MeridianState>(&state.display_handle);
         let out_mode = OutputMode {
-            size: (w as i32, h as i32).into(),
-            refresh: selected_mode_refresh_millihz,
+            size: (pending.width, pending.height).into(),
+            refresh: pending.refresh_millihz,
         };
         output.change_current_state(
             Some(out_mode),
@@ -902,21 +1005,22 @@ pub fn init_drm(
         );
         output.set_preferred(out_mode);
 
-        let x_offset: i32 = drm_outputs
-            .iter()
-            .map(|o| o.output.current_mode().map_or(0, |m| m.size.w))
-            .sum();
         state
             .workspaces
             .active_space_mut()
-            .map_output(&output, (x_offset, 0));
+            .map_output(&output, (resolved.x, resolved.y));
         state.outputs.push(output.clone());
         let output_id = state.register_output_info(OutputRegistration {
             name: output.name(),
-            geometry: MeridianState::output_geometry_for_registry(x_offset, 0, w as i32, h as i32),
+            geometry: MeridianState::output_geometry_for_registry(
+                resolved.x,
+                resolved.y,
+                pending.width,
+                pending.height,
+            ),
             scale: 1.0,
             transform: Transform::Normal,
-            refresh_millihz: Some(selected_mode_refresh_millihz),
+            refresh_millihz: Some(pending.refresh_millihz),
         });
 
         let compositor = DrmCompositor::new(
@@ -935,8 +1039,8 @@ pub fn init_drm(
             output_id,
             output,
             compositor,
-            crtc: crtc_handle,
-            connector: *conn_handle,
+            crtc: pending.crtc,
+            connector: pending.connector,
             wallpaper: None,
             frame_in_flight: false,
             needs_repaint: true,
@@ -951,16 +1055,14 @@ pub fn init_drm(
         });
         info!(
             "Initialized output {}x{} @ {}Hz (calc_refresh_millihz={})",
-            w,
-            h,
-            mode.vrefresh(),
-            selected_mode_refresh_millihz
+            pending.width,
+            pending.height,
+            pending.mode.vrefresh(),
+            pending.refresh_millihz
         );
     }
 
-    if drm_outputs.is_empty() {
-        return Err("no connected displays found".into());
-    }
+    sync_primary_flags_from_resolved_layout(state, &resolved_layout);
     let repaint_interval =
         configure_repaint_interval(&drm_outputs, first_selected_mode_refresh_millihz);
 

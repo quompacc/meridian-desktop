@@ -1,3 +1,5 @@
+use meridian_config::{OutputEntry, OutputPositionConfig};
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum OutputPosition {
     #[default]
@@ -44,6 +46,12 @@ pub struct ConnectedOutput {
 }
 
 impl OutputLayout {
+    pub fn from_config_entries(entries: &[OutputEntry]) -> Self {
+        Self {
+            placements: entries.iter().map(OutputPlacement::from).collect(),
+        }
+    }
+
     pub fn placement_for<'a>(&'a self, name: &str) -> Option<&'a OutputPlacement> {
         self.placements
             .iter()
@@ -222,8 +230,28 @@ where
     auto_position(resolved)
 }
 
+impl From<&OutputEntry> for OutputPlacement {
+    fn from(entry: &OutputEntry) -> Self {
+        Self {
+            name: entry.name.clone(),
+            position: match &entry.position {
+                OutputPositionConfig::Auto => OutputPosition::Auto,
+                OutputPositionConfig::Coord { x, y } => OutputPosition::Coord { x: *x, y: *y },
+                OutputPositionConfig::RightOf(target) => OutputPosition::RightOf(target.clone()),
+                OutputPositionConfig::LeftOf(target) => OutputPosition::LeftOf(target.clone()),
+                OutputPositionConfig::Below(target) => OutputPosition::Below(target.clone()),
+                OutputPositionConfig::Above(target) => OutputPosition::Above(target.clone()),
+            },
+            primary: entry.primary,
+            enabled: entry.enabled,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use meridian_config::{OutputEntry, OutputPositionConfig};
+
     use super::{ConnectedOutput, OutputLayout, OutputPlacement, OutputPosition, ResolvedOutput};
 
     #[test]
@@ -508,6 +536,136 @@ mod tests {
         assert!(layout.placement_for("HDMI-A-1").is_none());
     }
 
+    #[test]
+    fn from_config_entry_maps_auto_position() {
+        let entry = config_entry("drm-0", OutputPositionConfig::Auto, false, true);
+
+        let placement = OutputPlacement::from(&entry);
+
+        assert_eq!(placement.position, OutputPosition::Auto);
+    }
+
+    #[test]
+    fn from_config_entry_maps_coord_position() {
+        let entry = config_entry(
+            "drm-0",
+            OutputPositionConfig::Coord { x: 10, y: 20 },
+            false,
+            true,
+        );
+
+        let placement = OutputPlacement::from(&entry);
+
+        assert_eq!(placement.position, OutputPosition::Coord { x: 10, y: 20 });
+    }
+
+    #[test]
+    fn from_config_entry_maps_each_relation() {
+        let right = OutputPlacement::from(&config_entry(
+            "a",
+            OutputPositionConfig::RightOf("b".to_string()),
+            false,
+            true,
+        ));
+        let left = OutputPlacement::from(&config_entry(
+            "a",
+            OutputPositionConfig::LeftOf("b".to_string()),
+            false,
+            true,
+        ));
+        let below = OutputPlacement::from(&config_entry(
+            "a",
+            OutputPositionConfig::Below("b".to_string()),
+            false,
+            true,
+        ));
+        let above = OutputPlacement::from(&config_entry(
+            "a",
+            OutputPositionConfig::Above("b".to_string()),
+            false,
+            true,
+        ));
+
+        assert_eq!(right.position, OutputPosition::RightOf("b".to_string()));
+        assert_eq!(left.position, OutputPosition::LeftOf("b".to_string()));
+        assert_eq!(below.position, OutputPosition::Below("b".to_string()));
+        assert_eq!(above.position, OutputPosition::Above("b".to_string()));
+    }
+
+    #[test]
+    fn from_config_entry_preserves_primary_and_enabled() {
+        let entry = config_entry("drm-0", OutputPositionConfig::Auto, true, false);
+
+        let placement = OutputPlacement::from(&entry);
+
+        assert!(placement.primary);
+        assert!(!placement.enabled);
+    }
+
+    #[test]
+    fn from_config_entries_builds_layout_in_order() {
+        let entries = vec![
+            config_entry("drm-1", OutputPositionConfig::Auto, false, true),
+            config_entry("drm-0", OutputPositionConfig::Auto, true, true),
+        ];
+
+        let layout = OutputLayout::from_config_entries(&entries);
+
+        assert_eq!(layout.placements.len(), 2);
+        assert_eq!(layout.placements[0].name, "drm-1");
+        assert_eq!(layout.placements[1].name, "drm-0");
+    }
+
+    #[test]
+    fn empty_layout_single_output_matches_legacy_x_offset_behavior() {
+        let layout = OutputLayout::default();
+        let connected = vec![connected("drm-0", 1920, 1080)];
+
+        let resolved = layout.resolve(&connected);
+
+        assert_eq!(resolved.len(), 1);
+        assert_eq!((resolved[0].x, resolved[0].y), (0, 0));
+        assert_eq!((resolved[0].width, resolved[0].height), (1920, 1080));
+        assert!(resolved[0].primary);
+        assert!(resolved[0].enabled);
+    }
+
+    #[test]
+    fn empty_layout_two_outputs_matches_legacy_x_offset_chain() {
+        let layout = OutputLayout::default();
+        let connected = vec![
+            connected("drm-0", 1920, 1080),
+            connected("drm-1", 2560, 1440),
+        ];
+
+        let resolved = layout.resolve(&connected);
+
+        assert_eq!(resolved[0].x, 0);
+        assert_eq!(resolved[1].x, 1920);
+    }
+
+    #[test]
+    fn empty_layout_three_outputs_matches_legacy_x_offset_chain() {
+        let layout = OutputLayout::default();
+        let connected = vec![
+            connected("drm-0", 1920, 1080),
+            connected("drm-1", 2560, 1440),
+            connected("drm-2", 1440, 900),
+        ];
+
+        let resolved = layout.resolve(&connected);
+
+        assert_eq!(resolved[0].x, 0);
+        assert_eq!(resolved[1].x, 1920);
+        assert_eq!(resolved[2].x, 4480);
+    }
+
+    #[test]
+    fn from_config_entries_empty_yields_empty_layout() {
+        let layout = OutputLayout::from_config_entries(&[]);
+        assert!(layout.placements.is_empty());
+    }
+
     fn placement(
         name: &str,
         position: OutputPosition,
@@ -548,5 +706,18 @@ mod tests {
             primary,
             enabled,
         }
+    }
+
+    fn config_entry(
+        name: &str,
+        position: OutputPositionConfig,
+        primary: bool,
+        enabled: bool,
+    ) -> OutputEntry {
+        let mut entry = OutputEntry::defaults_for(name);
+        entry.position = position;
+        entry.primary = primary;
+        entry.enabled = enabled;
+        entry
     }
 }

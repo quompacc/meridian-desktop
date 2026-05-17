@@ -190,6 +190,7 @@ impl MeridianState {
         let loop_signal = event_loop.get_signal();
 
         let meridian_config = MeridianConfig::load();
+        let output_layout = super::OutputLayout::from_config_entries(&meridian_config.outputs);
         let mut theme_manager = ThemeManager::new();
         let _ = apply_config_overrides(&mut theme_manager, &meridian_config);
 
@@ -205,6 +206,7 @@ impl MeridianState {
             seat,
             workspaces: WorkspaceManager::new(),
             outputs: Vec::new(),
+            output_layout,
             output_registry: OutputRegistry::new(),
             workspace_output_state: WorkspaceOutputState::default(),
             popups: PopupManager::default(),

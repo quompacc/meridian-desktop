@@ -294,6 +294,7 @@ pub struct MeridianState {
     pub seat: Seat<Self>,
     pub workspaces: WorkspaceManager,
     pub outputs: Vec<Output>,
+    pub output_layout: OutputLayout,
     pub output_registry: OutputRegistry,
     pub workspace_output_state: WorkspaceOutputState,
     pub popups: PopupManager,
@@ -324,6 +325,10 @@ pub struct MeridianState {
 }
 
 impl MeridianState {
+    pub fn resolve_output_layout(&self, connected: &[ConnectedOutput]) -> Vec<ResolvedOutput> {
+        self.output_layout.resolve(connected)
+    }
+
     pub fn clear_window_runtime_state(&mut self, window_key: &str) {
         self.minimized_windows.remove(window_key);
         self.maximize_restore_locations.remove(window_key);
