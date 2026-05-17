@@ -7,15 +7,44 @@ use super::init_env::env_flag_enabled;
 pub(crate) fn select_add_mode(
     modes: &[smithay::reexports::drm::control::Mode],
 ) -> Option<(smithay::reexports::drm::control::Mode, String)> {
+    tracing::info!(
+        "drm mode-selection start: candidates={} env_safe_mode={} env_forced_index={:?} env_forced_size={:?}",
+        modes.len(),
+        env_flag_enabled("MERIDIAN_DRM_SAFE_MODE"),
+        forced_mode_index_from_env(),
+        forced_mode_size_from_env(),
+    );
+    for (i, mode) in modes.iter().enumerate() {
+        let (w, h) = mode.size();
+        let pref = mode
+            .mode_type()
+            .contains(smithay::reexports::drm::control::ModeTypeFlags::PREFERRED);
+        tracing::info!(
+            "drm mode[{}]: {}x{}@{}Hz preferred={} clock_khz={} flags={:?} mode_type={:?}",
+            i,
+            w,
+            h,
+            mode.vrefresh(),
+            pref,
+            mode.clock(),
+            mode.flags(),
+            mode.mode_type(),
+        );
+    }
+
     if env_flag_enabled("MERIDIAN_DRM_SAFE_MODE") {
         if let Some(mode) = select_safe_mode(modes) {
-            return Some((mode, "safe-mode".to_string()));
+            let reason = "safe-mode".to_string();
+            log_selected(&reason, mode);
+            return Some((mode, reason));
         }
     }
 
     if let Some(index) = forced_mode_index_from_env() {
         if let Some(mode) = modes.get(index).copied() {
-            return Some((mode, format!("forced-index({})", index)));
+            let reason = format!("forced-index({})", index);
+            log_selected(&reason, mode);
+            return Some((mode, reason));
         }
         tracing::warn!(
             "MERIDIAN_DRM_MODE_INDEX={} out of range (available modes={})",
@@ -43,7 +72,9 @@ pub(crate) fn select_add_mode(
             );
         }
         if let Some(forced_mode) = select_best_mode_for_size(modes, force_w, force_h) {
-            return Some((forced_mode, format!("forced-size({}x{})", force_w, force_h)));
+            let reason = format!("forced-size({}x{})", force_w, force_h);
+            log_selected(&reason, forced_mode);
+            return Some((forced_mode, reason));
         }
         tracing::warn!(
             "requested drm mode {}x{} not found in connector mode list",
@@ -81,14 +112,23 @@ pub(crate) fn select_add_mode(
                     mode_brief(selected_mode)
                 );
             }
-            return Some((selected_mode, "preferred-size-best-refresh".to_string()));
+            let reason = "preferred-size-best-refresh".to_string();
+            log_selected(&reason, selected_mode);
+            return Some((selected_mode, reason));
         }
-        return Some((preferred, "preferred".to_string()));
+        let reason = "preferred".to_string();
+        log_selected(&reason, preferred);
+        return Some((preferred, reason));
     }
-    modes
-        .first()
-        .copied()
-        .map(|mode| (mode, "safe-fallback-first".to_string()))
+    let fallback = modes.first().copied().map(|mode| {
+        let reason = "safe-fallback-first".to_string();
+        log_selected(&reason, mode);
+        (mode, reason)
+    });
+    if fallback.is_none() {
+        tracing::info!("drm mode-selection result: none reason=no-candidates");
+    }
+    fallback
 }
 
 pub(crate) fn select_mode_with_override(
@@ -228,16 +268,25 @@ pub(crate) fn mode_refresh_millihz_with_fallback(
 
 pub(super) fn mode_conservative_key(
     mode: smithay::reexports::drm::control::Mode,
-) -> (u8, u32, u32, u8) {
-    let refresh = mode.vrefresh();
-    let exact_60_penalty = if refresh == 60 { 0 } else { 1 };
-    let refresh_distance = refresh.abs_diff(60);
+) -> (i64, i64, i64, i64) {
+    let refresh_millihz = mode_refresh_millihz_with_fallback(mode) as i64;
     (
-        exact_60_penalty,
-        refresh_distance,
-        mode.clock(),
-        mode_flags_weird_penalty(mode),
+        i64::MAX - refresh_millihz,
+        mode_flags_weird_penalty(mode) as i64,
+        -(mode.clock() as i64),
+        0,
     )
+}
+
+fn log_selected(tag: &str, mode: smithay::reexports::drm::control::Mode) {
+    let (w, h) = mode.size();
+    tracing::info!(
+        "drm mode-selection result: {}x{}@{}Hz reason={}",
+        w,
+        h,
+        mode.vrefresh(),
+        tag,
+    );
 }
 
 fn same_mode(
