@@ -130,14 +130,30 @@ impl OutputRegistry {
         id
     }
 
+    fn ensure_primary_after_mutation(&mut self) {
+        if self.outputs.is_empty() {
+            return;
+        }
+        if self.outputs.iter().any(|output| output.primary) {
+            return;
+        }
+        if let Some(first) = self.outputs.first_mut() {
+            first.primary = true;
+        }
+    }
+
     pub fn remove_by_id(&mut self, id: OutputId) -> Option<OutputInfo> {
         let idx = self.outputs.iter().position(|output| output.id == id)?;
-        Some(self.outputs.remove(idx))
+        let removed = self.outputs.remove(idx);
+        self.ensure_primary_after_mutation();
+        Some(removed)
     }
 
     pub fn remove_by_name(&mut self, name: &str) -> Option<OutputInfo> {
         let idx = self.outputs.iter().position(|output| output.name == name)?;
-        Some(self.outputs.remove(idx))
+        let removed = self.outputs.remove(idx);
+        self.ensure_primary_after_mutation();
+        Some(removed)
     }
 
     pub fn reconfigure_by_id(&mut self, id: OutputId, reconfigure: OutputReconfigure) -> bool {
@@ -442,5 +458,98 @@ mod tests {
         registry.remove_by_id(first);
         let second = registry.upsert(reg("HDMI-A-1", 1920, 0, 1920, 1080));
         assert!(second.0 > first.0);
+    }
+
+    #[test]
+    fn remove_primary_promotes_first_remaining_to_primary() {
+        let mut registry = OutputRegistry::new();
+        let first = registry.upsert(reg("eDP-1", 0, 0, 1920, 1080));
+        registry.upsert(reg("HDMI-A-1", 1920, 0, 1920, 1080));
+        registry.upsert(reg("DP-1", 3840, 0, 1920, 1080));
+
+        let _ = registry.remove_by_id(first);
+
+        let first_remaining = registry.list().first().expect("remaining output");
+        assert_eq!(first_remaining.name, "HDMI-A-1");
+        assert!(first_remaining.primary);
+    }
+
+    #[test]
+    fn remove_non_primary_does_not_change_primary_flag() {
+        let mut registry = OutputRegistry::new();
+        let primary = registry.upsert(reg("eDP-1", 0, 0, 1920, 1080));
+        let secondary = registry.upsert(reg("HDMI-A-1", 1920, 0, 1920, 1080));
+
+        let _ = registry.remove_by_id(secondary);
+
+        let primary_info = registry.by_id(primary).expect("primary output");
+        assert!(primary_info.primary);
+    }
+
+    #[test]
+    fn remove_only_output_leaves_empty_registry_without_panic() {
+        let mut registry = OutputRegistry::new();
+        let only = registry.upsert(reg("eDP-1", 0, 0, 1920, 1080));
+
+        let _ = registry.remove_by_id(only);
+
+        assert!(registry.list().is_empty());
+        assert!(registry.primary().is_none());
+    }
+
+    #[test]
+    fn remove_by_name_promotes_first_remaining_to_primary() {
+        let mut registry = OutputRegistry::new();
+        registry.upsert(reg("eDP-1", 0, 0, 1920, 1080));
+        registry.upsert(reg("HDMI-A-1", 1920, 0, 1920, 1080));
+
+        let removed = registry.remove_by_name("eDP-1");
+        assert!(removed.is_some());
+
+        let remaining = registry.by_name("HDMI-A-1").expect("remaining output");
+        assert!(remaining.primary);
+    }
+
+    #[test]
+    fn remove_when_no_primary_was_set_still_promotes_first() {
+        let mut registry = OutputRegistry::new();
+        let first = registry.upsert(reg("eDP-1", 0, 0, 1920, 1080));
+        let second = registry.upsert(reg("HDMI-A-1", 1920, 0, 1920, 1080));
+
+        assert!(registry.reconfigure_by_id(
+            first,
+            OutputReconfigure {
+                geometry: OutputGeometry {
+                    x: 0,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                },
+                scale: 1.0,
+                transform: Transform::Normal,
+                refresh_millihz: Some(60_000),
+                primary: Some(false),
+            }
+        ));
+        assert!(registry.reconfigure_by_id(
+            second,
+            OutputReconfigure {
+                geometry: OutputGeometry {
+                    x: 1920,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                },
+                scale: 1.0,
+                transform: Transform::Normal,
+                refresh_millihz: Some(60_000),
+                primary: Some(false),
+            }
+        ));
+
+        let _ = registry.remove_by_id(first);
+
+        let remaining = registry.by_id(second).expect("remaining output");
+        assert!(remaining.primary);
     }
 }

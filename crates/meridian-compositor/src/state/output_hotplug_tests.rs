@@ -230,10 +230,9 @@ fn remove_primary_falls_back_to_remaining() {
     assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
     assert!(fixture.add_output("drm-1", 2560, 1440).is_some());
     assert!(fixture.remove_output("drm-0"));
-    // known limitation: removing primary does not auto-promote the next output to primary; see [[meridian-roadmap-2026-05]]
     assert_eq!(
         fixture.snapshot(),
-        r#"drm-1: (1920,0 2560x1440) primary=false workspace=0"#
+        r#"drm-1: (1920,0 2560x1440) primary=true workspace=0"#
     );
 }
 
