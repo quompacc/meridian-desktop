@@ -10,10 +10,10 @@ pub enum HoveredButton {
 
 pub(super) struct DecorationBuffers {
     pub(super) top_strip: SolidColorBuffer,
-    pub(super) bottom_strip: SolidColorBuffer,
     pub(super) left_strip: SolidColorBuffer,
     pub(super) right_strip: SolidColorBuffer,
     pub(super) middle_belt: SolidColorBuffer,
+    pub(super) bottom_border: SolidColorBuffer,
 }
 
 impl DecorationBuffers {
@@ -21,10 +21,10 @@ impl DecorationBuffers {
         let z = [0.0f32; 4];
         Self {
             top_strip: SolidColorBuffer::new((1, 1), z),
-            bottom_strip: SolidColorBuffer::new((1, 1), z),
             left_strip: SolidColorBuffer::new((1, 1), z),
             right_strip: SolidColorBuffer::new((1, 1), z),
             middle_belt: SolidColorBuffer::new((1, 1), z),
+            bottom_border: SolidColorBuffer::new((1, 1), z),
         }
     }
 }

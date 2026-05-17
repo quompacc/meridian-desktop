@@ -7,7 +7,7 @@ pub(crate) fn rasterize_corner_mask(radius_px: u32, color_rgba: [u8; 4]) -> Vec<
         return Vec::new();
     }
 
-    const SAMPLES: u32 = 4;
+    const SAMPLES: u32 = 8;
     let r = radius_px as f32;
     let center_x = (radius_px - 1) as f32;
     let center_y = (radius_px - 1) as f32;
@@ -57,7 +57,7 @@ pub(crate) fn rasterize_rounded_rect(
         return Vec::new();
     }
 
-    const SAMPLES: u32 = 4;
+    const SAMPLES: u32 = 8;
     let max_corner = (width_px.min(height_px) / 2).max(1);
     let cr = corner_radius.min(max_corner);
     if cr == 0 {

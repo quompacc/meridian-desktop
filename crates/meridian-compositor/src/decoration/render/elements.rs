@@ -199,22 +199,14 @@ impl DecorationManager {
             }
         }
 
-        if bw > 0 {
+        if show_title || bw > 0 {
             if let Some(slices) = chrome.frame_slices(theme.corner_radius as i32) {
-                let solid_rects = [
-                    slices.middle_belt,
-                    slices.top_strip,
-                    slices.bottom_strip,
-                    slices.left_strip,
-                    slices.right_strip,
-                ];
-
                 for (buffer, rect) in [
-                    (&deco.buffers.middle_belt, solid_rects[0]),
-                    (&deco.buffers.top_strip, solid_rects[1]),
-                    (&deco.buffers.bottom_strip, solid_rects[2]),
-                    (&deco.buffers.left_strip, solid_rects[3]),
-                    (&deco.buffers.right_strip, solid_rects[4]),
+                    (&deco.buffers.middle_belt, slices.middle_belt),
+                    (&deco.buffers.top_strip, slices.top_strip),
+                    (&deco.buffers.left_strip, slices.left_strip),
+                    (&deco.buffers.right_strip, slices.right_strip),
+                    (&deco.buffers.bottom_border, slices.bottom_border),
                 ] {
                     if rect.size.w > 0 && rect.size.h > 0 {
                         elements.push(DecorationRenderElement::Solid(
@@ -239,8 +231,6 @@ impl DecorationManager {
                 for (rect, buffer) in [
                     (slices.corner_tl, corners.tl),
                     (slices.corner_tr, corners.tr),
-                    (slices.corner_bl, corners.bl),
-                    (slices.corner_br, corners.br),
                 ] {
                     if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
                         renderer,
@@ -255,42 +245,46 @@ impl DecorationManager {
                     }
                 }
             } else {
-                elements.push(DecorationRenderElement::Solid(
-                    SolidColorRenderElement::from_buffer(
-                        &deco.buffers.top_strip,
-                        phys(x, y),
-                        scale,
-                        1.0,
-                        Kind::Unspecified,
-                    ),
-                ));
-                elements.push(DecorationRenderElement::Solid(
-                    SolidColorRenderElement::from_buffer(
-                        &deco.buffers.left_strip,
-                        phys(x, y + title_h),
-                        scale,
-                        1.0,
-                        Kind::Unspecified,
-                    ),
-                ));
-                elements.push(DecorationRenderElement::Solid(
-                    SolidColorRenderElement::from_buffer(
-                        &deco.buffers.right_strip,
-                        phys(x + bw + cw, y + title_h),
-                        scale,
-                        1.0,
-                        Kind::Unspecified,
-                    ),
-                ));
-                elements.push(DecorationRenderElement::Solid(
-                    SolidColorRenderElement::from_buffer(
-                        &deco.buffers.bottom_strip,
-                        phys(x, y + title_h + bw + ch),
-                        scale,
-                        1.0,
-                        Kind::Unspecified,
-                    ),
-                ));
+                if show_title {
+                    elements.push(DecorationRenderElement::Solid(
+                        SolidColorRenderElement::from_buffer(
+                            &deco.buffers.top_strip,
+                            phys(x, y),
+                            scale,
+                            1.0,
+                            Kind::Unspecified,
+                        ),
+                    ));
+                }
+                if bw > 0 {
+                    elements.push(DecorationRenderElement::Solid(
+                        SolidColorRenderElement::from_buffer(
+                            &deco.buffers.left_strip,
+                            phys(x, y + title_h),
+                            scale,
+                            1.0,
+                            Kind::Unspecified,
+                        ),
+                    ));
+                    elements.push(DecorationRenderElement::Solid(
+                        SolidColorRenderElement::from_buffer(
+                            &deco.buffers.right_strip,
+                            phys(x + bw + cw, y + title_h),
+                            scale,
+                            1.0,
+                            Kind::Unspecified,
+                        ),
+                    ));
+                    elements.push(DecorationRenderElement::Solid(
+                        SolidColorRenderElement::from_buffer(
+                            &deco.buffers.bottom_border,
+                            phys(x, y + title_h + bw + ch),
+                            scale,
+                            1.0,
+                            Kind::Unspecified,
+                        ),
+                    ));
+                }
             }
         }
 

@@ -43,54 +43,64 @@ pub(super) fn update_buffers(
     });
     let transparent = [0.0f32; 4];
 
-    if bw > 0 {
-        let slices = SsdChromeMetrics::new(SsdFrameMetrics::from_frame_origin(
+    let set_strip = |buffer: &mut smithay::backend::renderer::element::solid::SolidColorBuffer,
+                     width: i32,
+                     height: i32| {
+        if width > 0 && height > 0 {
+            buffer.update((width, height), frame_f32);
+        } else {
+            buffer.update((1, 1), transparent);
+        }
+    };
+
+    if show_title || bw > 0 {
+        if let Some(s) = SsdChromeMetrics::new(SsdFrameMetrics::from_frame_origin(
             (0, 0).into(),
             (cw, ch).into(),
             bw,
             title_h,
         ))
-        .frame_slices(theme.corner_radius as i32);
-
-        if let Some(s) = slices {
-            deco.buffers
-                .top_strip
-                .update((s.top_strip.size.w, s.top_strip.size.h), frame_f32);
-            deco.buffers
-                .bottom_strip
-                .update((s.bottom_strip.size.w, s.bottom_strip.size.h), frame_f32);
-            deco.buffers
-                .left_strip
-                .update((s.left_strip.size.w, s.left_strip.size.h), frame_f32);
-            deco.buffers
-                .right_strip
-                .update((s.right_strip.size.w, s.right_strip.size.h), frame_f32);
-            deco.buffers.middle_belt.update(
-                (s.middle_belt.size.w.max(1), s.middle_belt.size.h.max(1)),
-                frame_f32,
+        .frame_slices(theme.corner_radius as i32)
+        {
+            set_strip(
+                &mut deco.buffers.top_strip,
+                s.top_strip.size.w,
+                s.top_strip.size.h,
+            );
+            set_strip(
+                &mut deco.buffers.middle_belt,
+                s.middle_belt.size.w,
+                s.middle_belt.size.h,
+            );
+            set_strip(
+                &mut deco.buffers.left_strip,
+                s.left_strip.size.w,
+                s.left_strip.size.h,
+            );
+            set_strip(
+                &mut deco.buffers.right_strip,
+                s.right_strip.size.w,
+                s.right_strip.size.h,
+            );
+            set_strip(
+                &mut deco.buffers.bottom_border,
+                s.bottom_border.size.w,
+                s.bottom_border.size.h,
             );
         } else {
             let top_h = if show_title { title_h + bw } else { bw };
-            deco.buffers
-                .top_strip
-                .update((total_w.max(1), top_h.max(1)), frame_f32);
-            deco.buffers
-                .bottom_strip
-                .update((total_w.max(1), bw.max(1)), frame_f32);
-            deco.buffers
-                .left_strip
-                .update((bw.max(1), ch.max(1)), frame_f32);
-            deco.buffers
-                .right_strip
-                .update((bw.max(1), ch.max(1)), frame_f32);
-            deco.buffers.middle_belt.update((1, 1), transparent);
+            set_strip(&mut deco.buffers.top_strip, total_w, top_h);
+            set_strip(&mut deco.buffers.middle_belt, 0, 0);
+            set_strip(&mut deco.buffers.left_strip, bw, ch);
+            set_strip(&mut deco.buffers.right_strip, bw, ch);
+            set_strip(&mut deco.buffers.bottom_border, total_w, bw);
         }
     } else {
-        deco.buffers.top_strip.update((1, 1), transparent);
-        deco.buffers.bottom_strip.update((1, 1), transparent);
-        deco.buffers.left_strip.update((1, 1), transparent);
-        deco.buffers.right_strip.update((1, 1), transparent);
-        deco.buffers.middle_belt.update((1, 1), transparent);
+        set_strip(&mut deco.buffers.top_strip, 0, 0);
+        set_strip(&mut deco.buffers.middle_belt, 0, 0);
+        set_strip(&mut deco.buffers.left_strip, 0, 0);
+        set_strip(&mut deco.buffers.right_strip, 0, 0);
+        set_strip(&mut deco.buffers.bottom_border, 0, 0);
     }
 
     deco.last_content_size = (cw, ch);
