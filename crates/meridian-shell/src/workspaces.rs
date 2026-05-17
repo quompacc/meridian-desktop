@@ -21,6 +21,7 @@ impl WorkspacePopupState {
 pub struct WorkspacePopupInput {
     pub active_workspace: u32,
     pub total_workspaces: u32,
+    pub occupied: [bool; 9],
     pub hover_pos: Option<(f64, f64)>,
 }
 
@@ -82,10 +83,10 @@ pub fn draw_workspace_popup(
     let tile_w = (grid_w - 2 * GAP) / 3;
     let tile_h = (grid_h - 2 * GAP) / 3;
 
-    for i in 0..9 {
+    for i in 0_usize..9 {
         let ws_id = (i + 1) as u32;
-        let col = i % 3;
-        let row = i / 3;
+        let col = (i % 3) as i32;
+        let row = (i / 3) as i32;
         let rect = Rect {
             x: PADDING + col * (tile_w + GAP),
             y: PADDING + row * (tile_h + GAP),
@@ -94,6 +95,7 @@ pub fn draw_workspace_popup(
         };
 
         let is_active = ws_id == input.active_workspace;
+        let is_occupied = input.occupied[i];
         let is_hovered = input
             .hover_pos
             .map(|(px, py)| rect.contains(px, py))
@@ -101,7 +103,7 @@ pub fn draw_workspace_popup(
 
         let bg = if is_hovered {
             colors.border
-        } else if is_active {
+        } else if is_active || is_occupied {
             colors.surface
         } else {
             colors.surface_alt
@@ -112,7 +114,14 @@ pub fn draw_workspace_popup(
             draw_active_indicator(painter, rect, ActiveIndicatorEdge::Top, theme);
         }
 
-        painter.text_centered(font, &ws_id.to_string(), rect, colors.text);
+        let text_color = if is_active {
+            colors.text
+        } else if is_occupied {
+            colors.accent
+        } else {
+            colors.text_dim
+        };
+        painter.text_centered(font, &ws_id.to_string(), rect, text_color);
         state.clicks.push(ClickZone {
             rect,
             action: ClickAction::SwitchWorkspace(ws_id.clamp(1, total_workspaces) as u8),
@@ -146,6 +155,7 @@ mod tests {
             WorkspacePopupInput {
                 active_workspace: 3,
                 total_workspaces: 9,
+                occupied: [false; 9],
                 hover_pos: None,
             },
             &mut state,

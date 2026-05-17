@@ -818,6 +818,9 @@ impl MeridianShell {
         if next != self.occupied_workspaces {
             self.occupied_workspaces = next;
             self.workspace_indicator_dirty = true;
+            if self.workspace_popup_open {
+                self.workspace_dirty = true;
+            }
             debug!(
                 "occupied workspaces recalculated from snapshot: {:?}",
                 self.occupied_workspaces

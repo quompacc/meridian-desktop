@@ -715,6 +715,7 @@ impl MeridianShell {
                 workspaces::WorkspacePopupInput {
                     active_workspace,
                     total_workspaces: 9,
+                    occupied: self.occupied_workspaces,
                     hover_pos: (self.pointer_surface == SurfaceKind::WorkspacePopup)
                         .then_some(self.pointer_position),
                 },
