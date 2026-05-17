@@ -27,6 +27,7 @@ pub enum ClickAction {
         index: usize,
     },
     ToggleLauncher,
+    ToggleWorkspacePopup,
     Clock,
 }
 

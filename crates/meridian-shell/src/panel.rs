@@ -5,8 +5,8 @@ use meridian_config::ThemeConfig;
 use crate::{
     ui::{
         primitives::{
-            draw_active_indicator, draw_panel_button, draw_section_separator,
-            draw_workspace_button, ActiveIndicatorEdge, InteractiveState,
+            draw_active_indicator, draw_panel_button, draw_section_separator, ActiveIndicatorEdge,
+            InteractiveState,
         },
         tokens,
     },
@@ -29,7 +29,7 @@ pub struct PanelDrawInput<'a> {
     pub font: &'a RefCell<Option<TextRenderer>>,
     pub theme: &'a ThemeConfig,
     pub active_workspace: u8,
-    pub occupied_workspaces: Option<&'a [bool; 9]>,
+    pub total_workspaces: u8,
     pub window_entries: &'a [PanelWindowEntry],
     pub clock: &'a str,
     pub width: u32,
@@ -51,7 +51,7 @@ pub fn draw_panel(
         font,
         theme,
         active_workspace,
-        occupied_workspaces,
+        total_workspaces,
         window_entries,
         clock,
         width,
@@ -78,7 +78,7 @@ pub fn draw_panel(
         h: height,
     };
 
-    let mut x = panel_card.x + tokens::panel::LEFT_PADDING;
+    let x = panel_card.x + tokens::panel::LEFT_PADDING;
     let controls_y = panel_card.y + tokens::panel::WORKSPACE_BUTTON_Y;
 
     // ── Left: Launcher button ───────────────────────────────────────────────
@@ -103,45 +103,21 @@ pub fn draw_panel(
         rect: launcher_rect,
         action: ClickAction::ToggleLauncher,
     });
-    x += tokens::panel::LAUNCHER_BUTTON_W + tokens::panel::WORKSPACE_BUTTON_GAP;
+    let launcher_sep_x = launcher_rect.x + launcher_rect.w + 8;
+    let center_left = launcher_sep_x + 8;
 
-    // ── Left: Workspace buttons ─────────────────────────────────────────────
-    for ws in 1u8..=9 {
-        let ws_idx = (ws - 1) as usize;
-        let is_active = ws == active_workspace;
-        let is_occupied = occupied_workspaces
-            .map(|occupied| occupied[ws_idx])
-            .unwrap_or(false);
-
-        let rect = Rect {
-            x,
-            y: controls_y,
-            w: tokens::panel::WORKSPACE_BUTTON_W,
-            h: tokens::panel::WORKSPACE_BUTTON_H,
-        };
-        let is_hovered = hover_pos
-            .map(|(px, py)| rect.contains(px, py))
-            .unwrap_or(false);
-        let text_color =
-            draw_workspace_button(painter, rect, theme, is_active, is_occupied, is_hovered);
-        painter.text_centered(font, &ws.to_string(), rect, text_color);
-        panel_state.clicks.push(ClickZone {
-            rect,
-            action: ClickAction::SwitchWorkspace(ws),
-        });
-        x += tokens::panel::WORKSPACE_BUTTON_W + tokens::panel::WORKSPACE_BUTTON_GAP;
-    }
-
-    let workspace_group_end_x = x - tokens::panel::WORKSPACE_BUTTON_GAP;
-
-    // ── Right: Clock ────────────────────────────────────────────────────────
-    let clock_h = tokens::panel::WORKSPACE_BUTTON_H;
-    let clock_y = tokens::panel::WORKSPACE_BUTTON_Y;
+    // ── Right: Clock / Workspace indicator / Tray slot ─────────────────────
+    let clock_measured = font
+        .borrow_mut()
+        .as_mut()
+        .map(|renderer| renderer.measure_text(clock))
+        .unwrap_or_else(|| clock.chars().count() as i32 * 7);
+    let clock_w = clock_measured + 2 * tokens::panel::CLOCK_PADDING_H;
     let clock_rect = Rect {
-        x: width as i32 - tokens::panel::CLOCK_W - tokens::panel::RIGHT_PADDING,
-        y: clock_y,
-        w: tokens::panel::CLOCK_W,
-        h: clock_h,
+        x: width as i32 - clock_w - tokens::panel::RIGHT_PADDING,
+        y: tokens::panel::WORKSPACE_BUTTON_Y,
+        w: clock_w,
+        h: tokens::panel::WORKSPACE_BUTTON_H,
     };
     let clock_hovered = hover_pos
         .map(|(px, py)| clock_rect.contains(px, py))
@@ -152,24 +128,58 @@ pub fn draw_panel(
         colors.surface
     };
     painter.roundish_rect_with_radius(clock_rect, clock_bg, tokens::panel::CLOCK_RADIUS);
-    painter.text_right_aligned(font, clock, clock_rect, colors.text);
+    painter.text_centered(font, clock, clock_rect, colors.text);
     panel_state.clicks.push(ClickZone {
         rect: clock_rect,
         action: ClickAction::Clock,
     });
 
-    // ── Center: Read-only workspace window list ────────────────────────────
-    let center_left = x + 12;
-    let center_right = clock_rect.x - 12;
-    let center_w = center_right - center_left;
+    let sep_x_after_clock = clock_rect.x - 8;
     draw_section_separator(
         painter,
-        workspace_group_end_x + 8,
+        sep_x_after_clock,
         panel_card.y,
         panel_card.h,
         theme,
     );
-    draw_section_separator(painter, clock_rect.x - 8, panel_card.y, panel_card.h, theme);
+
+    let ws_ind_rect = Rect {
+        x: sep_x_after_clock - 8 - tokens::panel::WORKSPACE_IND_W,
+        y: tokens::panel::WORKSPACE_BUTTON_Y,
+        w: tokens::panel::WORKSPACE_IND_W,
+        h: tokens::panel::WORKSPACE_BUTTON_H,
+    };
+    let ws_hovered = hover_pos
+        .map(|(px, py)| ws_ind_rect.contains(px, py))
+        .unwrap_or(false);
+    let ws_bg = if ws_hovered {
+        colors.border
+    } else {
+        colors.surface
+    };
+    painter.roundish_rect_with_radius(ws_ind_rect, ws_bg, 0);
+    let ws_text = format!("{}/{}", active_workspace, total_workspaces.max(1));
+    painter.text_centered(font, &ws_text, ws_ind_rect, colors.text);
+    panel_state.clicks.push(ClickZone {
+        rect: ws_ind_rect,
+        action: ClickAction::ToggleWorkspacePopup,
+    });
+
+    let sep_x_after_ws = ws_ind_rect.x - 8;
+    draw_section_separator(painter, sep_x_after_ws, panel_card.y, panel_card.h, theme);
+
+    let tray_slot_rect = Rect {
+        x: sep_x_after_ws - 8 - tokens::panel::TRAY_SLOT_W,
+        y: tokens::panel::WORKSPACE_BUTTON_Y,
+        w: tokens::panel::TRAY_SLOT_W,
+        h: tokens::panel::WORKSPACE_BUTTON_H,
+    };
+
+    draw_section_separator(painter, launcher_sep_x, panel_card.y, panel_card.h, theme);
+
+    // ── Center: Read-only workspace window list ────────────────────────────
+    let center_right = tray_slot_rect.x - 8;
+    let center_w = center_right - center_left;
 
     if center_w > 40 && !window_entries.is_empty() {
         let center_rect = Rect {

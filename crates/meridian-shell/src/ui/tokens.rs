@@ -33,7 +33,9 @@ pub mod panel {
     pub const WORKSPACE_BUTTON_GAP: i32 = 4;
     pub const LEFT_PADDING: i32 = 8;
     pub const LAUNCHER_BUTTON_W: i32 = 58;
-    pub const CLOCK_W: i32 = 170;
+    pub const TRAY_SLOT_W: i32 = 60;
+    pub const WORKSPACE_IND_W: i32 = 56;
+    pub const CLOCK_PADDING_H: i32 = 8;
     pub const RIGHT_PADDING: i32 = 10;
     pub const OUTER_RADIUS: i32 = super::radius::LG;
     pub const GROUP_RADIUS: i32 = super::radius::MD;

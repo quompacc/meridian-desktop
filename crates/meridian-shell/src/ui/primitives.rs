@@ -21,7 +21,6 @@ pub enum InteractiveState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveIndicatorEdge {
-    Top,
     Bottom,
     Left,
 }
@@ -60,12 +59,6 @@ pub fn draw_active_indicator(
 ) {
     const THICKNESS: i32 = 2;
     let bar = match edge {
-        ActiveIndicatorEdge::Top => Rect {
-            x: rect.x,
-            y: rect.y,
-            w: rect.w,
-            h: THICKNESS.min(rect.h),
-        },
         ActiveIndicatorEdge::Bottom => Rect {
             x: rect.x,
             y: rect.y + rect.h - THICKNESS.min(rect.h),
@@ -96,27 +89,6 @@ pub fn draw_section_separator(
         h: (height - 8).max(0),
     };
     painter.rect(line, theme.colors.border);
-}
-
-pub fn draw_workspace_button(
-    painter: &mut Painter<'_>,
-    rect: Rect,
-    theme: &ThemeConfig,
-    is_active: bool,
-    _is_occupied: bool,
-    is_hovered: bool,
-) -> Color {
-    let bg = if is_hovered {
-        theme.colors.border
-    } else {
-        theme.colors.surface
-    };
-    painter.roundish_rect_with_radius(rect, bg, tokens::panel::BUTTON_RADIUS);
-
-    if is_active {
-        draw_active_indicator(painter, rect, ActiveIndicatorEdge::Top, theme);
-    }
-    theme.colors.text
 }
 
 pub fn draw_panel_button(

@@ -678,6 +678,10 @@ impl MeridianShell {
                     self.unmap_launcher(CommitReason::Input);
                 }
             }
+            ClickAction::ToggleWorkspacePopup => {
+                tracing::info!("workspace popup toggle requested (TODO: Phase 3.8b)");
+                self.draw_panel(qh, RepaintReason::Pointer);
+            }
             ClickAction::Clock => {
                 self.toggle_calendar_popup(CommitReason::Input);
                 self.draw_panel(qh, RepaintReason::Pointer);
@@ -718,6 +722,7 @@ impl MeridianShell {
             ClickAction::FocusWindow(_) => {}
             ClickAction::SwitchWorkspace(_) => {}
             ClickAction::ToggleLauncher => {}
+            ClickAction::ToggleWorkspacePopup => {}
             ClickAction::Clock => {}
         }
     }

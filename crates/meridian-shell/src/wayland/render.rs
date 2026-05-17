@@ -274,9 +274,7 @@ impl MeridianShell {
                     font: &self.font,
                     theme: &self.theme,
                     active_workspace: panel_active_workspace,
-                    occupied_workspaces: self
-                        .occupied_state_available
-                        .then_some(&self.occupied_workspaces),
+                    total_workspaces: 9,
                     window_entries: &panel_window_entries,
                     clock: &clock,
                     width,

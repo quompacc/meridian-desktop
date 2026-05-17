@@ -28,7 +28,7 @@ impl PointerHandler for MeridianShell {
             };
             self.pointer_position = event.position;
 
-            if matches!(event.kind, PointerEventKind::Leave { .. }) {
+            if let PointerEventKind::Leave { .. } = event.kind {
                 self.pointer_position = (-1.0, -1.0);
                 match self.pointer_surface {
                     SurfaceKind::Panel => self.draw_panel(qh, RepaintReason::Pointer),
