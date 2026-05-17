@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use meridian_config::Color;
 
-use crate::Rect;
+use crate::{icons::IconImage, Rect};
 
 use super::{bitmap, text::TextRenderer};
 
@@ -247,6 +247,52 @@ impl<'a> Painter<'a> {
         self.data[offset + 2] = ((u16::from(color.r) * src_a + dst_r * inv_a) / 255) as u8;
         self.data[offset + 3] = 255;
     }
+
+    pub fn draw_image(&mut self, rect: Rect, image: &IconImage) {
+        if image.width == 0 || image.height == 0 {
+            return;
+        }
+
+        let start_x = rect.x + (rect.w - image.width as i32) / 2;
+        let start_y = rect.y + (rect.h - image.height as i32) / 2;
+
+        for src_y in 0..image.height as i32 {
+            let dst_y = start_y + src_y;
+            if dst_y < 0 || dst_y >= self.height {
+                continue;
+            }
+            for src_x in 0..image.width as i32 {
+                let dst_x = start_x + src_x;
+                if dst_x < 0 || dst_x >= self.width {
+                    continue;
+                }
+
+                let src_offset = ((src_y as u32 * image.width + src_x as u32) * 4) as usize;
+                let src_b = image.bgra[src_offset];
+                let src_g = image.bgra[src_offset + 1];
+                let src_r = image.bgra[src_offset + 2];
+                let src_a = image.bgra[src_offset + 3];
+                if src_a == 0 {
+                    continue;
+                }
+
+                let dst_offset = ((dst_y * self.width + dst_x) * 4) as usize;
+                let inv_a = 255 - u16::from(src_a);
+                let src_a_u16 = u16::from(src_a);
+                let dst_b = u16::from(self.data[dst_offset]);
+                let dst_g = u16::from(self.data[dst_offset + 1]);
+                let dst_r = u16::from(self.data[dst_offset + 2]);
+
+                self.data[dst_offset] =
+                    ((u16::from(src_b) * src_a_u16 + dst_b * inv_a) / 255) as u8;
+                self.data[dst_offset + 1] =
+                    ((u16::from(src_g) * src_a_u16 + dst_g * inv_a) / 255) as u8;
+                self.data[dst_offset + 2] =
+                    ((u16::from(src_r) * src_a_u16 + dst_r * inv_a) / 255) as u8;
+                self.data[dst_offset + 3] = 255;
+            }
+        }
+    }
 }
 
 fn clamped_radius(width: i32, height: i32, desired: i32) -> i32 {
@@ -294,7 +340,7 @@ mod tests {
     use meridian_config::Color;
 
     use super::{clamped_radius, corner_coverage, Painter};
-    use crate::Rect;
+    use crate::{icons::IconImage, Rect};
 
     fn pixel_at(data: &[u8], width: i32, x: i32, y: i32) -> [u8; 4] {
         let off = ((y * width + x) * 4) as usize;
@@ -530,5 +576,84 @@ mod tests {
         painter.text_right_aligned(&no_font, "A", rect, Color::rgb(0xff, 0xff, 0xff));
         let expected_x = rect.w - 8 - 8;
         assert_eq!(min_lit_x(&data, 48, 20), Some(expected_x));
+    }
+
+    #[test]
+    fn draw_image_blits_centered_pixels() {
+        let mut data = vec![0u8; 8 * 8 * 4];
+        let mut painter = Painter::new(&mut data, 8, 8);
+        let image = IconImage {
+            width: 2,
+            height: 2,
+            bgra: vec![1, 2, 3, 255, 4, 5, 6, 255, 7, 8, 9, 255, 10, 11, 12, 255],
+        };
+
+        painter.draw_image(
+            Rect {
+                x: 2,
+                y: 2,
+                w: 4,
+                h: 4,
+            },
+            &image,
+        );
+
+        assert_eq!(pixel_at(&data, 8, 3, 3), [1, 2, 3, 255]);
+        assert_eq!(pixel_at(&data, 8, 4, 3), [4, 5, 6, 255]);
+        assert_eq!(pixel_at(&data, 8, 3, 4), [7, 8, 9, 255]);
+        assert_eq!(pixel_at(&data, 8, 4, 4), [10, 11, 12, 255]);
+    }
+
+    #[test]
+    fn draw_image_clips_out_of_bounds_without_panic() {
+        let mut data = vec![0u8; 4 * 4 * 4];
+        let mut painter = Painter::new(&mut data, 4, 4);
+        let mut pixels = Vec::with_capacity(3 * 3 * 4);
+        for _ in 0..(3 * 3) {
+            pixels.extend_from_slice(&[200, 150, 100, 255]);
+        }
+        let image = IconImage {
+            width: 3,
+            height: 3,
+            bgra: pixels,
+        };
+
+        painter.draw_image(
+            Rect {
+                x: -1,
+                y: -1,
+                w: 3,
+                h: 3,
+            },
+            &image,
+        );
+
+        assert_eq!(pixel_at(&data, 4, 0, 0), [200, 150, 100, 255]);
+    }
+
+    #[test]
+    fn draw_image_alpha_blending_respects_transparent_and_opaque_pixels() {
+        let mut data = vec![0u8; 2 * 1 * 4];
+        let mut painter = Painter::new(&mut data, 2, 1);
+        painter.clear(Color::rgb(20, 30, 40));
+
+        let image = IconImage {
+            width: 2,
+            height: 1,
+            bgra: vec![255, 0, 0, 0, 0, 255, 0, 255],
+        };
+
+        painter.draw_image(
+            Rect {
+                x: 0,
+                y: 0,
+                w: 2,
+                h: 1,
+            },
+            &image,
+        );
+
+        assert_eq!(pixel_at(&data, 2, 0, 0), [40, 30, 20, 255]);
+        assert_eq!(pixel_at(&data, 2, 1, 0), [0, 255, 0, 255]);
     }
 }

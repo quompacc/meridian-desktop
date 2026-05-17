@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use meridian_config::ThemeConfig;
 
 use crate::{
+    icons::IconCache,
     ui::{
         primitives::{
             draw_active_indicator, draw_panel_button, draw_section_separator, ActiveIndicatorEdge,
@@ -23,6 +24,7 @@ pub struct PinnedApp {
     pub program: String,
     pub args: Vec<String>,
     pub terminal: bool,
+    pub icon_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -36,6 +38,7 @@ pub struct PanelWindowEntry {
 pub struct PanelDrawInput<'a> {
     pub font: &'a RefCell<Option<TextRenderer>>,
     pub theme: &'a ThemeConfig,
+    pub icon_cache: &'a IconCache,
     pub active_workspace: u8,
     pub total_workspaces: u8,
     pub pinned_apps: &'a [PinnedApp],
@@ -56,9 +59,12 @@ pub fn draw_panel(
     painter: &mut Painter<'_>,
     input: PanelDrawInput<'_>,
 ) {
+    const PINNED_ICON_SIZE: u32 = 22;
+
     let PanelDrawInput {
         font,
         theme,
+        icon_cache,
         active_workspace,
         total_workspaces,
         pinned_apps,
@@ -133,7 +139,15 @@ pub fn draw_panel(
             colors.surface
         };
         painter.roundish_rect_with_radius(rect, bg, 0);
-        painter.text_centered(font, &app.label, rect, colors.text);
+        let icon = app
+            .icon_name
+            .as_deref()
+            .and_then(|name| icon_cache.lookup(name, PINNED_ICON_SIZE));
+        if let Some(image) = icon {
+            painter.draw_image(rect, image);
+        } else {
+            painter.text_centered(font, &app.label, rect, colors.text);
+        }
         panel_state.clicks.push(ClickZone {
             rect,
             action: ClickAction::LaunchPinnedApp(idx),

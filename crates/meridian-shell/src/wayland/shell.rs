@@ -15,8 +15,8 @@ use smithay_client_toolkit::{
 use wayland_client::protocol::{wl_keyboard, wl_pointer};
 
 use crate::{
-    launcher, panel, panel::PanelWindowEntry, panel::PinnedApp, workspaces::WorkspacePopupState,
-    TextRenderer,
+    icons::IconCache, launcher, panel, panel::PanelWindowEntry, panel::PinnedApp,
+    workspaces::WorkspacePopupState, TextRenderer,
 };
 
 use super::{calendar::CalendarDisplayPolicy, types::WindowInfo, IpcClient, SurfaceKind};
@@ -261,6 +261,7 @@ pub(crate) struct MeridianShell {
     pub(crate) theme_name: String,
     pub(crate) theme: ThemeConfig,
     pub(crate) font: RefCell<Option<TextRenderer>>,
+    pub(crate) icon_cache: IconCache,
     pub(crate) ipc: IpcClient,
     pub(crate) panel_state: panel::PanelState,
     pub(crate) pinned_apps: Vec<PinnedApp>,

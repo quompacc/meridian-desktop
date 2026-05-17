@@ -8,6 +8,7 @@ use tracing::info;
 
 mod buffer;
 mod draw;
+mod icons;
 mod launcher;
 mod panel;
 mod ui;
@@ -36,18 +37,21 @@ pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
             program: "kitty".to_string(),
             args: vec![],
             terminal: false,
+            icon_name: Some("utilities-terminal".to_string()),
         },
         PinnedApp {
             label: "Web".to_string(),
             program: "firefox".to_string(),
             args: vec![],
             terminal: false,
+            icon_name: Some("firefox".to_string()),
         },
         PinnedApp {
             label: "Files".to_string(),
             program: "xdg-open".to_string(),
             args: vec![std::env::var("HOME").unwrap_or_else(|_| "/".to_string())],
             terminal: false,
+            icon_name: Some("system-file-manager".to_string()),
         },
     ]
 }
@@ -128,9 +132,12 @@ mod tests {
         assert_eq!(pinned.len(), 3);
         assert_eq!(pinned[0].label, "Term");
         assert_eq!(pinned[0].program, "kitty");
+        assert_eq!(pinned[0].icon_name.as_deref(), Some("utilities-terminal"));
         assert_eq!(pinned[1].label, "Web");
         assert_eq!(pinned[1].program, "firefox");
+        assert_eq!(pinned[1].icon_name.as_deref(), Some("firefox"));
         assert_eq!(pinned[2].label, "Files");
         assert_eq!(pinned[2].program, "xdg-open");
+        assert_eq!(pinned[2].icon_name.as_deref(), Some("system-file-manager"));
     }
 }

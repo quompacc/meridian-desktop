@@ -274,6 +274,7 @@ impl MeridianShell {
                 panel::PanelDrawInput {
                     font: &self.font,
                     theme: &self.theme,
+                    icon_cache: &self.icon_cache,
                     active_workspace: panel_active_workspace,
                     total_workspaces: 9,
                     pinned_apps: &self.pinned_apps,

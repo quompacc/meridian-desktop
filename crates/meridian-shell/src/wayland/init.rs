@@ -17,7 +17,7 @@ use tracing::{debug, info, warn};
 use wayland_client::{globals::registry_queue_init, Connection, QueueHandle};
 
 use crate::{
-    default_pinned_apps, launcher, panel, TextRenderer, CALENDAR_POPUP_HEIGHT,
+    default_pinned_apps, icons::IconCache, launcher, panel, TextRenderer, CALENDAR_POPUP_HEIGHT,
     CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, PANEL_HEIGHT, SHELL_POPUP_BOTTOM_MARGIN,
     WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
 };
@@ -141,6 +141,11 @@ pub(crate) fn initialize(
 
     let font = TextRenderer::new(&theme.fonts.ui, 13);
     let pool = SlotPool::new(1024 * 1024 * 4, &shm)?;
+    let mut icon_cache = IconCache::new();
+    icon_cache.warm(
+        &["utilities-terminal", "firefox", "system-file-manager"],
+        22,
+    );
 
     let commit_stats_enabled = std::env::var("MERIDIAN_SHELL_COMMIT_STATS")
         .map(|value| {
@@ -192,6 +197,7 @@ pub(crate) fn initialize(
         theme_name: theme_manager.current().name.clone(),
         theme,
         font: RefCell::new(font),
+        icon_cache,
         ipc: IpcClient::connect(),
         panel_state: panel::PanelState::new(),
         pinned_apps: default_pinned_apps(),
