@@ -152,7 +152,7 @@ pub fn draw_panel(
         colors.surface
     };
     painter.roundish_rect_with_radius(clock_rect, clock_bg, tokens::panel::CLOCK_RADIUS);
-    painter.text_centered(font, clock, clock_rect, colors.text);
+    painter.text_right_aligned(font, clock, clock_rect, colors.text);
     panel_state.clicks.push(ClickZone {
         rect: clock_rect,
         action: ClickAction::Clock,

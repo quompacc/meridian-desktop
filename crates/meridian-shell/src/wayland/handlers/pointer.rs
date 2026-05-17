@@ -28,6 +28,17 @@ impl PointerHandler for MeridianShell {
             };
             self.pointer_position = event.position;
 
+            if matches!(event.kind, PointerEventKind::Leave { .. }) {
+                self.pointer_position = (-1.0, -1.0);
+                match self.pointer_surface {
+                    SurfaceKind::Panel => self.draw_panel(qh, RepaintReason::Pointer),
+                    SurfaceKind::Launcher => self.draw_launcher(qh, RepaintReason::Pointer),
+                    SurfaceKind::Calendar | SurfaceKind::None => {}
+                }
+                self.pointer_surface = SurfaceKind::None;
+                continue;
+            }
+
             if self.pointer_surface == SurfaceKind::Launcher
                 && matches!(
                     event.kind,

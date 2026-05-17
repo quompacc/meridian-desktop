@@ -182,8 +182,30 @@ impl<'a> Painter<'a> {
         rect: Rect,
         color: Color,
     ) {
-        let approx_w = text.chars().count() as i32 * 8;
-        let x = rect.x + (rect.w - approx_w).max(0) / 2;
+        let measured = font
+            .borrow_mut()
+            .as_mut()
+            .map(|renderer| renderer.measure_text(text))
+            .unwrap_or_else(|| text.chars().count() as i32 * 8);
+        let x = rect.x + (rect.w - measured).max(0) / 2;
+        let baseline = rect.y + (rect.h / 2) + 5;
+        self.text_clipped(font, text, x, baseline, rect.w, color);
+    }
+
+    pub fn text_right_aligned(
+        &mut self,
+        font: &RefCell<Option<TextRenderer>>,
+        text: &str,
+        rect: Rect,
+        color: Color,
+    ) {
+        const RIGHT_PAD: i32 = 8;
+        let measured = font
+            .borrow_mut()
+            .as_mut()
+            .map(|renderer| renderer.measure_text(text))
+            .unwrap_or_else(|| text.chars().count() as i32 * 8);
+        let x = rect.x + (rect.w - measured - RIGHT_PAD).max(0);
         let baseline = rect.y + (rect.h / 2) + 5;
         self.text_clipped(font, text, x, baseline, rect.w, color);
     }
@@ -267,6 +289,8 @@ fn corner_coverage(radius: i32, dx: i32, dy: i32, rr: f32) -> u8 {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
     use meridian_config::Color;
 
     use super::{clamped_radius, corner_coverage, Painter};
@@ -275,6 +299,22 @@ mod tests {
     fn pixel_at(data: &[u8], width: i32, x: i32, y: i32) -> [u8; 4] {
         let off = ((y * width + x) * 4) as usize;
         [data[off], data[off + 1], data[off + 2], data[off + 3]]
+    }
+
+    fn min_lit_x(data: &[u8], width: i32, height: i32) -> Option<i32> {
+        let mut min_x: Option<i32> = None;
+        for y in 0..height {
+            for x in 0..width {
+                let off = ((y * width + x) * 4) as usize;
+                if data[off + 3] != 0 {
+                    min_x = Some(match min_x {
+                        Some(current) => current.min(x),
+                        None => x,
+                    });
+                }
+            }
+        }
+        min_x
     }
 
     #[test]
@@ -458,5 +498,37 @@ mod tests {
         assert_eq!(corner_coverage(3, 0, 0, rr), 0);
         assert!(corner_coverage(3, 1, 0, rr) < 255);
         assert_eq!(corner_coverage(3, 1, 1, rr), 255);
+    }
+
+    #[test]
+    fn text_centered_uses_fallback_measurement_when_font_missing() {
+        let mut data = vec![0u8; 48 * 20 * 4];
+        let mut painter = Painter::new(&mut data, 48, 20);
+        let no_font = RefCell::new(None);
+        let rect = Rect {
+            x: 0,
+            y: 0,
+            w: 48,
+            h: 20,
+        };
+        painter.text_centered(&no_font, "A", rect, Color::rgb(0xff, 0xff, 0xff));
+        let expected_x = (rect.w - 8) / 2;
+        assert_eq!(min_lit_x(&data, 48, 20), Some(expected_x));
+    }
+
+    #[test]
+    fn text_right_aligned_uses_right_padding_when_font_missing() {
+        let mut data = vec![0u8; 48 * 20 * 4];
+        let mut painter = Painter::new(&mut data, 48, 20);
+        let no_font = RefCell::new(None);
+        let rect = Rect {
+            x: 0,
+            y: 0,
+            w: 48,
+            h: 20,
+        };
+        painter.text_right_aligned(&no_font, "A", rect, Color::rgb(0xff, 0xff, 0xff));
+        let expected_x = rect.w - 8 - 8;
+        assert_eq!(min_lit_x(&data, 48, 20), Some(expected_x));
     }
 }

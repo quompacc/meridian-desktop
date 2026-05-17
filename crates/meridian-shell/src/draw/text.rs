@@ -61,6 +61,16 @@ impl TextRenderer {
 
         drew
     }
+
+    pub fn measure_text(&mut self, text: &str) -> i32 {
+        let mut width = 0i32;
+        for ch in text.chars() {
+            if let Some(glyph) = self.face.load_char(ch) {
+                width = width.saturating_add(glyph.advance.max(0));
+            }
+        }
+        width
+    }
 }
 
 impl Drop for TextRenderer {
@@ -108,5 +118,20 @@ fn fontconfig_match(pattern: &str) -> Option<PathBuf> {
         };
         fc::FcPatternDestroy(match_pattern);
         path
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TextRenderer;
+
+    #[test]
+    fn measure_text_is_monotonic_for_longer_strings() {
+        let Some(mut renderer) = TextRenderer::new("sans", 13) else {
+            return;
+        };
+        let short = renderer.measure_text("A");
+        let long = renderer.measure_text("AA");
+        assert!(long >= short);
     }
 }
