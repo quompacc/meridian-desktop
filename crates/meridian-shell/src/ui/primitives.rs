@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn accent_foreground_matches_token_value() {
-        assert_eq!(active_accent_foreground(), Color::rgb(0x1e, 0x1e, 0x2e));
+        assert_eq!(active_accent_foreground(), Color::rgb(0x1a, 0x1b, 0x26));
     }
 
     #[test]

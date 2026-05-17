@@ -9,7 +9,8 @@ pub(super) fn load_default_image() -> DynamicImage {
         Ok(img) => img,
         Err(err) => {
             warn!("Failed to decode built-in default wallpaper: {err}");
-            DynamicImage::ImageRgba8(RgbaImage::from_pixel(1, 1, Rgba([0x1e, 0x1e, 0x2e, 0xff])))
+            // TODO Phase 5: aus ThemeManager beziehen.
+            DynamicImage::ImageRgba8(RgbaImage::from_pixel(1, 1, Rgba([0x1a, 0x1b, 0x26, 0xff])))
         }
     }
 }
@@ -64,7 +65,7 @@ pub(super) fn compose_for_size(
 }
 
 fn solid_fallback(w: u32, h: u32) -> Vec<u8> {
-    let pixel = [0x1e_u8, 0x1e, 0x2e, 0xff];
+    let pixel = [0x1a_u8, 0x1b, 0x26, 0xff];
     pixel
         .iter()
         .copied()
@@ -91,7 +92,7 @@ mod tests {
 
         assert_eq!(out.len(), 3 * 2 * 4);
         for chunk in out.chunks_exact(4) {
-            assert_eq!(chunk, [0x1e, 0x1e, 0x2e, 0xff]);
+            assert_eq!(chunk, [0x1a, 0x1b, 0x26, 0xff]);
         }
     }
 

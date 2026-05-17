@@ -9,8 +9,11 @@ use super::Color;
 pub struct ThemeColors {
     pub background: Color,
     pub surface: Color,
+    pub surface_alt: Color,
     pub accent: Color,
+    pub accent_alt: Color,
     pub text: Color,
+    pub text_dim: Color,
     pub border: Color,
     pub error: Color,
     pub warning: Color,
@@ -20,14 +23,17 @@ pub struct ThemeColors {
 impl Default for ThemeColors {
     fn default() -> Self {
         Self {
-            background: Color::rgb(0x1e, 0x1e, 0x2e),
-            surface: Color::rgb(0x31, 0x32, 0x44),
-            accent: Color::rgb(0xcb, 0xa6, 0xf7),
-            text: Color::rgb(0xcd, 0xd6, 0xf4),
-            border: Color::rgb(0x45, 0x47, 0x5a),
-            error: Color::rgb(0xf3, 0x8b, 0xa8),
-            warning: Color::rgb(0xfa, 0xb3, 0x87),
-            success: Color::rgb(0xa6, 0xe3, 0xa1),
+            background: Color::rgb(0x1a, 0x1b, 0x26),
+            surface: Color::rgb(0x24, 0x28, 0x3b),
+            surface_alt: Color::rgb(0x1f, 0x23, 0x35),
+            accent: Color::rgb(0x7a, 0xa2, 0xf7),
+            accent_alt: Color::rgb(0xbb, 0x9a, 0xf7),
+            text: Color::rgb(0xc0, 0xca, 0xf5),
+            text_dim: Color::rgb(0xa9, 0xb1, 0xd6),
+            border: Color::rgb(0x41, 0x48, 0x68),
+            error: Color::rgb(0xf7, 0x76, 0x8e),
+            warning: Color::rgb(0xe0, 0xaf, 0x68),
+            success: Color::rgb(0x9e, 0xce, 0x6a),
         }
     }
 }
@@ -39,16 +45,20 @@ pub struct Decorations {
     pub corner_radius: u32,
     pub shadow: bool,
     pub shadow_radius: u32,
+    pub shadow_alpha: f32,
+    pub shadow_offset_y: i32,
     pub gap: u32,
 }
 
 impl Default for Decorations {
     fn default() -> Self {
         Self {
-            border_width: 2,
-            corner_radius: 8,
+            border_width: 1,
+            corner_radius: 12,
             shadow: true,
-            shadow_radius: 12,
+            shadow_radius: 24,
+            shadow_alpha: 0.5,
+            shadow_offset_y: 4,
             gap: 8,
         }
     }
@@ -137,4 +147,67 @@ pub struct ThemeConfig {
     pub icons: Icons,
     pub cursor: Cursor,
     pub wallpaper: Option<Wallpaper>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Color, Decorations, ThemeColors, ThemeConfig};
+
+    #[test]
+    fn test_theme_colors_default_tokyo_night() {
+        let colors = ThemeColors::default();
+        assert_eq!(colors.background, Color::rgb(0x1a, 0x1b, 0x26));
+        assert_eq!(colors.surface, Color::rgb(0x24, 0x28, 0x3b));
+        assert_eq!(colors.surface_alt, Color::rgb(0x1f, 0x23, 0x35));
+        assert_eq!(colors.accent, Color::rgb(0x7a, 0xa2, 0xf7));
+        assert_eq!(colors.accent_alt, Color::rgb(0xbb, 0x9a, 0xf7));
+        assert_eq!(colors.text, Color::rgb(0xc0, 0xca, 0xf5));
+        assert_eq!(colors.text_dim, Color::rgb(0xa9, 0xb1, 0xd6));
+        assert_eq!(colors.border, Color::rgb(0x41, 0x48, 0x68));
+        assert_eq!(colors.error, Color::rgb(0xf7, 0x76, 0x8e));
+        assert_eq!(colors.warning, Color::rgb(0xe0, 0xaf, 0x68));
+        assert_eq!(colors.success, Color::rgb(0x9e, 0xce, 0x6a));
+    }
+
+    #[test]
+    fn test_decorations_default_soft_form() {
+        let decorations = Decorations::default();
+        assert_eq!(decorations.border_width, 1);
+        assert_eq!(decorations.corner_radius, 12);
+        assert!(decorations.shadow);
+        assert_eq!(decorations.shadow_radius, 24);
+        assert_eq!(decorations.shadow_alpha, 0.5);
+        assert_eq!(decorations.shadow_offset_y, 4);
+        assert_eq!(decorations.gap, 8);
+    }
+
+    #[test]
+    fn test_theme_config_partial_toml_fills_new_defaults() {
+        let config: ThemeConfig = toml::from_str(
+            r##"
+            [colors]
+            background = "#000000"
+            "##,
+        )
+        .expect("partial theme config should deserialize");
+
+        assert_eq!(config.colors.background, Color::rgb(0x00, 0x00, 0x00));
+        assert_eq!(config.colors.surface, Color::rgb(0x24, 0x28, 0x3b));
+        assert_eq!(config.colors.surface_alt, Color::rgb(0x1f, 0x23, 0x35));
+        assert_eq!(config.colors.accent, Color::rgb(0x7a, 0xa2, 0xf7));
+        assert_eq!(config.colors.accent_alt, Color::rgb(0xbb, 0x9a, 0xf7));
+        assert_eq!(config.colors.text, Color::rgb(0xc0, 0xca, 0xf5));
+        assert_eq!(config.colors.text_dim, Color::rgb(0xa9, 0xb1, 0xd6));
+        assert_eq!(config.colors.border, Color::rgb(0x41, 0x48, 0x68));
+        assert_eq!(config.colors.error, Color::rgb(0xf7, 0x76, 0x8e));
+        assert_eq!(config.colors.warning, Color::rgb(0xe0, 0xaf, 0x68));
+        assert_eq!(config.colors.success, Color::rgb(0x9e, 0xce, 0x6a));
+        assert_eq!(config.decorations.border_width, 1);
+        assert_eq!(config.decorations.corner_radius, 12);
+        assert!(config.decorations.shadow);
+        assert_eq!(config.decorations.shadow_radius, 24);
+        assert_eq!(config.decorations.shadow_alpha, 0.5);
+        assert_eq!(config.decorations.shadow_offset_y, 4);
+        assert_eq!(config.decorations.gap, 8);
+    }
 }

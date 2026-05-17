@@ -1,6 +1,6 @@
 use meridian_config::Color;
 
-pub const ACCENT_FOREGROUND: Color = Color::rgb(0x1e, 0x1e, 0x2e);
+pub const ACCENT_FOREGROUND: Color = Color::rgb(0x1a, 0x1b, 0x26);
 
 #[allow(dead_code)]
 pub mod spacing {
