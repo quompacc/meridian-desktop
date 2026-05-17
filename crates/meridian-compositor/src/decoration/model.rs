@@ -1,8 +1,6 @@
 use meridian_config::{Color, Decorations};
 use smithay::backend::renderer::element::solid::SolidColorBuffer;
 
-use super::{BUTTON_HEIGHT, BUTTON_WIDTH};
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HoveredButton {
     Close,
@@ -11,28 +9,22 @@ pub enum HoveredButton {
 }
 
 pub(super) struct DecorationBuffers {
-    pub(super) titlebar: SolidColorBuffer,
-    pub(super) close_bg: SolidColorBuffer,
-    pub(super) maximize_bg: SolidColorBuffer,
-    pub(super) minimize_bg: SolidColorBuffer,
-    pub(super) border_top: SolidColorBuffer,
-    pub(super) border_left: SolidColorBuffer,
-    pub(super) border_right: SolidColorBuffer,
-    pub(super) border_bottom: SolidColorBuffer,
+    pub(super) top_strip: SolidColorBuffer,
+    pub(super) bottom_strip: SolidColorBuffer,
+    pub(super) left_strip: SolidColorBuffer,
+    pub(super) right_strip: SolidColorBuffer,
+    pub(super) middle_belt: SolidColorBuffer,
 }
 
 impl DecorationBuffers {
     pub(super) fn new() -> Self {
         let z = [0.0f32; 4];
         Self {
-            titlebar: SolidColorBuffer::new((1, 1), z),
-            close_bg: SolidColorBuffer::new((BUTTON_WIDTH, BUTTON_HEIGHT), z),
-            maximize_bg: SolidColorBuffer::new((BUTTON_WIDTH, BUTTON_HEIGHT), z),
-            minimize_bg: SolidColorBuffer::new((BUTTON_WIDTH, BUTTON_HEIGHT), z),
-            border_top: SolidColorBuffer::new((1, 1), z),
-            border_left: SolidColorBuffer::new((1, 1), z),
-            border_right: SolidColorBuffer::new((1, 1), z),
-            border_bottom: SolidColorBuffer::new((1, 1), z),
+            top_strip: SolidColorBuffer::new((1, 1), z),
+            bottom_strip: SolidColorBuffer::new((1, 1), z),
+            left_strip: SolidColorBuffer::new((1, 1), z),
+            right_strip: SolidColorBuffer::new((1, 1), z),
+            middle_belt: SolidColorBuffer::new((1, 1), z),
         }
     }
 }

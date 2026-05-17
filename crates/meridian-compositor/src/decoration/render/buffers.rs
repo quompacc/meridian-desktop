@@ -1,8 +1,8 @@
 use meridian_config::{Decorations, ThemeColors};
 
-use super::super::{
-    model::{opaque, HoveredButton, WindowDecoration},
-    BUTTON_HEIGHT, BUTTON_WIDTH, TITLE_BAR_HEIGHT,
+use super::{
+    super::model::{opaque, WindowDecoration},
+    geometry::{SsdChromeMetrics, SsdFrameMetrics},
 };
 
 const INACTIVE_SHADOW_ALPHA: f32 = 0.3;
@@ -27,71 +27,70 @@ pub(super) fn effective_shadow_radius(theme_radius: i32, focused: bool) -> i32 {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn update_buffers(
     deco: &mut WindowDecoration,
-    _theme: &Decorations,
+    theme: &Decorations,
     colors: &ThemeColors,
     show_title: bool,
     bw: i32,
     total_w: i32,
     ch: i32,
-    _title_h: i32,
+    title_h: i32,
     cw: i32,
 ) {
-    let border_f32 = opaque(if deco.is_focused {
-        colors.accent
-    } else {
-        colors.border
-    });
-    let title_f32 = opaque(if deco.is_focused {
+    let frame_f32 = opaque(if deco.is_focused {
         colors.accent
     } else {
         colors.border
     });
     let transparent = [0.0f32; 4];
-    let close_f32 = if deco.hovered_button() == Some(HoveredButton::Close) {
-        opaque(colors.error)
-    } else {
-        transparent
-    };
-    let maximize_f32 = if deco.hovered_button() == Some(HoveredButton::Maximize) {
-        opaque(colors.surface)
-    } else {
-        transparent
-    };
-    let minimize_f32 = if deco.hovered_button() == Some(HoveredButton::Minimize) {
-        opaque(colors.surface)
-    } else {
-        transparent
-    };
 
-    if show_title {
-        deco.buffers
-            .titlebar
-            .update((total_w, TITLE_BAR_HEIGHT + bw), title_f32);
-        deco.buffers
-            .close_bg
-            .update((BUTTON_WIDTH, BUTTON_HEIGHT), close_f32);
-        deco.buffers
-            .maximize_bg
-            .update((BUTTON_WIDTH, BUTTON_HEIGHT), maximize_f32);
-        deco.buffers
-            .minimize_bg
-            .update((BUTTON_WIDTH, BUTTON_HEIGHT), minimize_f32);
-    }
     if bw > 0 {
-        if !show_title {
+        let slices = SsdChromeMetrics::new(SsdFrameMetrics::from_frame_origin(
+            (0, 0).into(),
+            (cw, ch).into(),
+            bw,
+            title_h,
+        ))
+        .frame_slices(theme.corner_radius as i32);
+
+        if let Some(s) = slices {
             deco.buffers
-                .border_top
-                .update((total_w.max(1), bw), border_f32);
+                .top_strip
+                .update((s.top_strip.size.w, s.top_strip.size.h), frame_f32);
+            deco.buffers
+                .bottom_strip
+                .update((s.bottom_strip.size.w, s.bottom_strip.size.h), frame_f32);
+            deco.buffers
+                .left_strip
+                .update((s.left_strip.size.w, s.left_strip.size.h), frame_f32);
+            deco.buffers
+                .right_strip
+                .update((s.right_strip.size.w, s.right_strip.size.h), frame_f32);
+            deco.buffers.middle_belt.update(
+                (s.middle_belt.size.w.max(1), s.middle_belt.size.h.max(1)),
+                frame_f32,
+            );
+        } else {
+            let top_h = if show_title { title_h + bw } else { bw };
+            deco.buffers
+                .top_strip
+                .update((total_w.max(1), top_h.max(1)), frame_f32);
+            deco.buffers
+                .bottom_strip
+                .update((total_w.max(1), bw.max(1)), frame_f32);
+            deco.buffers
+                .left_strip
+                .update((bw.max(1), ch.max(1)), frame_f32);
+            deco.buffers
+                .right_strip
+                .update((bw.max(1), ch.max(1)), frame_f32);
+            deco.buffers.middle_belt.update((1, 1), transparent);
         }
-        deco.buffers
-            .border_left
-            .update((bw, (ch + bw).max(1)), border_f32);
-        deco.buffers
-            .border_right
-            .update((bw, (ch + bw).max(1)), border_f32);
-        deco.buffers
-            .border_bottom
-            .update((total_w.max(1), bw), border_f32);
+    } else {
+        deco.buffers.top_strip.update((1, 1), transparent);
+        deco.buffers.bottom_strip.update((1, 1), transparent);
+        deco.buffers.left_strip.update((1, 1), transparent);
+        deco.buffers.right_strip.update((1, 1), transparent);
+        deco.buffers.middle_belt.update((1, 1), transparent);
     }
 
     deco.last_content_size = (cw, ch);
