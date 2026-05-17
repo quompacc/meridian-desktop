@@ -18,7 +18,8 @@ use wayland_client::{globals::registry_queue_init, Connection, QueueHandle};
 
 use crate::{
     launcher, panel, TextRenderer, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT,
-    LAUNCHER_WIDTH, PANEL_HEIGHT, SHELL_POPUP_BOTTOM_MARGIN,
+    LAUNCHER_WIDTH, PANEL_HEIGHT, SHELL_POPUP_BOTTOM_MARGIN, WORKSPACE_POPUP_HEIGHT,
+    WORKSPACE_POPUP_WIDTH,
 };
 
 use super::{
@@ -96,6 +97,26 @@ pub(crate) fn initialize(
         SHELL_POPUP_BOTTOM_MARGIN
     );
 
+    let workspace_surface = compositor.create_surface(&qh);
+    let workspace_layer = layer_shell.create_layer_surface(
+        &qh,
+        workspace_surface,
+        Layer::Overlay,
+        Some("meridian-workspace-popup"),
+        None,
+    );
+    workspace_layer.set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
+    workspace_layer.set_margin(0, 160, SHELL_POPUP_BOTTOM_MARGIN, 0);
+    workspace_layer.set_size(WORKSPACE_POPUP_WIDTH, WORKSPACE_POPUP_HEIGHT);
+    workspace_layer.set_exclusive_zone(0);
+    workspace_layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+    debug!(
+        "Workspace popup surface created: namespace=meridian-workspace-popup layer=Overlay anchor=Bottom|Right size={}x{} margin_bottom={} margin_right=160 exclusive_zone=0 keyboard_interactivity=OnDemand",
+        WORKSPACE_POPUP_WIDTH,
+        WORKSPACE_POPUP_HEIGHT,
+        SHELL_POPUP_BOTTOM_MARGIN
+    );
+
     let meridian_config = MeridianConfig::load();
     let mut theme_manager = ThemeManager::new();
     if !meridian_config.general.theme.trim().is_empty()
@@ -146,18 +167,23 @@ pub(crate) fn initialize(
         panel,
         launcher_layer,
         calendar_layer,
+        workspace_layer,
         panel_configured: false,
         launcher_configured: false,
         calendar_configured: false,
+        workspace_configured: false,
         panel_buffer: None,
         launcher_buffer: None,
         calendar_buffer: None,
+        workspace_buffer: None,
         pool,
         width: 1024,
         launcher_width: LAUNCHER_WIDTH,
         launcher_height: LAUNCHER_HEIGHT,
         calendar_width: CALENDAR_POPUP_WIDTH,
         calendar_height: CALENDAR_POPUP_HEIGHT,
+        workspace_width: WORKSPACE_POPUP_WIDTH,
+        workspace_height: WORKSPACE_POPUP_HEIGHT,
         keyboard: None,
         keyboard_focus: SurfaceKind::None,
         pointer: None,
@@ -169,6 +195,7 @@ pub(crate) fn initialize(
         ipc: IpcClient::connect(),
         panel_state: panel::PanelState::new(),
         launcher_state: launcher::LauncherState::new(),
+        workspace_state: crate::workspaces::WorkspacePopupState::new(),
         focused_window_id: None,
         focused_title: None,
         windows: Vec::new(),
@@ -186,7 +213,9 @@ pub(crate) fn initialize(
         panel_dirty: true,
         launcher_dirty: true,
         calendar_dirty: true,
+        workspace_dirty: true,
         calendar_popup_open: false,
+        workspace_popup_open: false,
         calendar_display_policy: CalendarDisplayPolicy::default(),
         panel_last_signature: None,
         launcher_last_signature: None,
@@ -223,6 +252,8 @@ pub(crate) fn initialize(
     info!("Launcher surface created and committed");
     shell.calendar_layer.commit();
     info!("Calendar popup surface created and committed");
+    shell.workspace_layer.commit();
+    info!("Workspace popup surface created and committed");
 
     Ok((shell, qh))
 }

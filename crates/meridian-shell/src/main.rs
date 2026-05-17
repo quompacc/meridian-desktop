@@ -12,6 +12,7 @@ mod launcher;
 mod panel;
 mod ui;
 mod wayland;
+mod workspaces;
 
 pub use draw::{Painter, TextRenderer};
 pub use wayland::{ClickAction, ClickZone, IpcClient, Rect};
@@ -22,6 +23,8 @@ pub const LAUNCHER_WIDTH: u32 = 720;
 pub const LAUNCHER_HEIGHT: u32 = 520;
 pub const CALENDAR_POPUP_WIDTH: u32 = 280;
 pub const CALENDAR_POPUP_HEIGHT: u32 = 220;
+pub const WORKSPACE_POPUP_WIDTH: u32 = 280;
+pub const WORKSPACE_POPUP_HEIGHT: u32 = 200;
 pub const SHELL_POPUP_BOTTOM_MARGIN: i32 = 2;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -66,6 +69,9 @@ fn insert_tick_timer(
                 } else if shell.launcher_dirty {
                     shell.unmap_launcher(CommitReason::EventLoopTick);
                     shell.launcher_dirty = false;
+                }
+                if shell.workspace_popup_open {
+                    shell.draw_workspace_popup(&qh, RepaintReason::Ipc);
                 }
             }
             shell.tick(&qh);

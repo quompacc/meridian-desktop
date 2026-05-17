@@ -5,7 +5,10 @@ use tracing::{debug, warn};
 use wayland_client::{Connection, QueueHandle};
 
 use crate::wayland::{MeridianShell, RepaintReason};
-use crate::{CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH};
+use crate::{
+    CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
+    WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
+};
 
 impl LayerShellHandler for MeridianShell {
     fn closed(&mut self, _conn: &Connection, qh: &QueueHandle<Self>, layer: &LayerSurface) {
@@ -30,6 +33,15 @@ impl LayerShellHandler for MeridianShell {
             self.calendar_popup_open = false;
             self.calendar_configured = false;
             self.calendar_dirty = false;
+            self.draw_panel(qh, RepaintReason::LayerConfigure);
+            return;
+        }
+
+        if self.workspace_layer == *layer {
+            warn!("Workspace popup layer surface closed by compositor; recovering popup state");
+            self.workspace_popup_open = false;
+            self.workspace_configured = false;
+            self.workspace_dirty = false;
             self.draw_panel(qh, RepaintReason::LayerConfigure);
             return;
         }
@@ -131,6 +143,41 @@ impl LayerShellHandler for MeridianShell {
             self.calendar_height = CALENDAR_POPUP_HEIGHT;
             if self.calendar_popup_open {
                 self.draw_calendar_popup(qh, RepaintReason::LayerConfigure);
+            }
+        } else if self.workspace_layer == *layer {
+            let requested_w = if configure.new_size.0 > 0 {
+                configure.new_size.0
+            } else {
+                WORKSPACE_POPUP_WIDTH
+            };
+            let requested_h = if configure.new_size.1 > 0 {
+                configure.new_size.1
+            } else {
+                WORKSPACE_POPUP_HEIGHT
+            };
+            let clamped_w = requested_w.min(WORKSPACE_POPUP_WIDTH);
+            let clamped_h = requested_h.min(WORKSPACE_POPUP_HEIGHT);
+            tracing::debug!(
+                "workspace popup configure: requested={}x{} clamped={}x{} desired={}x{}",
+                requested_w,
+                requested_h,
+                clamped_w,
+                clamped_h,
+                WORKSPACE_POPUP_WIDTH,
+                WORKSPACE_POPUP_HEIGHT
+            );
+            self.workspace_layer
+                .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
+            self.workspace_layer
+                .set_margin(0, 160, crate::SHELL_POPUP_BOTTOM_MARGIN, 0);
+            self.workspace_layer.set_exclusive_zone(0);
+            self.workspace_layer
+                .set_size(WORKSPACE_POPUP_WIDTH, WORKSPACE_POPUP_HEIGHT);
+            self.workspace_configured = true;
+            self.workspace_width = WORKSPACE_POPUP_WIDTH;
+            self.workspace_height = WORKSPACE_POPUP_HEIGHT;
+            if self.workspace_popup_open {
+                self.draw_workspace_popup(qh, RepaintReason::LayerConfigure);
             }
         }
     }

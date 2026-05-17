@@ -534,6 +534,9 @@ impl MeridianShell {
         if !open_before && self.calendar_popup_open {
             self.close_calendar_popup(CommitReason::Input);
         }
+        if !open_before && self.workspace_popup_open {
+            self.close_workspace_popup(CommitReason::Input);
+        }
         self.launcher_state.toggle();
         let open_after = self.launcher_state.open;
         if self.launcher_state.open {
@@ -577,6 +580,10 @@ impl MeridianShell {
         if self.calendar_popup_open {
             self.close_calendar_popup(reason);
             return;
+        }
+
+        if self.workspace_popup_open {
+            self.close_workspace_popup(reason);
         }
 
         if self.launcher_state.open {
@@ -626,6 +633,63 @@ impl MeridianShell {
         true
     }
 
+    fn toggle_workspace_popup(&mut self, reason: CommitReason) {
+        if self.workspace_popup_open {
+            self.close_workspace_popup(reason);
+            return;
+        }
+
+        if self.launcher_state.open {
+            self.launcher_state.close();
+            self.launcher_layer
+                .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+            self.unmap_launcher(reason);
+        }
+
+        if self.calendar_popup_open {
+            self.close_calendar_popup(reason);
+        }
+
+        self.workspace_popup_open = true;
+        self.workspace_layer
+            .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
+        self.workspace_layer
+            .set_margin(0, 160, crate::SHELL_POPUP_BOTTOM_MARGIN, 0);
+        self.workspace_layer.set_exclusive_zone(0);
+        self.workspace_layer
+            .set_size(crate::WORKSPACE_POPUP_WIDTH, crate::WORKSPACE_POPUP_HEIGHT);
+        self.workspace_layer
+            .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+        self.workspace_width = crate::WORKSPACE_POPUP_WIDTH;
+        self.workspace_height = crate::WORKSPACE_POPUP_HEIGHT;
+        self.workspace_dirty = true;
+        tracing::debug!(
+            "toggle_workspace_popup: open_after={} configured={} size={}x{} keyboard_focus={:?}",
+            self.workspace_popup_open,
+            self.workspace_configured,
+            self.workspace_width,
+            self.workspace_height,
+            self.keyboard_focus
+        );
+    }
+
+    pub(crate) fn close_workspace_popup(&mut self, reason: CommitReason) -> bool {
+        if !self.workspace_popup_open {
+            return false;
+        }
+        self.workspace_popup_open = false;
+        self.workspace_layer
+            .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+        self.unmap_workspace_popup(reason);
+        tracing::debug!(
+            "close_workspace_popup: open_after={} configured={} keyboard_focus={:?}",
+            self.workspace_popup_open,
+            self.workspace_configured,
+            self.keyboard_focus
+        );
+        true
+    }
+
     pub(crate) fn close_launcher_after_launch(
         &mut self,
         qh: &QueueHandle<Self>,
@@ -644,6 +708,9 @@ impl MeridianShell {
     pub(crate) fn handle_panel_click(&mut self, qh: &QueueHandle<Self>, action: ClickAction) {
         if self.calendar_popup_open && !matches!(action, ClickAction::Clock) {
             self.close_calendar_popup(CommitReason::Input);
+        }
+        if self.workspace_popup_open && !matches!(action, ClickAction::ToggleWorkspacePopup) {
+            self.close_workspace_popup(CommitReason::Input);
         }
 
         match action {
@@ -679,8 +746,11 @@ impl MeridianShell {
                 }
             }
             ClickAction::ToggleWorkspacePopup => {
-                tracing::info!("workspace popup toggle requested (TODO: Phase 3.8b)");
+                self.toggle_workspace_popup(CommitReason::Input);
                 self.draw_panel(qh, RepaintReason::Pointer);
+                if self.workspace_popup_open {
+                    self.draw_workspace_popup(qh, RepaintReason::Pointer);
+                }
             }
             ClickAction::Clock => {
                 self.toggle_calendar_popup(CommitReason::Input);
@@ -689,6 +759,22 @@ impl MeridianShell {
                     self.draw_calendar_popup(qh, RepaintReason::Pointer);
                 }
             }
+        }
+    }
+
+    pub(crate) fn handle_workspace_click(&mut self, qh: &QueueHandle<Self>, action: ClickAction) {
+        if let ClickAction::SwitchWorkspace(workspace) = action {
+            if self.active_workspace != workspace {
+                debug!(
+                    "active workspace changed: old={} new={} (workspace popup click)",
+                    self.active_workspace, workspace
+                );
+                self.workspace_indicator_dirty = true;
+            }
+            self.active_workspace = workspace;
+            self.ipc.send(&ShellCommand::SwitchWorkspace { workspace });
+            self.close_workspace_popup(CommitReason::Input);
+            self.draw_panel(qh, RepaintReason::Pointer);
         }
     }
 

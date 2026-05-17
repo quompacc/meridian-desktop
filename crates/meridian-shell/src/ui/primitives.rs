@@ -21,6 +21,7 @@ pub enum InteractiveState {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActiveIndicatorEdge {
+    Top,
     Bottom,
     Left,
 }
@@ -59,6 +60,12 @@ pub fn draw_active_indicator(
 ) {
     const THICKNESS: i32 = 2;
     let bar = match edge {
+        ActiveIndicatorEdge::Top => Rect {
+            x: rect.x,
+            y: rect.y,
+            w: rect.w,
+            h: THICKNESS.min(rect.h),
+        },
         ActiveIndicatorEdge::Bottom => Rect {
             x: rect.x,
             y: rect.y + rect.h - THICKNESS.min(rect.h),

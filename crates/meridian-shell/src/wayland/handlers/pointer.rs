@@ -23,6 +23,8 @@ impl PointerHandler for MeridianShell {
                 SurfaceKind::Launcher
             } else if &event.surface == self.calendar_layer.wl_surface() {
                 SurfaceKind::Calendar
+            } else if &event.surface == self.workspace_layer.wl_surface() {
+                SurfaceKind::WorkspacePopup
             } else {
                 SurfaceKind::None
             };
@@ -33,6 +35,9 @@ impl PointerHandler for MeridianShell {
                 match self.pointer_surface {
                     SurfaceKind::Panel => self.draw_panel(qh, RepaintReason::Pointer),
                     SurfaceKind::Launcher => self.draw_launcher(qh, RepaintReason::Pointer),
+                    SurfaceKind::WorkspacePopup => {
+                        self.draw_workspace_popup(qh, RepaintReason::Pointer)
+                    }
                     SurfaceKind::Calendar | SurfaceKind::None => {}
                 }
                 self.pointer_surface = SurfaceKind::None;
@@ -50,6 +55,12 @@ impl PointerHandler for MeridianShell {
             {
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
+            if self.workspace_popup_open
+                && self.pointer_surface == SurfaceKind::WorkspacePopup
+                && matches!(event.kind, PointerEventKind::Motion { .. })
+            {
+                self.draw_workspace_popup(qh, RepaintReason::Pointer);
+            }
 
             if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
                 let action = match self.pointer_surface {
@@ -65,13 +76,31 @@ impl PointerHandler for MeridianShell {
                         .iter()
                         .find(|zone| zone.rect.contains(event.position.0, event.position.1))
                         .map(|zone| zone.action.clone()),
+                    SurfaceKind::WorkspacePopup => self
+                        .workspace_state
+                        .clicks
+                        .iter()
+                        .find(|zone| zone.rect.contains(event.position.0, event.position.1))
+                        .map(|zone| zone.action.clone()),
                     SurfaceKind::Calendar => None,
                     SurfaceKind::None => None,
                 };
+                let keep_workspace_popup_open = matches!(
+                    action,
+                    Some(crate::wayland::ClickAction::ToggleWorkspacePopup)
+                );
+                if self.workspace_popup_open
+                    && self.pointer_surface != SurfaceKind::WorkspacePopup
+                    && !keep_workspace_popup_open
+                {
+                    self.close_workspace_popup(crate::wayland::CommitReason::Input);
+                    self.draw_panel(qh, RepaintReason::Pointer);
+                }
                 if let Some(action) = action {
                     match self.pointer_surface {
                         SurfaceKind::Panel => self.handle_panel_click(qh, action),
                         SurfaceKind::Launcher => self.handle_launcher_click(qh, action),
+                        SurfaceKind::WorkspacePopup => self.handle_workspace_click(qh, action),
                         SurfaceKind::Calendar => {}
                         SurfaceKind::None => {}
                     }

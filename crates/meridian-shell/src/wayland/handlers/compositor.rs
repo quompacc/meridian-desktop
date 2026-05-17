@@ -48,6 +48,11 @@ impl CompositorHandler for MeridianShell {
             tracing::trace!(
                 "calendar popup frame callback received: dirty-flag set only (no immediate draw/commit)"
             );
+        } else if self.workspace_popup_open && self.workspace_layer.wl_surface() == surface {
+            self.workspace_dirty = true;
+            tracing::trace!(
+                "workspace popup frame callback received: dirty-flag set only (no immediate draw/commit)"
+            );
         }
     }
 

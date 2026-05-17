@@ -14,7 +14,9 @@ use smithay_client_toolkit::{
 };
 use wayland_client::protocol::{wl_keyboard, wl_pointer};
 
-use crate::{launcher, panel, panel::PanelWindowEntry, TextRenderer};
+use crate::{
+    launcher, panel, panel::PanelWindowEntry, workspaces::WorkspacePopupState, TextRenderer,
+};
 
 use super::{calendar::CalendarDisplayPolicy, types::WindowInfo, IpcClient, SurfaceKind};
 
@@ -233,18 +235,23 @@ pub(crate) struct MeridianShell {
     pub(crate) panel: LayerSurface,
     pub(crate) launcher_layer: LayerSurface,
     pub(crate) calendar_layer: LayerSurface,
+    pub(crate) workspace_layer: LayerSurface,
     pub(crate) panel_configured: bool,
     pub(crate) launcher_configured: bool,
     pub(crate) calendar_configured: bool,
+    pub(crate) workspace_configured: bool,
     pub(crate) panel_buffer: Option<Buffer>,
     pub(crate) launcher_buffer: Option<Buffer>,
     pub(crate) calendar_buffer: Option<Buffer>,
+    pub(crate) workspace_buffer: Option<Buffer>,
     pub(crate) pool: SlotPool,
     pub(crate) width: u32,
     pub(crate) launcher_width: u32,
     pub(crate) launcher_height: u32,
     pub(crate) calendar_width: u32,
     pub(crate) calendar_height: u32,
+    pub(crate) workspace_width: u32,
+    pub(crate) workspace_height: u32,
     pub(crate) keyboard: Option<wl_keyboard::WlKeyboard>,
     pub(crate) keyboard_focus: SurfaceKind,
     pub(crate) pointer: Option<wl_pointer::WlPointer>,
@@ -256,6 +263,7 @@ pub(crate) struct MeridianShell {
     pub(crate) ipc: IpcClient,
     pub(crate) panel_state: panel::PanelState,
     pub(crate) launcher_state: launcher::LauncherState,
+    pub(crate) workspace_state: WorkspacePopupState,
     pub(crate) focused_window_id: Option<String>,
     pub(crate) focused_title: Option<String>,
     pub(crate) windows: Vec<WindowInfo>,
@@ -273,7 +281,9 @@ pub(crate) struct MeridianShell {
     pub(crate) panel_dirty: bool,
     pub(crate) launcher_dirty: bool,
     pub(crate) calendar_dirty: bool,
+    pub(crate) workspace_dirty: bool,
     pub(crate) calendar_popup_open: bool,
+    pub(crate) workspace_popup_open: bool,
     pub(crate) calendar_display_policy: CalendarDisplayPolicy,
     pub(crate) panel_last_signature: Option<PanelRenderSignature>,
     pub(crate) launcher_last_signature: Option<LauncherRenderSignature>,
