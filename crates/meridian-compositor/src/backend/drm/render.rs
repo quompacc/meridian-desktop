@@ -161,186 +161,205 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
 
         let mut decoration_element_count = 0usize;
         let mut space_element_count = 0usize;
-        for window in out.scratch_windows.iter().rev() {
-            let loc = match space.element_location(window) {
-                Some(l) => l,
-                None => continue,
-            };
-            let geometry = window.geometry();
-            let render_loc =
-                smithay::utils::Point::from((loc.x - geometry.loc.x, loc.y - geometry.loc.y));
+        let mut cursor_count = 0usize;
+        if !state.lock_manager.is_locked_or_pending() {
+            for window in out.scratch_windows.iter().rev() {
+                let loc = match space.element_location(window) {
+                    Some(l) => l,
+                    None => continue,
+                };
+                let geometry = window.geometry();
+                let render_loc =
+                    smithay::utils::Point::from((loc.x - geometry.loc.x, loc.y - geometry.loc.y));
 
-            if let Some(wl_surf) = window.wl_surface().map(|s| s.into_owned()) {
-                let metrics = state.decoration_manager.ssd_render_metrics(
-                    &wl_surf,
-                    loc,
-                    geometry.size,
-                    &theme.decorations,
-                );
-                let window_deco_elements = state.decoration_manager.render_elements(
-                    &wl_surf,
-                    metrics.frame_origin,
-                    metrics.client_size,
-                    &theme.decorations,
-                    &theme.colors,
+                if let Some(wl_surf) = window.wl_surface().map(|s| s.into_owned()) {
+                    let metrics = state.decoration_manager.ssd_render_metrics(
+                        &wl_surf,
+                        loc,
+                        geometry.size,
+                        &theme.decorations,
+                    );
+                    let window_deco_elements = state.decoration_manager.render_elements(
+                        &wl_surf,
+                        metrics.frame_origin,
+                        metrics.client_size,
+                        &theme.decorations,
+                        &theme.colors,
+                        scale,
+                    );
+                    decoration_element_count += window_deco_elements.len();
+                    out.scratch_normal.extend(
+                        window_deco_elements
+                            .into_iter()
+                            .map(MeridianRenderElements::Decoration),
+                    );
+                }
+
+                let space_start = out.scratch_normal.len();
+                render_window_space_elements(
+                    renderer,
+                    window,
+                    render_loc,
                     scale,
+                    &mut out.scratch_normal,
                 );
-                decoration_element_count += window_deco_elements.len();
-                out.scratch_normal.extend(
-                    window_deco_elements
-                        .into_iter()
-                        .map(MeridianRenderElements::Decoration),
-                );
+                let appended_space = out.scratch_normal.len().saturating_sub(space_start);
+                space_element_count += appended_space;
             }
 
-            let space_start = out.scratch_normal.len();
-            render_window_space_elements(
-                renderer,
-                window,
-                render_loc,
-                scale,
-                &mut out.scratch_normal,
-            );
-            let appended_space = out.scratch_normal.len().saturating_sub(space_start);
-            space_element_count += appended_space;
-        }
-
-        if let Some(pointer) = state.seat.get_pointer() {
-            let pointer_location = pointer.current_location();
-            if let Some(output_geo) = space.output_geometry(&out.output) {
-                if output_geo.to_f64().contains(pointer_location) {
-                    let cursor_pos = (pointer_location - output_geo.loc.to_f64())
-                        .to_physical(scale)
-                        .to_i32_round::<i32>();
-                    match &state.cursor_status {
-                        CursorImageStatus::Hidden => {}
-                        CursorImageStatus::Named(icon_name) => {
-                            // Preserve compositor-managed resize cursors for SSD/X11 edge hit-tests.
-                            if !matches!(cursor_icon, super::DrmCursorIcon::Default) {
-                                let mut cursor_loc = cursor_pos;
-                                cursor_loc.x -= cursor_image.xhot as i32;
-                                cursor_loc.y -= cursor_image.yhot as i32;
-                                if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
-                                    renderer,
-                                    cursor_loc.to_f64(),
-                                    cursor_buffer,
-                                    None,
-                                    None,
-                                    None,
-                                    Kind::Cursor,
-                                ) {
-                                    out.scratch_cursor
-                                        .push(MeridianRenderElements::Cursor(element));
-                                }
-                            } else {
-                                let cursor_cfg = &state.theme_manager.current().config.cursor;
-                                let (named_buffer, hotspot) = named_cursor_cache
-                                    .entry(icon_name.name().to_string())
-                                    .or_insert_with(|| {
-                                        let cursor =
-                                            crate::cursor::CursorImage::load_theme_cursor_icon(
-                                                &cursor_cfg.theme,
-                                                cursor_cfg.size,
-                                                *icon_name,
-                                            );
-                                        (
-                                            cursor.to_memory_buffer(),
-                                            smithay::utils::Point::from((
-                                                cursor.xhot as i32,
-                                                cursor.yhot as i32,
-                                            )),
+            if let Some(pointer) = state.seat.get_pointer() {
+                let pointer_location = pointer.current_location();
+                if let Some(output_geo) = space.output_geometry(&out.output) {
+                    if output_geo.to_f64().contains(pointer_location) {
+                        let cursor_pos = (pointer_location - output_geo.loc.to_f64())
+                            .to_physical(scale)
+                            .to_i32_round::<i32>();
+                        match &state.cursor_status {
+                            CursorImageStatus::Hidden => {}
+                            CursorImageStatus::Named(icon_name) => {
+                                // Preserve compositor-managed resize cursors for SSD/X11 edge hit-tests.
+                                if !matches!(cursor_icon, super::DrmCursorIcon::Default) {
+                                    let mut cursor_loc = cursor_pos;
+                                    cursor_loc.x -= cursor_image.xhot as i32;
+                                    cursor_loc.y -= cursor_image.yhot as i32;
+                                    if let Ok(element) =
+                                        MemoryRenderBufferRenderElement::from_buffer(
+                                            renderer,
+                                            cursor_loc.to_f64(),
+                                            cursor_buffer,
+                                            None,
+                                            None,
+                                            None,
+                                            Kind::Cursor,
                                         )
-                                    });
-                                let mut cursor_loc = cursor_pos;
-                                cursor_loc.x -= hotspot.x;
-                                cursor_loc.y -= hotspot.y;
-                                if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
-                                    renderer,
-                                    cursor_loc.to_f64(),
-                                    named_buffer,
-                                    None,
-                                    None,
-                                    None,
-                                    Kind::Cursor,
-                                ) {
-                                    out.scratch_cursor
-                                        .push(MeridianRenderElements::Cursor(element));
+                                    {
+                                        out.scratch_cursor
+                                            .push(MeridianRenderElements::Cursor(element));
+                                    }
+                                } else {
+                                    let cursor_cfg = &state.theme_manager.current().config.cursor;
+                                    let (named_buffer, hotspot) = named_cursor_cache
+                                        .entry(icon_name.name().to_string())
+                                        .or_insert_with(|| {
+                                            let cursor =
+                                                crate::cursor::CursorImage::load_theme_cursor_icon(
+                                                    &cursor_cfg.theme,
+                                                    cursor_cfg.size,
+                                                    *icon_name,
+                                                );
+                                            (
+                                                cursor.to_memory_buffer(),
+                                                smithay::utils::Point::from((
+                                                    cursor.xhot as i32,
+                                                    cursor.yhot as i32,
+                                                )),
+                                            )
+                                        });
+                                    let mut cursor_loc = cursor_pos;
+                                    cursor_loc.x -= hotspot.x;
+                                    cursor_loc.y -= hotspot.y;
+                                    if let Ok(element) =
+                                        MemoryRenderBufferRenderElement::from_buffer(
+                                            renderer,
+                                            cursor_loc.to_f64(),
+                                            named_buffer,
+                                            None,
+                                            None,
+                                            None,
+                                            Kind::Cursor,
+                                        )
+                                    {
+                                        out.scratch_cursor
+                                            .push(MeridianRenderElements::Cursor(element));
+                                    }
                                 }
                             }
-                        }
-                        CursorImageStatus::Surface(surface) => {
-                            let hotspot = with_states(surface, |states| {
-                                states
-                                    .data_map
-                                    .get::<CursorImageSurfaceData>()
-                                    .map(|attrs| attrs.lock().unwrap().hotspot)
-                                    .unwrap_or_default()
-                            });
-                            let hotspot = hotspot.to_f64().to_physical(scale).to_i32_round::<i32>();
-                            let cursor_loc = smithay::utils::Point::from((
-                                cursor_pos.x - hotspot.x,
-                                cursor_pos.y - hotspot.y,
-                            ));
-                            out.scratch_cursor
-                                .extend(render_elements_from_surface_tree::<
-                                    GlesRenderer,
-                                    MeridianRenderElements,
-                                >(
-                                    renderer, surface, cursor_loc, scale, 1.0, Kind::Cursor
+                            CursorImageStatus::Surface(surface) => {
+                                let hotspot = with_states(surface, |states| {
+                                    states
+                                        .data_map
+                                        .get::<CursorImageSurfaceData>()
+                                        .map(|attrs| attrs.lock().unwrap().hotspot)
+                                        .unwrap_or_default()
+                                });
+                                let hotspot =
+                                    hotspot.to_f64().to_physical(scale).to_i32_round::<i32>();
+                                let cursor_loc = smithay::utils::Point::from((
+                                    cursor_pos.x - hotspot.x,
+                                    cursor_pos.y - hotspot.y,
                                 ));
+                                out.scratch_cursor
+                                    .extend(render_elements_from_surface_tree::<
+                                        GlesRenderer,
+                                        MeridianRenderElements,
+                                    >(
+                                        renderer,
+                                        surface,
+                                        cursor_loc,
+                                        scale,
+                                        1.0,
+                                        Kind::Cursor,
+                                    ));
+                            }
                         }
                     }
                 }
             }
-        }
 
-        collect_layer_data(
-            &out.output,
-            &mut out.scratch_lower_layer_data,
-            &mut out.scratch_upper_layer_data,
-        );
-        render_layer_elements(
-            renderer,
-            &out.scratch_lower_layer_data,
-            scale,
-            &mut out.scratch_lower_layer_elements,
-        );
-        render_layer_elements(
-            renderer,
-            &out.scratch_upper_layer_data,
-            scale,
-            &mut out.scratch_upper_layer_elements,
-        );
-
-        let wallpaper_elem = out
-            .wallpaper
-            .as_ref()
-            .map(WallpaperGpuCache::render_element);
-
-        let cursor_count = out.scratch_cursor.len();
-        {
-            let (
-                scratch_final,
-                scratch_cursor,
-                scratch_normal,
-                scratch_lower_layer_elements,
-                scratch_upper_layer_elements,
-            ) = (
-                &mut out.scratch_final,
-                &mut out.scratch_cursor,
-                &mut out.scratch_normal,
+            collect_layer_data(
+                &out.output,
+                &mut out.scratch_lower_layer_data,
+                &mut out.scratch_upper_layer_data,
+            );
+            render_layer_elements(
+                renderer,
+                &out.scratch_lower_layer_data,
+                scale,
                 &mut out.scratch_lower_layer_elements,
+            );
+            render_layer_elements(
+                renderer,
+                &out.scratch_upper_layer_data,
+                scale,
                 &mut out.scratch_upper_layer_elements,
             );
-            scratch_final.append(scratch_cursor);
-            scratch_final.append(scratch_upper_layer_elements);
-            scratch_final.append(scratch_normal);
-            scratch_final.append(scratch_lower_layer_elements);
-            scratch_final.extend(
-                wallpaper_elem
-                    .into_iter()
-                    .map(MeridianRenderElements::Wallpaper),
-            );
+
+            let wallpaper_elem = out
+                .wallpaper
+                .as_ref()
+                .map(WallpaperGpuCache::render_element);
+
+            cursor_count = out.scratch_cursor.len();
+            {
+                let (
+                    scratch_final,
+                    scratch_cursor,
+                    scratch_normal,
+                    scratch_lower_layer_elements,
+                    scratch_upper_layer_elements,
+                ) = (
+                    &mut out.scratch_final,
+                    &mut out.scratch_cursor,
+                    &mut out.scratch_normal,
+                    &mut out.scratch_lower_layer_elements,
+                    &mut out.scratch_upper_layer_elements,
+                );
+                scratch_final.append(scratch_cursor);
+                scratch_final.append(scratch_upper_layer_elements);
+                scratch_final.append(scratch_normal);
+                scratch_final.append(scratch_lower_layer_elements);
+                scratch_final.extend(
+                    wallpaper_elem
+                        .into_iter()
+                        .map(MeridianRenderElements::Wallpaper),
+                );
+            }
+        } else {
+            out.scratch_cursor.clear();
+            out.scratch_lower_layer_data.clear();
+            out.scratch_upper_layer_data.clear();
+            out.scratch_lower_layer_elements.clear();
+            out.scratch_upper_layer_elements.clear();
         }
 
         let elements = out.scratch_final.as_slice();

@@ -65,6 +65,15 @@ pub(super) fn render_elements_for_output(
     scratch.normal.clear();
     scratch.final_elements.clear();
     scratch.windows.clear();
+
+    if state.lock_manager.is_locked_or_pending() {
+        scratch.lower_layer_data.clear();
+        scratch.upper_layer_data.clear();
+        scratch.lower_layer_elements.clear();
+        scratch.upper_layer_elements.clear();
+        return;
+    }
+
     scratch
         .windows
         .extend(state.workspaces.active_space().elements().cloned());

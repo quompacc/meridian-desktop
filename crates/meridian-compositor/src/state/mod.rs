@@ -17,6 +17,7 @@ use smithay::{
         output::OutputManagerState,
         seat::WaylandFocus,
         selection::{data_device::DataDeviceState, primary_selection::PrimarySelectionState},
+        session_lock::SessionLockManagerState,
         shell::{
             wlr_layer::WlrLayerShellState,
             xdg::{self, XdgShellState},
@@ -37,15 +38,19 @@ mod handlers;
 mod idle;
 mod ipc;
 mod layout;
+mod lock;
 #[cfg(test)]
 mod output_hotplug_tests;
 mod output_layout;
 mod output_registry;
+#[cfg(test)]
+mod session_lock_tests;
 mod setup;
 mod utils;
 mod workspace_output_state;
 
 pub use idle::IdleInhibitorSet;
+pub use lock::{LockManager, LockPhase};
 pub use output_layout::{
     detect_output_reload_diff, parse_output_transform, ConnectedOutput, OutputLayout,
     OutputPlacement, OutputPosition, OutputReloadDiff, ResolvedOutput,
@@ -325,6 +330,8 @@ pub struct MeridianState {
     pub idle_notifier: IdleNotifierState<Self>,
     pub idle_inhibit_state: IdleInhibitManagerState,
     pub idle_inhibitors: IdleInhibitorSet<WlSurface>,
+    pub session_lock_state: SessionLockManagerState,
+    pub lock_manager: LockManager,
     pub xwm: Option<X11Wm>,
     pub drm_backend: Option<DrmBackend>,
     pub maximize_restore_locations: HashMap<String, MaximizeRestoreGeometry>,

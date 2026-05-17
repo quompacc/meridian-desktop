@@ -8,6 +8,10 @@ use crate::state::MeridianState;
 impl MeridianState {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
         self.idle_notifier.notify_activity(&self.seat);
+        if self.lock_manager.is_locked_or_pending() {
+            tracing::trace!("input event suppressed (session locked/pending)");
+            return;
+        }
 
         match event {
             InputEvent::Keyboard { event, .. } => {

@@ -25,6 +25,7 @@ use smithay::{
         idle_notify::IdleNotifierState,
         output::OutputManagerState,
         selection::{data_device::DataDeviceState, primary_selection::PrimarySelectionState},
+        session_lock::SessionLockManagerState,
         shell::{wlr_layer::WlrLayerShellState, xdg::XdgShellState},
         shm::ShmState,
         socket::ListeningSocketSource,
@@ -41,8 +42,8 @@ use crate::{
 
 use super::{
     detect_output_reload_diff, parse_output_transform, ClientState, ConnectedOutput,
-    IdleInhibitorSet, IpcServer, MeridianState, OutputGeometry, OutputId, OutputReconfigure,
-    OutputRegistration, OutputRegistry, WorkspaceOutputState,
+    IdleInhibitorSet, IpcServer, LockManager, MeridianState, OutputGeometry, OutputId,
+    OutputReconfigure, OutputRegistration, OutputRegistry, WorkspaceOutputState,
 };
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -600,6 +601,8 @@ impl MeridianState {
         let loop_handle = event_loop.handle();
         let idle_notifier = IdleNotifierState::<Self>::new(&display_handle, loop_handle.clone());
         let idle_inhibit_state = IdleInhibitManagerState::new::<Self>(&display_handle);
+        let session_lock_state =
+            SessionLockManagerState::new::<Self, _>(&display_handle, |_client| true);
         let socket_name = Self::init_wayland_listener(display, event_loop)?;
         let loop_signal = event_loop.get_signal();
 
@@ -645,6 +648,8 @@ impl MeridianState {
             idle_notifier,
             idle_inhibit_state,
             idle_inhibitors: IdleInhibitorSet::new(),
+            session_lock_state,
+            lock_manager: LockManager::new(),
             xwm: None,
             drm_backend: None,
             maximize_restore_locations: std::collections::HashMap::new(),
