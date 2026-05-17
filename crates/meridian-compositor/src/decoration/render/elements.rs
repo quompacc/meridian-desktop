@@ -17,7 +17,7 @@ use super::{
         DecorationManager, DecorationRenderElement, BUTTON_HEIGHT, BUTTON_ICON_PX, BUTTON_WIDTH,
         TITLE_BAR_HEIGHT,
     },
-    buffers::{effective_shadow_radius, update_buffers},
+    buffers::{layer_radius, update_buffers, SHADOW_LAYERS},
     geometry::{SsdChromeMetrics, SsdFrameMetrics},
 };
 
@@ -216,18 +216,25 @@ impl DecorationManager {
         }
 
         if theme.shadow && bw > 0 {
-            let sr = effective_shadow_radius(theme, deco.is_focused);
             let oy = theme.shadow_offset_y;
-            elements.push(
-                SolidColorRenderElement::from_buffer(
-                    &deco.buffers.shadow,
-                    phys(x - sr, y - sr + oy),
-                    scale,
-                    1.0,
-                    Kind::Unspecified,
-                )
-                .into(),
-            );
+            let shadow_buffers = [
+                &deco.buffers.shadow_inner,
+                &deco.buffers.shadow_mid,
+                &deco.buffers.shadow_outer,
+            ];
+            for (layer, buffer) in SHADOW_LAYERS.iter().zip(shadow_buffers) {
+                let sr = layer_radius(theme, deco.is_focused, layer.radius_scale);
+                elements.push(
+                    SolidColorRenderElement::from_buffer(
+                        buffer,
+                        phys(x - sr, y - sr + oy),
+                        scale,
+                        1.0,
+                        Kind::Unspecified,
+                    )
+                    .into(),
+                );
+            }
         }
 
         elements

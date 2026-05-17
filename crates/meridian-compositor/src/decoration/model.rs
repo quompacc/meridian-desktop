@@ -19,7 +19,9 @@ pub(super) struct DecorationBuffers {
     pub(super) border_left: SolidColorBuffer,
     pub(super) border_right: SolidColorBuffer,
     pub(super) border_bottom: SolidColorBuffer,
-    pub(super) shadow: SolidColorBuffer,
+    pub(super) shadow_inner: SolidColorBuffer,
+    pub(super) shadow_mid: SolidColorBuffer,
+    pub(super) shadow_outer: SolidColorBuffer,
 }
 
 impl DecorationBuffers {
@@ -34,7 +36,9 @@ impl DecorationBuffers {
             border_left: SolidColorBuffer::new((1, 1), z),
             border_right: SolidColorBuffer::new((1, 1), z),
             border_bottom: SolidColorBuffer::new((1, 1), z),
-            shadow: SolidColorBuffer::new((1, 1), z),
+            shadow_inner: SolidColorBuffer::new((1, 1), z),
+            shadow_mid: SolidColorBuffer::new((1, 1), z),
+            shadow_outer: SolidColorBuffer::new((1, 1), z),
         }
     }
 }

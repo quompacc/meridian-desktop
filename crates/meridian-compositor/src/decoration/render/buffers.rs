@@ -8,6 +8,27 @@ use super::geometry::{SsdChromeMetrics, SsdFrameMetrics};
 
 const INACTIVE_SHADOW_ALPHA: f32 = 0.3;
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ShadowLayer {
+    pub(super) radius_scale: f32,
+    pub(super) alpha_scale: f32,
+}
+
+pub(super) const SHADOW_LAYERS: [ShadowLayer; 3] = [
+    ShadowLayer {
+        radius_scale: 1.0 / 3.0,
+        alpha_scale: 0.8,
+    },
+    ShadowLayer {
+        radius_scale: 2.0 / 3.0,
+        alpha_scale: 0.4,
+    },
+    ShadowLayer {
+        radius_scale: 1.0,
+        alpha_scale: 0.2,
+    },
+];
+
 pub(super) fn effective_shadow_alpha(theme: &Decorations, focused: bool) -> f32 {
     if focused {
         theme.shadow_alpha
@@ -22,6 +43,16 @@ pub(super) fn effective_shadow_radius(theme: &Decorations, focused: bool) -> i32
     } else {
         (theme.shadow_radius as i32) / 2
     }
+}
+
+pub(super) fn layer_radius(theme: &Decorations, focused: bool, scale: f32) -> i32 {
+    (effective_shadow_radius(theme, focused) as f32 * scale)
+        .round()
+        .max(0.0) as i32
+}
+
+pub(super) fn layer_alpha(theme: &Decorations, focused: bool, scale: f32) -> f32 {
+    (effective_shadow_alpha(theme, focused) * scale).clamp(0.0, 1.0)
 }
 
 // Keep explicit decoration/render parameters to avoid risky context bundling in render code.
@@ -93,24 +124,25 @@ pub(super) fn update_buffers(
             .update((total_w.max(1), bw), border_f32);
     }
     if theme.shadow && bw > 0 {
-        let sr = effective_shadow_radius(theme, deco.is_focused);
-        let shadow_color = [
-            0.0f32,
-            0.0,
-            0.0,
-            effective_shadow_alpha(theme, deco.is_focused),
+        let frame = SsdFrameMetrics::from_frame_origin((0, 0).into(), (cw, ch).into(), bw, title_h);
+        let mut shadow_buffers = [
+            &mut deco.buffers.shadow_inner,
+            &mut deco.buffers.shadow_mid,
+            &mut deco.buffers.shadow_outer,
         ];
-        let shadow = SsdChromeMetrics::new(SsdFrameMetrics::from_frame_origin(
-            (0, 0).into(),
-            (cw, ch).into(),
-            bw,
-            title_h,
-        ))
-        .shadow_metrics(sr)
-        .expect("shadow metrics should exist when border width is positive");
-        deco.buffers
-            .shadow
-            .update((shadow.rect.size.w, shadow.rect.size.h), shadow_color);
+        for (layer, buffer) in SHADOW_LAYERS.iter().zip(shadow_buffers.iter_mut()) {
+            let sr = layer_radius(theme, deco.is_focused, layer.radius_scale);
+            let color = [
+                0.0f32,
+                0.0,
+                0.0,
+                layer_alpha(theme, deco.is_focused, layer.alpha_scale),
+            ];
+            let shadow = SsdChromeMetrics::new(frame)
+                .shadow_metrics(sr)
+                .expect("shadow metrics should exist when border width is positive");
+            buffer.update((shadow.rect.size.w, shadow.rect.size.h), color);
+        }
     }
 
     deco.last_content_size = (cw, ch);
@@ -122,7 +154,9 @@ pub(super) fn update_buffers(
 mod tests {
     use meridian_config::Decorations;
 
-    use super::{effective_shadow_alpha, effective_shadow_radius};
+    use super::{
+        effective_shadow_alpha, effective_shadow_radius, layer_alpha, layer_radius, SHADOW_LAYERS,
+    };
 
     #[test]
     fn effective_shadow_alpha_uses_theme_for_focused_window() {
@@ -150,5 +184,52 @@ mod tests {
         };
         assert_eq!(effective_shadow_radius(&theme, true), 24);
         assert_eq!(effective_shadow_radius(&theme, false), 12);
+    }
+
+    #[test]
+    fn layer_radius_zero_when_unfocused_inner_scale_round_down() {
+        let theme = Decorations {
+            shadow_radius: 1,
+            ..Default::default()
+        };
+        assert_eq!(
+            layer_radius(&theme, false, SHADOW_LAYERS[0].radius_scale),
+            0
+        );
+    }
+
+    #[test]
+    fn layer_alpha_clamps_to_one_when_overscaled() {
+        let theme = Decorations {
+            shadow_alpha: 0.8,
+            ..Default::default()
+        };
+        assert_eq!(layer_alpha(&theme, true, 2.0), 1.0);
+    }
+
+    #[test]
+    fn shadow_layers_radius_scales_strictly_ascending() {
+        let theme = Decorations {
+            shadow_radius: 24,
+            ..Default::default()
+        };
+        let inner = layer_radius(&theme, true, SHADOW_LAYERS[0].radius_scale);
+        let mid = layer_radius(&theme, true, SHADOW_LAYERS[1].radius_scale);
+        let outer = layer_radius(&theme, true, SHADOW_LAYERS[2].radius_scale);
+        assert!(inner < mid);
+        assert!(mid < outer);
+    }
+
+    #[test]
+    fn shadow_layers_total_alpha_at_window_edge_below_full_opacity() {
+        let theme = Decorations {
+            shadow_alpha: 0.5,
+            ..Default::default()
+        };
+        let total: f32 = SHADOW_LAYERS
+            .iter()
+            .map(|layer| layer_alpha(&theme, true, layer.alpha_scale))
+            .sum();
+        assert!(total < 1.0);
     }
 }
