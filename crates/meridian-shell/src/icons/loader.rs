@@ -8,6 +8,7 @@ use std::{
 use png::{BitDepth, ColorType, Decoder, Transformations};
 
 use super::{
+    svg::decode_svg,
     theme_index::{parse_index_theme, IconDirectory, IconDirectoryType, IconTheme},
     IconImage,
 };
@@ -76,7 +77,7 @@ impl IconLoader {
         if requested_size == 0 || !path.starts_with('/') {
             return None;
         }
-        self.decode_icon_file(Path::new(path), requested_size)
+        self.decode_icon_path(Path::new(path), requested_size)
     }
 
     fn load_icon_from_theme(
@@ -88,13 +89,22 @@ impl IconLoader {
         let ThemeLocation { root, theme } = self.load_theme(theme_name)?;
         let mut candidates = Vec::new();
         for directory in &theme.directories {
-            let icon_path = root
+            let png_path = root
                 .join(theme_name)
                 .join(&directory.name)
                 .join(format!("{name}.png"));
-            if !icon_path.is_file() {
-                continue;
-            }
+            let icon_path = if png_path.is_file() {
+                png_path
+            } else {
+                let svg_path = root
+                    .join(theme_name)
+                    .join(&directory.name)
+                    .join(format!("{name}.svg"));
+                if !svg_path.is_file() {
+                    continue;
+                }
+                svg_path
+            };
 
             candidates.push(IconCandidate {
                 path: icon_path,
@@ -104,7 +114,7 @@ impl IconLoader {
         }
 
         let selected = pick_best_candidate(candidates, requested_size)?;
-        self.decode_icon_file(&selected.path, requested_size)
+        self.decode_icon_path(&selected.path, requested_size)
     }
 
     fn load_theme(&self, theme_name: &str) -> Option<ThemeLocation> {
@@ -159,13 +169,30 @@ impl IconLoader {
         for root in &self.pixmaps_paths {
             let path = root.join(format!("{name}.png"));
             if path.is_file() {
-                return self.decode_icon_file(&path, requested_size);
+                return self.decode_png_file(&path, requested_size);
             }
         }
         None
     }
 
-    fn decode_icon_file(&self, path: &Path, requested_size: u32) -> Option<IconImage> {
+    fn decode_icon_path(&self, path: &Path, requested_size: u32) -> Option<IconImage> {
+        let extension = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase());
+        match extension.as_deref() {
+            Some("svg") => self.decode_svg_file(path, requested_size),
+            Some("png") | None => self.decode_png_file(path, requested_size),
+            _ => None,
+        }
+    }
+
+    fn decode_svg_file(&self, path: &Path, requested_size: u32) -> Option<IconImage> {
+        let data = fs::read(path).ok()?;
+        decode_svg(&data, requested_size)
+    }
+
+    fn decode_png_file(&self, path: &Path, requested_size: u32) -> Option<IconImage> {
         let file = fs::File::open(path).ok()?;
         let mut decoder = Decoder::new(file);
         decoder.set_transformations(Transformations::EXPAND | Transformations::STRIP_16);
@@ -524,6 +551,13 @@ mod tests {
         writer.write_image_data(&data).expect("write data");
     }
 
+    fn write_svg_solid_rect(path: &Path, color: &str) {
+        let body = format!(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><rect width='24' height='24' fill='{color}'/></svg>"
+        );
+        fs::write(path, body).expect("write svg");
+    }
+
     fn make_theme_root(base: &Path, theme: &str, dirs: &[&str], inherits: &str) {
         let theme_root = base.join(theme);
         fs::create_dir_all(&theme_root).expect("create theme root");
@@ -570,6 +604,78 @@ mod tests {
         assert_eq!(icon.width, 24);
         assert_eq!(icon.height, 24);
         assert_eq!(&icon.bgra[0..4], &[3, 2, 1, 255]);
+    }
+
+    #[test]
+    fn svg_in_theme_directory_is_loaded() {
+        let temp = TempDir::new("svg-theme");
+        let icons_root = temp.path().join("icons");
+        fs::create_dir_all(&icons_root).expect("create icons root");
+
+        make_theme_root(&icons_root, "Adwaita", &["22x22/apps"], "");
+        write_svg_solid_rect(
+            &icons_root
+                .join("Adwaita")
+                .join("22x22/apps")
+                .join("only-svg.svg"),
+            "#00ff00",
+        );
+
+        let loader = IconLoader::new_for_tests("Adwaita", vec![icons_root], vec![]);
+        let icon = loader.load_icon("only-svg", 22).expect("svg icon");
+        assert_eq!(icon.width, 22);
+        assert_eq!(icon.height, 22);
+    }
+
+    #[test]
+    fn prefers_png_over_svg_in_same_directory() {
+        let temp = TempDir::new("prefer-png");
+        let icons_root = temp.path().join("icons");
+        fs::create_dir_all(&icons_root).expect("create icons root");
+
+        make_theme_root(&icons_root, "Adwaita", &["22x22/apps"], "");
+        let base = icons_root.join("Adwaita").join("22x22/apps");
+        write_png_rgba(&base.join("dual.png"), 22, 22, [255, 0, 0, 255]);
+        write_svg_solid_rect(&base.join("dual.svg"), "#00ff00");
+
+        let loader = IconLoader::new_for_tests("Adwaita", vec![icons_root], vec![]);
+        let icon = loader.load_icon("dual", 22).expect("dual icon");
+        assert_eq!(&icon.bgra[0..4], &[0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn falls_back_to_svg_when_no_png() {
+        let temp = TempDir::new("fallback-svg");
+        let icons_root = temp.path().join("icons");
+        fs::create_dir_all(&icons_root).expect("create icons root");
+
+        make_theme_root(&icons_root, "Adwaita", &["22x22/apps"], "");
+        write_svg_solid_rect(
+            &icons_root
+                .join("Adwaita")
+                .join("22x22/apps")
+                .join("svg-only.svg"),
+            "#0000ff",
+        );
+
+        let loader = IconLoader::new_for_tests("Adwaita", vec![icons_root], vec![]);
+        let icon = loader.load_icon("svg-only", 22).expect("svg fallback icon");
+        assert_eq!(icon.width, 22);
+        assert_eq!(icon.height, 22);
+    }
+
+    #[test]
+    fn absolute_path_loader_loads_svg() {
+        let temp = TempDir::new("absolute-svg");
+        let svg_path = temp.path().join("standalone.svg");
+        write_svg_solid_rect(&svg_path, "#ff00ff");
+
+        let loader = IconLoader::new_for_tests("Adwaita", vec![], vec![]);
+        let icon = loader
+            .load_icon_from_absolute_path(svg_path.to_str().expect("utf8 path"), 24)
+            .expect("svg icon from absolute path");
+        assert_eq!(icon.width, 24);
+        assert_eq!(icon.height, 24);
     }
 
     #[test]

@@ -133,6 +133,11 @@ mod tests {
         writer.write_image_data(&data).expect("write data");
     }
 
+    fn write_svg(path: &Path) {
+        let body = "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><rect width='24' height='24' fill='#00ff00'/></svg>";
+        fs::write(path, body).expect("write svg");
+    }
+
     fn create_loader_env() -> (TempDir, IconLoader) {
         let temp = TempDir::new("env");
         let icons_root = temp.path().join("icons");
@@ -250,5 +255,17 @@ mod tests {
             .expect("downscaled icon");
         assert_eq!(image.width, 24);
         assert_eq!(image.height, 24);
+    }
+
+    #[test]
+    fn absolute_path_svg_warm_finds_file() {
+        let (temp, loader) = create_loader_env();
+        let path = temp.path().join("icons/Adwaita/22x22/apps/vector.svg");
+        write_svg(&path);
+        let icon_path = path.to_string_lossy().to_string();
+
+        let mut cache = IconCache::new_for_tests(loader);
+        cache.warm(&[icon_path.as_str()], 24);
+        assert!(cache.lookup(icon_path.as_str(), 24).is_some());
     }
 }

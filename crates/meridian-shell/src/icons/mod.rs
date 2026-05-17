@@ -1,5 +1,6 @@
 mod cache;
 mod loader;
+pub mod svg;
 mod theme_index;
 
 pub use cache::IconCache;

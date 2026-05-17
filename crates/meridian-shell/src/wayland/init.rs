@@ -142,10 +142,7 @@ pub(crate) fn initialize(
     let font = TextRenderer::new(&theme.fonts.ui, 13);
     let pool = SlotPool::new(1024 * 1024 * 4, &shm)?;
     let mut icon_cache = IconCache::new();
-    icon_cache.warm(
-        &["utilities-terminal", "firefox", "system-file-manager"],
-        22,
-    );
+    icon_cache.warm(&["utilities-terminal", "firefox", "org.kde.dolphin"], 22);
     let launcher_apps = launcher::DesktopApp::load_system();
     let mut seen_icons = HashSet::new();
     let mut launcher_icons = Vec::new();

@@ -48,10 +48,10 @@ pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
         },
         PinnedApp {
             label: "Files".to_string(),
-            program: "xdg-open".to_string(),
-            args: vec![std::env::var("HOME").unwrap_or_else(|_| "/".to_string())],
+            program: "dolphin".to_string(),
+            args: vec![],
             terminal: false,
-            icon_name: Some("system-file-manager".to_string()),
+            icon_name: Some("org.kde.dolphin".to_string()),
         },
     ]
 }
@@ -137,7 +137,7 @@ mod tests {
         assert_eq!(pinned[1].program, "firefox");
         assert_eq!(pinned[1].icon_name.as_deref(), Some("firefox"));
         assert_eq!(pinned[2].label, "Files");
-        assert_eq!(pinned[2].program, "xdg-open");
-        assert_eq!(pinned[2].icon_name.as_deref(), Some("system-file-manager"));
+        assert_eq!(pinned[2].program, "dolphin");
+        assert_eq!(pinned[2].icon_name.as_deref(), Some("org.kde.dolphin"));
     }
 }
