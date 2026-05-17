@@ -2,7 +2,9 @@ use meridian_config::Decorations;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, Rectangle, Size};
 
-use super::super::{DecorationManager, BUTTON_MARGIN, BUTTON_SIZE, TITLE_BAR_HEIGHT};
+use super::super::{
+    DecorationManager, BUTTON_HEIGHT, BUTTON_MARGIN, BUTTON_WIDTH, TITLE_BAR_HEIGHT,
+};
 
 pub(crate) const SSD_RESIZE_HANDLE_THICKNESS: i32 = 8;
 
@@ -133,18 +135,24 @@ impl SsdChromeMetrics {
         }
 
         let frame_right = self.frame.frame_origin.x + self.frame.frame_size.w;
-        let close_x = frame_right - BUTTON_SIZE - BUTTON_MARGIN;
+        let close_x = frame_right - BUTTON_WIDTH - BUTTON_MARGIN;
         let close_y = self.frame.frame_origin.y
-            + (self.frame.titlebar_height - BUTTON_SIZE) / 2
+            + (self.frame.titlebar_height - BUTTON_HEIGHT) / 2
             + self.frame.border_width;
-        let max_x = close_x - BUTTON_SIZE - BUTTON_MARGIN / 2;
-        let min_x = max_x - BUTTON_SIZE - BUTTON_MARGIN / 2;
-        let close_rect =
-            Rectangle::new((close_x, close_y).into(), (BUTTON_SIZE, BUTTON_SIZE).into());
-        let maximize_rect =
-            Rectangle::new((max_x, close_y).into(), (BUTTON_SIZE, BUTTON_SIZE).into());
-        let minimize_rect =
-            Rectangle::new((min_x, close_y).into(), (BUTTON_SIZE, BUTTON_SIZE).into());
+        let max_x = close_x - BUTTON_WIDTH - BUTTON_MARGIN / 2;
+        let min_x = max_x - BUTTON_WIDTH - BUTTON_MARGIN / 2;
+        let close_rect = Rectangle::new(
+            (close_x, close_y).into(),
+            (BUTTON_WIDTH, BUTTON_HEIGHT).into(),
+        );
+        let maximize_rect = Rectangle::new(
+            (max_x, close_y).into(),
+            (BUTTON_WIDTH, BUTTON_HEIGHT).into(),
+        );
+        let minimize_rect = Rectangle::new(
+            (min_x, close_y).into(),
+            (BUTTON_WIDTH, BUTTON_HEIGHT).into(),
+        );
 
         Some(SsdButtonMetrics {
             close_rect,
@@ -342,12 +350,12 @@ mod tests {
         let chrome = SsdChromeMetrics::new(frame);
         let buttons = chrome.button_metrics().expect("titlebar buttons");
 
-        assert_eq!(buttons.close_rect.loc, Point::from((620, 10)));
-        assert_eq!(buttons.maximize_rect.loc, Point::from((600, 10)));
-        assert_eq!(buttons.minimize_rect.loc, Point::from((580, 10)));
-        assert_eq!(buttons.close_rect.size, Size::from((16, 16)));
-        assert_eq!(buttons.maximize_rect.size, Size::from((16, 16)));
-        assert_eq!(buttons.minimize_rect.size, Size::from((16, 16)));
+        assert_eq!(buttons.close_rect.loc, Point::from((608, 6)));
+        assert_eq!(buttons.maximize_rect.loc, Point::from((576, 6)));
+        assert_eq!(buttons.minimize_rect.loc, Point::from((544, 6)));
+        assert_eq!(buttons.close_rect.size, Size::from((28, 24)));
+        assert_eq!(buttons.maximize_rect.size, Size::from((28, 24)));
+        assert_eq!(buttons.minimize_rect.size, Size::from((28, 24)));
     }
 
     #[test]

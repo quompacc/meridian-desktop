@@ -1,8 +1,8 @@
 use meridian_config::{Decorations, ThemeColors};
 
 use super::super::{
-    model::{opaque, WindowDecoration, SHADOW_COLOR},
-    BUTTON_SIZE, TITLE_BAR_HEIGHT,
+    model::{opaque, HoveredButton, WindowDecoration, SHADOW_COLOR},
+    BUTTON_HEIGHT, BUTTON_WIDTH, TITLE_BAR_HEIGHT,
 };
 use super::geometry::{SsdChromeMetrics, SsdFrameMetrics};
 
@@ -29,23 +29,36 @@ pub(super) fn update_buffers(
     } else {
         colors.border
     });
-    let close_f32 = opaque(colors.error);
-    let maximize_f32 = opaque(colors.success);
-    let minimize_f32 = opaque(colors.warning);
+    let transparent = [0.0f32; 4];
+    let close_f32 = if deco.hovered_button() == Some(HoveredButton::Close) {
+        opaque(colors.error)
+    } else {
+        transparent
+    };
+    let maximize_f32 = if deco.hovered_button() == Some(HoveredButton::Maximize) {
+        opaque(colors.surface)
+    } else {
+        transparent
+    };
+    let minimize_f32 = if deco.hovered_button() == Some(HoveredButton::Minimize) {
+        opaque(colors.surface)
+    } else {
+        transparent
+    };
 
     if show_title {
         deco.buffers
             .titlebar
             .update((total_w, TITLE_BAR_HEIGHT + bw), title_f32);
         deco.buffers
-            .close_btn
-            .update((BUTTON_SIZE, BUTTON_SIZE), close_f32);
+            .close_bg
+            .update((BUTTON_WIDTH, BUTTON_HEIGHT), close_f32);
         deco.buffers
-            .maximize_btn
-            .update((BUTTON_SIZE, BUTTON_SIZE), maximize_f32);
+            .maximize_bg
+            .update((BUTTON_WIDTH, BUTTON_HEIGHT), maximize_f32);
         deco.buffers
-            .minimize_btn
-            .update((BUTTON_SIZE, BUTTON_SIZE), minimize_f32);
+            .minimize_bg
+            .update((BUTTON_WIDTH, BUTTON_HEIGHT), minimize_f32);
     }
     if bw > 0 {
         if !show_title {

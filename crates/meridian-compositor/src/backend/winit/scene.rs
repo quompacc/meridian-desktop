@@ -125,6 +125,7 @@ pub(super) fn render_elements_for_output(
                 &theme.decorations,
             );
             let window_deco_elements = state.decoration_manager.render_elements(
+                renderer,
                 &wl_surf,
                 metrics.frame_origin,
                 metrics.client_size,
@@ -135,7 +136,14 @@ pub(super) fn render_elements_for_output(
             scratch.normal.extend(
                 window_deco_elements
                     .into_iter()
-                    .map(WinitRenderElements::Decoration),
+                    .map(|element| match element {
+                        crate::decoration::DecorationRenderElement::Solid(solid) => {
+                            WinitRenderElements::Decoration(solid)
+                        }
+                        crate::decoration::DecorationRenderElement::Icon(icon) => {
+                            WinitRenderElements::DecorationIcon(icon.into())
+                        }
+                    }),
             );
         }
 

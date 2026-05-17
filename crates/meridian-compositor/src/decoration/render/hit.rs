@@ -181,15 +181,15 @@ mod tests {
     fn button_points_hit_close_maximize_and_minimize_regions() {
         let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
         assert_eq!(
-            classify_ssd_frame_hit((620.0, 10.0).into(), metrics),
+            classify_ssd_frame_hit((622.0, 18.0).into(), metrics),
             SsdFrameHitRegion::CloseButton
         );
         assert_eq!(
-            classify_ssd_frame_hit((600.0, 10.0).into(), metrics),
+            classify_ssd_frame_hit((590.0, 18.0).into(), metrics),
             SsdFrameHitRegion::MaximizeButton
         );
         assert_eq!(
-            classify_ssd_frame_hit((580.0, 10.0).into(), metrics),
+            classify_ssd_frame_hit((558.0, 18.0).into(), metrics),
             SsdFrameHitRegion::MinimizeButton
         );
     }

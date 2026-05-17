@@ -5,8 +5,9 @@ use smithay::{
         renderer::{
             damage::OutputDamageTracker,
             element::{
-                render_elements, solid::SolidColorRenderElement,
-                surface::WaylandSurfaceRenderElement, texture::TextureRenderElement,
+                memory::MemoryRenderBufferRenderElement, render_elements,
+                solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement,
+                texture::TextureRenderElement, Wrap,
             },
             gles::{GlesRenderer, GlesTexture},
         },
@@ -32,6 +33,7 @@ render_elements! {
     pub WinitRenderElements<=GlesRenderer>;
     Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
     Decoration=SolidColorRenderElement,
+    DecorationIcon=Wrap<MemoryRenderBufferRenderElement<GlesRenderer>>,
     Wallpaper=TextureRenderElement<GlesTexture>,
     Layer=WaylandSurfaceRenderElement<GlesRenderer>,
 }

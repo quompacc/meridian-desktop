@@ -13,7 +13,7 @@ use tracing::debug;
 use crate::{
     backend::drm::DrmCursorIcon,
     cursor::CursorImage,
-    decoration::{DecorationHit, DecorationResizeEdge},
+    decoration::{DecorationHit, DecorationResizeEdge, HoveredButton},
     state::{MeridianState, OutputGeometry, OutputId, OutputRegistry},
 };
 
@@ -302,12 +302,28 @@ fn cursor_icon_for_resize_edge(edge: DecorationResizeEdge) -> DrmCursorIcon {
 }
 
 fn update_hover_cursor_feedback(state: &mut MeridianState, location: Point<f64, Logical>) {
-    let desired_cursor = match decoration_hit_for_pointer(state, location) {
+    let decoration_hit = decoration_hit_for_pointer(state, location);
+    let desired_cursor = match decoration_hit {
         Some(DecorationHit::Resize(edge)) => cursor_icon_for_resize_edge(edge),
         _ => xwayland_resize_edge_hit_for_pointer(state, location)
             .map(|(_, edge, _)| cursor_icon_for_resize_edge(edge))
             .unwrap_or(DrmCursorIcon::Default),
     };
+    let hovered_button = match decoration_hit {
+        Some(DecorationHit::CloseButton) => Some(HoveredButton::Close),
+        Some(DecorationHit::MaximizeButton) => Some(HoveredButton::Maximize),
+        Some(DecorationHit::MinimizeButton) => Some(HoveredButton::Minimize),
+        _ => None,
+    };
+    state.decoration_manager.clear_hover_buttons();
+    if let Some((window, _)) = state.workspaces.active_space().element_under(location) {
+        if let (Some(wl_surface), Some(hovered)) = (window.wl_surface(), hovered_button) {
+            state
+                .decoration_manager
+                .update_hover_button(&wl_surface, Some(hovered));
+        }
+    }
+    // TODO(phase-3): Motion updates hover state, but non-motion pointer leave still needs explicit clear.
 
     let cursor_cfg = &state.theme_manager.current().config.cursor;
     let cursor_theme = std::env::var("XCURSOR_THEME").unwrap_or_else(|_| cursor_cfg.theme.clone());

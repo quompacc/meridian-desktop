@@ -1,13 +1,20 @@
 use meridian_config::{Color, Decorations};
 use smithay::backend::renderer::element::solid::SolidColorBuffer;
 
-use super::{BUTTON_SIZE, SHADOW_ALPHA};
+use super::{BUTTON_HEIGHT, BUTTON_WIDTH, SHADOW_ALPHA};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HoveredButton {
+    Close,
+    Maximize,
+    Minimize,
+}
 
 pub(super) struct DecorationBuffers {
     pub(super) titlebar: SolidColorBuffer,
-    pub(super) close_btn: SolidColorBuffer,
-    pub(super) maximize_btn: SolidColorBuffer,
-    pub(super) minimize_btn: SolidColorBuffer,
+    pub(super) close_bg: SolidColorBuffer,
+    pub(super) maximize_bg: SolidColorBuffer,
+    pub(super) minimize_bg: SolidColorBuffer,
     pub(super) border_top: SolidColorBuffer,
     pub(super) border_left: SolidColorBuffer,
     pub(super) border_right: SolidColorBuffer,
@@ -20,9 +27,9 @@ impl DecorationBuffers {
         let z = [0.0f32; 4];
         Self {
             titlebar: SolidColorBuffer::new((1, 1), z),
-            close_btn: SolidColorBuffer::new((BUTTON_SIZE, BUTTON_SIZE), z),
-            maximize_btn: SolidColorBuffer::new((BUTTON_SIZE, BUTTON_SIZE), z),
-            minimize_btn: SolidColorBuffer::new((BUTTON_SIZE, BUTTON_SIZE), z),
+            close_bg: SolidColorBuffer::new((BUTTON_WIDTH, BUTTON_HEIGHT), z),
+            maximize_bg: SolidColorBuffer::new((BUTTON_WIDTH, BUTTON_HEIGHT), z),
+            minimize_bg: SolidColorBuffer::new((BUTTON_WIDTH, BUTTON_HEIGHT), z),
             border_top: SolidColorBuffer::new((1, 1), z),
             border_left: SolidColorBuffer::new((1, 1), z),
             border_right: SolidColorBuffer::new((1, 1), z),
@@ -38,6 +45,7 @@ pub(super) struct WindowDecoration {
     pub(super) is_maximized: bool,
     pub(super) is_tiled: bool,
     pub(super) is_fullscreen: bool,
+    pub(super) hovered_button: Option<HoveredButton>,
     pub(super) dirty: bool,
     pub(super) last_content_size: (i32, i32),
     pub(super) last_bw: i32,
@@ -52,6 +60,7 @@ impl WindowDecoration {
             is_maximized: false,
             is_tiled: false,
             is_fullscreen: false,
+            hovered_button: None,
             dirty: true,
             last_content_size: (0, 0),
             last_bw: 0,
@@ -76,6 +85,18 @@ impl WindowDecoration {
             theme.border_width as i32
         }
     }
+
+    pub(super) fn hovered_button(&self) -> Option<HoveredButton> {
+        self.hovered_button
+    }
+
+    pub(super) fn set_hover(&mut self, hovered: Option<HoveredButton>) -> bool {
+        if self.hovered_button == hovered {
+            return false;
+        }
+        self.hovered_button = hovered;
+        true
+    }
 }
 
 pub(super) fn opaque(c: Color) -> [f32; 4] {
@@ -88,3 +109,16 @@ pub(super) fn opaque(c: Color) -> [f32; 4] {
 }
 
 pub(super) const SHADOW_COLOR: [f32; 4] = [0.0f32, 0.0, 0.0, SHADOW_ALPHA];
+
+#[cfg(test)]
+mod tests {
+    use super::{HoveredButton, WindowDecoration};
+
+    #[test]
+    fn set_hover_reports_transitions_only_when_value_changes() {
+        let mut deco = WindowDecoration::new();
+        assert!(deco.set_hover(Some(HoveredButton::Close)));
+        assert!(!deco.set_hover(Some(HoveredButton::Close)));
+        assert!(deco.set_hover(None));
+    }
+}

@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use smithay::backend::renderer::element::{
     render_elements, surface::render_elements_from_surface_tree,
-    surface::WaylandSurfaceRenderElement, AsRenderElements,
+    surface::WaylandSurfaceRenderElement, AsRenderElements, Wrap,
 };
 use smithay::{
     backend::renderer::{
@@ -39,6 +39,7 @@ render_elements! {
     Cursor=MemoryRenderBufferRenderElement<GlesRenderer>,
     Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
     Decoration=SolidColorRenderElement,
+    DecorationIcon=Wrap<MemoryRenderBufferRenderElement<GlesRenderer>>,
     Wallpaper=TextureRenderElement<GlesTexture>,
     Layer=WaylandSurfaceRenderElement<GlesRenderer>,
 }
@@ -192,6 +193,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                         &theme.decorations,
                     );
                     let window_deco_elements = state.decoration_manager.render_elements(
+                        renderer,
                         &wl_surf,
                         metrics.frame_origin,
                         metrics.client_size,
@@ -200,11 +202,19 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                         scale,
                     );
                     decoration_element_count += window_deco_elements.len();
-                    out.scratch_normal.extend(
-                        window_deco_elements
-                            .into_iter()
-                            .map(MeridianRenderElements::Decoration),
-                    );
+                    out.scratch_normal
+                        .extend(
+                            window_deco_elements
+                                .into_iter()
+                                .map(|element| match element {
+                                    crate::decoration::DecorationRenderElement::Solid(solid) => {
+                                        MeridianRenderElements::Decoration(solid)
+                                    }
+                                    crate::decoration::DecorationRenderElement::Icon(icon) => {
+                                        MeridianRenderElements::DecorationIcon(icon.into())
+                                    }
+                                }),
+                        );
                 }
 
                 let space_start = out.scratch_normal.len();
@@ -412,7 +422,13 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                 out.scratch_upper_layer_data.len(),
                 elements
                     .iter()
-                    .filter(|element| matches!(element, MeridianRenderElements::Decoration(_)))
+                    .filter(|element| {
+                        matches!(
+                            element,
+                            MeridianRenderElements::Decoration(_)
+                                | MeridianRenderElements::DecorationIcon(_)
+                        )
+                    })
                     .count()
                     .saturating_sub(cursor_count),
                 elements

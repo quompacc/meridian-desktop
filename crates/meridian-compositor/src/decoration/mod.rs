@@ -1,18 +1,33 @@
 use std::collections::HashMap;
 
+use smithay::backend::renderer::{
+    element::{memory::MemoryRenderBufferRenderElement, solid::SolidColorRenderElement},
+    gles::GlesRenderer,
+};
 use smithay::reexports::wayland_server::{
     backend::ObjectId, protocol::wl_surface::WlSurface, Resource,
 };
 
+pub mod icons;
 mod model;
 mod render;
 
+pub use model::HoveredButton;
 use model::WindowDecoration;
+use render::icon_cache::IconCache;
 
 pub const TITLE_BAR_HEIGHT: i32 = 32;
-pub const BUTTON_SIZE: i32 = 16;
+pub const BUTTON_WIDTH: i32 = 28;
+pub const BUTTON_HEIGHT: i32 = 24;
+pub const BUTTON_ICON_PX: u32 = 16;
+pub const BUTTON_STROKE_WIDTH: f32 = 1.5;
 pub const BUTTON_MARGIN: i32 = 8;
 const SHADOW_ALPHA: f32 = 0.35;
+
+pub enum DecorationRenderElement {
+    Solid(SolidColorRenderElement),
+    Icon(MemoryRenderBufferRenderElement<GlesRenderer>),
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DecorationResizeEdge {
@@ -37,12 +52,14 @@ pub enum DecorationHit {
 
 pub struct DecorationManager {
     decorations: HashMap<ObjectId, WindowDecoration>,
+    icon_cache: IconCache,
 }
 
 impl DecorationManager {
     pub fn new() -> Self {
         Self {
             decorations: HashMap::new(),
+            icon_cache: IconCache::new(BUTTON_ICON_PX, BUTTON_STROKE_WIDTH),
         }
     }
 
@@ -59,6 +76,17 @@ impl DecorationManager {
             d.has_ssd = ssd;
             d.dirty = true;
         }
+    }
+
+    fn set_hover_and_mark_dirty(
+        deco: &mut WindowDecoration,
+        hovered: Option<HoveredButton>,
+    ) -> bool {
+        if deco.set_hover(hovered) {
+            deco.dirty = true;
+            return true;
+        }
+        false
     }
 
     pub fn set_focused(&mut self, surface: &WlSurface, focused: bool) {
@@ -103,6 +131,20 @@ impl DecorationManager {
         }
     }
 
+    pub fn update_hover_button(&mut self, surface: &WlSurface, hovered: Option<HoveredButton>) {
+        let d = self
+            .decorations
+            .entry(Self::key(surface))
+            .or_insert_with(WindowDecoration::new);
+        let _ = Self::set_hover_and_mark_dirty(d, hovered);
+    }
+
+    pub fn clear_hover_buttons(&mut self) {
+        for deco in self.decorations.values_mut() {
+            let _ = Self::set_hover_and_mark_dirty(deco, None);
+        }
+    }
+
     pub fn remove(&mut self, surface: &WlSurface) {
         self.decorations.remove(&Self::key(surface));
     }
@@ -118,5 +160,28 @@ impl DecorationManager {
 impl Default for DecorationManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{model::HoveredButton, DecorationManager, WindowDecoration};
+
+    #[test]
+    fn update_hover_button_marks_dirty_only_on_state_transition() {
+        let mut deco = WindowDecoration::new();
+        deco.dirty = false;
+        assert!(DecorationManager::set_hover_and_mark_dirty(
+            &mut deco,
+            Some(HoveredButton::Close)
+        ));
+        assert!(deco.dirty);
+
+        deco.dirty = false;
+        assert!(!DecorationManager::set_hover_and_mark_dirty(
+            &mut deco,
+            Some(HoveredButton::Close)
+        ));
+        assert!(!deco.dirty);
     }
 }
