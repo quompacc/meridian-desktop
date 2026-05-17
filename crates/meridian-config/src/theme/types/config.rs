@@ -74,7 +74,7 @@ pub struct Fonts {
 impl Default for Fonts {
     fn default() -> Self {
         Self {
-            ui: "Inter 11".to_string(),
+            ui: "JetBrains Mono 11".to_string(),
             mono: "JetBrains Mono 10".to_string(),
         }
     }
@@ -151,7 +151,7 @@ pub struct ThemeConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{Color, Decorations, ThemeColors, ThemeConfig};
+    use super::{Color, Decorations, Fonts, ThemeColors, ThemeConfig};
 
     #[test]
     fn test_theme_colors_default_tokyo_night() {
@@ -209,5 +209,12 @@ mod tests {
         assert_eq!(config.decorations.shadow_alpha, 0.22);
         assert_eq!(config.decorations.shadow_offset_y, 0);
         assert_eq!(config.decorations.gap, 8);
+    }
+
+    #[test]
+    fn test_fonts_default_uses_jetbrains_mono() {
+        let fonts = Fonts::default();
+        assert_eq!(fonts.ui, "JetBrains Mono 11");
+        assert_eq!(fonts.mono, "JetBrains Mono 10");
     }
 }

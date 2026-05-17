@@ -65,6 +65,33 @@ impl Face {
         Ok(Self(face))
     }
 
+    pub fn new_from_memory(
+        library: &Library,
+        data: &'static [u8],
+        pixels: u32,
+    ) -> Result<Self, c_int> {
+        let mut face = ptr::null_mut();
+        // SAFETY: `library.0` is a live FreeType library, `data` is `'static`, and out-pointer is valid.
+        let err = unsafe {
+            FT_New_Memory_Face(library.0, data.as_ptr(), data.len() as c_long, 0, &mut face)
+        };
+        if err != 0 {
+            return Err(err);
+        }
+
+        // SAFETY: `face` is initialized by `FT_New_Memory_Face` on success and is valid here.
+        let err = unsafe { FT_Set_Pixel_Sizes(face, 0, pixels) };
+        if err != 0 {
+            // SAFETY: `face` was created by `FT_New_Memory_Face`; freeing it on error prevents leaks.
+            unsafe {
+                FT_Done_Face(face);
+            }
+            return Err(err);
+        }
+
+        Ok(Self(face))
+    }
+
     pub fn load_char(&mut self, ch: char) -> Option<GlyphBitmap> {
         // SAFETY: `self.0` is a valid face; FreeType handles the provided character code.
         let err = unsafe { FT_Load_Char(self.0, ch as c_ulong, FT_LOAD_RENDER) };
@@ -261,6 +288,13 @@ extern "C" {
     fn FT_New_Face(
         library: FT_Library,
         filepathname: *const c_char,
+        face_index: c_long,
+        aface: *mut FT_Face,
+    ) -> c_int;
+    fn FT_New_Memory_Face(
+        library: FT_Library,
+        file_base: *const u8,
+        file_size: c_long,
         face_index: c_long,
         aface: *mut FT_Face,
     ) -> c_int;

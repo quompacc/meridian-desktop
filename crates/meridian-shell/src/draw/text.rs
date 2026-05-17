@@ -8,6 +8,9 @@ use meridian_config::Color;
 
 use super::{fc, ft, painter::Painter};
 
+pub(crate) const JETBRAINS_MONO_REGULAR: &[u8] =
+    include_bytes!("../../assets/fonts/JetBrainsMono.ttf");
+
 pub struct TextRenderer {
     face: ft::Face,
     library: ft::Library,
@@ -15,8 +18,12 @@ pub struct TextRenderer {
 
 impl TextRenderer {
     pub fn new(pattern: &str, pixels: u32) -> Option<Self> {
-        let font_path = fontconfig_match(pattern).or_else(|| fontconfig_match("sans"))?;
         let library = ft::Library::new().ok()?;
+        if let Ok(face) = ft::Face::new_from_memory(&library, JETBRAINS_MONO_REGULAR, pixels) {
+            return Some(Self { face, library });
+        }
+
+        let font_path = fontconfig_match(pattern).or_else(|| fontconfig_match("sans"))?;
         let face = ft::Face::new(&library, &font_path, pixels).ok()?;
         Some(Self { face, library })
     }
@@ -124,6 +131,11 @@ fn fontconfig_match(pattern: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::TextRenderer;
+
+    #[test]
+    fn test_renderer_creates_from_embedded_font() {
+        assert!(TextRenderer::new("ignored", 12).is_some());
+    }
 
     #[test]
     fn measure_text_is_monotonic_for_longer_strings() {
