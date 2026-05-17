@@ -82,42 +82,41 @@ pub fn draw_active_indicator(
     painter.rect(bar, theme.colors.accent);
 }
 
+pub fn draw_section_separator(
+    painter: &mut Painter<'_>,
+    x: i32,
+    y: i32,
+    height: i32,
+    theme: &ThemeConfig,
+) {
+    let line = Rect {
+        x,
+        y: y + 4,
+        w: 1,
+        h: (height - 8).max(0),
+    };
+    painter.rect(line, theme.colors.border);
+}
+
 pub fn draw_workspace_button(
     painter: &mut Painter<'_>,
     rect: Rect,
     theme: &ThemeConfig,
     is_active: bool,
-    is_occupied: bool,
+    _is_occupied: bool,
+    is_hovered: bool,
 ) -> Color {
-    if is_active {
-        fill_surface_with_radius(
-            painter,
-            rect,
-            theme,
-            SurfaceKind::Background,
-            tokens::panel::BUTTON_RADIUS,
-        );
-        draw_active_indicator(painter, rect, ActiveIndicatorEdge::Top, theme);
-        theme.colors.text
-    } else if is_occupied {
-        fill_surface_with_radius(
-            painter,
-            rect,
-            theme,
-            SurfaceKind::Surface,
-            tokens::panel::BUTTON_RADIUS,
-        );
-        theme.colors.text
+    let bg = if is_hovered {
+        theme.colors.border
     } else {
-        fill_surface_with_radius(
-            painter,
-            rect,
-            theme,
-            SurfaceKind::Background,
-            tokens::panel::BUTTON_RADIUS,
-        );
-        theme.colors.text
+        theme.colors.surface
+    };
+    painter.roundish_rect_with_radius(rect, bg, tokens::panel::BUTTON_RADIUS);
+
+    if is_active {
+        draw_active_indicator(painter, rect, ActiveIndicatorEdge::Top, theme);
     }
+    theme.colors.text
 }
 
 pub fn draw_panel_button(
@@ -125,26 +124,20 @@ pub fn draw_panel_button(
     rect: Rect,
     theme: &ThemeConfig,
     state: InteractiveState,
+    is_hovered: bool,
 ) -> Color {
+    let default_bg = if is_hovered {
+        theme.colors.border
+    } else {
+        theme.colors.surface
+    };
     match state {
         InteractiveState::Default => {
-            fill_surface_with_radius(
-                painter,
-                rect,
-                theme,
-                SurfaceKind::Background,
-                tokens::panel::BUTTON_RADIUS,
-            );
+            painter.roundish_rect_with_radius(rect, default_bg, tokens::panel::BUTTON_RADIUS);
             theme.colors.text
         }
         InteractiveState::Selected => {
-            fill_surface_with_radius(
-                painter,
-                rect,
-                theme,
-                SurfaceKind::Surface,
-                tokens::panel::BUTTON_RADIUS,
-            );
+            painter.roundish_rect_with_radius(rect, default_bg, tokens::panel::BUTTON_RADIUS);
             draw_active_indicator(painter, rect, ActiveIndicatorEdge::Bottom, theme);
             theme.colors.text
         }

@@ -29,7 +29,7 @@ pub mod badge {
 pub mod panel {
     pub const WORKSPACE_BUTTON_W: i32 = 28;
     pub const WORKSPACE_BUTTON_H: i32 = 28;
-    pub const WORKSPACE_BUTTON_Y: i32 = 4;
+    pub const WORKSPACE_BUTTON_Y: i32 = 7;
     pub const WORKSPACE_BUTTON_GAP: i32 = 4;
     pub const LEFT_PADDING: i32 = 8;
     pub const LAUNCHER_BUTTON_W: i32 = 58;
@@ -68,7 +68,7 @@ mod tests {
 
     #[test]
     fn panel_workspace_button_stays_inside_height() {
-        assert!(panel::WORKSPACE_BUTTON_Y + panel::WORKSPACE_BUTTON_H <= 36);
+        assert!(panel::WORKSPACE_BUTTON_Y + panel::WORKSPACE_BUTTON_H <= 42);
     }
 
     #[test]

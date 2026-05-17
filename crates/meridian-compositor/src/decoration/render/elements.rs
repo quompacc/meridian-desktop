@@ -164,16 +164,6 @@ impl DecorationManager {
                 ),
             ));
 
-            elements.push(DecorationRenderElement::Solid(
-                SolidColorRenderElement::from_buffer(
-                    &deco.buffers.titlebar,
-                    phys(x, y),
-                    scale,
-                    1.0,
-                    Kind::Unspecified,
-                ),
-            ));
-
             if deco.is_focused {
                 elements.push(DecorationRenderElement::Solid(
                     SolidColorRenderElement::from_buffer(
@@ -185,6 +175,16 @@ impl DecorationManager {
                     ),
                 ));
             }
+
+            elements.push(DecorationRenderElement::Solid(
+                SolidColorRenderElement::from_buffer(
+                    &deco.buffers.titlebar,
+                    phys(x, y),
+                    scale,
+                    1.0,
+                    Kind::Unspecified,
+                ),
+            ));
         }
 
         if bw > 0 {

@@ -1608,7 +1608,7 @@ pub fn draw_launcher(
             } else {
                 InteractiveState::Default
             };
-            let text_color = draw_panel_button(painter, rect, theme, row_state);
+            let text_color = draw_panel_button(painter, rect, theme, row_state, false);
             let label = if awaiting_confirmation {
                 action.confirm_label()
             } else {

@@ -1,7 +1,7 @@
 use smithay_client_toolkit::shell::wlr_layer::{
     Anchor, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
 };
-use tracing::warn;
+use tracing::{debug, warn};
 use wayland_client::{Connection, QueueHandle};
 
 use crate::wayland::{MeridianShell, RepaintReason};
@@ -54,6 +54,12 @@ impl LayerShellHandler for MeridianShell {
             self.panel_configured = true;
             if configure.new_size.0 > 0 {
                 self.width = configure.new_size.0;
+            } else if let Some(output_width) = self.panel_output_width_fallback() {
+                self.width = output_width as u32;
+                debug!(
+                    "panel configure width fallback used: output_width={} (configure width was 0)",
+                    output_width
+                );
             }
             self.draw_panel(qh, RepaintReason::LayerConfigure);
         } else if self.launcher_layer == *layer {
@@ -127,5 +133,25 @@ impl LayerShellHandler for MeridianShell {
                 self.draw_calendar_popup(qh, RepaintReason::LayerConfigure);
             }
         }
+    }
+}
+
+impl MeridianShell {
+    fn panel_output_width_fallback(&self) -> Option<i32> {
+        self.output_state
+            .outputs()
+            .filter_map(|output| self.output_state.info(&output))
+            .filter_map(|info| {
+                info.logical_size
+                    .map(|(w, _)| w)
+                    .or_else(|| {
+                        info.modes
+                            .iter()
+                            .find(|mode| mode.current)
+                            .map(|mode| mode.dimensions.0)
+                    })
+                    .filter(|width| *width > 0)
+            })
+            .max()
     }
 }

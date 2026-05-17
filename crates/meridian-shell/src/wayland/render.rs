@@ -12,7 +12,7 @@ use crate::{
 use super::{
     calendar::{weekday_labels, CalendarMonthModel},
     shell::{LauncherRenderSignature, PanelRenderSignature, ThemeRenderSignature},
-    time, CommitReason, CommitSurfaceKind, MeridianShell, RepaintReason,
+    time, CommitReason, CommitSurfaceKind, MeridianShell, RepaintReason, SurfaceKind,
 };
 
 const CANVAS_RETRY_ATTEMPTS: usize = 2;
@@ -280,6 +280,8 @@ impl MeridianShell {
                     window_entries: &panel_window_entries,
                     clock: &clock,
                     width,
+                    hover_pos: (self.pointer_surface == SurfaceKind::Panel)
+                        .then_some(self.pointer_position),
                 },
             );
             if self.workspace_indicator_dirty {

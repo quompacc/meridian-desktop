@@ -5,8 +5,8 @@ use meridian_config::ThemeConfig;
 use crate::{
     ui::{
         primitives::{
-            draw_active_indicator, draw_panel_button, draw_workspace_button, ActiveIndicatorEdge,
-            InteractiveState,
+            draw_active_indicator, draw_panel_button, draw_section_separator,
+            draw_workspace_button, ActiveIndicatorEdge, InteractiveState,
         },
         tokens,
     },
@@ -33,6 +33,7 @@ pub struct PanelDrawInput<'a> {
     pub window_entries: &'a [PanelWindowEntry],
     pub clock: &'a str,
     pub width: u32,
+    pub hover_pos: Option<(f64, f64)>,
 }
 
 impl PanelState {
@@ -54,6 +55,7 @@ pub fn draw_panel(
         window_entries,
         clock,
         width,
+        hover_pos,
     } = input;
     let colors = &theme.colors;
     painter.clear(colors.surface_alt);
@@ -86,7 +88,16 @@ pub fn draw_panel(
         w: tokens::panel::LAUNCHER_BUTTON_W,
         h: tokens::panel::WORKSPACE_BUTTON_H,
     };
-    let launcher_text = draw_panel_button(painter, launcher_rect, theme, InteractiveState::Default);
+    let launcher_hovered = hover_pos
+        .map(|(px, py)| launcher_rect.contains(px, py))
+        .unwrap_or(false);
+    let launcher_text = draw_panel_button(
+        painter,
+        launcher_rect,
+        theme,
+        InteractiveState::Default,
+        launcher_hovered,
+    );
     painter.text_centered(font, "Launcher", launcher_rect, launcher_text);
     panel_state.clicks.push(ClickZone {
         rect: launcher_rect,
@@ -108,7 +119,11 @@ pub fn draw_panel(
             w: tokens::panel::WORKSPACE_BUTTON_W,
             h: tokens::panel::WORKSPACE_BUTTON_H,
         };
-        let text_color = draw_workspace_button(painter, rect, theme, is_active, is_occupied);
+        let is_hovered = hover_pos
+            .map(|(px, py)| rect.contains(px, py))
+            .unwrap_or(false);
+        let text_color =
+            draw_workspace_button(painter, rect, theme, is_active, is_occupied, is_hovered);
         painter.text_centered(font, &ws.to_string(), rect, text_color);
         panel_state.clicks.push(ClickZone {
             rect,
@@ -117,6 +132,8 @@ pub fn draw_panel(
         x += tokens::panel::WORKSPACE_BUTTON_W + tokens::panel::WORKSPACE_BUTTON_GAP;
     }
 
+    let workspace_group_end_x = x - tokens::panel::WORKSPACE_BUTTON_GAP;
+
     // ── Right: Clock ────────────────────────────────────────────────────────
     let clock_rect = Rect {
         x: width as i32 - tokens::panel::CLOCK_W - tokens::panel::RIGHT_PADDING,
@@ -124,6 +141,15 @@ pub fn draw_panel(
         w: tokens::panel::CLOCK_W,
         h: 20,
     };
+    let clock_hovered = hover_pos
+        .map(|(px, py)| clock_rect.contains(px, py))
+        .unwrap_or(false);
+    let clock_bg = if clock_hovered {
+        colors.border
+    } else {
+        colors.surface
+    };
+    painter.roundish_rect_with_radius(clock_rect, clock_bg, tokens::panel::CLOCK_RADIUS);
     painter.text_centered(font, clock, clock_rect, colors.text);
     panel_state.clicks.push(ClickZone {
         rect: clock_rect,
@@ -134,6 +160,15 @@ pub fn draw_panel(
     let center_left = x + 12;
     let center_right = clock_rect.x - 12;
     let center_w = center_right - center_left;
+    draw_section_separator(
+        painter,
+        workspace_group_end_x + 8,
+        panel_card.y,
+        panel_card.h,
+        theme,
+    );
+    draw_section_separator(painter, clock_rect.x - 8, panel_card.y, panel_card.h, theme);
+
     if center_w > 40 && !window_entries.is_empty() {
         let center_rect = Rect {
             x: center_left,
@@ -141,7 +176,6 @@ pub fn draw_panel(
             w: center_w,
             h: 20,
         };
-        let baseline = center_rect.y + (center_rect.h / 2) + 5;
         let mut text_x = center_rect.x;
         let right = center_rect.x + center_rect.w;
 
@@ -151,10 +185,28 @@ pub fn draw_panel(
             }
 
             let mut label = String::new();
-            if idx > 0 {
-                label.push_str(" | ");
-            }
             label.push_str(&entry.title);
+            let prefix_w = if idx > 0 { 10 } else { 0 };
+            let text_w = (label.chars().count() as i32 * 8).max(0);
+            let tile_w = (prefix_w + text_w + 14).min((right - text_x).max(0));
+            if tile_w <= 0 {
+                break;
+            }
+            let tile_rect = Rect {
+                x: text_x,
+                y: center_rect.y,
+                w: tile_w,
+                h: center_rect.h,
+            };
+            let tile_hovered = hover_pos
+                .map(|(px, py)| tile_rect.contains(px, py))
+                .unwrap_or(false);
+            let tile_bg = if tile_hovered {
+                colors.border
+            } else {
+                colors.surface
+            };
+            painter.roundish_rect_with_radius(tile_rect, tile_bg, tokens::panel::BUTTON_RADIUS);
 
             let color = if entry.focused {
                 colors.accent
@@ -163,32 +215,24 @@ pub fn draw_panel(
             } else {
                 colors.text
             };
-            let remaining = right - text_x;
             if entry.focused {
-                let indicator_rect = Rect {
-                    x: text_x,
-                    y: center_rect.y,
-                    w: remaining.max(0),
-                    h: center_rect.h,
-                };
-                draw_active_indicator(painter, indicator_rect, ActiveIndicatorEdge::Bottom, theme);
+                draw_active_indicator(painter, tile_rect, ActiveIndicatorEdge::Bottom, theme);
             }
-            painter.text_clipped(font, &label, text_x, baseline, remaining, color);
-
-            let advance = (label.chars().count() as i32 * 8).max(0);
-            let hit_w = remaining.min(advance).max(0);
-            if hit_w > 0 {
-                panel_state.clicks.push(ClickZone {
-                    rect: Rect {
-                        x: text_x,
-                        y: center_rect.y,
-                        w: hit_w,
-                        h: center_rect.h,
-                    },
-                    action: ClickAction::FocusWindow(entry.id.clone()),
-                });
-            }
-            text_x += advance;
+            let text_x_start = tile_rect.x + 7 + prefix_w;
+            let baseline = tile_rect.y + (tile_rect.h / 2) + 5;
+            painter.text_clipped(
+                font,
+                &label,
+                text_x_start,
+                baseline,
+                (tile_rect.w - 12 - prefix_w).max(0),
+                color,
+            );
+            panel_state.clicks.push(ClickZone {
+                rect: tile_rect,
+                action: ClickAction::FocusWindow(entry.id.clone()),
+            });
+            text_x += tile_w + 6;
         }
     }
 }

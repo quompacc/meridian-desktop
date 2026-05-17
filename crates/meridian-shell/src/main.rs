@@ -17,7 +17,7 @@ pub use draw::{Painter, TextRenderer};
 pub use wayland::{ClickAction, ClickZone, IpcClient, Rect};
 use wayland::{CommitReason, RepaintReason};
 
-pub const PANEL_HEIGHT: u32 = 36;
+pub const PANEL_HEIGHT: u32 = 42;
 pub const LAUNCHER_WIDTH: u32 = 720;
 pub const LAUNCHER_HEIGHT: u32 = 520;
 pub const CALENDAR_POPUP_WIDTH: u32 = 280;
