@@ -9,6 +9,7 @@ use crate::decoration::shadow_bitmap::{
 };
 
 pub(crate) struct ShadowBuffers<'a> {
+    pub(crate) internal_size: u32,
     pub(crate) corner_tl: &'a MemoryRenderBuffer,
     pub(crate) corner_tr: &'a MemoryRenderBuffer,
     pub(crate) corner_bl: &'a MemoryRenderBuffer,
@@ -31,6 +32,7 @@ pub(crate) struct ShadowCache {
     last_radius: u32,
     last_alpha: f32,
     last_frame_radius: u32,
+    last_internal_size: u32,
     initialized: bool,
     #[cfg(test)]
     rebuild_count: usize,
@@ -50,6 +52,7 @@ impl ShadowCache {
             last_radius: 0,
             last_alpha: 0.0,
             last_frame_radius: 0,
+            last_internal_size: 0,
             initialized: false,
             #[cfg(test)]
             rebuild_count: 0,
@@ -72,6 +75,7 @@ impl ShadowCache {
         }
 
         ShadowBuffers {
+            internal_size: self.last_internal_size,
             corner_tl: self
                 .corner_tl
                 .as_ref()
@@ -108,17 +112,17 @@ impl ShadowCache {
     }
 
     fn rebuild(&mut self, radius_px: u32, base_alpha: f32, frame_radius_px: u32) {
-        let corner_tl_pixels =
+        let (corner_tl_pixels, internal_size) =
             rasterize_shadow_corner_with_frame(radius_px, frame_radius_px, base_alpha);
-        let corner_tr_pixels = flip_horizontal(&corner_tl_pixels, radius_px, radius_px);
-        let corner_bl_pixels = flip_vertical(&corner_tl_pixels, radius_px, radius_px);
-        let corner_br_pixels = flip_vertical(&corner_tr_pixels, radius_px, radius_px);
+        let corner_tr_pixels = flip_horizontal(&corner_tl_pixels, internal_size, internal_size);
+        let corner_bl_pixels = flip_vertical(&corner_tl_pixels, internal_size, internal_size);
+        let corner_br_pixels = flip_vertical(&corner_tr_pixels, internal_size, internal_size);
         let edge_top_pixels = rasterize_edge_top(radius_px, base_alpha);
         let edge_bottom_pixels = flip_vertical(&edge_top_pixels, 1, radius_px);
         let edge_left_pixels = rasterize_edge_left(radius_px, base_alpha);
         let edge_right_pixels = flip_horizontal(&edge_left_pixels, radius_px, 1);
 
-        let corner_size = (radius_px as i32, radius_px as i32);
+        let corner_size = (internal_size as i32, internal_size as i32);
         self.corner_tl = Some(MemoryRenderBuffer::from_slice(
             &corner_tl_pixels,
             Fourcc::Abgr8888,
@@ -188,6 +192,7 @@ impl ShadowCache {
         self.last_radius = radius_px;
         self.last_alpha = base_alpha;
         self.last_frame_radius = frame_radius_px;
+        self.last_internal_size = internal_size;
         self.initialized = true;
         #[cfg(test)]
         {

@@ -301,6 +301,10 @@ impl DecorationManager {
                 let shadow = self
                     .shadow_cache
                     .get_for(sr as u32, alpha, frame_radius as u32);
+                let shadow_corner_size = shadow.internal_size as f64;
+                let shadow_src = smithay::utils::Rectangle::from_size(
+                    (shadow_corner_size, shadow_corner_size).into(),
+                );
 
                 for (rect, buffer) in [
                     (layout.corner_tl, shadow.corner_tl),
@@ -313,7 +317,7 @@ impl DecorationManager {
                         phys_f64(rect.loc.x, rect.loc.y),
                         buffer,
                         None,
-                        None,
+                        Some(shadow_src),
                         Some(rect.size),
                         Kind::Unspecified,
                     ) {

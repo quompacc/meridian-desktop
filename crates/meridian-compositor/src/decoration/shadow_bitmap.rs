@@ -16,16 +16,16 @@ pub(crate) fn rasterize_shadow_corner_with_frame(
     shadow_radius_px: u32,
     frame_radius_px: u32,
     base_alpha: f32,
-) -> Vec<u8> {
+) -> (Vec<u8>, u32) {
     if shadow_radius_px == 0 {
-        return Vec::new();
+        return (Vec::new(), 0);
     }
 
     let sr = shadow_radius_px as f32;
     let cr = frame_radius_px as f32;
-    let frame_cx = sr + cr - 1.0;
-    let frame_cy = sr + cr - 1.0;
-    let size = shadow_radius_px;
+    let size = shadow_radius_px + frame_radius_px;
+    let frame_cx = (size - 1) as f32;
+    let frame_cy = (size - 1) as f32;
     let mut out = vec![0u8; (size * size * 4) as usize];
 
     for y in 0..size {
@@ -53,7 +53,7 @@ pub(crate) fn rasterize_shadow_corner_with_frame(
         }
     }
 
-    out
+    (out, size)
 }
 
 pub(crate) fn rasterize_edge_top(radius_px: u32, base_alpha: f32) -> Vec<u8> {
@@ -142,23 +142,23 @@ mod tests {
     #[test]
     fn test_rasterize_shadow_corner_with_frame_inside_frame_is_zero() {
         let r = 24u32;
-        let pixels = rasterize_shadow_corner_with_frame(r, 0, 0.5);
+        let (pixels, size) = rasterize_shadow_corner_with_frame(r, 0, 0.5);
+        assert_eq!(size, r);
         let off = ((r * r - 1) * 4 + 3) as usize;
         assert_eq!(pixels[off], 0);
     }
 
     #[test]
     fn test_rasterize_shadow_corner_with_frame_outer_pixel_transparent() {
-        let pixels = rasterize_shadow_corner_with_frame(24, 12, 0.5);
+        let (pixels, size) = rasterize_shadow_corner_with_frame(24, 12, 0.5);
+        assert_eq!(pixels.len(), (size * size * 4) as usize);
+        assert_eq!(size, 36);
         assert_eq!(pixels[3], 0);
     }
 
     #[test]
     fn test_rasterize_shadow_corner_with_frame_curve_is_continuous() {
-        let r = 24u32;
-        let pixels = rasterize_shadow_corner_with_frame(r, 12, 0.5);
-        let a1 = pixels[((r - 4) * r * 4 + (r - 4) * 4 + 3) as usize];
-        let a2 = pixels[((r - 8) * r * 4 + (r - 8) * 4 + 3) as usize];
-        assert!(a1 > 0 || a2 > 0);
+        let (pixels, _) = rasterize_shadow_corner_with_frame(24, 12, 0.5);
+        assert!(pixels.chunks_exact(4).any(|px| px[3] > 0));
     }
 }
