@@ -178,7 +178,7 @@ impl DecorationManager {
                 elements.push(DecorationRenderElement::Solid(
                     SolidColorRenderElement::from_buffer(
                         &deco.buffers.title_separator,
-                        phys(x, y + TITLE_BAR_HEIGHT + bw),
+                        phys(x, y + TITLE_BAR_HEIGHT + bw - 2),
                         scale,
                         1.0,
                         Kind::Unspecified,

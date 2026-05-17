@@ -42,7 +42,7 @@ pub(super) fn update_buffers(
         if deco.is_focused {
             deco.buffers
                 .title_separator
-                .update((total_w.max(1), 1), opaque(colors.accent));
+                .update((total_w.max(1), 2), opaque(colors.accent));
         } else {
             deco.buffers.title_separator.update((1, 1), transparent);
         }
