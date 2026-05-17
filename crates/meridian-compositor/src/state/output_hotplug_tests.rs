@@ -25,6 +25,7 @@ const TEST_WORKSPACE_COUNT: usize = 9;
 struct OutputHotplugFixture {
     layout: OutputLayout,
     registry: OutputRegistry,
+    pending_disabled: Vec<ConnectedOutput>,
     workspaces: WorkspaceOutputState,
     global_active_workspace: usize,
 }
@@ -34,6 +35,7 @@ impl OutputHotplugFixture {
         Self {
             layout: OutputLayout::default(),
             registry: OutputRegistry::new(),
+            pending_disabled: Vec::new(),
             workspaces: WorkspaceOutputState::default(),
             global_active_workspace: 0,
         }
@@ -43,6 +45,7 @@ impl OutputHotplugFixture {
         Self {
             layout: OutputLayout::from_config_entries(entries),
             registry: OutputRegistry::new(),
+            pending_disabled: Vec::new(),
             workspaces: WorkspaceOutputState::default(),
             global_active_workspace: 0,
         }
@@ -181,7 +184,7 @@ impl OutputHotplugFixture {
 
     fn reload_layout_from_entries(&mut self, new_entries: &[OutputEntry]) {
         self.layout = OutputLayout::from_config_entries(new_entries);
-        let connected: Vec<ConnectedOutput> = self
+        let mut connected: Vec<ConnectedOutput> = self
             .registry
             .list()
             .iter()
@@ -191,6 +194,13 @@ impl OutputHotplugFixture {
                 height: info.geometry.height,
             })
             .collect();
+        let extra_pending = self
+            .pending_disabled
+            .iter()
+            .filter(|pending| !connected.iter().any(|known| known.name == pending.name))
+            .cloned()
+            .collect::<Vec<_>>();
+        connected.extend(extra_pending);
         if connected.is_empty() {
             return;
         }
@@ -198,6 +208,38 @@ impl OutputHotplugFixture {
         let mut resolved = self.layout.resolve(&connected);
         MeridianState::enforce_at_least_one_enabled(&mut resolved);
         for output in &resolved {
+            if !output.enabled {
+                let _ = self.simulate_disable_output(&output.name);
+                if !self
+                    .pending_disabled
+                    .iter()
+                    .any(|pending| pending.name == output.name)
+                {
+                    self.pending_disabled.push(ConnectedOutput {
+                        name: output.name.clone(),
+                        width: output.width,
+                        height: output.height,
+                    });
+                }
+                continue;
+            }
+
+            self.pending_disabled
+                .retain(|pending| pending.name != output.name);
+            if self.registry.by_name(&output.name).is_none() {
+                let _ = self.registry.upsert(OutputRegistration {
+                    name: output.name.clone(),
+                    geometry: OutputGeometry {
+                        x: output.x,
+                        y: output.y,
+                        width: output.width,
+                        height: output.height,
+                    },
+                    scale: 1.0,
+                    transform: Transform::Normal,
+                    refresh_millihz: Some(60_000),
+                });
+            }
             let _ = self.registry.reconfigure_by_name(
                 &output.name,
                 OutputReconfigure {
@@ -219,6 +261,27 @@ impl OutputHotplugFixture {
             self.global_active_workspace,
             TEST_WORKSPACE_COUNT,
         );
+    }
+
+    fn simulate_disable_output(&mut self, name: &str) -> bool {
+        let Some(existing) = self.registry.by_name(name).cloned() else {
+            return false;
+        };
+        let removed = self.registry.remove_by_name(name).is_some();
+        if removed {
+            self.pending_disabled.retain(|pending| pending.name != name);
+            self.pending_disabled.push(ConnectedOutput {
+                name: existing.name,
+                width: existing.geometry.width,
+                height: existing.geometry.height,
+            });
+            self.workspaces.sync_outputs_with_workspace_state(
+                &self.registry,
+                self.global_active_workspace,
+                TEST_WORKSPACE_COUNT,
+            );
+        }
+        removed
     }
 
     fn snapshot(&self) -> String {
@@ -618,6 +681,63 @@ fn reload_layout_with_mode_change_safely_logs_only_in_harness() {
     let before = fixture.snapshot();
     fixture.reload_layout_from_entries(&[updated]);
     assert_eq!(fixture.snapshot(), before);
+}
+
+#[test]
+fn reload_with_enabled_false_simulates_disable_via_registry() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+    fixture.reload_layout_from_entries(&[entry_with(
+        "drm-1",
+        OutputPositionConfig::Auto,
+        false,
+        false,
+    )]);
+    assert_eq!(
+        fixture.snapshot(),
+        r#"drm-0: (0,0 1920x1080) primary=true workspace=0"#
+    );
+}
+
+#[test]
+fn reload_re_enabling_output_re_adds_to_registry() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+    fixture.reload_layout_from_entries(&[entry_with(
+        "drm-1",
+        OutputPositionConfig::Auto,
+        false,
+        false,
+    )]);
+    fixture.reload_layout_from_entries(&[entry_with(
+        "drm-1",
+        OutputPositionConfig::Auto,
+        false,
+        true,
+    )]);
+    assert_eq!(
+        fixture.snapshot(),
+        r#"drm-0: (0,0 1920x1080) primary=true workspace=0
+drm-1: (1920,0 1920x1080) primary=false workspace=0"#
+    );
+}
+
+#[test]
+fn reload_safety_net_re_enables_all_disabled_via_harness() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    fixture.reload_layout_from_entries(&[entry_with(
+        "drm-0",
+        OutputPositionConfig::Auto,
+        false,
+        false,
+    )]);
+    assert_eq!(
+        fixture.snapshot(),
+        r#"drm-0: (0,0 1920x1080) primary=true workspace=0"#
+    );
 }
 
 fn entry_with(

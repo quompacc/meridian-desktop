@@ -57,7 +57,7 @@ use super::{
         select_add_mode, select_mode_with_override,
     },
     render::render_outputs,
-    DrmBackend, DrmOutput,
+    DisabledDrmOutput, DrmBackend, DrmOutput,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -97,7 +97,7 @@ struct PendingInitOutput {
     scale: f64,
 }
 
-pub(super) struct DrmCompositorBuildParams<'a> {
+pub(crate) struct DrmCompositorBuildParams<'a> {
     pub state_display_handle: &'a smithay::reexports::wayland_server::DisplayHandle,
     pub device_fd: DrmDeviceFd,
     pub drm: &'a mut DrmDevice,
@@ -109,7 +109,7 @@ pub(super) struct DrmCompositorBuildParams<'a> {
     pub gbm: Option<GbmDevice<DrmDeviceFd>>,
 }
 
-pub(super) fn build_drm_compositor(
+pub(crate) fn build_drm_compositor(
     params: DrmCompositorBuildParams<'_>,
 ) -> Result<(super::GbmDrmCompositor, GbmDevice<DrmDeviceFd>), Box<dyn std::error::Error>> {
     let DrmCompositorBuildParams {
@@ -282,11 +282,17 @@ fn scan_drm_connectors_for_h5b(state: &mut MeridianState, source: &str) {
                 .outputs
                 .iter()
                 .map(|out| (out.connector, out.output.name()))
+                .chain(
+                    drm.disabled_outputs
+                        .iter()
+                        .map(|out| (out.connector, out.name.clone())),
+                )
                 .collect::<Vec<_>>();
             let known_output_names = drm
                 .outputs
                 .iter()
                 .map(|out| out.output.name())
+                .chain(drm.disabled_outputs.iter().map(|out| out.name.clone()))
                 .collect::<HashSet<_>>();
             (
                 should_scan,
@@ -563,11 +569,27 @@ fn add_drm_output_via_hotplug_pipeline(
         y
     );
     if !new_resolved.enabled {
+        let disabled = DisabledDrmOutput {
+            name: new_resolved.name.clone(),
+            connector,
+            crtc: crtc_handle,
+            reserved_geometry_hint: MeridianState::output_geometry_for_registry(
+                new_resolved.x,
+                new_resolved.y,
+                width as i32,
+                height as i32,
+            ),
+        };
+        if let Some(drm) = state.drm_backend.as_mut() {
+            drm.disabled_outputs
+                .retain(|existing| existing.name != new_resolved.name);
+            drm.disabled_outputs.push(disabled);
+        }
         tracing::info!(
-            "output {} skipped: enabled=false per TOML config",
-            output_name
+            "hotplugged connector {:?} is disabled per TOML config; stored as disabled_output",
+            connector
         );
-        return false;
+        return true;
     }
 
     let transform = output_transform_override
@@ -689,6 +711,21 @@ fn remove_drm_output_via_hotplug_pipeline(
 ) -> bool {
     let Some((removed_output, removed_output_name)) = detach_drm_output(state, candidate.connector)
     else {
+        if let Some(drm) = state.drm_backend.as_mut() {
+            if let Some(disabled_idx) = drm
+                .disabled_outputs
+                .iter()
+                .position(|output| output.connector == candidate.connector)
+            {
+                let removed_disabled = drm.disabled_outputs.remove(disabled_idx);
+                tracing::info!(
+                    "drm disabled output removed via hotplug pipeline: connector={:?} output={}",
+                    candidate.connector,
+                    removed_disabled.name
+                );
+                return true;
+            }
+        }
         tracing::warn!(
             "drm output remove skipped reason=connector-not-found connector={:?}",
             candidate.connector
@@ -982,6 +1019,7 @@ pub fn init_drm(
 
     let resources = drm.resource_handles()?;
     let mut drm_outputs: Vec<DrmOutput> = Vec::new();
+    let mut disabled_outputs: Vec<DisabledDrmOutput> = Vec::new();
     let mut pending_outputs: Vec<PendingInitOutput> = Vec::new();
     let mut occupied_crtcs: Vec<smithay::reexports::drm::control::crtc::Handle> = Vec::new();
     let mut first_selected_mode_refresh_millihz: Option<i32> = None;
@@ -1077,9 +1115,20 @@ pub fn init_drm(
         );
         if !resolved.enabled {
             tracing::info!(
-                "output {} skipped: enabled=false per TOML config",
+                "output {} skipped at init: enabled=false in TOML",
                 pending.output_name
             );
+            disabled_outputs.push(DisabledDrmOutput {
+                name: pending.output_name.clone(),
+                connector: pending.connector,
+                crtc: pending.crtc,
+                reserved_geometry_hint: MeridianState::output_geometry_for_registry(
+                    resolved.x,
+                    resolved.y,
+                    resolved.width,
+                    resolved.height,
+                ),
+            });
             continue;
         }
         if pending.transform != Transform::Normal {
@@ -1221,6 +1270,7 @@ pub fn init_drm(
         kms_first_commit_verified: false,
         renderer,
         outputs: drm_outputs,
+        disabled_outputs,
         cursor_image,
         cursor_buffer,
         named_cursor_cache: std::collections::HashMap::new(),

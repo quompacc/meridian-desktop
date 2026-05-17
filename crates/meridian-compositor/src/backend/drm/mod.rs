@@ -19,15 +19,15 @@ use smithay::{
     utils::{Logical, Point},
 };
 
-use crate::state::OutputId;
+use crate::state::{OutputGeometry, OutputId};
 
 use crate::{cursor::CursorImage, wallpaper::WallpaperGpuCache};
 
 mod gpu;
-mod init;
+pub(crate) mod init;
 mod init_diagnostics;
-mod init_env;
-mod mode_selection;
+pub(crate) mod init_env;
+pub(crate) mod mode_selection;
 mod render;
 
 pub use init::init_drm;
@@ -530,6 +530,14 @@ pub struct DrmOutput {
     pub scratch_upper_layer_elements: Vec<render::MeridianRenderElements>,
 }
 
+#[derive(Debug, Clone)]
+pub struct DisabledDrmOutput {
+    pub name: String,
+    pub connector: connector::Handle,
+    pub crtc: crtc::Handle,
+    pub reserved_geometry_hint: OutputGeometry,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DrmCursorIcon {
     Default,
@@ -547,6 +555,7 @@ pub struct DrmBackend {
     pub kms_first_commit_verified: bool,
     pub renderer: GlesRenderer,
     pub outputs: Vec<DrmOutput>,
+    pub disabled_outputs: Vec<DisabledDrmOutput>,
     pub cursor_image: CursorImage,
     pub cursor_buffer: MemoryRenderBuffer,
     pub named_cursor_cache: HashMap<String, (MemoryRenderBuffer, Point<i32, Logical>)>,
@@ -558,6 +567,51 @@ pub struct DrmBackend {
 }
 
 impl DrmBackend {
+    pub fn disable_output(&mut self, name: &str) -> Option<DisabledDrmOutput> {
+        let idx = self
+            .outputs
+            .iter()
+            .position(|drm_output| drm_output.output.name() == name)?;
+        let removed = self.outputs.remove(idx);
+        self.dirty_stats.unregister_output(removed.output_id);
+        let geometry = removed.output.current_mode().map_or(
+            OutputGeometry {
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 0,
+            },
+            |mode| OutputGeometry {
+                x: 0,
+                y: 0,
+                width: mode.size.w,
+                height: mode.size.h,
+            },
+        );
+        self.disabled_outputs
+            .retain(|disabled| disabled.name != name);
+        let disabled = DisabledDrmOutput {
+            name: name.to_string(),
+            connector: removed.connector,
+            crtc: removed.crtc,
+            reserved_geometry_hint: geometry,
+        };
+        self.disabled_outputs.push(disabled.clone());
+        tracing::info!(
+            "output {} disabled live: compositor disposed, connector retained",
+            name
+        );
+        Some(disabled)
+    }
+
+    pub fn enable_output_pull_pending(&mut self, name: &str) -> Option<DisabledDrmOutput> {
+        let idx = self
+            .disabled_outputs
+            .iter()
+            .position(|disabled| disabled.name == name)?;
+        Some(self.disabled_outputs.remove(idx))
+    }
+
     pub fn rebuild_compositor_for_mode(
         &mut self,
         _state_display_handle: &smithay::reexports::wayland_server::DisplayHandle,

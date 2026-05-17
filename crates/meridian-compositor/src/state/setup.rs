@@ -1,13 +1,21 @@
-use std::{collections::HashMap, ffi::OsString, io::Error, sync::Arc, time::Instant};
+use std::{
+    collections::{HashMap, HashSet},
+    ffi::OsString,
+    io::Error,
+    sync::Arc,
+    time::Instant,
+};
 
 use meridian_config::{MeridianConfig, OutputEntry, ThemeManager};
 use meridian_wm::WmWorkspace;
 use smithay::{
-    desktop::PopupManager,
+    backend::{allocator::Format, drm::DrmDevice},
+    desktop::{layer_map_for_output, PopupManager},
     input::SeatState,
-    output::Scale,
+    output::{Mode as OutputMode, Output, PhysicalProperties, Scale, Subpixel},
     reexports::{
         calloop::{generic::Generic, EventLoop, Interest, Mode, PostAction},
+        drm::control::Device as _,
         wayland_server::Display,
     },
     utils::Transform,
@@ -23,7 +31,10 @@ use smithay::{
 };
 
 use crate::{
-    decoration::DecorationManager, wallpaper::WallpaperManager, workspace::WorkspaceManager,
+    backend::drm::{DisabledDrmOutput, DrmOutput},
+    decoration::DecorationManager,
+    wallpaper::WallpaperManager,
+    workspace::WorkspaceManager,
 };
 
 use super::{
@@ -103,7 +114,7 @@ impl MeridianState {
     /// Enabled toggles still require output add/remove lifecycle handling
     /// and are logged as restart-required.
     pub fn reapply_output_layout(&mut self, previous_entries: &[OutputEntry]) {
-        let connected: Vec<ConnectedOutput> = self
+        let mut connected: Vec<ConnectedOutput> = self
             .output_registry
             .list()
             .iter()
@@ -113,6 +124,21 @@ impl MeridianState {
                 height: info.geometry.height,
             })
             .collect();
+        if let Some(drm) = self.drm_backend.as_ref() {
+            for disabled in &drm.disabled_outputs {
+                if connected
+                    .iter()
+                    .any(|existing| existing.name == disabled.name)
+                {
+                    continue;
+                }
+                connected.push(ConnectedOutput {
+                    name: disabled.name.clone(),
+                    width: disabled.reserved_geometry_hint.width.max(1),
+                    height: disabled.reserved_geometry_hint.height.max(1),
+                });
+            }
+        }
         if connected.is_empty() {
             return;
         }
@@ -164,10 +190,79 @@ impl MeridianState {
                 }
             }
             if diff.enabled_changed {
+                let now_enabled = entry.map(|candidate| candidate.enabled).unwrap_or(true);
+                if now_enabled {
+                    let pending = if let Some(drm) = self.drm_backend.as_mut() {
+                        drm.enable_output_pull_pending(&output.name)
+                    } else {
+                        None
+                    };
+                    if let Some(pending) = pending {
+                        if let Err(err) = self.build_and_register_disabled_output(&pending, output)
+                        {
+                            tracing::warn!(
+                                "output {} live re-enable failed: {} — putting back in disabled list",
+                                output.name,
+                                err
+                            );
+                            if let Some(drm) = self.drm_backend.as_mut() {
+                                drm.disabled_outputs.push(pending);
+                            }
+                        } else {
+                            tracing::info!(
+                                "output {} re-enabled live (was disabled in previous config)",
+                                output.name
+                            );
+                        }
+                    } else {
+                        tracing::warn!(
+                            "output {} flagged for enable but not in disabled_outputs (was likely never connected) — needs hotplug",
+                            output.name
+                        );
+                    }
+                } else if self.drm_backend.is_some() {
+                    let disabled = self
+                        .drm_backend
+                        .as_mut()
+                        .and_then(|drm| drm.disable_output(&output.name))
+                        .is_some();
+                    if disabled {
+                        if let Some(removed_output) = self
+                            .outputs
+                            .iter()
+                            .find(|candidate| candidate.name() == output.name)
+                            .cloned()
+                        {
+                            for workspace_idx in 0..self.workspaces.count() {
+                                self.workspaces
+                                    .space_at_mut(workspace_idx)
+                                    .unmap_output(&removed_output);
+                            }
+                            layer_map_for_output(&removed_output).cleanup();
+                        }
+                        self.outputs
+                            .retain(|candidate| candidate.name() != output.name);
+                        if let Some(removed_info) =
+                            self.output_registry.remove_by_name(&output.name)
+                        {
+                            self.post_output_state_change(
+                                "output-disabled-live",
+                                Some(removed_info.id),
+                                Some(&output.name),
+                            );
+                        } else {
+                            self.sync_outputs_with_workspace_state();
+                            self.mark_all_outputs_dirty("output-disabled-live");
+                        }
+                        tracing::info!("output {} disabled live", output.name);
+                    }
+                    continue;
+                }
                 tracing::warn!(
                     "output {} enabled toggle requires restart (P1.6b not yet implemented)",
                     output.name
                 );
+                continue;
             }
 
             let requested_scale = entry.map(|candidate| candidate.scale).unwrap_or(1.0);
@@ -234,6 +329,165 @@ impl MeridianState {
 
         self.sync_outputs_with_workspace_state();
         self.mark_all_outputs_dirty("output-layout-reapplied");
+    }
+
+    fn build_and_register_disabled_output(
+        &mut self,
+        pending: &DisabledDrmOutput,
+        resolved: &super::ResolvedOutput,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let missing_backend_err = || Error::other("drm backend not active for live re-enable");
+        let (device_fd, renderer_formats) = {
+            let drm = self.drm_backend.as_ref().ok_or_else(missing_backend_err)?;
+            let formats: HashSet<Format> = drm
+                .renderer
+                .egl_context()
+                .dmabuf_render_formats()
+                .iter()
+                .cloned()
+                .collect();
+            let formats = crate::backend::drm::init_env::maybe_disable_modifiers(
+                formats,
+                crate::backend::drm::init_env::disable_drm_modifiers_requested(),
+            );
+            (drm.device_fd.clone(), formats)
+        };
+
+        let entry = self
+            .output_config_entries
+            .iter()
+            .find(|candidate| candidate.name == pending.name);
+        let mut drm = DrmDevice::new(device_fd.clone(), false)?.0;
+        let connector_info = drm.get_connector(pending.connector, false)?;
+        if connector_info.state() != smithay::reexports::drm::control::connector::State::Connected {
+            return Err(Error::other(format!(
+                "connector for output {} is not connected",
+                pending.name
+            ))
+            .into());
+        }
+        let modes = connector_info.modes();
+        let (mode, reason) = crate::backend::drm::mode_selection::select_mode_with_override(
+            modes,
+            entry.and_then(|candidate| candidate.mode.as_ref()),
+            &pending.name,
+        )
+        .ok_or_else(|| Error::other(format!("no mode available for output {}", pending.name)))?;
+        tracing::info!(
+            "output {} live re-enable selected mode {}x{} reason={}",
+            pending.name,
+            mode.size().0,
+            mode.size().1,
+            reason
+        );
+
+        let transform = entry
+            .and_then(|candidate| candidate.transform.as_deref())
+            .map(parse_output_transform)
+            .unwrap_or(Transform::Normal);
+        let requested_scale = entry.map(|candidate| candidate.scale).unwrap_or(1.0);
+        let scale_value = if !requested_scale.is_finite() || requested_scale <= 0.0 {
+            tracing::warn!(
+                "output {} scale {:?} invalid during live re-enable — using 1.0",
+                pending.name,
+                requested_scale
+            );
+            1.0
+        } else {
+            requested_scale
+        };
+
+        let phys_size = connector_info
+            .size()
+            .map_or((0, 0), |size| (size.0 as i32, size.1 as i32));
+        let output = Output::new(
+            pending.name.clone(),
+            PhysicalProperties {
+                size: phys_size.into(),
+                subpixel: Subpixel::Unknown,
+                make: "Unknown".into(),
+                model: "Unknown".into(),
+                serial_number: "Unknown".into(),
+            },
+        );
+        let _global = output.create_global::<MeridianState>(&self.display_handle);
+        let output_mode = OutputMode {
+            size: (mode.size().0 as i32, mode.size().1 as i32).into(),
+            refresh: crate::backend::drm::mode_selection::mode_refresh_millihz_with_fallback(mode),
+        };
+        let scale = if (scale_value - scale_value.round()).abs() < f64::EPSILON {
+            Scale::Integer(scale_value as i32)
+        } else {
+            Scale::Fractional(scale_value)
+        };
+        output.change_current_state(
+            Some(output_mode),
+            Some(transform),
+            Some(scale),
+            Some((resolved.x, resolved.y).into()),
+        );
+        output.set_preferred(output_mode);
+
+        let (compositor, _gbm) = crate::backend::drm::init::build_drm_compositor(
+            crate::backend::drm::init::DrmCompositorBuildParams {
+                state_display_handle: &self.display_handle,
+                device_fd: device_fd.clone(),
+                drm: &mut drm,
+                crtc: pending.crtc,
+                connector: pending.connector,
+                mode,
+                renderer_formats: &renderer_formats,
+                output: &output,
+                gbm: None,
+            },
+        )?;
+
+        self.workspaces
+            .active_space_mut()
+            .map_output(&output, (resolved.x, resolved.y));
+        self.outputs.push(output.clone());
+        let output_id = self.handle_output_added_or_updated(OutputRegistration {
+            name: output.name(),
+            geometry: MeridianState::output_geometry_for_registry(
+                resolved.x,
+                resolved.y,
+                mode.size().0 as i32,
+                mode.size().1 as i32,
+            ),
+            scale: scale_value,
+            transform,
+            refresh_millihz: Some(
+                crate::backend::drm::mode_selection::mode_refresh_millihz_with_fallback(mode),
+            ),
+        });
+
+        let drm_backend = self
+            .drm_backend
+            .as_mut()
+            .ok_or_else(|| Error::other("drm backend lost while finalizing live re-enable"))?;
+        drm_backend.outputs.push(DrmOutput {
+            output_id,
+            output: output.clone(),
+            compositor,
+            crtc: pending.crtc,
+            connector: pending.connector,
+            wallpaper: None,
+            frame_in_flight: false,
+            needs_repaint: true,
+            scratch_normal: Vec::new(),
+            scratch_cursor: Vec::new(),
+            scratch_final: Vec::new(),
+            scratch_windows: Vec::new(),
+            scratch_lower_layer_data: Vec::new(),
+            scratch_upper_layer_data: Vec::new(),
+            scratch_lower_layer_elements: Vec::new(),
+            scratch_upper_layer_elements: Vec::new(),
+        });
+        drm_backend
+            .dirty_stats
+            .register_output(output_id, output.name());
+
+        Ok(())
     }
 
     pub fn mark_all_outputs_dirty(&mut self, reason: &str) {

@@ -17,7 +17,7 @@ pub(super) fn force_drm_legacy_requested() -> bool {
     env_flag_enabled("MERIDIAN_DRM_FORCE_LEGACY")
 }
 
-pub(super) fn disable_drm_modifiers_requested() -> bool {
+pub(crate) fn disable_drm_modifiers_requested() -> bool {
     env_flag_enabled("MERIDIAN_DRM_DISABLE_MODIFIERS")
 }
 
@@ -31,7 +31,7 @@ pub(super) fn forced_scanout_format_from_env() -> Option<Fourcc> {
     }
 }
 
-pub(super) fn maybe_disable_modifiers(
+pub(crate) fn maybe_disable_modifiers(
     formats: HashSet<Format>,
     disable_modifiers: bool,
 ) -> HashSet<Format> {

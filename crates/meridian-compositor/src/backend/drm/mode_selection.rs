@@ -4,7 +4,7 @@ use meridian_config::OutputModeConfig;
 
 use super::init_env::env_flag_enabled;
 
-pub(super) fn select_add_mode(
+pub(crate) fn select_add_mode(
     modes: &[smithay::reexports::drm::control::Mode],
 ) -> Option<(smithay::reexports::drm::control::Mode, String)> {
     if env_flag_enabled("MERIDIAN_DRM_SAFE_MODE") {
@@ -91,7 +91,7 @@ pub(super) fn select_add_mode(
         .map(|mode| (mode, "safe-fallback-first".to_string()))
 }
 
-pub(super) fn select_mode_with_override(
+pub(crate) fn select_mode_with_override(
     modes: &[smithay::reexports::drm::control::Mode],
     override_mode: Option<&OutputModeConfig>,
     output_name: &str,
@@ -189,7 +189,7 @@ fn mode_flags_weird_penalty(mode: smithay::reexports::drm::control::Mode) -> u8 
     penalty
 }
 
-pub(super) fn calculate_mode_refresh_millihz(
+pub(crate) fn calculate_mode_refresh_millihz(
     mode: smithay::reexports::drm::control::Mode,
 ) -> Option<i32> {
     let clock_khz = mode.clock();
@@ -220,7 +220,7 @@ pub(super) fn calculate_mode_refresh_millihz(
     i32::try_from(refresh_millihz).ok()
 }
 
-pub(super) fn mode_refresh_millihz_with_fallback(
+pub(crate) fn mode_refresh_millihz_with_fallback(
     mode: smithay::reexports::drm::control::Mode,
 ) -> i32 {
     calculate_mode_refresh_millihz(mode).unwrap_or_else(|| mode.vrefresh() as i32 * 1000)
