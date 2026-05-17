@@ -135,11 +135,13 @@ pub fn draw_panel(
     let workspace_group_end_x = x - tokens::panel::WORKSPACE_BUTTON_GAP;
 
     // ── Right: Clock ────────────────────────────────────────────────────────
+    let clock_h = tokens::panel::WORKSPACE_BUTTON_H;
+    let clock_y = tokens::panel::WORKSPACE_BUTTON_Y;
     let clock_rect = Rect {
         x: width as i32 - tokens::panel::CLOCK_W - tokens::panel::RIGHT_PADDING,
-        y: (height - 20) / 2,
+        y: clock_y,
         w: tokens::panel::CLOCK_W,
-        h: 20,
+        h: clock_h,
     };
     let clock_hovered = hover_pos
         .map(|(px, py)| clock_rect.contains(px, py))
