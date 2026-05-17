@@ -12,6 +12,8 @@ use smithay::{
     utils::{Logical, Point, Rectangle, Size},
     wayland::{
         compositor::CompositorState,
+        idle_inhibit::IdleInhibitManagerState,
+        idle_notify::IdleNotifierState,
         output::OutputManagerState,
         seat::WaylandFocus,
         selection::{data_device::DataDeviceState, primary_selection::PrimarySelectionState},
@@ -32,6 +34,7 @@ use crate::{
 
 mod client;
 mod handlers;
+mod idle;
 mod ipc;
 mod layout;
 #[cfg(test)]
@@ -42,6 +45,7 @@ mod setup;
 mod utils;
 mod workspace_output_state;
 
+pub use idle::IdleInhibitorSet;
 pub use output_layout::{
     detect_output_reload_diff, parse_output_transform, ConnectedOutput, OutputLayout,
     OutputPlacement, OutputPosition, OutputReloadDiff, ResolvedOutput,
@@ -318,6 +322,9 @@ pub struct MeridianState {
     pub data_device_state: DataDeviceState,
     pub primary_selection_state: PrimarySelectionState,
     pub xwayland_shell_state: XWaylandShellState,
+    pub idle_notifier: IdleNotifierState<Self>,
+    pub idle_inhibit_state: IdleInhibitManagerState,
+    pub idle_inhibitors: IdleInhibitorSet<WlSurface>,
     pub xwm: Option<X11Wm>,
     pub drm_backend: Option<DrmBackend>,
     pub maximize_restore_locations: HashMap<String, MaximizeRestoreGeometry>,

@@ -7,6 +7,8 @@ use crate::state::MeridianState;
 
 impl MeridianState {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
+        self.idle_notifier.notify_activity(&self.seat);
+
         match event {
             InputEvent::Keyboard { event, .. } => {
                 keyboard::handle_keyboard(self, &event);
