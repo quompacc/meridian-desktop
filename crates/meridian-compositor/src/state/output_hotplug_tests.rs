@@ -7,7 +7,6 @@
 //!
 //! - Smithay `Space` window remapping (window-tracking on output remove)
 //! - DRM mode selection or compositor lifecycle
-//! - TOML reload propagation (P1.5+)
 //! - Mirror-Mode (P2)
 //!
 //! When a phase touches the output layer, add a snapshot-style case here
@@ -178,6 +177,48 @@ impl OutputHotplugFixture {
             TEST_WORKSPACE_COUNT,
         );
         true
+    }
+
+    fn reload_layout_from_entries(&mut self, new_entries: &[OutputEntry]) {
+        self.layout = OutputLayout::from_config_entries(new_entries);
+        let connected: Vec<ConnectedOutput> = self
+            .registry
+            .list()
+            .iter()
+            .map(|info| ConnectedOutput {
+                name: info.name.clone(),
+                width: info.geometry.width,
+                height: info.geometry.height,
+            })
+            .collect();
+        if connected.is_empty() {
+            return;
+        }
+
+        let mut resolved = self.layout.resolve(&connected);
+        MeridianState::enforce_at_least_one_enabled(&mut resolved);
+        for output in &resolved {
+            let _ = self.registry.reconfigure_by_name(
+                &output.name,
+                OutputReconfigure {
+                    geometry: OutputGeometry {
+                        x: output.x,
+                        y: output.y,
+                        width: output.width,
+                        height: output.height,
+                    },
+                    scale: 1.0,
+                    transform: Transform::Normal,
+                    refresh_millihz: Some(60_000),
+                    primary: Some(output.primary),
+                },
+            );
+        }
+        self.workspaces.sync_outputs_with_workspace_state(
+            &self.registry,
+            self.global_active_workspace,
+            TEST_WORKSPACE_COUNT,
+        );
     }
 
     fn snapshot(&self) -> String {
@@ -454,6 +495,107 @@ drm-1: (1920,0 1920x1080) primary=false workspace=0
 drm-2: (0,1080 1920x1080) primary=false workspace=0
 drm-3: (1920,1080 1920x1080) primary=false workspace=0"#
     );
+}
+
+#[test]
+fn reload_layout_changes_primary_assignment() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+    fixture.reload_layout_from_entries(&[entry_with(
+        "drm-1",
+        OutputPositionConfig::Auto,
+        true,
+        true,
+    )]);
+    assert_eq!(
+        fixture.snapshot(),
+        r#"drm-0: (0,0 1920x1080) primary=false workspace=0
+drm-1: (1920,0 1920x1080) primary=true workspace=0"#
+    );
+}
+
+#[test]
+fn reload_layout_repositions_output_via_below() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+    fixture.reload_layout_from_entries(&[entry_with(
+        "drm-1",
+        OutputPositionConfig::Below("drm-0".to_string()),
+        false,
+        true,
+    )]);
+    assert_eq!(
+        fixture.snapshot(),
+        r#"drm-0: (0,0 1920x1080) primary=true workspace=0
+drm-1: (0,1080 1920x1080) primary=false workspace=0"#
+    );
+}
+
+#[test]
+fn reload_layout_coord_pin_overrides_chain() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+    fixture.reload_layout_from_entries(&[entry_with(
+        "drm-1",
+        OutputPositionConfig::Coord { x: 500, y: 300 },
+        false,
+        true,
+    )]);
+    assert_eq!(
+        fixture.snapshot(),
+        r#"drm-0: (0,0 1920x1080) primary=true workspace=0
+drm-1: (500,300 1920x1080) primary=false workspace=0"#
+    );
+}
+
+#[test]
+fn reload_layout_empty_entries_falls_back_to_auto_chain() {
+    let entries = vec![entry_with(
+        "drm-1",
+        OutputPositionConfig::Coord { x: 500, y: 300 },
+        false,
+        true,
+    )];
+    let mut fixture = OutputHotplugFixture::with_layout_from_entries(&entries);
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+    fixture.reload_layout_from_entries(&[]);
+    assert_eq!(
+        fixture.snapshot(),
+        r#"drm-0: (0,0 1920x1080) primary=true workspace=0
+drm-1: (1920,0 1920x1080) primary=false workspace=0"#
+    );
+}
+
+#[test]
+fn reload_layout_safety_net_re_enables_all_disabled() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    fixture.reload_layout_from_entries(&[entry_with(
+        "drm-0",
+        OutputPositionConfig::Auto,
+        false,
+        false,
+    )]);
+    assert_eq!(
+        fixture.snapshot(),
+        r#"drm-0: (0,0 1920x1080) primary=true workspace=0"#
+    );
+}
+
+#[test]
+fn reload_layout_noop_when_registry_empty() {
+    let mut fixture = OutputHotplugFixture::new();
+    fixture.reload_layout_from_entries(&[entry_with(
+        "drm-0",
+        OutputPositionConfig::Coord { x: 120, y: 80 },
+        false,
+        true,
+    )]);
+    assert_eq!(fixture.snapshot(), "");
 }
 
 fn entry_with(

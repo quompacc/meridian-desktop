@@ -1,14 +1,16 @@
-use std::{ffi::OsString, io::Error, sync::Arc, time::Instant};
+use std::{collections::HashMap, ffi::OsString, io::Error, sync::Arc, time::Instant};
 
-use meridian_config::{MeridianConfig, ThemeManager};
+use meridian_config::{MeridianConfig, OutputEntry, ThemeManager};
 use meridian_wm::WmWorkspace;
 use smithay::{
     desktop::PopupManager,
     input::SeatState,
+    output::Scale,
     reexports::{
         calloop::{generic::Generic, EventLoop, Interest, Mode, PostAction},
         wayland_server::Display,
     },
+    utils::Transform,
     wayland::{
         compositor::CompositorState,
         output::OutputManagerState,
@@ -25,8 +27,8 @@ use crate::{
 };
 
 use super::{
-    ClientState, IpcServer, MeridianState, OutputGeometry, OutputId, OutputReconfigure,
-    OutputRegistration, OutputRegistry, WorkspaceOutputState,
+    parse_output_transform, ClientState, ConnectedOutput, IpcServer, MeridianState, OutputGeometry,
+    OutputId, OutputReconfigure, OutputRegistration, OutputRegistry, WorkspaceOutputState,
 };
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -92,6 +94,133 @@ pub(crate) fn apply_config_overrides(
 }
 
 impl MeridianState {
+    /// Re-resolves all currently registered outputs against the current
+    /// `self.output_layout` and applies position/scale/transform/primary
+    /// changes to Smithay's Output state, Space mapping, and OutputRegistry.
+    ///
+    /// Does NOT apply mode or enabled changes — those require DrmCompositor
+    /// lifecycle changes (rebuild / add / remove). Diffs there are logged
+    /// as warn and skipped.
+    pub fn reapply_output_layout(&mut self, previous_entries: &[OutputEntry]) {
+        let connected: Vec<ConnectedOutput> = self
+            .output_registry
+            .list()
+            .iter()
+            .map(|info| ConnectedOutput {
+                name: info.name.clone(),
+                width: info.geometry.width,
+                height: info.geometry.height,
+            })
+            .collect();
+        if connected.is_empty() {
+            return;
+        }
+
+        let resolved = self.resolve_output_layout(&connected);
+        let refresh_by_name: HashMap<String, Option<i32>> = self
+            .output_registry
+            .list()
+            .iter()
+            .map(|info| (info.name.clone(), info.refresh_millihz))
+            .collect();
+
+        for output in &resolved {
+            let prev_entry = previous_entries
+                .iter()
+                .find(|entry| entry.name == output.name);
+            let next_entry = self
+                .output_config_entries
+                .iter()
+                .find(|entry| entry.name == output.name);
+            let mode_changed = prev_entry.and_then(|entry| entry.mode.as_ref())
+                != next_entry.and_then(|entry| entry.mode.as_ref());
+            let enabled_changed = prev_entry.map(|entry| entry.enabled).unwrap_or(true)
+                != next_entry.map(|entry| entry.enabled).unwrap_or(true);
+            if mode_changed {
+                tracing::warn!(
+                    "output {} mode change ignored in live reload — restart required",
+                    output.name
+                );
+            }
+            if enabled_changed {
+                tracing::warn!(
+                    "output {} enabled toggle ignored in live reload — restart required",
+                    output.name
+                );
+            }
+        }
+
+        for output in &resolved {
+            let entry = self
+                .output_config_entries
+                .iter()
+                .find(|candidate| candidate.name == output.name);
+            let requested_scale = entry.map(|candidate| candidate.scale).unwrap_or(1.0);
+            let scale_value = if !requested_scale.is_finite() || requested_scale <= 0.0 {
+                tracing::warn!(
+                    "output {} scale {:?} invalid during reload — using 1.0",
+                    output.name,
+                    requested_scale
+                );
+                1.0
+            } else {
+                requested_scale
+            };
+            let transform = entry
+                .and_then(|candidate| candidate.transform.as_deref())
+                .map(parse_output_transform)
+                .unwrap_or(Transform::Normal);
+
+            let _ = self.output_registry.reconfigure_by_name(
+                &output.name,
+                OutputReconfigure {
+                    geometry: OutputGeometry {
+                        x: output.x,
+                        y: output.y,
+                        width: output.width,
+                        height: output.height,
+                    },
+                    scale: scale_value,
+                    transform,
+                    refresh_millihz: refresh_by_name.get(&output.name).copied().flatten(),
+                    primary: Some(output.primary),
+                },
+            );
+
+            let Some(smithay_output) = self
+                .outputs
+                .iter()
+                .find(|candidate| candidate.name() == output.name)
+                .cloned()
+            else {
+                tracing::warn!(
+                    "output {} missing from smithay output list during live reload; registry updated only",
+                    output.name
+                );
+                continue;
+            };
+
+            let scale = if (scale_value - scale_value.round()).abs() < f64::EPSILON {
+                Scale::Integer(scale_value as i32)
+            } else {
+                Scale::Fractional(scale_value)
+            };
+
+            smithay_output.change_current_state(
+                None,
+                Some(transform),
+                Some(scale),
+                Some((output.x, output.y).into()),
+            );
+            self.workspaces
+                .active_space_mut()
+                .map_output(&smithay_output, (output.x, output.y));
+        }
+
+        self.sync_outputs_with_workspace_state();
+        self.mark_all_outputs_dirty("output-layout-reapplied");
+    }
+
     pub fn mark_all_outputs_dirty(&mut self, reason: &str) {
         let Some(drm) = self.drm_backend.as_mut() else {
             return;

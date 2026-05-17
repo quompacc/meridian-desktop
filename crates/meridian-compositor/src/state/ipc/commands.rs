@@ -8,7 +8,7 @@ use smithay::wayland::seat::WaylandFocus;
 use super::conversions::ipc_workspace_to_index;
 use crate::{
     cursor::CursorImage,
-    state::{window_list_entry, MeridianState},
+    state::{window_list_entry, MeridianState, OutputLayout},
 };
 
 impl MeridianState {
@@ -135,10 +135,11 @@ impl MeridianState {
         }
 
         let changes = super::super::setup::apply_config_overrides(&mut self.theme_manager, &config);
+        let previous_outputs = std::mem::take(&mut self.output_config_entries);
+        self.output_config_entries = config.outputs.clone();
+        self.output_layout = OutputLayout::from_config_entries(&self.output_config_entries);
+        self.reapply_output_layout(&previous_outputs);
         self.keybind_config = config.keybinds;
-        // TODO(P1.5+): output layout changes from reload do not propagate to
-        // running DRM compositors yet. Requires re-resolving all outputs and
-        // applying position/scale/transform/mode changes mid-session.
 
         if changes.theme_changed {
             tracing::info!(
