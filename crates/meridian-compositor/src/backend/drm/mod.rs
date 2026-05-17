@@ -13,7 +13,7 @@ use smithay::{
         },
         renderer::{element::memory::MemoryRenderBuffer, gles::GlesRenderer},
     },
-    desktop::{utils::OutputPresentationFeedback, Window},
+    desktop::Window,
     output::Output,
     reexports::drm::control::{connector, crtc, Device as _},
     utils::{Logical, Point},
@@ -33,12 +33,8 @@ mod render;
 pub use init::init_drm;
 pub use render::{layer_role, render_stack_order, RenderStackRole};
 
-pub type GbmDrmCompositor = DrmCompositor<
-    GbmAllocator<DrmDeviceFd>,
-    GbmFramebufferExporter<DrmDeviceFd>,
-    Option<OutputPresentationFeedback>,
-    DrmDeviceFd,
->;
+pub type GbmDrmCompositor =
+    DrmCompositor<GbmAllocator<DrmDeviceFd>, GbmFramebufferExporter<DrmDeviceFd>, (), DrmDeviceFd>;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct RenderPassMetrics {

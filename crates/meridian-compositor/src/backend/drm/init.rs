@@ -61,7 +61,6 @@ use super::{
     render::render_outputs,
     DisabledDrmOutput, DrmBackend, DrmOutput,
 };
-use crate::backend::presentation_feedback::present_feedback_on_vblank;
 
 #[derive(Debug, Clone, Copy)]
 struct DrmConnectorReconfigureCandidate {
@@ -848,22 +847,15 @@ where
                     if let Some(out) = drm.outputs.iter_mut().find(|o| o.crtc == crtc) {
                         matched_output = true;
                         let frame_submitted_started = std::time::Instant::now();
-                        match out.compositor.frame_submitted() {
-                            Ok(Some(Some(feedback))) => {
-                                present_feedback_on_vblank(feedback, &out.output, 0);
-                                out.frame_in_flight = false;
-                            }
-                            Ok(Some(None)) | Ok(None) => {
-                                out.frame_in_flight = false;
-                            }
-                            Err(err) => {
-                                tracing::warn!(
-                                    "drm frame_submitted failed on output {}: {}",
-                                    out.output.name(),
-                                    err
-                                );
-                                out.frame_in_flight = false;
-                            }
+                        if let Err(err) = out.compositor.frame_submitted() {
+                            tracing::warn!(
+                                "drm frame_submitted failed on output {}: {}",
+                                out.output.name(),
+                                err
+                            );
+                            out.frame_in_flight = false;
+                        } else {
+                            out.frame_in_flight = false;
                         }
                         frame_submitted_duration = frame_submitted_started.elapsed();
                     }
