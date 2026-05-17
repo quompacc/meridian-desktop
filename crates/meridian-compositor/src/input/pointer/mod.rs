@@ -315,13 +315,19 @@ fn update_hover_cursor_feedback(state: &mut MeridianState, location: Point<f64, 
         Some(DecorationHit::MinimizeButton) => Some(HoveredButton::Minimize),
         _ => None,
     };
-    state.decoration_manager.clear_hover_buttons();
+    let mut hover_changed = state.decoration_manager.clear_hover_buttons();
     if let Some((window, _)) = state.workspaces.active_space().element_under(location) {
         if let (Some(wl_surface), Some(hovered)) = (window.wl_surface(), hovered_button) {
-            state
+            if state
                 .decoration_manager
-                .update_hover_button(&wl_surface, Some(hovered));
+                .update_hover_button(&wl_surface, Some(hovered))
+            {
+                hover_changed = true;
+            }
         }
+    }
+    if hover_changed {
+        state.mark_all_outputs_dirty("decoration-button-hover-change");
     }
     // TODO(phase-3): Motion updates hover state, but non-motion pointer leave still needs explicit clear.
 

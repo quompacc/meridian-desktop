@@ -121,4 +121,16 @@ mod tests {
         assert!(!deco.set_hover(Some(HoveredButton::Close)));
         assert!(deco.set_hover(None));
     }
+
+    #[test]
+    fn clear_hover_returns_true_iff_some_deco_was_hovered() {
+        let mut a = WindowDecoration::new();
+        let mut b = WindowDecoration::new();
+        assert!(a.set_hover(Some(HoveredButton::Close)));
+        let any = [&mut a, &mut b]
+            .into_iter()
+            .map(|deco| deco.set_hover(None))
+            .fold(false, |acc, changed| acc || changed);
+        assert!(any);
+    }
 }

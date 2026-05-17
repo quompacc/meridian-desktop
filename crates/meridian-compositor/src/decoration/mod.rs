@@ -131,18 +131,26 @@ impl DecorationManager {
         }
     }
 
-    pub fn update_hover_button(&mut self, surface: &WlSurface, hovered: Option<HoveredButton>) {
+    pub fn update_hover_button(
+        &mut self,
+        surface: &WlSurface,
+        hovered: Option<HoveredButton>,
+    ) -> bool {
         let d = self
             .decorations
             .entry(Self::key(surface))
             .or_insert_with(WindowDecoration::new);
-        let _ = Self::set_hover_and_mark_dirty(d, hovered);
+        Self::set_hover_and_mark_dirty(d, hovered)
     }
 
-    pub fn clear_hover_buttons(&mut self) {
+    pub fn clear_hover_buttons(&mut self) -> bool {
+        let mut any_changed = false;
         for deco in self.decorations.values_mut() {
-            let _ = Self::set_hover_and_mark_dirty(deco, None);
+            if Self::set_hover_and_mark_dirty(deco, None) {
+                any_changed = true;
+            }
         }
+        any_changed
     }
 
     pub fn remove(&mut self, surface: &WlSurface) {
