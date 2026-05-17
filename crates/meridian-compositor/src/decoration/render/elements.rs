@@ -231,6 +231,8 @@ impl DecorationManager {
                 for (rect, buffer) in [
                     (slices.corner_tl, corners.tl),
                     (slices.corner_tr, corners.tr),
+                    (slices.corner_bl, corners.bl),
+                    (slices.corner_br, corners.br),
                 ] {
                     if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
                         renderer,

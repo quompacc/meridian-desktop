@@ -122,6 +122,8 @@ pub(crate) struct SsdShadowLayout {
 pub(crate) struct SsdFrameSlices {
     pub(crate) corner_tl: Rectangle<i32, Logical>,
     pub(crate) corner_tr: Rectangle<i32, Logical>,
+    pub(crate) corner_bl: Rectangle<i32, Logical>,
+    pub(crate) corner_br: Rectangle<i32, Logical>,
     pub(crate) top_strip: Rectangle<i32, Logical>,
     pub(crate) middle_belt: Rectangle<i32, Logical>,
     pub(crate) left_strip: Rectangle<i32, Logical>,
@@ -275,24 +277,29 @@ impl SsdChromeMetrics {
             return None;
         }
 
-        let cr = corner_radius.min(tb).min(fw / 2);
+        let cr = corner_radius.min(tb).min((fh - bw) / 2).min(fw / 2);
         if cr <= 0 {
             return None;
         }
 
         let fx = self.frame.frame_origin.x;
         let fy = self.frame.frame_origin.y;
-        let side_h = (fh - tb - bw).max(0);
+        let side_h = (fh - tb - cr).max(0);
         let middle_h = (tb - cr).max(0);
 
         Some(SsdFrameSlices {
             corner_tl: Rectangle::new((fx, fy).into(), (cr, cr).into()),
             corner_tr: Rectangle::new((fx + fw - cr, fy).into(), (cr, cr).into()),
+            corner_bl: Rectangle::new((fx, fy + fh - cr).into(), (cr, cr).into()),
+            corner_br: Rectangle::new((fx + fw - cr, fy + fh - cr).into(), (cr, cr).into()),
             top_strip: Rectangle::new((fx + cr, fy).into(), ((fw - 2 * cr).max(0), cr).into()),
             middle_belt: Rectangle::new((fx, fy + cr).into(), (fw, middle_h).into()),
             left_strip: Rectangle::new((fx, fy + tb).into(), (bw.max(0), side_h).into()),
             right_strip: Rectangle::new((fx + fw - bw, fy + tb).into(), (bw.max(0), side_h).into()),
-            bottom_border: Rectangle::new((fx, fy + fh - bw).into(), (fw, bw.max(0)).into()),
+            bottom_border: Rectangle::new(
+                (fx + cr, fy + fh - bw).into(),
+                ((fw - 2 * cr).max(0), bw.max(0)).into(),
+            ),
         })
     }
 }
@@ -511,7 +518,7 @@ mod tests {
     }
 
     #[test]
-    fn frame_slices_top_corners_cover_titlebar_corners() {
+    fn frame_slices_has_four_corners_at_frame_outer_edges() {
         let frame = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
         let chrome = SsdChromeMetrics::new(frame);
         let slices = chrome.frame_slices(12).expect("frame slices");
@@ -519,6 +526,10 @@ mod tests {
         assert_eq!(slices.corner_tl.loc, Point::from((0, 0)));
         assert_eq!(slices.corner_tl.size, Size::from((12, 12)));
         assert_eq!(slices.corner_tr.loc, Point::from((632, 0)));
+        assert_eq!(slices.corner_bl.loc, Point::from((0, 424)));
+        assert_eq!(slices.corner_bl.size, Size::from((12, 12)));
+        assert_eq!(slices.corner_br.loc, Point::from((632, 424)));
+        assert_eq!(slices.corner_br.size, Size::from((12, 12)));
         assert_eq!(slices.top_strip.loc, Point::from((12, 0)));
         assert_eq!(slices.top_strip.size, Size::from((620, 12)));
     }
@@ -532,30 +543,31 @@ mod tests {
         assert_eq!(slices.middle_belt.loc, Point::from((0, 12)));
         assert_eq!(slices.middle_belt.size, Size::from((644, 22)));
         assert_eq!(slices.left_strip.loc, Point::from((0, 34)));
-        assert_eq!(slices.left_strip.size, Size::from((2, 400)));
+        assert_eq!(slices.left_strip.size, Size::from((2, 390)));
         assert_eq!(slices.right_strip.loc, Point::from((642, 34)));
-        assert_eq!(slices.right_strip.size, Size::from((2, 400)));
+        assert_eq!(slices.right_strip.size, Size::from((2, 390)));
     }
 
     #[test]
-    fn frame_slices_bottom_border_is_only_bw_high() {
+    fn frame_slices_side_strips_stop_at_bottom_corners() {
         let frame = SsdFrameMetrics::from_frame_origin((5, 7).into(), (640, 400).into(), 2, 32);
         let chrome = SsdChromeMetrics::new(frame);
         let slices = chrome.frame_slices(12).expect("frame slices");
 
-        assert_eq!(slices.bottom_border.loc, Point::from((5, 441)));
-        assert_eq!(slices.bottom_border.size, Size::from((644, 2)));
+        assert_eq!(slices.left_strip.loc, Point::from((5, 41)));
+        assert_eq!(slices.left_strip.size, Size::from((2, 390)));
+        assert_eq!(slices.right_strip.loc, Point::from((647, 41)));
+        assert_eq!(slices.right_strip.size, Size::from((2, 390)));
     }
 
     #[test]
-    fn frame_slices_side_strips_empty_when_no_border() {
-        let frame = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 0, 32);
+    fn frame_slices_bottom_border_runs_between_bottom_corners() {
+        let frame = SsdFrameMetrics::from_frame_origin((5, 7).into(), (640, 400).into(), 2, 32);
         let chrome = SsdChromeMetrics::new(frame);
         let slices = chrome.frame_slices(12).expect("frame slices");
 
-        assert_eq!(slices.left_strip.size, Size::from((0, 400)));
-        assert_eq!(slices.right_strip.size, Size::from((0, 400)));
-        assert_eq!(slices.bottom_border.size, Size::from((640, 0)));
+        assert_eq!(slices.bottom_border.loc, Point::from((17, 441)));
+        assert_eq!(slices.bottom_border.size, Size::from((620, 2)));
     }
 
     #[test]

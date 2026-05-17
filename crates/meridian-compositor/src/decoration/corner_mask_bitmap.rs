@@ -2,21 +2,23 @@ fn alpha_to_u8(alpha: f32) -> u8 {
     (alpha.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
-pub(crate) fn rasterize_corner_mask(radius_px: u32, color_rgba: [u8; 4]) -> Vec<u8> {
+pub(crate) fn rasterize_corner_mask(radius_px: u32, color_rgba: [u8; 4]) -> (Vec<u8>, u32) {
     if radius_px == 0 {
-        return Vec::new();
+        return (Vec::new(), 0);
     }
 
+    const SUPERSAMPLE_FACTOR: u32 = 2;
     const SAMPLES: u32 = 8;
-    let r = radius_px as f32;
-    let center_x = (radius_px - 1) as f32;
-    let center_y = (radius_px - 1) as f32;
+    let internal_size = radius_px * SUPERSAMPLE_FACTOR;
+    let r = internal_size as f32;
+    let center_x = (internal_size - 1) as f32;
+    let center_y = (internal_size - 1) as f32;
     let r_sq = r * r;
     let src_alpha = color_rgba[3] as f32 / 255.0;
-    let mut out = vec![0u8; (radius_px * radius_px * 4) as usize];
+    let mut out = vec![0u8; (internal_size * internal_size * 4) as usize];
 
-    for y in 0..radius_px {
-        for x in 0..radius_px {
+    for y in 0..internal_size {
+        for x in 0..internal_size {
             let mut covered = 0u32;
             for sy in 0..SAMPLES {
                 for sx in 0..SAMPLES {
@@ -36,7 +38,7 @@ pub(crate) fn rasterize_corner_mask(radius_px: u32, color_rgba: [u8; 4]) -> Vec<
 
             let coverage = covered as f32 / (SAMPLES * SAMPLES) as f32;
             let alpha = coverage * src_alpha;
-            let off = ((y * radius_px + x) * 4) as usize;
+            let off = ((y * internal_size + x) * 4) as usize;
             out[off] = (color_rgba[0] as f32 * alpha).round() as u8;
             out[off + 1] = (color_rgba[1] as f32 * alpha).round() as u8;
             out[off + 2] = (color_rgba[2] as f32 * alpha).round() as u8;
@@ -44,7 +46,7 @@ pub(crate) fn rasterize_corner_mask(radius_px: u32, color_rgba: [u8; 4]) -> Vec<
         }
     }
 
-    out
+    (out, internal_size)
 }
 
 pub(crate) fn rasterize_rounded_rect(
@@ -146,7 +148,7 @@ mod tests {
 
     #[test]
     fn test_corner_mask_outer_corner_transparent() {
-        let pixels = rasterize_corner_mask(12, [100, 150, 200, 255]);
+        let (pixels, _) = rasterize_corner_mask(12, [100, 150, 200, 255]);
         assert_eq!(pixels[3], 0);
     }
 
@@ -154,15 +156,15 @@ mod tests {
     fn test_corner_mask_inner_corner_opaque() {
         let radius = 12u32;
         let alpha = 200u8;
-        let pixels = rasterize_corner_mask(radius, [100, 150, 200, alpha]);
-        let off = ((radius * radius - 1) * 4 + 3) as usize;
+        let (pixels, internal_size) = rasterize_corner_mask(radius, [100, 150, 200, alpha]);
+        let off = ((internal_size * internal_size - 1) * 4 + 3) as usize;
         assert_eq!(pixels[off], alpha);
     }
 
     #[test]
     fn test_corner_mask_color_premultiplied() {
-        let pixels = rasterize_corner_mask(12, [120, 80, 40, 128]);
-        let off = ((11 * 12 + 8) * 4) as usize;
+        let (pixels, internal_size) = rasterize_corner_mask(12, [120, 80, 40, 128]);
+        let off = (((internal_size - 1) * internal_size + (internal_size - 8)) * 4) as usize;
         let a = pixels[off + 3] as u32;
         if a > 0 {
             assert!(pixels[off] as u32 <= a);

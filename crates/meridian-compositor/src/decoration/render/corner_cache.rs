@@ -4,17 +4,22 @@ use smithay::{
 };
 
 use crate::decoration::{
-    corner_mask_bitmap::rasterize_corner_mask, shadow_bitmap::flip_horizontal,
+    corner_mask_bitmap::rasterize_corner_mask,
+    shadow_bitmap::{flip_horizontal, flip_vertical},
 };
 
 pub(crate) struct FrameCornerBuffers<'a> {
     pub(crate) tl: &'a MemoryRenderBuffer,
     pub(crate) tr: &'a MemoryRenderBuffer,
+    pub(crate) bl: &'a MemoryRenderBuffer,
+    pub(crate) br: &'a MemoryRenderBuffer,
 }
 
 pub(crate) struct CornerCache {
     tl: Option<MemoryRenderBuffer>,
     tr: Option<MemoryRenderBuffer>,
+    bl: Option<MemoryRenderBuffer>,
+    br: Option<MemoryRenderBuffer>,
     last_radius: u32,
     last_color: [u8; 4],
     initialized: bool,
@@ -27,6 +32,8 @@ impl CornerCache {
         Self {
             tl: None,
             tr: None,
+            bl: None,
+            br: None,
             last_radius: 0,
             last_color: [0; 4],
             initialized: false,
@@ -44,14 +51,18 @@ impl CornerCache {
         FrameCornerBuffers {
             tl: self.tl.as_ref().expect("corner tl should exist"),
             tr: self.tr.as_ref().expect("corner tr should exist"),
+            bl: self.bl.as_ref().expect("corner bl should exist"),
+            br: self.br.as_ref().expect("corner br should exist"),
         }
     }
 
     fn rebuild(&mut self, radius_px: u32, color: [u8; 4]) {
-        let tl_pixels = rasterize_corner_mask(radius_px, color);
-        let tr_pixels = flip_horizontal(&tl_pixels, radius_px, radius_px);
+        let (tl_pixels, internal_size) = rasterize_corner_mask(radius_px, color);
+        let tr_pixels = flip_horizontal(&tl_pixels, internal_size, internal_size);
+        let bl_pixels = flip_vertical(&tl_pixels, internal_size, internal_size);
+        let br_pixels = flip_vertical(&tr_pixels, internal_size, internal_size);
 
-        let size = (radius_px as i32, radius_px as i32);
+        let size = (internal_size as i32, internal_size as i32);
         self.tl = Some(MemoryRenderBuffer::from_slice(
             &tl_pixels,
             Fourcc::Abgr8888,
@@ -62,6 +73,22 @@ impl CornerCache {
         ));
         self.tr = Some(MemoryRenderBuffer::from_slice(
             &tr_pixels,
+            Fourcc::Abgr8888,
+            size,
+            1,
+            Transform::Normal,
+            None,
+        ));
+        self.bl = Some(MemoryRenderBuffer::from_slice(
+            &bl_pixels,
+            Fourcc::Abgr8888,
+            size,
+            1,
+            Transform::Normal,
+            None,
+        ));
+        self.br = Some(MemoryRenderBuffer::from_slice(
+            &br_pixels,
             Fourcc::Abgr8888,
             size,
             1,
