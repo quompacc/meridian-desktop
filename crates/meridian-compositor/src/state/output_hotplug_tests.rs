@@ -9,7 +9,7 @@
 //! - DRM mode selection or compositor lifecycle
 //! - Mirror-Mode (P2)
 //!
-//! Covered in Phase 1: window-position survival for Smithay `Space` on
+//! Covered in Phase 1+2: window-position survival for Smithay `Space` on
 //! output remove/reconfigure (no automatic migration).
 //!
 //! When a phase touches the output layer, add a snapshot-style case here
@@ -486,6 +486,27 @@ impl OutputHotplugFixture {
 
     fn window_count(&self, workspace: usize) -> usize {
         self.spaces[workspace].elements().count()
+    }
+
+    fn move_window_between_workspaces(&mut self, name: &str, from: usize, to: usize) -> bool {
+        if from == to || from >= self.spaces.len() || to >= self.spaces.len() {
+            return false;
+        }
+        let Some(elem) = self.spaces[from]
+            .elements()
+            .find(|e| e.name == name)
+            .cloned()
+        else {
+            return false;
+        };
+        let loc = self.spaces[from]
+            .element_location(&elem)
+            .unwrap_or_default();
+        self.spaces[from].unmap_elem(&elem);
+        self.spaces[to].map_element(elem, (loc.x, loc.y), false);
+        self.spaces[from].refresh();
+        self.spaces[to].refresh();
+        true
     }
 
     fn refresh_all_spaces(&mut self) {
@@ -1051,6 +1072,160 @@ fn multiple_windows_distributed_across_outputs_snapshot() {
 
     assert!(w_left.entered().is_empty());
     assert_eq!(w_right.entered(), vec!["drm-1".to_string()]);
+}
+
+#[test]
+fn multi_workspace_window_survives_output_remove() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+
+    let w_a = fixture.map_window("w_a", 2100, 100, 200, 200, 0);
+    let w_b = fixture.map_window("w_b", 2100, 100, 200, 200, 5);
+    fixture.refresh_all_spaces();
+
+    assert_eq!(w_a.entered(), vec!["drm-1".to_string()]);
+    assert_eq!(w_b.entered(), vec!["drm-1".to_string()]);
+
+    assert!(fixture.remove_output("drm-1"));
+    fixture.refresh_all_spaces();
+
+    assert_eq!(fixture.window_location("w_a", 0), Some((2100, 100)));
+    assert_eq!(fixture.window_location("w_b", 5), Some((2100, 100)));
+    assert!(w_a.entered().is_empty());
+    assert!(w_b.entered().is_empty());
+}
+
+#[test]
+fn reload_position_change_to_below_window_loses_overlap() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+
+    let w1 = fixture.map_window("w1", 2100, 100, 200, 200, 0);
+    fixture.refresh_all_spaces();
+    assert_eq!(w1.entered(), vec!["drm-1".to_string()]);
+
+    fixture.reload_layout_from_entries(&[entry_with(
+        "drm-1",
+        OutputPositionConfig::Below("drm-0".to_string()),
+        false,
+        true,
+    )]);
+    fixture.refresh_all_spaces();
+
+    assert_eq!(fixture.window_location("w1", 0), Some((2100, 100)));
+    assert!(w1.entered().is_empty());
+}
+
+#[test]
+fn reload_position_change_brings_output_under_window() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+
+    let w1 = fixture.map_window("w1", 300, 1200, 200, 200, 0);
+    fixture.refresh_all_spaces();
+    assert!(w1.entered().is_empty());
+
+    fixture.reload_layout_from_entries(&[entry_with(
+        "drm-1",
+        OutputPositionConfig::Coord { x: 0, y: 1080 },
+        false,
+        true,
+    )]);
+    fixture.refresh_all_spaces();
+
+    assert_eq!(fixture.window_location("w1", 0), Some((300, 1200)));
+    assert_eq!(w1.entered(), vec!["drm-1".to_string()]);
+}
+
+#[test]
+fn disable_then_re_enable_output_window_overlap_restored() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+
+    let w1 = fixture.map_window("w1", 2100, 100, 200, 200, 0);
+    fixture.refresh_all_spaces();
+    assert_eq!(w1.entered(), vec!["drm-1".to_string()]);
+
+    fixture.reload_layout_from_entries(&[entry_with(
+        "drm-1",
+        OutputPositionConfig::Auto,
+        false,
+        false,
+    )]);
+    fixture.refresh_all_spaces();
+    assert!(w1.entered().is_empty());
+
+    fixture.reload_layout_from_entries(&[entry_with(
+        "drm-1",
+        OutputPositionConfig::Auto,
+        false,
+        true,
+    )]);
+    fixture.refresh_all_spaces();
+
+    assert_eq!(w1.entered(), vec!["drm-1".to_string()]);
+    assert_eq!(fixture.window_location("w1", 0), Some((2100, 100)));
+}
+
+#[test]
+fn window_moved_between_workspaces_preserves_overlap() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+
+    let w1 = fixture.map_window("w1", 2100, 100, 200, 200, 0);
+    fixture.refresh_all_spaces();
+    assert_eq!(w1.entered(), vec!["drm-1".to_string()]);
+    assert_eq!(fixture.window_count(0), 1);
+    assert_eq!(fixture.window_count(3), 0);
+
+    assert!(fixture.move_window_between_workspaces("w1", 0, 3));
+
+    assert_eq!(fixture.window_count(0), 0);
+    assert_eq!(fixture.window_count(3), 1);
+    assert_eq!(fixture.window_location("w1", 3), Some((2100, 100)));
+    assert_eq!(w1.entered(), vec!["drm-1".to_string()]);
+}
+
+#[test]
+fn reconfigure_grow_brings_window_into_output() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+
+    let w1 = fixture.map_window("w1", 2000, 100, 200, 200, 0);
+    fixture.refresh_all_spaces();
+    assert!(w1.entered().is_empty());
+
+    assert!(fixture.reconfigure_output("drm-0", 2560, 1080));
+    fixture.refresh_all_spaces();
+
+    assert_eq!(fixture.window_location("w1", 0), Some((2000, 100)));
+    assert_eq!(w1.entered(), vec!["drm-0".to_string()]);
+}
+
+#[test]
+fn safety_net_re_enable_keeps_window_overlap() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+
+    let w1 = fixture.map_window("w1", 100, 100, 200, 200, 0);
+    fixture.refresh_all_spaces();
+    assert_eq!(w1.entered(), vec!["drm-0".to_string()]);
+
+    fixture.reload_layout_from_entries(&[entry_with(
+        "drm-0",
+        OutputPositionConfig::Auto,
+        false,
+        false,
+    )]);
+    fixture.refresh_all_spaces();
+
+    assert_eq!(fixture.window_location("w1", 0), Some((100, 100)));
+    assert_eq!(w1.entered(), vec!["drm-0".to_string()]);
 }
 
 fn entry_with(
