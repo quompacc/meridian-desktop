@@ -22,14 +22,20 @@ use smithay::{
     wayland::{
         compositor::CompositorState,
         dmabuf::DmabufState,
+        fractional_scale::FractionalScaleManagerState,
         idle_inhibit::IdleInhibitManagerState,
         idle_notify::IdleNotifierState,
+        input_method::InputMethodManagerState,
         output::OutputManagerState,
+        presentation::PresentationState,
         selection::{data_device::DataDeviceState, primary_selection::PrimarySelectionState},
         session_lock::SessionLockManagerState,
         shell::{wlr_layer::WlrLayerShellState, xdg::XdgShellState},
         shm::ShmState,
         socket::ListeningSocketSource,
+        text_input::TextInputManagerState,
+        viewporter::ViewporterState,
+        xdg_activation::XdgActivationState,
         xwayland_shell::XWaylandShellState,
     },
 };
@@ -596,6 +602,15 @@ impl MeridianState {
         let data_device_state = DataDeviceState::new::<Self>(&display_handle);
         let primary_selection_state = PrimarySelectionState::new::<Self>(&display_handle);
         let xwayland_shell_state = XWaylandShellState::new::<Self>(&display_handle);
+        let text_input_manager_state = TextInputManagerState::new::<Self>(&display_handle);
+        let input_method_manager_state =
+            InputMethodManagerState::new::<Self, _>(&display_handle, |_client| true);
+        let xdg_activation_state = XdgActivationState::new::<Self>(&display_handle);
+        let presentation_state =
+            PresentationState::new::<Self>(&display_handle, libc::CLOCK_MONOTONIC as u32);
+        let fractional_scale_manager_state =
+            FractionalScaleManagerState::new::<Self>(&display_handle);
+        let viewporter_state = ViewporterState::new::<Self>(&display_handle);
 
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&display_handle, "seat-0");
@@ -652,6 +667,12 @@ impl MeridianState {
             data_device_state,
             primary_selection_state,
             xwayland_shell_state,
+            text_input_manager_state,
+            input_method_manager_state,
+            xdg_activation_state,
+            presentation_state,
+            fractional_scale_manager_state,
+            viewporter_state,
             idle_notifier,
             idle_inhibit_state,
             idle_inhibitors: IdleInhibitorSet::new(),
