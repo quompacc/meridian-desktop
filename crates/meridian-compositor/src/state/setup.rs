@@ -21,6 +21,7 @@ use smithay::{
     utils::Transform,
     wayland::{
         compositor::CompositorState,
+        dmabuf::DmabufState,
         idle_inhibit::IdleInhibitManagerState,
         idle_notify::IdleNotifierState,
         output::OutputManagerState,
@@ -604,6 +605,7 @@ impl MeridianState {
         let loop_handle = event_loop.handle();
         let idle_notifier = IdleNotifierState::<Self>::new(&display_handle, loop_handle.clone());
         let idle_inhibit_state = IdleInhibitManagerState::new::<Self>(&display_handle);
+        let dmabuf_state = DmabufState::new();
         let session_lock_state =
             SessionLockManagerState::new::<Self, _>(&display_handle, |_client| true);
         let output_power_global =
@@ -653,6 +655,9 @@ impl MeridianState {
             idle_notifier,
             idle_inhibit_state,
             idle_inhibitors: IdleInhibitorSet::new(),
+            dmabuf_state,
+            dmabuf_global: None,
+            dmabuf_default_feedback: None,
             session_lock_state,
             lock_manager: LockManager::new(),
             output_power_manager: OutputPowerManager::new(),

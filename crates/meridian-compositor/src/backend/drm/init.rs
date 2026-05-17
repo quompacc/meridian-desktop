@@ -18,6 +18,7 @@ use smithay::{
         },
         egl::{EGLContext, EGLDisplay},
         libinput::{LibinputInputBackend, LibinputSessionInterface},
+        renderer::ImportDma,
         session::{libseat::LibSeatSession, Event as SessionEvent, Session},
     },
     desktop::layer_map_for_output,
@@ -31,6 +32,7 @@ use smithay::{
         input::Libinput,
     },
     utils::{DeviceFd, Transform},
+    wayland::dmabuf::DmabufFeedbackBuilder,
 };
 use tracing::{info, warn};
 
@@ -1261,6 +1263,54 @@ pub fn init_drm(
     let cursor_buffer = cursor_image.to_memory_buffer();
     let timing_enabled = env_flag_enabled("MERIDIAN_DRM_TIMING");
     let dirty_stats_enabled = env_flag_enabled("MERIDIAN_DIRTY_STATS");
+
+    if state.dmabuf_global.is_none() {
+        let dmabuf_formats: Vec<_> = renderer.dmabuf_formats().into_iter().collect();
+        let main_device = std::fs::metadata(&gpu_path).ok().map(|meta| {
+            use std::os::unix::fs::MetadataExt;
+            meta.rdev()
+        });
+
+        if let Some(main_device) = main_device {
+            match DmabufFeedbackBuilder::new(main_device, dmabuf_formats.clone()).build() {
+                Ok(feedback) => {
+                    let global = state
+                        .dmabuf_state
+                        .create_global_with_default_feedback::<MeridianState>(
+                            &state.display_handle,
+                            &feedback,
+                        );
+                    state.dmabuf_global = Some(global);
+                    state.dmabuf_default_feedback = Some(feedback);
+                    tracing::info!(
+                        "linux-dmabuf-v1 global registered (v4 + feedback, main_device=0x{:x})",
+                        main_device
+                    );
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        "dmabuf feedback build failed: {} - falling back to v3 global",
+                        err
+                    );
+                    let global = state
+                        .dmabuf_state
+                        .create_global::<MeridianState>(&state.display_handle, dmabuf_formats);
+                    state.dmabuf_global = Some(global);
+                    state.dmabuf_default_feedback = None;
+                }
+            }
+        } else {
+            tracing::warn!(
+                "failed to stat kms_node_path={:?} - registering v3 dmabuf global without feedback",
+                gpu_path
+            );
+            let global = state
+                .dmabuf_state
+                .create_global::<MeridianState>(&state.display_handle, dmabuf_formats);
+            state.dmabuf_global = Some(global);
+            state.dmabuf_default_feedback = None;
+        }
+    }
 
     state.drm_backend = Some(DrmBackend {
         device_fd: device_fd.clone(),

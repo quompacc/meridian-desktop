@@ -14,6 +14,7 @@ use smithay::{
     utils::{Logical, Point, Rectangle, Size},
     wayland::{
         compositor::CompositorState,
+        dmabuf::{DmabufFeedback, DmabufGlobal, DmabufState},
         idle_inhibit::IdleInhibitManagerState,
         idle_notify::IdleNotifierState,
         output::OutputManagerState,
@@ -335,6 +336,9 @@ pub struct MeridianState {
     pub idle_notifier: IdleNotifierState<Self>,
     pub idle_inhibit_state: IdleInhibitManagerState,
     pub idle_inhibitors: IdleInhibitorSet<WlSurface>,
+    pub dmabuf_state: DmabufState,
+    pub dmabuf_global: Option<DmabufGlobal>,
+    pub dmabuf_default_feedback: Option<DmabufFeedback>,
     pub session_lock_state: SessionLockManagerState,
     pub lock_manager: LockManager,
     pub output_power_manager: OutputPowerManager,

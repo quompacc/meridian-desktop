@@ -1,4 +1,5 @@
 mod core;
+pub mod dmabuf;
 pub mod idle;
 mod misc;
 pub mod output_power;
