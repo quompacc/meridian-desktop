@@ -4,7 +4,10 @@ use smithay_client_toolkit::{
 };
 use wayland_client::{protocol::wl_pointer, Connection, QueueHandle};
 
-use crate::wayland::{RepaintReason, SurfaceKind};
+use crate::{
+    network_popup::popup_hit_test,
+    wayland::{RepaintReason, SurfaceKind},
+};
 
 use super::MeridianShell;
 
@@ -25,6 +28,8 @@ impl PointerHandler for MeridianShell {
                 SurfaceKind::Calendar
             } else if &event.surface == self.workspace_layer.wl_surface() {
                 SurfaceKind::WorkspacePopup
+            } else if &event.surface == self.network_layer.wl_surface() {
+                SurfaceKind::NetworkPopup
             } else {
                 SurfaceKind::None
             };
@@ -37,6 +42,9 @@ impl PointerHandler for MeridianShell {
                     SurfaceKind::Launcher => self.draw_launcher(qh, RepaintReason::Pointer),
                     SurfaceKind::WorkspacePopup => {
                         self.draw_workspace_popup(qh, RepaintReason::Pointer)
+                    }
+                    SurfaceKind::NetworkPopup => {
+                        self.draw_network_popup(qh, RepaintReason::Pointer)
                     }
                     SurfaceKind::Calendar | SurfaceKind::None => {}
                 }
@@ -82,12 +90,28 @@ impl PointerHandler for MeridianShell {
                         .iter()
                         .find(|zone| zone.rect.contains(event.position.0, event.position.1))
                         .map(|zone| zone.action.clone()),
+                    SurfaceKind::NetworkPopup => {
+                        if popup_hit_test(
+                            self.network_width,
+                            self.network_height,
+                            event.position.0,
+                            event.position.1,
+                        ) {
+                            None
+                        } else {
+                            Some(crate::wayland::ClickAction::ToggleNetworkPopup)
+                        }
+                    }
                     SurfaceKind::Calendar => None,
                     SurfaceKind::None => None,
                 };
                 let keep_workspace_popup_open = matches!(
                     action,
                     Some(crate::wayland::ClickAction::ToggleWorkspacePopup)
+                );
+                let keep_network_popup_open = matches!(
+                    action,
+                    Some(crate::wayland::ClickAction::ToggleNetworkPopup)
                 );
                 if self.workspace_popup_open
                     && self.pointer_surface != SurfaceKind::WorkspacePopup
@@ -96,11 +120,19 @@ impl PointerHandler for MeridianShell {
                     self.close_workspace_popup(crate::wayland::CommitReason::Input);
                     self.draw_panel(qh, RepaintReason::Pointer);
                 }
+                if self.network_popup_open
+                    && self.pointer_surface != SurfaceKind::NetworkPopup
+                    && !keep_network_popup_open
+                {
+                    self.close_network_popup(crate::wayland::CommitReason::Input);
+                    self.draw_panel(qh, RepaintReason::Pointer);
+                }
                 if let Some(action) = action {
                     match self.pointer_surface {
                         SurfaceKind::Panel => self.handle_panel_click(qh, action),
                         SurfaceKind::Launcher => self.handle_launcher_click(qh, action),
                         SurfaceKind::WorkspacePopup => self.handle_workspace_click(qh, action),
+                        SurfaceKind::NetworkPopup => {}
                         SurfaceKind::Calendar => {}
                         SurfaceKind::None => {}
                     }

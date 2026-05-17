@@ -5,9 +5,9 @@ use tracing::{debug, info, warn};
 use wayland_client::QueueHandle;
 
 use crate::{
-    buffer, launcher, panel, workspaces, Painter, Rect, CALENDAR_POPUP_HEIGHT,
-    CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, PANEL_HEIGHT, WORKSPACE_POPUP_HEIGHT,
-    WORKSPACE_POPUP_WIDTH,
+    buffer, launcher, network_popup, panel, workspaces, Painter, Rect, CALENDAR_POPUP_HEIGHT,
+    CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT,
+    NETWORK_POPUP_WIDTH, PANEL_HEIGHT, WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
 };
 
 use super::{
@@ -88,6 +88,8 @@ impl MeridianShell {
             focused_title: self.focused_title.clone(),
             window_entries,
             clock: clock.to_string(),
+            network_icon: self.network_controller.state().icon_name(),
+            network_popup_open: self.network_popup_open,
             theme: self.theme_render_signature(),
         }
     }
@@ -281,6 +283,8 @@ impl MeridianShell {
                     pinned_apps: &self.pinned_apps,
                     window_entries: &panel_window_entries,
                     clock: &clock,
+                    network_state: self.network_controller.state(),
+                    network_popup_open: self.network_popup_open,
                     width,
                     hover_pos: (self.pointer_surface == SurfaceKind::Panel)
                         .then_some(self.pointer_position),
@@ -754,5 +758,90 @@ impl MeridianShell {
         self.workspace_layer.wl_surface().attach(None, 0, 0);
         self.workspace_layer.commit();
         self.workspace_dirty = false;
+    }
+
+    pub(crate) fn draw_network_popup(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
+        debug!(
+            "draw_network_popup: reason={:?} open={} configured={} network_dirty={} commit_expected={}",
+            reason,
+            self.network_popup_open,
+            self.network_configured,
+            self.network_dirty,
+            self.network_popup_open && self.network_configured
+        );
+        if !self.network_popup_open || !self.network_configured {
+            debug!(
+                "draw_network_popup skipped: reason={:?} open={} configured={}",
+                reason, self.network_popup_open, self.network_configured
+            );
+            return;
+        }
+
+        let width = self.network_width.min(NETWORK_POPUP_WIDTH);
+        let height = self.network_height.min(NETWORK_POPUP_HEIGHT);
+        let stride = buffer::shm_buffer_stride(width);
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.network_buffer,
+                width,
+                height,
+                stride,
+            );
+            let Some(buf) = buf else {
+                warn!(
+                    "network popup buffer unavailable: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
+            };
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.network_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
+                warn!(
+                    "network popup canvas unavailable after retry: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
+            };
+
+            let mut painter = Painter::new(canvas, width as i32, height as i32);
+            network_popup::draw_network_popup(
+                &mut painter,
+                &self.font,
+                &self.theme,
+                self.network_controller.state(),
+            );
+
+            if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {
+                warn!(
+                    "network popup buffer attach failed: reason={:?} width={} height={} error={}",
+                    reason, width, height, err
+                );
+                return;
+            }
+            self.network_layer
+                .wl_surface()
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.network_layer.commit();
+            debug!(
+                "draw_network_popup committed: reason={:?} width={} height={}",
+                reason, width, height
+            );
+            self.network_dirty = false;
+            return;
+        }
+    }
+
+    pub(crate) fn unmap_network_popup(&mut self, reason: CommitReason) {
+        debug!(
+            "unmap_network_popup: reason={:?} open={} configured={} surface=network attach_none=true commit=true",
+            reason, self.network_popup_open, self.network_configured
+        );
+        self.network_layer.wl_surface().attach(None, 0, 0);
+        self.network_layer.commit();
+        self.network_dirty = false;
     }
 }

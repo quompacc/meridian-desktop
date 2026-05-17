@@ -17,9 +17,10 @@ use tracing::{debug, info, warn};
 use wayland_client::{globals::registry_queue_init, Connection, QueueHandle};
 
 use crate::{
-    default_pinned_apps, icons::IconCache, launcher, panel, TextRenderer, CALENDAR_POPUP_HEIGHT,
-    CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, PANEL_HEIGHT, SHELL_POPUP_BOTTOM_MARGIN,
-    WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
+    default_pinned_apps, icons::IconCache, launcher, network::NetworkController, panel,
+    TextRenderer, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
+    NETWORK_POPUP_HEIGHT, NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, PANEL_HEIGHT,
+    SHELL_POPUP_BOTTOM_MARGIN, WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
 };
 
 use super::{
@@ -117,6 +118,27 @@ pub(crate) fn initialize(
         SHELL_POPUP_BOTTOM_MARGIN
     );
 
+    let network_surface = compositor.create_surface(&qh);
+    let network_layer = layer_shell.create_layer_surface(
+        &qh,
+        network_surface,
+        Layer::Overlay,
+        Some("meridian-network-popup"),
+        None,
+    );
+    network_layer.set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
+    network_layer.set_margin(0, NETWORK_POPUP_RIGHT_MARGIN, SHELL_POPUP_BOTTOM_MARGIN, 0);
+    network_layer.set_size(NETWORK_POPUP_WIDTH, NETWORK_POPUP_HEIGHT);
+    network_layer.set_exclusive_zone(0);
+    network_layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+    debug!(
+        "Network popup surface created: namespace=meridian-network-popup layer=Overlay anchor=Bottom|Right size={}x{} margin_bottom={} margin_right={} exclusive_zone=0 keyboard_interactivity=OnDemand",
+        NETWORK_POPUP_WIDTH,
+        NETWORK_POPUP_HEIGHT,
+        SHELL_POPUP_BOTTOM_MARGIN,
+        NETWORK_POPUP_RIGHT_MARGIN
+    );
+
     let meridian_config = MeridianConfig::load();
     let mut theme_manager = ThemeManager::new();
     if !meridian_config.general.theme.trim().is_empty()
@@ -143,6 +165,19 @@ pub(crate) fn initialize(
     let pool = SlotPool::new(1024 * 1024 * 4, &shm)?;
     let mut icon_cache = IconCache::new();
     icon_cache.warm(&["utilities-terminal", "firefox", "org.kde.dolphin"], 22);
+    icon_cache.warm(
+        &[
+            "network-wired-symbolic",
+            "network-wired-disconnected-symbolic",
+            "network-wireless-signal-excellent-symbolic",
+            "network-wireless-signal-good-symbolic",
+            "network-wireless-signal-none-symbolic",
+            "network-wireless-disconnected-symbolic",
+            "network-vpn-symbolic",
+            "network-offline-symbolic",
+        ],
+        22,
+    );
     let launcher_apps = launcher::DesktopApp::load_system();
     let mut seen_icons = HashSet::new();
     let mut launcher_icons = Vec::new();
@@ -160,6 +195,8 @@ pub(crate) fn initialize(
             .collect::<Vec<_>>();
         icon_cache.warm(&icon_refs, 24);
     }
+    let mut network_controller = NetworkController::new();
+    network_controller.poll();
 
     let commit_stats_enabled = std::env::var("MERIDIAN_SHELL_COMMIT_STATS")
         .map(|value| {
@@ -187,14 +224,17 @@ pub(crate) fn initialize(
         launcher_layer,
         calendar_layer,
         workspace_layer,
+        network_layer,
         panel_configured: false,
         launcher_configured: false,
         calendar_configured: false,
         workspace_configured: false,
+        network_configured: false,
         panel_buffer: None,
         launcher_buffer: None,
         calendar_buffer: None,
         workspace_buffer: None,
+        network_buffer: None,
         pool,
         width: 1024,
         launcher_width: LAUNCHER_WIDTH,
@@ -203,6 +243,8 @@ pub(crate) fn initialize(
         calendar_height: CALENDAR_POPUP_HEIGHT,
         workspace_width: WORKSPACE_POPUP_WIDTH,
         workspace_height: WORKSPACE_POPUP_HEIGHT,
+        network_width: NETWORK_POPUP_WIDTH,
+        network_height: NETWORK_POPUP_HEIGHT,
         keyboard: None,
         keyboard_focus: SurfaceKind::None,
         pointer: None,
@@ -212,6 +254,7 @@ pub(crate) fn initialize(
         theme,
         font: RefCell::new(font),
         icon_cache,
+        network_controller,
         ipc: IpcClient::connect(),
         panel_state: panel::PanelState::new(),
         pinned_apps: default_pinned_apps(),
@@ -235,8 +278,10 @@ pub(crate) fn initialize(
         launcher_dirty: true,
         calendar_dirty: true,
         workspace_dirty: true,
+        network_dirty: true,
         calendar_popup_open: false,
         workspace_popup_open: false,
+        network_popup_open: false,
         calendar_display_policy: CalendarDisplayPolicy::default(),
         panel_last_signature: None,
         launcher_last_signature: None,
@@ -275,6 +320,8 @@ pub(crate) fn initialize(
     info!("Calendar popup surface created and committed");
     shell.workspace_layer.commit();
     info!("Workspace popup surface created and committed");
+    shell.network_layer.commit();
+    info!("Network popup surface created and committed");
 
     Ok((shell, qh))
 }

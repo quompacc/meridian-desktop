@@ -537,6 +537,9 @@ impl MeridianShell {
         if !open_before && self.workspace_popup_open {
             self.close_workspace_popup(CommitReason::Input);
         }
+        if !open_before && self.network_popup_open {
+            self.close_network_popup(CommitReason::Input);
+        }
         self.launcher_state.toggle();
         let open_after = self.launcher_state.open;
         if self.launcher_state.open {
@@ -582,6 +585,9 @@ impl MeridianShell {
             return;
         }
 
+        if self.network_popup_open {
+            self.close_network_popup(reason);
+        }
         if self.workspace_popup_open {
             self.close_workspace_popup(reason);
         }
@@ -649,6 +655,9 @@ impl MeridianShell {
         if self.calendar_popup_open {
             self.close_calendar_popup(reason);
         }
+        if self.network_popup_open {
+            self.close_network_popup(reason);
+        }
 
         self.workspace_popup_open = true;
         self.workspace_layer
@@ -690,6 +699,69 @@ impl MeridianShell {
         true
     }
 
+    fn toggle_network_popup(&mut self, reason: CommitReason) {
+        if self.network_popup_open {
+            self.close_network_popup(reason);
+            return;
+        }
+
+        if self.launcher_state.open {
+            self.launcher_state.close();
+            self.launcher_layer
+                .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+            self.unmap_launcher(reason);
+        }
+        if self.calendar_popup_open {
+            self.close_calendar_popup(reason);
+        }
+        if self.workspace_popup_open {
+            self.close_workspace_popup(reason);
+        }
+
+        self.network_popup_open = true;
+        self.network_layer
+            .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
+        self.network_layer.set_margin(
+            0,
+            crate::NETWORK_POPUP_RIGHT_MARGIN,
+            crate::SHELL_POPUP_BOTTOM_MARGIN,
+            0,
+        );
+        self.network_layer.set_exclusive_zone(0);
+        self.network_layer
+            .set_size(crate::NETWORK_POPUP_WIDTH, crate::NETWORK_POPUP_HEIGHT);
+        self.network_layer
+            .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+        self.network_width = crate::NETWORK_POPUP_WIDTH;
+        self.network_height = crate::NETWORK_POPUP_HEIGHT;
+        self.network_dirty = true;
+        tracing::debug!(
+            "toggle_network_popup: open_after={} configured={} size={}x{} keyboard_focus={:?}",
+            self.network_popup_open,
+            self.network_configured,
+            self.network_width,
+            self.network_height,
+            self.keyboard_focus
+        );
+    }
+
+    pub(crate) fn close_network_popup(&mut self, reason: CommitReason) -> bool {
+        if !self.network_popup_open {
+            return false;
+        }
+        self.network_popup_open = false;
+        self.network_layer
+            .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+        self.unmap_network_popup(reason);
+        tracing::debug!(
+            "close_network_popup: open_after={} configured={} keyboard_focus={:?}",
+            self.network_popup_open,
+            self.network_configured,
+            self.keyboard_focus
+        );
+        true
+    }
+
     pub(crate) fn close_launcher_after_launch(
         &mut self,
         qh: &QueueHandle<Self>,
@@ -711,6 +783,9 @@ impl MeridianShell {
         }
         if self.workspace_popup_open && !matches!(action, ClickAction::ToggleWorkspacePopup) {
             self.close_workspace_popup(CommitReason::Input);
+        }
+        if self.network_popup_open && !matches!(action, ClickAction::ToggleNetworkPopup) {
+            self.close_network_popup(CommitReason::Input);
         }
 
         match action {
@@ -762,6 +837,13 @@ impl MeridianShell {
                 self.draw_panel(qh, RepaintReason::Pointer);
                 if self.workspace_popup_open {
                     self.draw_workspace_popup(qh, RepaintReason::Pointer);
+                }
+            }
+            ClickAction::ToggleNetworkPopup => {
+                self.toggle_network_popup(CommitReason::Input);
+                self.draw_panel(qh, RepaintReason::Pointer);
+                if self.network_popup_open {
+                    self.draw_network_popup(qh, RepaintReason::Pointer);
                 }
             }
             ClickAction::Clock => {
@@ -822,6 +904,7 @@ impl MeridianShell {
             ClickAction::SwitchWorkspace(_) => {}
             ClickAction::ToggleLauncher => {}
             ClickAction::ToggleWorkspacePopup => {}
+            ClickAction::ToggleNetworkPopup => {}
             ClickAction::Clock => {}
         }
     }

@@ -7,6 +7,7 @@ pub(crate) enum SurfaceKind {
     Launcher,
     Calendar,
     WorkspacePopup,
+    NetworkPopup,
 }
 
 #[derive(Debug, Clone)]
@@ -30,6 +31,7 @@ pub enum ClickAction {
     },
     ToggleLauncher,
     ToggleWorkspacePopup,
+    ToggleNetworkPopup,
     Clock,
 }
 

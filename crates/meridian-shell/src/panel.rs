@@ -4,6 +4,7 @@ use meridian_config::ThemeConfig;
 
 use crate::{
     icons::IconCache,
+    network::NetworkState,
     ui::{
         primitives::{
             draw_active_indicator, draw_panel_button, draw_section_separator, ActiveIndicatorEdge,
@@ -44,6 +45,8 @@ pub struct PanelDrawInput<'a> {
     pub pinned_apps: &'a [PinnedApp],
     pub window_entries: &'a [PanelWindowEntry],
     pub clock: &'a str,
+    pub network_state: &'a NetworkState,
+    pub network_popup_open: bool,
     pub width: u32,
     pub hover_pos: Option<(f64, f64)>,
 }
@@ -70,6 +73,8 @@ pub fn draw_panel(
         pinned_apps,
         window_entries,
         clock,
+        network_state,
+        network_popup_open,
         width,
         hover_pos,
     } = input;
@@ -234,6 +239,24 @@ pub fn draw_panel(
         w: tokens::panel::TRAY_SLOT_W,
         h: tokens::panel::WORKSPACE_BUTTON_H,
     };
+    let tray_hovered = hover_pos
+        .map(|(px, py)| tray_slot_rect.contains(px, py))
+        .unwrap_or(false);
+    let tray_bg = if network_popup_open || tray_hovered {
+        colors.border
+    } else {
+        colors.surface
+    };
+    painter.roundish_rect_with_radius(tray_slot_rect, tray_bg, 0);
+    if let Some(icon) = icon_cache.lookup(network_state.icon_name(), PINNED_ICON_SIZE) {
+        painter.draw_image(tray_slot_rect, icon);
+    } else {
+        painter.text_centered(font, "NET", tray_slot_rect, colors.text_dim);
+    }
+    panel_state.clicks.push(ClickZone {
+        rect: tray_slot_rect,
+        action: ClickAction::ToggleNetworkPopup,
+    });
 
     // ── Center: Read-only workspace window list ────────────────────────────
     let center_right = tray_slot_rect.x - 8;
@@ -304,5 +327,60 @@ pub fn draw_panel(
             });
             text_x += tile_w + 6;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+
+    use meridian_config::ThemeConfig;
+
+    use crate::{
+        icons::IconCache,
+        network::{ConnectionKind, NetworkState},
+        panel::{draw_panel, PanelDrawInput, PanelState},
+        ClickAction, Painter, TextRenderer, PANEL_HEIGHT,
+    };
+
+    fn draw_with_state(network_state: NetworkState) -> PanelState {
+        let mut panel_state = PanelState::new();
+        let mut buffer = vec![0u8; (1024 * PANEL_HEIGHT * 4) as usize];
+        let mut painter = Painter::new(&mut buffer, 1024, PANEL_HEIGHT as i32);
+        let font = RefCell::<Option<TextRenderer>>::new(None);
+        let theme = ThemeConfig::default();
+        let icon_cache = IconCache::new();
+
+        draw_panel(
+            &mut panel_state,
+            &mut painter,
+            PanelDrawInput {
+                font: &font,
+                theme: &theme,
+                icon_cache: &icon_cache,
+                active_workspace: 1,
+                total_workspaces: 9,
+                pinned_apps: &[],
+                window_entries: &[],
+                clock: "12:34  17.05.2026",
+                network_state: &network_state,
+                network_popup_open: false,
+                width: 1024,
+                hover_pos: None,
+            },
+        );
+        panel_state
+    }
+
+    #[test]
+    fn panel_tray_slot_renders_network_icon_when_connected() {
+        let state = draw_with_state(NetworkState::Connected {
+            kind: ConnectionKind::Ethernet,
+            connection_name: "Wired connection 1".to_string(),
+        });
+        assert!(state
+            .clicks
+            .iter()
+            .any(|zone| matches!(zone.action, ClickAction::ToggleNetworkPopup)));
     }
 }

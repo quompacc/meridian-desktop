@@ -4,13 +4,15 @@ use smithay_client_toolkit::reexports::calloop::{
     timer::{TimeoutAction, Timer},
     EventLoop,
 };
-use tracing_subscriber::EnvFilter;
 use tracing::info;
+use tracing_subscriber::EnvFilter;
 
 mod buffer;
 mod draw;
 mod icons;
 mod launcher;
+mod network;
+mod network_popup;
 mod panel;
 mod ui;
 mod wayland;
@@ -29,7 +31,10 @@ pub const CALENDAR_POPUP_WIDTH: u32 = 280;
 pub const CALENDAR_POPUP_HEIGHT: u32 = 220;
 pub const WORKSPACE_POPUP_WIDTH: u32 = 280;
 pub const WORKSPACE_POPUP_HEIGHT: u32 = 200;
+pub const NETWORK_POPUP_WIDTH: u32 = 240;
+pub const NETWORK_POPUP_HEIGHT: u32 = 120;
 pub const SHELL_POPUP_BOTTOM_MARGIN: i32 = 2;
+pub const NETWORK_POPUP_RIGHT_MARGIN: i32 = 220;
 
 pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
     vec![
@@ -66,7 +71,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut event_loop = EventLoop::try_new()?;
     let (mut shell, qh) = wayland::initialize(&mut event_loop)?;
 
-    insert_tick_timer(&mut event_loop, qh)?;
+    insert_tick_timer(&mut event_loop, qh.clone())?;
+    insert_network_poll_timer(&mut event_loop, qh)?;
     insert_commit_stats_timer(&mut event_loop)?;
 
     while !shell.exit {
@@ -122,6 +128,26 @@ fn insert_commit_stats_timer(
         .insert_source(Timer::immediate(), move |_, _, shell| {
             shell.tick_commit_stats();
             TimeoutAction::ToDuration(Duration::from_secs(1))
+        })?;
+    Ok(())
+}
+
+fn insert_network_poll_timer(
+    event_loop: &mut EventLoop<'_, wayland::MeridianShell>,
+    qh: wayland_client::QueueHandle<wayland::MeridianShell>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    event_loop
+        .handle()
+        .insert_source(Timer::immediate(), move |_, _, shell| {
+            let previous = shell.network_controller.state().clone();
+            let current = shell.network_controller.poll().clone();
+            if current != previous {
+                shell.draw_panel(&qh, RepaintReason::Ipc);
+                if shell.network_popup_open {
+                    shell.draw_network_popup(&qh, RepaintReason::Ipc);
+                }
+            }
+            TimeoutAction::ToDuration(Duration::from_secs(2))
         })?;
     Ok(())
 }

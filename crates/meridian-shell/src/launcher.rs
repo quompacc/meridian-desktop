@@ -900,6 +900,7 @@ impl LauncherState {
                 ClickAction::ToggleLauncher => None,
                 ClickAction::Clock => None,
                 ClickAction::ToggleWorkspacePopup => None,
+                ClickAction::ToggleNetworkPopup => None,
             });
 
         match hovered_index {

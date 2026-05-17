@@ -7,7 +7,8 @@ use wayland_client::{Connection, QueueHandle};
 use crate::wayland::{MeridianShell, RepaintReason};
 use crate::{
     CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
-    WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
+    NETWORK_POPUP_HEIGHT, NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, WORKSPACE_POPUP_HEIGHT,
+    WORKSPACE_POPUP_WIDTH,
 };
 
 impl LayerShellHandler for MeridianShell {
@@ -42,6 +43,15 @@ impl LayerShellHandler for MeridianShell {
             self.workspace_popup_open = false;
             self.workspace_configured = false;
             self.workspace_dirty = false;
+            self.draw_panel(qh, RepaintReason::LayerConfigure);
+            return;
+        }
+
+        if self.network_layer == *layer {
+            warn!("Network popup layer surface closed by compositor; recovering popup state");
+            self.network_popup_open = false;
+            self.network_configured = false;
+            self.network_dirty = false;
             self.draw_panel(qh, RepaintReason::LayerConfigure);
             return;
         }
@@ -178,6 +188,45 @@ impl LayerShellHandler for MeridianShell {
             self.workspace_height = WORKSPACE_POPUP_HEIGHT;
             if self.workspace_popup_open {
                 self.draw_workspace_popup(qh, RepaintReason::LayerConfigure);
+            }
+        } else if self.network_layer == *layer {
+            let requested_w = if configure.new_size.0 > 0 {
+                configure.new_size.0
+            } else {
+                NETWORK_POPUP_WIDTH
+            };
+            let requested_h = if configure.new_size.1 > 0 {
+                configure.new_size.1
+            } else {
+                NETWORK_POPUP_HEIGHT
+            };
+            let clamped_w = requested_w.min(NETWORK_POPUP_WIDTH);
+            let clamped_h = requested_h.min(NETWORK_POPUP_HEIGHT);
+            tracing::debug!(
+                "network popup configure: requested={}x{} clamped={}x{} desired={}x{}",
+                requested_w,
+                requested_h,
+                clamped_w,
+                clamped_h,
+                NETWORK_POPUP_WIDTH,
+                NETWORK_POPUP_HEIGHT
+            );
+            self.network_layer
+                .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
+            self.network_layer.set_margin(
+                0,
+                NETWORK_POPUP_RIGHT_MARGIN,
+                crate::SHELL_POPUP_BOTTOM_MARGIN,
+                0,
+            );
+            self.network_layer.set_exclusive_zone(0);
+            self.network_layer
+                .set_size(NETWORK_POPUP_WIDTH, NETWORK_POPUP_HEIGHT);
+            self.network_configured = true;
+            self.network_width = NETWORK_POPUP_WIDTH;
+            self.network_height = NETWORK_POPUP_HEIGHT;
+            if self.network_popup_open {
+                self.draw_network_popup(qh, RepaintReason::LayerConfigure);
             }
         }
     }

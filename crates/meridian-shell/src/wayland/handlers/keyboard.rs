@@ -32,6 +32,8 @@ impl KeyboardHandler for MeridianShell {
             SurfaceKind::Calendar
         } else if self.workspace_layer.wl_surface() == surface {
             SurfaceKind::WorkspacePopup
+        } else if self.network_layer.wl_surface() == surface {
+            SurfaceKind::NetworkPopup
         } else if self.panel.wl_surface() == surface {
             SurfaceKind::Panel
         } else {
@@ -71,6 +73,11 @@ impl KeyboardHandler for MeridianShell {
         event: KeyEvent,
     ) {
         let is_escape = event.keysym == Keysym::Escape;
+        if self.network_popup_open && is_escape {
+            self.close_network_popup(CommitReason::Input);
+            self.draw_panel(qh, RepaintReason::Keyboard);
+            return;
+        }
         if self.workspace_popup_open && is_escape {
             self.close_workspace_popup(CommitReason::Input);
             self.draw_panel(qh, RepaintReason::Keyboard);
