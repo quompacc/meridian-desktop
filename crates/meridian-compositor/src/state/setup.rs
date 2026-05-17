@@ -21,8 +21,8 @@ use smithay::{
     utils::Transform,
     wayland::{
         compositor::CompositorState,
-            dmabuf::DmabufState,
-            fractional_scale::FractionalScaleManagerState,
+        dmabuf::DmabufState,
+        fractional_scale::FractionalScaleManagerState,
         idle_inhibit::IdleInhibitManagerState,
         idle_notify::IdleNotifierState,
         input_method::InputMethodManagerState,

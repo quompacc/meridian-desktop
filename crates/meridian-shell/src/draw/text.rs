@@ -8,8 +8,11 @@ use meridian_config::Color;
 
 use super::{fc, ft, painter::Painter};
 
-pub(crate) const JETBRAINS_MONO_REGULAR: &[u8] =
-    include_bytes!("../../assets/fonts/JetBrainsMono.ttf");
+pub(crate) const ADWAITA_SANS_REGULAR: &[u8] =
+    include_bytes!("../../assets/fonts/AdwaitaSans-Regular.ttf");
+#[allow(dead_code)]
+pub(crate) const ADWAITA_MONO_REGULAR: &[u8] =
+    include_bytes!("../../assets/fonts/AdwaitaMono-Regular.ttf");
 
 pub struct TextRenderer {
     face: ft::Face,
@@ -19,7 +22,7 @@ pub struct TextRenderer {
 impl TextRenderer {
     pub fn new(pattern: &str, pixels: u32) -> Option<Self> {
         let library = ft::Library::new().ok()?;
-        if let Ok(face) = ft::Face::new_from_memory(&library, JETBRAINS_MONO_REGULAR, pixels) {
+        if let Ok(face) = ft::Face::new_from_memory(&library, ADWAITA_SANS_REGULAR, pixels) {
             return Some(Self { face, library });
         }
 

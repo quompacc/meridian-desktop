@@ -74,8 +74,8 @@ pub struct Fonts {
 impl Default for Fonts {
     fn default() -> Self {
         Self {
-            ui: "JetBrains Mono 11".to_string(),
-            mono: "JetBrains Mono 10".to_string(),
+            ui: "Adwaita Sans 11".to_string(),
+            mono: "Adwaita Mono 10".to_string(),
         }
     }
 }
@@ -212,9 +212,9 @@ mod tests {
     }
 
     #[test]
-    fn test_fonts_default_uses_jetbrains_mono() {
+    fn test_fonts_default_uses_adwaita() {
         let fonts = Fonts::default();
-        assert_eq!(fonts.ui, "JetBrains Mono 11");
-        assert_eq!(fonts.mono, "JetBrains Mono 10");
+        assert_eq!(fonts.ui, "Adwaita Sans 11");
+        assert_eq!(fonts.mono, "Adwaita Mono 10");
     }
 }
