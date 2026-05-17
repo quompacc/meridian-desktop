@@ -15,10 +15,15 @@ use smithay::{
     desktop::{layer_map_for_output, space::render_output, space::SpaceRenderElements, Window},
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::EventLoop,
+    reexports::wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
     utils::{Rectangle, Scale, Transform},
 };
 
 use crate::{
+    backend::presentation_feedback::{
+        monotonic_now, output_refresh, take_presentation_feedback_for_output,
+        update_primary_scanout_output_for_output,
+    },
     state::{MeridianState, OutputPowerMode, OutputReconfigure, OutputRegistration},
     wallpaper::WallpaperGpuCache,
 };
@@ -177,7 +182,7 @@ pub fn init_winit(
                         );
 
                         let bg = [0.0_f32; 4];
-                        render_output::<_, WinitRenderElements, Window, _>(
+                        let render_output_result = render_output::<_, WinitRenderElements, Window, _>(
                             &output,
                             renderer,
                             &mut framebuffer,
@@ -189,6 +194,27 @@ pub fn init_winit(
                             bg,
                         )
                         .unwrap();
+
+                        if !state.lock_manager.is_locked_or_pending()
+                            && render_output_result.damage.is_some()
+                        {
+                            update_primary_scanout_output_for_output(
+                                &output,
+                                state.workspaces.active_space(),
+                                &render_output_result.states,
+                            );
+                            let mut feedback = take_presentation_feedback_for_output(
+                                &output,
+                                state.workspaces.active_space(),
+                                &render_output_result.states,
+                            );
+                            feedback.presented(
+                                monotonic_now(),
+                                output_refresh(&output),
+                                0,
+                                wp_presentation_feedback::Kind::Vsync,
+                            );
+                        }
                     }
 
                     backend.submit(Some(&[damage])).unwrap();

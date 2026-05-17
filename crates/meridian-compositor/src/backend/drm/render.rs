@@ -20,6 +20,9 @@ use smithay::{
 use tracing::{debug, error};
 
 use crate::{
+    backend::presentation_feedback::{
+        take_presentation_feedback_for_output, update_primary_scanout_output_for_output,
+    },
     state::{LockPhase, MeridianState, OutputPowerMode},
     wallpaper::WallpaperGpuCache,
 };
@@ -174,7 +177,8 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
         let mut decoration_element_count = 0usize;
         let mut space_element_count = 0usize;
         let mut cursor_count = 0usize;
-        if !state.lock_manager.is_locked_or_pending() {
+        let lock_active = state.lock_manager.is_locked_or_pending();
+        if !lock_active {
             for window in out.scratch_windows.iter().rev() {
                 let loc = match space.element_location(window) {
                     Some(l) => l,
@@ -471,8 +475,25 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                     render_element_count,
                     layer_surface_count
                 );
+                if !lock_active {
+                    update_primary_scanout_output_for_output(
+                        &out.output,
+                        state.workspaces.active_space(),
+                        &frame.states,
+                    );
+                }
+                let feedback = if lock_active {
+                    None
+                } else {
+                    Some(take_presentation_feedback_for_output(
+                        &out.output,
+                        state.workspaces.active_space(),
+                        &frame.states,
+                    ))
+                };
+
                 let queue_started = Instant::now();
-                if let Err(err) = out.compositor.queue_frame(()) {
+                if let Err(err) = out.compositor.queue_frame(feedback) {
                     metrics.queue_failures += 1;
                     error!("DRM queue_frame error on {}: {}", out.output.name(), err);
                     if !kms_first_commit_verified {
