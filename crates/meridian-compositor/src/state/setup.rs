@@ -606,8 +606,9 @@ impl MeridianState {
         let input_method_manager_state =
             InputMethodManagerState::new::<Self, _>(&display_handle, |_client| true);
         let xdg_activation_state = XdgActivationState::new::<Self>(&display_handle);
-        let presentation_state =
-            PresentationState::new::<Self>(&display_handle, libc::CLOCK_MONOTONIC as u32);
+        // wp_presentation global intentionally NOT registered: see field doc
+        // on MeridianState. Plumbing-only mode hangs firefox caret-blink.
+        let presentation_state: Option<PresentationState> = None;
         let fractional_scale_manager_state =
             FractionalScaleManagerState::new::<Self>(&display_handle);
         let viewporter_state = ViewporterState::new::<Self>(&display_handle);

@@ -343,7 +343,14 @@ pub struct MeridianState {
     pub text_input_manager_state: TextInputManagerState,
     pub input_method_manager_state: InputMethodManagerState,
     pub xdg_activation_state: XdgActivationState,
-    pub presentation_state: PresentationState,
+    // 2026-05-17: Option because the wp_presentation global is intentionally
+    // not registered. Plumbing-only mode (global without presented() events
+    // in the render loop) makes firefox's caret-blink loop hang because
+    // firefox binds the global and waits for vsync events that never come.
+    // Re-enable (init = Some(...)) only when render-pipe correctly fires
+    // OutputPresentationFeedback::presented(time, refresh, seq, Vsync)
+    // with a real monotonic sequence counter and accurate vblank timestamp.
+    pub presentation_state: Option<PresentationState>,
     pub fractional_scale_manager_state: FractionalScaleManagerState,
     pub viewporter_state: ViewporterState,
     pub idle_notifier: IdleNotifierState<Self>,
