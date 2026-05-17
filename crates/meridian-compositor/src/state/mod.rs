@@ -8,7 +8,9 @@ use smithay::{
     output::Output,
     reexports::calloop::{LoopHandle, LoopSignal},
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
-    reexports::wayland_server::{protocol::wl_surface::WlSurface, DisplayHandle},
+    reexports::wayland_server::{
+        backend::GlobalId, protocol::wl_surface::WlSurface, DisplayHandle,
+    },
     utils::{Logical, Point, Rectangle, Size},
     wayland::{
         compositor::CompositorState,
@@ -27,6 +29,7 @@ use smithay::{
     },
     xwayland::X11Wm,
 };
+use wayland_protocols_wlr::output_power_management::v1::server::zwlr_output_power_v1::ZwlrOutputPowerV1;
 
 use crate::{
     backend::drm::DrmBackend, decoration::DecorationManager, wallpaper::WallpaperManager,
@@ -42,6 +45,7 @@ mod lock;
 #[cfg(test)]
 mod output_hotplug_tests;
 mod output_layout;
+mod output_power;
 mod output_registry;
 #[cfg(test)]
 mod session_lock_tests;
@@ -55,6 +59,7 @@ pub use output_layout::{
     detect_output_reload_diff, parse_output_transform, ConnectedOutput, OutputLayout,
     OutputPlacement, OutputPosition, OutputReloadDiff, ResolvedOutput,
 };
+pub use output_power::{OutputPowerManager, OutputPowerMode};
 pub use output_registry::{
     OutputGeometry, OutputId, OutputInfo, OutputReconfigure, OutputRegistration, OutputRegistry,
 };
@@ -332,6 +337,9 @@ pub struct MeridianState {
     pub idle_inhibitors: IdleInhibitorSet<WlSurface>,
     pub session_lock_state: SessionLockManagerState,
     pub lock_manager: LockManager,
+    pub output_power_manager: OutputPowerManager,
+    pub output_power_resources: HashMap<String, Vec<ZwlrOutputPowerV1>>,
+    pub output_power_global: GlobalId,
     pub xwm: Option<X11Wm>,
     pub drm_backend: Option<DrmBackend>,
     pub maximize_restore_locations: HashMap<String, MaximizeRestoreGeometry>,

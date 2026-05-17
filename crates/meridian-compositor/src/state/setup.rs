@@ -39,11 +39,13 @@ use crate::{
     wallpaper::WallpaperManager,
     workspace::WorkspaceManager,
 };
+use wayland_protocols_wlr::output_power_management::v1::server::zwlr_output_power_manager_v1::ZwlrOutputPowerManagerV1;
 
 use super::{
     detect_output_reload_diff, parse_output_transform, ClientState, ConnectedOutput,
     IdleInhibitorSet, IpcServer, LockManager, MeridianState, OutputGeometry, OutputId,
-    OutputReconfigure, OutputRegistration, OutputRegistry, WorkspaceOutputState,
+    OutputPowerManager, OutputReconfigure, OutputRegistration, OutputRegistry,
+    WorkspaceOutputState,
 };
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -604,6 +606,8 @@ impl MeridianState {
         let idle_inhibit_state = IdleInhibitManagerState::new::<Self>(&display_handle);
         let session_lock_state =
             SessionLockManagerState::new::<Self, _>(&display_handle, |_client| true);
+        let output_power_global =
+            display_handle.create_global::<Self, ZwlrOutputPowerManagerV1, _>(1, ());
         let socket_name = Self::init_wayland_listener(display, event_loop)?;
         let loop_signal = event_loop.get_signal();
 
@@ -651,6 +655,9 @@ impl MeridianState {
             idle_inhibitors: IdleInhibitorSet::new(),
             session_lock_state,
             lock_manager: LockManager::new(),
+            output_power_manager: OutputPowerManager::new(),
+            output_power_resources: HashMap::new(),
+            output_power_global,
             xwm: None,
             drm_backend: None,
             maximize_restore_locations: std::collections::HashMap::new(),
@@ -768,6 +775,19 @@ impl MeridianState {
         let Some(removed) = self.output_registry.remove_by_id(id) else {
             return false;
         };
+        if let Some(resources) = self.output_power_resources.remove(&removed.name) {
+            for resource in &resources {
+                resource.failed();
+            }
+            self.output_power_manager.forget(&removed.name);
+            tracing::debug!(
+                "wlr-output-power: sent failed to {} resources for removed output {}",
+                resources.len(),
+                removed.name
+            );
+        } else {
+            self.output_power_manager.forget(&removed.name);
+        }
         tracing::info!(
             "output removed: id={} name={} geometry=({},{} {}x{})",
             removed.id.0,

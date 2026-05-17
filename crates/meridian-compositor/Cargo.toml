@@ -13,6 +13,7 @@ meridian-wm = { path = "../meridian-wm" }
 smallvec = "1"
 smithay = { workspace = true }
 tracing = { workspace = true }
+wayland-protocols-wlr = { version = "0.3", features = ["server"] }
 xcursor = { version = "0.3", optional = true }
 
 [features]

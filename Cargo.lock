@@ -1169,6 +1169,7 @@ dependencies = [
  "smallvec",
  "smithay",
  "tracing",
+ "wayland-protocols-wlr",
  "xcursor",
 ]
 
