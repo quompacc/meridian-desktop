@@ -34,11 +34,15 @@ mod client;
 mod handlers;
 mod ipc;
 mod layout;
+mod output_layout;
 mod output_registry;
 mod setup;
 mod utils;
 mod workspace_output_state;
 
+pub use output_layout::{
+    ConnectedOutput, OutputLayout, OutputPlacement, OutputPosition, ResolvedOutput,
+};
 pub use output_registry::{
     OutputGeometry, OutputId, OutputInfo, OutputReconfigure, OutputRegistration, OutputRegistry,
 };
