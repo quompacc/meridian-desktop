@@ -14,8 +14,9 @@ use tracing::{debug, info, warn};
 use crate::{
     ui::{
         primitives::{
-            draw_initial_badge, draw_list_item, draw_panel_button, draw_sidebar_item,
-            fill_surface_with_radius, InteractiveState, SurfaceKind,
+            draw_active_indicator, draw_initial_badge, draw_list_item, draw_panel_button,
+            draw_sidebar_item, fill_surface_with_radius, subtle_border, ActiveIndicatorEdge,
+            InteractiveState, SurfaceKind,
         },
         tokens,
     },
@@ -1195,22 +1196,21 @@ pub fn draw_launcher(
     }
 
     let colors = &theme.colors;
-    painter.clear(colors.surface);
+    painter.clear(colors.surface_alt);
     let actions = launcher_state.visible_actions();
     let layout = compute_launcher_layout(width, height, actions.len());
-    fill_surface_with_radius(
-        painter,
+    painter.roundish_rect_with_radius(
         layout.card,
-        theme,
-        SurfaceKind::Background,
+        colors.surface_alt,
         tokens::launcher::CARD_RADIUS,
     );
+    subtle_border(painter, layout.card, theme);
 
     fill_surface_with_radius(
         painter,
         layout.sidebar,
         theme,
-        SurfaceKind::Background,
+        SurfaceKind::Surface,
         tokens::launcher::SIDEBAR_RADIUS,
     );
 
@@ -1266,6 +1266,8 @@ pub fn draw_launcher(
         SurfaceKind::Surface,
         tokens::launcher::SEARCH_RADIUS,
     );
+    subtle_border(painter, layout.search, theme);
+    draw_active_indicator(painter, layout.search, ActiveIndicatorEdge::Bottom, theme);
     let query_text = if launcher_state.query.is_empty() {
         "Search apps by name or executable"
     } else {

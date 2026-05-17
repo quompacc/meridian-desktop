@@ -5,8 +5,8 @@ use meridian_config::ThemeConfig;
 use crate::{
     ui::{
         primitives::{
-            draw_panel_button, draw_workspace_button, fill_surface_with_radius, subtle_border,
-            InteractiveState, SurfaceKind,
+            draw_active_indicator, draw_panel_button, draw_workspace_button, ActiveIndicatorEdge,
+            InteractiveState,
         },
         tokens,
     },
@@ -56,44 +56,28 @@ pub fn draw_panel(
         width,
     } = input;
     let colors = &theme.colors;
-    painter.clear(colors.surface);
+    painter.clear(colors.surface_alt);
+    painter.rect(
+        Rect {
+            x: 0,
+            y: 0,
+            w: width as i32,
+            h: 1,
+        },
+        colors.border,
+    );
     panel_state.clicks.clear();
 
     let height = PANEL_HEIGHT as i32;
     let panel_card = Rect {
-        x: tokens::spacing::XS,
-        y: 2,
-        w: width as i32 - tokens::spacing::XS * 2,
-        h: height - 4,
+        x: 0,
+        y: 0,
+        w: width as i32,
+        h: height,
     };
-    fill_surface_with_radius(
-        painter,
-        panel_card,
-        theme,
-        SurfaceKind::Background,
-        tokens::panel::OUTER_RADIUS,
-    );
-    subtle_border(painter, panel_card, theme);
 
     let mut x = panel_card.x + tokens::panel::LEFT_PADDING;
-    let controls_y = panel_card.y + tokens::panel::WORKSPACE_BUTTON_Y - 2;
-    let controls_x = x;
-    let controls_w = tokens::panel::LAUNCHER_BUTTON_W
-        + tokens::panel::WORKSPACE_BUTTON_GAP
-        + (tokens::panel::WORKSPACE_BUTTON_W + tokens::panel::WORKSPACE_BUTTON_GAP) * 9;
-    let controls_surface = Rect {
-        x: controls_x - 2,
-        y: controls_y - 2,
-        w: controls_w + 4,
-        h: tokens::panel::WORKSPACE_BUTTON_H + 4,
-    };
-    fill_surface_with_radius(
-        painter,
-        controls_surface,
-        theme,
-        SurfaceKind::Surface,
-        tokens::panel::GROUP_RADIUS,
-    );
+    let controls_y = panel_card.y + tokens::panel::WORKSPACE_BUTTON_Y;
 
     // ── Left: Launcher button ───────────────────────────────────────────────
     let launcher_rect = Rect {
@@ -134,19 +118,6 @@ pub fn draw_panel(
     }
 
     // ── Right: Clock ────────────────────────────────────────────────────────
-    let clock_surface = Rect {
-        x: width as i32 - tokens::panel::CLOCK_W - tokens::panel::RIGHT_PADDING - 4,
-        y: panel_card.y + (panel_card.h - 24) / 2,
-        w: tokens::panel::CLOCK_W + 8,
-        h: 24,
-    };
-    fill_surface_with_radius(
-        painter,
-        clock_surface,
-        theme,
-        SurfaceKind::Surface,
-        tokens::panel::CLOCK_RADIUS,
-    );
     let clock_rect = Rect {
         x: width as i32 - tokens::panel::CLOCK_W - tokens::panel::RIGHT_PADDING,
         y: (height - 20) / 2,
@@ -155,7 +126,7 @@ pub fn draw_panel(
     };
     painter.text_centered(font, clock, clock_rect, colors.text);
     panel_state.clicks.push(ClickZone {
-        rect: clock_surface,
+        rect: clock_rect,
         action: ClickAction::Clock,
     });
 
@@ -193,6 +164,15 @@ pub fn draw_panel(
                 colors.text
             };
             let remaining = right - text_x;
+            if entry.focused {
+                let indicator_rect = Rect {
+                    x: text_x,
+                    y: center_rect.y,
+                    w: remaining.max(0),
+                    h: center_rect.h,
+                };
+                draw_active_indicator(painter, indicator_rect, ActiveIndicatorEdge::Bottom, theme);
+            }
             painter.text_clipped(font, &label, text_x, baseline, remaining, color);
 
             let advance = (label.chars().count() as i32 * 8).max(0);

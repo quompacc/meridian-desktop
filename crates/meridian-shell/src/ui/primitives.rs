@@ -11,7 +11,6 @@ pub enum SurfaceKind {
     Background,
     Surface,
     Accent,
-    Border,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,16 +19,22 @@ pub enum InteractiveState {
     Selected,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActiveIndicatorEdge {
+    Top,
+    Bottom,
+    Left,
+}
+
 pub fn active_accent_foreground() -> Color {
     tokens::ACCENT_FOREGROUND
 }
 
 pub fn surface_color(theme: &ThemeConfig, kind: SurfaceKind) -> Color {
     match kind {
-        SurfaceKind::Background => theme.colors.background,
+        SurfaceKind::Background => theme.colors.surface_alt,
         SurfaceKind::Surface => theme.colors.surface,
         SurfaceKind::Accent => theme.colors.accent,
-        SurfaceKind::Border => theme.colors.border,
     }
 }
 
@@ -47,6 +52,36 @@ pub fn subtle_border(painter: &mut Painter<'_>, rect: Rect, theme: &ThemeConfig)
     painter.stroke_rect(rect, theme.colors.border);
 }
 
+pub fn draw_active_indicator(
+    painter: &mut Painter<'_>,
+    rect: Rect,
+    edge: ActiveIndicatorEdge,
+    theme: &ThemeConfig,
+) {
+    const THICKNESS: i32 = 2;
+    let bar = match edge {
+        ActiveIndicatorEdge::Top => Rect {
+            x: rect.x,
+            y: rect.y,
+            w: rect.w,
+            h: THICKNESS.min(rect.h),
+        },
+        ActiveIndicatorEdge::Bottom => Rect {
+            x: rect.x,
+            y: rect.y + rect.h - THICKNESS.min(rect.h),
+            w: rect.w,
+            h: THICKNESS.min(rect.h),
+        },
+        ActiveIndicatorEdge::Left => Rect {
+            x: rect.x,
+            y: rect.y,
+            w: THICKNESS.min(rect.w),
+            h: rect.h,
+        },
+    };
+    painter.rect(bar, theme.colors.accent);
+}
+
 pub fn draw_workspace_button(
     painter: &mut Painter<'_>,
     rect: Rect,
@@ -59,16 +94,17 @@ pub fn draw_workspace_button(
             painter,
             rect,
             theme,
-            SurfaceKind::Accent,
+            SurfaceKind::Background,
             tokens::panel::BUTTON_RADIUS,
         );
-        active_accent_foreground()
+        draw_active_indicator(painter, rect, ActiveIndicatorEdge::Top, theme);
+        theme.colors.text
     } else if is_occupied {
         fill_surface_with_radius(
             painter,
             rect,
             theme,
-            SurfaceKind::Border,
+            SurfaceKind::Surface,
             tokens::panel::BUTTON_RADIUS,
         );
         theme.colors.text
@@ -106,10 +142,11 @@ pub fn draw_panel_button(
                 painter,
                 rect,
                 theme,
-                SurfaceKind::Accent,
+                SurfaceKind::Surface,
                 tokens::panel::BUTTON_RADIUS,
             );
-            active_accent_foreground()
+            draw_active_indicator(painter, rect, ActiveIndicatorEdge::Bottom, theme);
+            theme.colors.text
         }
     }
 }
@@ -127,10 +164,11 @@ pub fn draw_sidebar_item(
                 painter,
                 rect,
                 theme,
-                SurfaceKind::Accent,
+                SurfaceKind::Surface,
                 tokens::launcher::SIDEBAR_ITEM_RADIUS,
             );
-            active_accent_foreground()
+            draw_active_indicator(painter, rect, ActiveIndicatorEdge::Left, theme);
+            theme.colors.text
         }
     }
 }
@@ -158,21 +196,14 @@ pub fn draw_list_item(
                 painter,
                 rect,
                 theme,
-                SurfaceKind::Accent,
+                SurfaceKind::Surface,
                 tokens::launcher::LIST_ROW_RADIUS,
             );
+            draw_active_indicator(painter, rect, ActiveIndicatorEdge::Left, theme);
             if with_selected_marker {
-                painter.rect(
-                    Rect {
-                        x: rect.x + 3,
-                        y: rect.y + 3,
-                        w: 2,
-                        h: rect.h - 6,
-                    },
-                    theme.colors.text,
-                );
+                draw_active_indicator(painter, rect, ActiveIndicatorEdge::Left, theme);
             }
-            active_accent_foreground()
+            theme.colors.text
         }
     }
 }
@@ -209,7 +240,7 @@ mod tests {
         let theme = ThemeConfig::default();
         assert_eq!(
             surface_color(&theme, SurfaceKind::Background),
-            theme.colors.background
+            theme.colors.surface_alt
         );
         assert_eq!(
             surface_color(&theme, SurfaceKind::Surface),
@@ -218,10 +249,6 @@ mod tests {
         assert_eq!(
             surface_color(&theme, SurfaceKind::Accent),
             theme.colors.accent
-        );
-        assert_eq!(
-            surface_color(&theme, SurfaceKind::Border),
-            theme.colors.border
         );
     }
 

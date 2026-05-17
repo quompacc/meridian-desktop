@@ -14,9 +14,9 @@ pub mod spacing {
 
 #[allow(dead_code)]
 pub mod radius {
-    pub const SM: i32 = 6;
-    pub const MD: i32 = 8;
-    pub const LG: i32 = 12;
+    pub const SM: i32 = 0;
+    pub const MD: i32 = 0;
+    pub const LG: i32 = 0;
 }
 
 pub mod badge {
@@ -25,6 +25,7 @@ pub mod badge {
     pub const RADIUS: i32 = super::radius::SM;
 }
 
+#[allow(dead_code)]
 pub mod panel {
     pub const WORKSPACE_BUTTON_W: i32 = 28;
     pub const WORKSPACE_BUTTON_H: i32 = 28;
@@ -40,6 +41,7 @@ pub mod panel {
     pub const CLOCK_RADIUS: i32 = super::radius::MD;
 }
 
+#[allow(dead_code)]
 pub mod launcher {
     pub const APP_ROW_H: i32 = 38;
     pub const SEARCH_H: i32 = 44;
@@ -62,7 +64,7 @@ pub mod launcher {
 
 #[cfg(test)]
 mod tests {
-    use super::{badge, launcher, panel, radius, spacing};
+    use super::{badge, launcher, panel, spacing};
 
     #[test]
     fn panel_workspace_button_stays_inside_height() {
@@ -79,12 +81,6 @@ mod tests {
     fn badge_is_larger_than_base_spacing() {
         assert!(badge::SIZE > spacing::MD);
         assert!(badge::CONTENT_GAP >= spacing::MD);
-    }
-
-    #[test]
-    fn radius_scale_is_ordered() {
-        assert!(radius::SM < radius::MD);
-        assert!(radius::MD < radius::LG);
     }
 
     #[test]
