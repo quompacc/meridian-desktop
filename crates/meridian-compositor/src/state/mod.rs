@@ -15,6 +15,7 @@ use smithay::{
     wayland::{
         compositor::CompositorState,
         dmabuf::{DmabufFeedback, DmabufGlobal, DmabufState},
+        drm_syncobj::DrmSyncobjState,
         fractional_scale::FractionalScaleManagerState,
         idle_inhibit::IdleInhibitManagerState,
         idle_notify::IdleNotifierState,
@@ -351,6 +352,7 @@ pub struct MeridianState {
     pub dmabuf_state: DmabufState,
     pub dmabuf_global: Option<DmabufGlobal>,
     pub dmabuf_default_feedback: Option<DmabufFeedback>,
+    pub syncobj_state: Option<DrmSyncobjState>,
     pub session_lock_state: SessionLockManagerState,
     pub lock_manager: LockManager,
     pub output_power_manager: OutputPowerManager,

@@ -21,8 +21,8 @@ use smithay::{
     utils::Transform,
     wayland::{
         compositor::CompositorState,
-        dmabuf::DmabufState,
-        fractional_scale::FractionalScaleManagerState,
+            dmabuf::DmabufState,
+            fractional_scale::FractionalScaleManagerState,
         idle_inhibit::IdleInhibitManagerState,
         idle_notify::IdleNotifierState,
         input_method::InputMethodManagerState,
@@ -679,6 +679,7 @@ impl MeridianState {
             dmabuf_state,
             dmabuf_global: None,
             dmabuf_default_feedback: None,
+            syncobj_state: None,
             session_lock_state,
             lock_manager: LockManager::new(),
             output_power_manager: OutputPowerManager::new(),

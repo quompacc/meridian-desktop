@@ -32,7 +32,10 @@ use smithay::{
         input::Libinput,
     },
     utils::{DeviceFd, Transform},
-    wayland::dmabuf::DmabufFeedbackBuilder,
+    wayland::{
+        dmabuf::DmabufFeedbackBuilder,
+        drm_syncobj::{supports_syncobj_eventfd, DrmSyncobjState},
+    },
 };
 use tracing::{info, warn};
 
@@ -1309,6 +1312,21 @@ pub fn init_drm(
                 .create_global::<MeridianState>(&state.display_handle, dmabuf_formats);
             state.dmabuf_global = Some(global);
             state.dmabuf_default_feedback = None;
+        }
+    }
+
+    if state.syncobj_state.is_none() {
+        let device_fd_for_syncobj = device_fd.clone();
+        if supports_syncobj_eventfd(&device_fd_for_syncobj) {
+            state.syncobj_state = Some(DrmSyncobjState::new::<MeridianState>(
+                &state.display_handle,
+                device_fd_for_syncobj,
+            ));
+            tracing::info!("linux-drm-syncobj-v1 global registered (explicit-sync enabled)");
+        } else {
+            tracing::info!(
+                "linux-drm-syncobj-v1 not enabled: kernel/driver does not support syncobj-eventfd"
+            );
         }
     }
 
