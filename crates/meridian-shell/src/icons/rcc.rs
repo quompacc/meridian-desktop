@@ -53,10 +53,14 @@ impl RccArchive {
 
     fn from_bytes(raw: Vec<u8>) -> Option<Self> {
         let header = parse_header(&raw)?;
-        if header.names_offset < header.tree_offset {
-            return None;
-        }
-        let tree_len = header.names_offset.checked_sub(header.tree_offset)?;
+        // Tree-Section endet entweder am Anfang der nächsten Sektion (wenn eine danach
+        // kommt) oder am Dateiende.
+        let next_section_start = [header.data_offset, header.names_offset]
+            .into_iter()
+            .filter(|&start| start > header.tree_offset)
+            .min()
+            .unwrap_or(raw.len());
+        let tree_len = next_section_start.checked_sub(header.tree_offset)?;
         if tree_len == 0 || tree_len % RCC_NODE_LEN != 0 {
             return None;
         }
@@ -252,9 +256,6 @@ fn parse_header(raw: &[u8]) -> Option<Header> {
     if tree_offset > raw.len() || data_offset > raw.len() || names_offset > raw.len() {
         return None;
     }
-    if tree_offset < data_offset || names_offset < tree_offset {
-        return None;
-    }
 
     Some(Header {
         tree_offset,
@@ -382,6 +383,73 @@ mod tests {
         ])
     }
 
+    // Real-World-Layout: header -> data -> names -> tree (tree als letzte Sektion).
+    fn build_rcc_data_names_tree(nodes: &[TestNode]) -> Vec<u8> {
+        let mut names_section = Vec::new();
+        let mut name_offsets = Vec::with_capacity(nodes.len());
+        for node in nodes {
+            let offset = names_section.len() as u32;
+            name_offsets.push(offset);
+
+            let utf16: Vec<u16> = node.name.encode_utf16().collect();
+            names_section.extend_from_slice(&(utf16.len() as u16).to_be_bytes());
+            names_section.extend_from_slice(&0u32.to_be_bytes());
+            for unit in utf16 {
+                names_section.extend_from_slice(&unit.to_be_bytes());
+            }
+        }
+
+        let mut data_section = Vec::new();
+        let mut file_offsets = vec![0u32; nodes.len()];
+        for (index, node) in nodes.iter().enumerate() {
+            if let TestNodeKind::File { payload, .. } = &node.kind {
+                file_offsets[index] = data_section.len() as u32;
+                data_section.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+                data_section.extend_from_slice(payload);
+            }
+        }
+
+        let mut tree_section = Vec::new();
+        for (index, node) in nodes.iter().enumerate() {
+            tree_section.extend_from_slice(&name_offsets[index].to_be_bytes());
+            match &node.kind {
+                TestNodeKind::Directory {
+                    child_count,
+                    first_child,
+                    flags,
+                } => {
+                    tree_section.extend_from_slice(&flags.to_be_bytes());
+                    tree_section.extend_from_slice(&child_count.to_be_bytes());
+                    tree_section.extend_from_slice(&first_child.to_be_bytes());
+                    tree_section.extend_from_slice(&0u64.to_be_bytes());
+                }
+                TestNodeKind::File { flags, .. } => {
+                    tree_section.extend_from_slice(&flags.to_be_bytes());
+                    tree_section.extend_from_slice(&0u16.to_be_bytes());
+                    tree_section.extend_from_slice(&0u16.to_be_bytes());
+                    tree_section.extend_from_slice(&file_offsets[index].to_be_bytes());
+                    tree_section.extend_from_slice(&0u64.to_be_bytes());
+                }
+            }
+        }
+
+        let data_offset = 24u32;
+        let names_offset = data_offset + data_section.len() as u32;
+        let tree_offset = names_offset + names_section.len() as u32;
+
+        let mut out = Vec::new();
+        out.extend_from_slice(&0x7172_6573u32.to_be_bytes());
+        out.extend_from_slice(&3u32.to_be_bytes());
+        out.extend_from_slice(&tree_offset.to_be_bytes());
+        out.extend_from_slice(&data_offset.to_be_bytes());
+        out.extend_from_slice(&names_offset.to_be_bytes());
+        out.extend_from_slice(&0u32.to_be_bytes());
+        out.extend_from_slice(&data_section);
+        out.extend_from_slice(&names_section);
+        out.extend_from_slice(&tree_section);
+        out
+    }
+
     #[test]
     fn parse_header_returns_none_for_wrong_magic() {
         let mut raw = vec![0u8; 24];
@@ -458,6 +526,30 @@ mod tests {
     }
 
     #[test]
+    fn tree_walk_works_when_tree_is_last_section() {
+        let raw = build_rcc_data_names_tree(&[
+            TestNode {
+                name: "",
+                kind: TestNodeKind::Directory {
+                    child_count: 1,
+                    first_child: 1,
+                    flags: FLAG_DIRECTORY,
+                },
+            },
+            TestNode {
+                name: "foo",
+                kind: TestNodeKind::File {
+                    flags: 0,
+                    payload: b"bar".to_vec(),
+                },
+            },
+        ]);
+        let archive = RccArchive::from_test_bytes(raw).expect("real-world layout parses");
+        assert_eq!(archive.list_files(), vec!["foo".to_string()]);
+        assert_eq!(archive.read_file("foo").expect("payload"), b"bar".to_vec());
+    }
+
+    #[test]
     fn read_file_decompresses_zstd_payload() {
         let compressed = vec![
             0x28, 0xb5, 0x2f, 0xfd, 0x04, 0x58, 0x89, 0x00, 0x00, 0x6d, 0x65, 0x72, 0x69, 0x64,
@@ -502,13 +594,8 @@ mod tests {
             return;
         }
 
-        let archive = match RccArchive::open(path) {
-            Some(archive) => archive,
-            None => {
-                eprintln!("skipping; failed to parse breeze-icons.rcc");
-                return;
-            }
-        };
+        let archive = RccArchive::open(path)
+            .expect("real breeze-icons.rcc must parse after Phase 7b-2 hotfix");
 
         let files = archive.list_files();
         assert!(
