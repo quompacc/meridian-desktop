@@ -1,17 +1,21 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     time::{Duration, Instant},
 };
 
+use meridian_config::OutputModeConfig;
 use smithay::{
     backend::{
-        allocator::gbm::GbmAllocator,
-        drm::{compositor::DrmCompositor, exporter::gbm::GbmFramebufferExporter, DrmDeviceFd},
+        allocator::{gbm::GbmAllocator, Format},
+        drm::{
+            compositor::DrmCompositor, exporter::gbm::GbmFramebufferExporter, DrmDevice,
+            DrmDeviceFd,
+        },
         renderer::{element::memory::MemoryRenderBuffer, gles::GlesRenderer},
     },
     desktop::Window,
     output::Output,
-    reexports::drm::control::{connector, crtc},
+    reexports::drm::control::{connector, crtc, Device as _},
     utils::{Logical, Point},
 };
 
@@ -551,4 +555,111 @@ pub struct DrmBackend {
     pub last_pointer_location: Option<(f64, f64)>,
     pub last_connector_scan: Instant,
     pub timing_stats: DrmTimingStats,
+}
+
+impl DrmBackend {
+    pub fn rebuild_compositor_for_mode(
+        &mut self,
+        _state_display_handle: &smithay::reexports::wayland_server::DisplayHandle,
+        output_name: &str,
+        new_mode_override: &OutputModeConfig,
+    ) -> bool {
+        let Some(idx) = self
+            .outputs
+            .iter()
+            .position(|drm_output| drm_output.output.name() == output_name)
+        else {
+            tracing::warn!(
+                "rebuild_compositor_for_mode: output {} not found",
+                output_name
+            );
+            return false;
+        };
+
+        let connector = self.outputs[idx].connector;
+        let crtc = self.outputs[idx].crtc;
+        let device_fd = self.device_fd.clone();
+
+        let (mut drm, _notifier) = match DrmDevice::new(device_fd.clone(), false) {
+            Ok(pair) => pair,
+            Err(err) => {
+                tracing::warn!("rebuild compositor: drm device open failed: {}", err);
+                return false;
+            }
+        };
+
+        let conn = match drm.get_connector(connector, false) {
+            Ok(connector_info) => connector_info,
+            Err(err) => {
+                tracing::warn!("rebuild compositor: connector query failed: {}", err);
+                return false;
+            }
+        };
+        let modes = conn.modes();
+        let (mode, reason) = match mode_selection::select_mode_with_override(
+            modes,
+            Some(new_mode_override),
+            output_name,
+        ) {
+            Some(pair) => pair,
+            None => {
+                tracing::warn!(
+                    "rebuild compositor: no mode found for output {} (override={:?})",
+                    output_name,
+                    new_mode_override
+                );
+                return false;
+            }
+        };
+        tracing::info!(
+            "rebuild compositor: output={} new_mode={}x{} reason={}",
+            output_name,
+            mode.size().0,
+            mode.size().1,
+            reason
+        );
+
+        let renderer_formats: HashSet<Format> = self
+            .renderer
+            .egl_context()
+            .dmabuf_render_formats()
+            .iter()
+            .cloned()
+            .collect();
+        let renderer_formats = init_env::maybe_disable_modifiers(
+            renderer_formats,
+            init_env::disable_drm_modifiers_requested(),
+        );
+
+        let smithay_output = self.outputs[idx].output.clone();
+        let rebuilt = match init::build_drm_compositor(init::DrmCompositorBuildParams {
+            state_display_handle: _state_display_handle,
+            device_fd,
+            drm: &mut drm,
+            crtc,
+            connector,
+            mode,
+            renderer_formats: &renderer_formats,
+            output: &smithay_output,
+            gbm: None,
+        }) {
+            Ok((compositor, _gbm)) => compositor,
+            Err(err) => {
+                tracing::warn!("rebuild compositor: build failed: {}", err);
+                return false;
+            }
+        };
+
+        self.outputs[idx].compositor = rebuilt;
+        self.outputs[idx].frame_in_flight = false;
+        self.outputs[idx].needs_repaint = true;
+
+        let output_mode = smithay::output::Mode {
+            size: (mode.size().0 as i32, mode.size().1 as i32).into(),
+            refresh: mode_selection::mode_refresh_millihz_with_fallback(mode),
+        };
+        smithay_output.change_current_state(Some(output_mode), None, None, None);
+        smithay_output.set_preferred(output_mode);
+        true
+    }
 }

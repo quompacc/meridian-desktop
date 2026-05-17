@@ -46,6 +46,14 @@ pub struct ConnectedOutput {
     pub height: i32,
 }
 
+/// Per-output diff between previous and next config entries.
+/// Used by reload propagation to decide which kind of live update is needed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct OutputReloadDiff {
+    pub mode_changed: bool,
+    pub enabled_changed: bool,
+}
+
 impl OutputLayout {
     pub fn from_config_entries(entries: &[OutputEntry]) -> Self {
         Self {
@@ -266,12 +274,37 @@ pub fn parse_output_transform(value: &str) -> Transform {
     }
 }
 
+pub fn detect_output_reload_diff(
+    prev: Option<&OutputEntry>,
+    next: Option<&OutputEntry>,
+) -> OutputReloadDiff {
+    let prev_mode = prev.and_then(|entry| entry.mode.as_ref());
+    let next_mode = next.and_then(|entry| entry.mode.as_ref());
+    let mode_changed = match (prev_mode, next_mode) {
+        (None, None) => false,
+        (Some(a), Some(b)) => a != b,
+        _ => true,
+    };
+
+    let prev_enabled = prev.map(|entry| entry.enabled).unwrap_or(true);
+    let next_enabled = next.map(|entry| entry.enabled).unwrap_or(true);
+    let enabled_changed = prev_enabled != next_enabled;
+
+    OutputReloadDiff {
+        mode_changed,
+        enabled_changed,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use meridian_config::{OutputEntry, OutputPositionConfig};
+    use meridian_config::{OutputEntry, OutputModeConfig, OutputPositionConfig};
     use smithay::utils::Transform;
 
-    use super::{ConnectedOutput, OutputLayout, OutputPlacement, OutputPosition, ResolvedOutput};
+    use super::{
+        detect_output_reload_diff, ConnectedOutput, OutputLayout, OutputPlacement, OutputPosition,
+        ResolvedOutput,
+    };
     use crate::state::MeridianState;
 
     #[test]
@@ -803,6 +836,91 @@ mod tests {
         assert!(adjusted[0].primary);
     }
 
+    #[test]
+    fn diff_no_change_when_both_none() {
+        let diff = detect_output_reload_diff(None, None);
+        assert_eq!(
+            diff,
+            super::OutputReloadDiff {
+                mode_changed: false,
+                enabled_changed: false
+            }
+        );
+    }
+
+    #[test]
+    fn diff_no_change_when_identical_modes() {
+        let prev = config_entry_with_mode("drm-0", Some(mode(1920, 1080, Some(60_000))), true);
+        let next = config_entry_with_mode("drm-0", Some(mode(1920, 1080, Some(60_000))), true);
+
+        let diff = detect_output_reload_diff(Some(&prev), Some(&next));
+
+        assert!(!diff.mode_changed);
+        assert!(!diff.enabled_changed);
+    }
+
+    #[test]
+    fn diff_mode_changed_when_dimensions_differ() {
+        let prev = config_entry_with_mode("drm-0", Some(mode(1920, 1080, Some(60_000))), true);
+        let next = config_entry_with_mode("drm-0", Some(mode(2560, 1440, Some(60_000))), true);
+
+        let diff = detect_output_reload_diff(Some(&prev), Some(&next));
+
+        assert!(diff.mode_changed);
+        assert!(!diff.enabled_changed);
+    }
+
+    #[test]
+    fn diff_mode_changed_when_refresh_differs() {
+        let prev = config_entry_with_mode("drm-0", Some(mode(1920, 1080, Some(60_000))), true);
+        let next = config_entry_with_mode("drm-0", Some(mode(1920, 1080, Some(144_000))), true);
+
+        let diff = detect_output_reload_diff(Some(&prev), Some(&next));
+
+        assert!(diff.mode_changed);
+        assert!(!diff.enabled_changed);
+    }
+
+    #[test]
+    fn diff_mode_changed_when_one_side_is_none() {
+        let prev = config_entry_with_mode("drm-0", Some(mode(1920, 1080, Some(60_000))), true);
+        let next = config_entry_with_mode("drm-0", None, true);
+
+        let diff = detect_output_reload_diff(Some(&prev), Some(&next));
+
+        assert!(diff.mode_changed);
+        assert!(!diff.enabled_changed);
+    }
+
+    #[test]
+    fn diff_enabled_changed_toggles() {
+        let prev = config_entry_with_mode("drm-0", None, true);
+        let next = config_entry_with_mode("drm-0", None, false);
+
+        let diff = detect_output_reload_diff(Some(&prev), Some(&next));
+
+        assert!(!diff.mode_changed);
+        assert!(diff.enabled_changed);
+    }
+
+    #[test]
+    fn diff_enabled_unchanged_when_default_true_both_sides() {
+        let diff = detect_output_reload_diff(None, None);
+
+        assert!(!diff.enabled_changed);
+    }
+
+    #[test]
+    fn diff_combined_mode_and_enabled_change() {
+        let prev = config_entry_with_mode("drm-0", Some(mode(1920, 1080, Some(60_000))), true);
+        let next = config_entry_with_mode("drm-0", Some(mode(2560, 1440, Some(75_000))), false);
+
+        let diff = detect_output_reload_diff(Some(&prev), Some(&next));
+
+        assert!(diff.mode_changed);
+        assert!(diff.enabled_changed);
+    }
+
     fn placement(
         name: &str,
         position: OutputPosition,
@@ -856,5 +974,24 @@ mod tests {
         entry.primary = primary;
         entry.enabled = enabled;
         entry
+    }
+
+    fn config_entry_with_mode(
+        name: &str,
+        mode: Option<OutputModeConfig>,
+        enabled: bool,
+    ) -> OutputEntry {
+        let mut entry = OutputEntry::defaults_for(name);
+        entry.mode = mode;
+        entry.enabled = enabled;
+        entry
+    }
+
+    fn mode(width: i32, height: i32, refresh_millihz: Option<i32>) -> OutputModeConfig {
+        OutputModeConfig {
+            width,
+            height,
+            refresh_millihz,
+        }
     }
 }

@@ -97,6 +97,76 @@ struct PendingInitOutput {
     scale: f64,
 }
 
+pub(super) struct DrmCompositorBuildParams<'a> {
+    pub state_display_handle: &'a smithay::reexports::wayland_server::DisplayHandle,
+    pub device_fd: DrmDeviceFd,
+    pub drm: &'a mut DrmDevice,
+    pub crtc: smithay::reexports::drm::control::crtc::Handle,
+    pub connector: smithay::reexports::drm::control::connector::Handle,
+    pub mode: smithay::reexports::drm::control::Mode,
+    pub renderer_formats: &'a HashSet<Format>,
+    pub output: &'a Output,
+    pub gbm: Option<GbmDevice<DrmDeviceFd>>,
+}
+
+pub(super) fn build_drm_compositor(
+    params: DrmCompositorBuildParams<'_>,
+) -> Result<(super::GbmDrmCompositor, GbmDevice<DrmDeviceFd>), Box<dyn std::error::Error>> {
+    let DrmCompositorBuildParams {
+        device_fd,
+        drm,
+        crtc,
+        connector,
+        mode,
+        renderer_formats,
+        output,
+        gbm,
+        state_display_handle: _state_display_handle,
+    } = params;
+
+    let surface = drm.create_surface(crtc, mode, &[connector])?;
+    let (mode_w, mode_h) = mode.size();
+    info!(
+        "drm kms surface created: connector={:?} crtc={:?} mode={}x{}@{}Hz calc_refresh_millihz={}",
+        connector,
+        crtc,
+        mode_w,
+        mode_h,
+        mode.vrefresh(),
+        mode_refresh_millihz_with_fallback(mode)
+    );
+
+    let gbm = match gbm {
+        Some(existing) => existing,
+        None => GbmDevice::new(device_fd.clone())?,
+    };
+    let allocator = GbmAllocator::new(
+        gbm.clone(),
+        GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
+    );
+    let exporter = GbmFramebufferExporter::new(gbm.clone(), NodeFilter::All);
+    let force_format = forced_scanout_format_from_env();
+    let color_formats = selected_scanout_formats(force_format);
+    info!(
+        "drm compositor format assumptions: forced_format={:?} color_formats={:?}",
+        force_format, color_formats
+    );
+
+    let compositor = DrmCompositor::new(
+        output,
+        surface,
+        None,
+        allocator,
+        exporter,
+        color_formats,
+        renderer_formats.iter().cloned(),
+        drm.cursor_size(),
+        Some(gbm.clone()),
+    )?;
+
+    Ok((compositor, gbm))
+}
+
 fn sync_primary_flags_from_resolved_layout(state: &mut MeridianState, resolved: &[ResolvedOutput]) {
     let current_by_name: HashMap<_, _> = state
         .output_registry
@@ -465,42 +535,6 @@ fn add_drm_output_via_hotplug_pipeline(
         return false;
     };
 
-    let surface = match drm.create_surface(crtc_handle, mode, &[connector]) {
-        Ok(surface) => surface,
-        Err(err) => {
-            tracing::warn!(
-                "drm output add skipped reason=create-surface-failed connector={:?} err={}",
-                connector,
-                err
-            );
-            return false;
-        }
-    };
-
-    let gbm = match GbmDevice::new(device_fd.clone()) {
-        Ok(gbm) => gbm,
-        Err(err) => {
-            tracing::warn!(
-                "drm output add skipped reason=gbm-device-failed connector={:?} err={}",
-                connector,
-                err
-            );
-            return false;
-        }
-    };
-    let allocator = GbmAllocator::new(
-        gbm.clone(),
-        GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
-    );
-    let exporter = GbmFramebufferExporter::new(gbm.clone(), NodeFilter::All);
-    let force_format = forced_scanout_format_from_env();
-    let color_formats = selected_scanout_formats(force_format);
-    tracing::info!(
-        "drm scanout format selection: source=hotplug-add forced_format={:?} selected={:?}",
-        force_format,
-        color_formats
-    );
-
     let mut pending: Vec<ConnectedOutput> = state
         .output_registry
         .list()
@@ -574,18 +608,18 @@ fn add_drm_output_via_hotplug_pipeline(
     );
     output.set_preferred(out_mode);
 
-    let compositor = match DrmCompositor::new(
-        &output,
-        surface,
-        None,
-        allocator,
-        exporter,
-        color_formats.clone(),
-        renderer_formats.iter().cloned(),
-        drm.cursor_size(),
-        Some(gbm),
-    ) {
-        Ok(compositor) => compositor,
+    let compositor = match build_drm_compositor(DrmCompositorBuildParams {
+        state_display_handle: &state.display_handle,
+        device_fd: device_fd.clone(),
+        drm: &mut drm,
+        crtc: crtc_handle,
+        connector,
+        mode,
+        renderer_formats: &renderer_formats,
+        output: &output,
+        gbm: None,
+    }) {
+        Ok((compositor, _gbm)) => compositor,
         Err(err) => {
             tracing::warn!(
                 "drm output add skipped reason=compositor-create-failed connector={:?} err={}",
@@ -1055,29 +1089,6 @@ pub fn init_drm(
                 pending.transform
             );
         }
-        let surface = drm.create_surface(pending.crtc, pending.mode, &[pending.connector])?;
-        let (mode_w, mode_h) = pending.mode.size();
-        info!(
-            "drm kms surface created: connector={:?} crtc={:?} mode={}x{}@{}Hz calc_refresh_millihz={}",
-            pending.connector,
-            pending.crtc,
-            mode_w,
-            mode_h,
-            pending.mode.vrefresh(),
-            pending.refresh_millihz
-        );
-        let allocator = GbmAllocator::new(
-            gbm.clone(),
-            GbmBufferFlags::RENDERING | GbmBufferFlags::SCANOUT,
-        );
-        let exporter = GbmFramebufferExporter::new(gbm.clone(), NodeFilter::All);
-        let force_format = forced_scanout_format_from_env();
-        let color_formats = selected_scanout_formats(force_format);
-        info!(
-            "drm compositor format assumptions: forced_format={:?} color_formats={:?}",
-            force_format, color_formats
-        );
-
         let output = Output::new(
             pending.output_name.clone(),
             PhysicalProperties {
@@ -1119,17 +1130,17 @@ pub fn init_drm(
             refresh_millihz: Some(pending.refresh_millihz),
         });
 
-        let compositor = DrmCompositor::new(
-            &output,
-            surface,
-            None,
-            allocator,
-            exporter,
-            color_formats.clone(),
-            renderer_formats.iter().cloned(),
-            drm.cursor_size(),
-            Some(gbm.clone()),
-        )?;
+        let (compositor, _gbm) = build_drm_compositor(DrmCompositorBuildParams {
+            state_display_handle: &state.display_handle,
+            device_fd: device_fd.clone(),
+            drm: &mut drm,
+            crtc: pending.crtc,
+            connector: pending.connector,
+            mode: pending.mode,
+            renderer_formats: &renderer_formats,
+            output: &output,
+            gbm: Some(gbm.clone()),
+        })?;
 
         drm_outputs.push(DrmOutput {
             output_id,

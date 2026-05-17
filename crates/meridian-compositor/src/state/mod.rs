@@ -43,8 +43,8 @@ mod utils;
 mod workspace_output_state;
 
 pub use output_layout::{
-    parse_output_transform, ConnectedOutput, OutputLayout, OutputPlacement, OutputPosition,
-    ResolvedOutput,
+    detect_output_reload_diff, parse_output_transform, ConnectedOutput, OutputLayout,
+    OutputPlacement, OutputPosition, OutputReloadDiff, ResolvedOutput,
 };
 pub use output_registry::{
     OutputGeometry, OutputId, OutputInfo, OutputReconfigure, OutputRegistration, OutputRegistry,

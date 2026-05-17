@@ -27,8 +27,9 @@ use crate::{
 };
 
 use super::{
-    parse_output_transform, ClientState, ConnectedOutput, IpcServer, MeridianState, OutputGeometry,
-    OutputId, OutputReconfigure, OutputRegistration, OutputRegistry, WorkspaceOutputState,
+    detect_output_reload_diff, parse_output_transform, ClientState, ConnectedOutput, IpcServer,
+    MeridianState, OutputGeometry, OutputId, OutputReconfigure, OutputRegistration, OutputRegistry,
+    WorkspaceOutputState,
 };
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -98,9 +99,9 @@ impl MeridianState {
     /// `self.output_layout` and applies position/scale/transform/primary
     /// changes to Smithay's Output state, Space mapping, and OutputRegistry.
     ///
-    /// Does NOT apply mode or enabled changes — those require DrmCompositor
-    /// lifecycle changes (rebuild / add / remove). Diffs there are logged
-    /// as warn and skipped.
+    /// Applies mode changes via DrmCompositor rebuild when DRM is active.
+    /// Enabled toggles still require output add/remove lifecycle handling
+    /// and are logged as restart-required.
     pub fn reapply_output_layout(&mut self, previous_entries: &[OutputEntry]) {
         let connected: Vec<ConnectedOutput> = self
             .output_registry
@@ -125,36 +126,50 @@ impl MeridianState {
             .collect();
 
         for output in &resolved {
-            let prev_entry = previous_entries
+            let previous_entry = previous_entries
                 .iter()
                 .find(|entry| entry.name == output.name);
-            let next_entry = self
-                .output_config_entries
-                .iter()
-                .find(|entry| entry.name == output.name);
-            let mode_changed = prev_entry.and_then(|entry| entry.mode.as_ref())
-                != next_entry.and_then(|entry| entry.mode.as_ref());
-            let enabled_changed = prev_entry.map(|entry| entry.enabled).unwrap_or(true)
-                != next_entry.map(|entry| entry.enabled).unwrap_or(true);
-            if mode_changed {
-                tracing::warn!(
-                    "output {} mode change ignored in live reload — restart required",
-                    output.name
-                );
-            }
-            if enabled_changed {
-                tracing::warn!(
-                    "output {} enabled toggle ignored in live reload — restart required",
-                    output.name
-                );
-            }
-        }
-
-        for output in &resolved {
             let entry = self
                 .output_config_entries
                 .iter()
                 .find(|candidate| candidate.name == output.name);
+            let diff = detect_output_reload_diff(previous_entry, entry);
+
+            if diff.mode_changed {
+                if let Some(next_mode) = entry.and_then(|candidate| candidate.mode.as_ref()) {
+                    let rebuild_ok = if let Some(drm) = self.drm_backend.as_mut() {
+                        drm.rebuild_compositor_for_mode(
+                            &self.display_handle,
+                            &output.name,
+                            next_mode,
+                        )
+                    } else {
+                        tracing::debug!(
+                            "output {} mode change skipped: drm backend not active",
+                            output.name
+                        );
+                        false
+                    };
+                    if !rebuild_ok && self.drm_backend.is_some() {
+                        tracing::warn!(
+                            "output {} mode rebuild failed; keeping previous mode",
+                            output.name
+                        );
+                    }
+                } else {
+                    tracing::warn!(
+                        "output {} mode override was removed in reload; current mode kept until restart",
+                        output.name
+                    );
+                }
+            }
+            if diff.enabled_changed {
+                tracing::warn!(
+                    "output {} enabled toggle requires restart (P1.6b not yet implemented)",
+                    output.name
+                );
+            }
+
             let requested_scale = entry.map(|candidate| candidate.scale).unwrap_or(1.0);
             let scale_value = if !requested_scale.is_finite() || requested_scale <= 0.0 {
                 tracing::warn!(

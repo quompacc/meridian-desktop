@@ -12,7 +12,7 @@
 //! When a phase touches the output layer, add a snapshot-style case here
 //! BEFORE changing behavior, so regressions are explicit.
 
-use meridian_config::{OutputEntry, OutputPositionConfig};
+use meridian_config::{OutputEntry, OutputModeConfig, OutputPositionConfig};
 use smithay::utils::Transform;
 
 use crate::state::{
@@ -596,6 +596,28 @@ fn reload_layout_noop_when_registry_empty() {
         true,
     )]);
     assert_eq!(fixture.snapshot(), "");
+}
+
+#[test]
+fn reload_layout_with_mode_change_safely_logs_only_in_harness() {
+    let mut initial = entry_with("drm-0", OutputPositionConfig::Auto, true, true);
+    initial.mode = Some(OutputModeConfig {
+        width: 1920,
+        height: 1080,
+        refresh_millihz: Some(60_000),
+    });
+    let mut updated = entry_with("drm-0", OutputPositionConfig::Auto, true, true);
+    updated.mode = Some(OutputModeConfig {
+        width: 2560,
+        height: 1440,
+        refresh_millihz: Some(60_000),
+    });
+
+    let mut fixture = OutputHotplugFixture::with_layout_from_entries(&[initial]);
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    let before = fixture.snapshot();
+    fixture.reload_layout_from_entries(&[updated]);
+    assert_eq!(fixture.snapshot(), before);
 }
 
 fn entry_with(
