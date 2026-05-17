@@ -4,6 +4,7 @@ use smithay::{
     },
     desktop::Window,
     input::pointer::{AxisFrame, MotionEvent},
+    reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::SERIAL_COUNTER,
     utils::{Logical, Point, Rectangle, Size},
     wayland::seat::WaylandFocus,
@@ -259,16 +260,23 @@ pub(super) fn xwayland_resize_edge_hit_for_pointer(
 fn decoration_hit_for_pointer(
     state: &MeridianState,
     location: Point<f64, Logical>,
-) -> Option<DecorationHit> {
+) -> Option<(DecorationHit, WlSurface)> {
     let space = state.workspaces.active_space();
     let theme = &state.theme_manager.current().config.decorations;
 
-    let hit_for_window = |window: &Window, window_loc: smithay::utils::Point<i32, Logical>| {
+    let hit_for_window = |window: &Window,
+                          window_loc: smithay::utils::Point<i32, Logical>|
+     -> Option<(DecorationHit, WlSurface)> {
         let wl_surf = window.wl_surface()?.into_owned();
         let content_size = window.geometry().size;
-        state
-            .decoration_manager
-            .hit_test(&wl_surf, location, window_loc, content_size, theme)
+        let hit = state.decoration_manager.hit_test(
+            &wl_surf,
+            location,
+            window_loc,
+            content_size,
+            theme,
+        )?;
+        Some((hit, wl_surf))
     };
 
     space
@@ -302,7 +310,11 @@ fn cursor_icon_for_resize_edge(edge: DecorationResizeEdge) -> DrmCursorIcon {
 }
 
 fn update_hover_cursor_feedback(state: &mut MeridianState, location: Point<f64, Logical>) {
-    let decoration_hit = decoration_hit_for_pointer(state, location);
+    let hit_with_surface = decoration_hit_for_pointer(state, location);
+    let decoration_hit = hit_with_surface.as_ref().map(|(hit, _)| *hit);
+    let hover_surface = hit_with_surface
+        .as_ref()
+        .map(|(_, surface)| surface.clone());
     let desired_cursor = match decoration_hit {
         Some(DecorationHit::Resize(edge)) => cursor_icon_for_resize_edge(edge),
         _ => xwayland_resize_edge_hit_for_pointer(state, location)
@@ -316,14 +328,12 @@ fn update_hover_cursor_feedback(state: &mut MeridianState, location: Point<f64, 
         _ => None,
     };
     let mut hover_changed = state.decoration_manager.clear_hover_buttons();
-    if let Some((window, _)) = state.workspaces.active_space().element_under(location) {
-        if let (Some(wl_surface), Some(hovered)) = (window.wl_surface(), hovered_button) {
-            if state
-                .decoration_manager
-                .update_hover_button(&wl_surface, Some(hovered))
-            {
-                hover_changed = true;
-            }
+    if let (Some(wl_surface), Some(hovered)) = (hover_surface, hovered_button) {
+        if state
+            .decoration_manager
+            .update_hover_button(&wl_surface, Some(hovered))
+        {
+            hover_changed = true;
         }
     }
     if hover_changed {
