@@ -4,6 +4,7 @@ use smithay_client_toolkit::reexports::calloop::{
     timer::{TimeoutAction, Timer},
     EventLoop,
 };
+use tracing_subscriber::EnvFilter;
 use tracing::info;
 
 mod buffer;
@@ -57,7 +58,10 @@ pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info"))
+        .add_directive("usvg=error".parse().expect("static directive parses"));
+    tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
     let mut event_loop = EventLoop::try_new()?;
     let (mut shell, qh) = wayland::initialize(&mut event_loop)?;
