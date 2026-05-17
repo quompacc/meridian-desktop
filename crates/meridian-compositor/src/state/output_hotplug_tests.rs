@@ -5,15 +5,29 @@
 //! actual DRM/Wayland backend. They guard the data-flow between these
 //! layers; they do not cover:
 //!
-//! - Smithay `Space` window remapping (window-tracking on output remove)
+//! - Window migration as behavior change (Phase 3)
 //! - DRM mode selection or compositor lifecycle
 //! - Mirror-Mode (P2)
+//!
+//! Covered in Phase 1: window-position survival for Smithay `Space` on
+//! output remove/reconfigure (no automatic migration).
 //!
 //! When a phase touches the output layer, add a snapshot-style case here
 //! BEFORE changing behavior, so regressions are explicit.
 
+use std::{
+    cell::RefCell,
+    collections::{BTreeSet, HashMap},
+    hash::{Hash, Hasher},
+    rc::Rc,
+};
+
 use meridian_config::{OutputEntry, OutputModeConfig, OutputPositionConfig};
-use smithay::utils::Transform;
+use smithay::{
+    desktop::{space::SpaceElement, Space},
+    output::{Mode as OutputMode, Output, PhysicalProperties, Scale as OutputScale, Subpixel},
+    utils::{IsAlive, Logical, Point, Rectangle, Transform},
+};
 
 use crate::state::{
     ConnectedOutput, MeridianState, OutputGeometry, OutputId, OutputLayout, OutputReconfigure,
@@ -22,12 +36,100 @@ use crate::state::{
 
 const TEST_WORKSPACE_COUNT: usize = 9;
 
+#[derive(Debug, Clone)]
+struct TestSpaceElement {
+    name: String,
+    bbox: Rectangle<i32, Logical>,
+    entered_outputs: Rc<RefCell<BTreeSet<String>>>,
+    alive: Rc<RefCell<bool>>,
+}
+
+impl TestSpaceElement {
+    fn new(name: &str, x: i32, y: i32, w: i32, h: i32) -> Self {
+        Self {
+            name: name.to_string(),
+            bbox: Rectangle::new((x, y).into(), (w, h).into()),
+            entered_outputs: Rc::new(RefCell::new(BTreeSet::new())),
+            alive: Rc::new(RefCell::new(true)),
+        }
+    }
+
+    fn entered(&self) -> Vec<String> {
+        self.entered_outputs.borrow().iter().cloned().collect()
+    }
+}
+
+impl PartialEq for TestSpaceElement {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl Eq for TestSpaceElement {}
+
+impl Hash for TestSpaceElement {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
+impl IsAlive for TestSpaceElement {
+    fn alive(&self) -> bool {
+        *self.alive.borrow()
+    }
+}
+
+impl SpaceElement for TestSpaceElement {
+    fn bbox(&self) -> Rectangle<i32, Logical> {
+        self.bbox
+    }
+
+    fn is_in_input_region(&self, _point: &Point<f64, Logical>) -> bool {
+        false
+    }
+
+    fn set_activate(&self, _activated: bool) {}
+
+    fn output_enter(&self, output: &Output, _overlap: Rectangle<i32, Logical>) {
+        self.entered_outputs.borrow_mut().insert(output.name());
+    }
+
+    fn output_leave(&self, output: &Output) {
+        self.entered_outputs.borrow_mut().remove(&output.name());
+    }
+}
+
+fn make_output(name: &str, width: i32, height: i32) -> Output {
+    let output = Output::new(
+        name.to_string(),
+        PhysicalProperties {
+            size: (0, 0).into(),
+            subpixel: Subpixel::Unknown,
+            make: "Test".into(),
+            model: "Test".into(),
+            serial_number: "Test".into(),
+        },
+    );
+    output.change_current_state(
+        Some(OutputMode {
+            size: (width, height).into(),
+            refresh: 60_000,
+        }),
+        Some(Transform::Normal),
+        Some(OutputScale::Integer(1)),
+        Some((0, 0).into()),
+    );
+    output
+}
+
 struct OutputHotplugFixture {
     layout: OutputLayout,
     registry: OutputRegistry,
     pending_disabled: Vec<ConnectedOutput>,
     workspaces: WorkspaceOutputState,
     global_active_workspace: usize,
+    spaces: Vec<Space<TestSpaceElement>>,
+    smithay_outputs: HashMap<String, Output>,
 }
 
 impl OutputHotplugFixture {
@@ -38,6 +140,10 @@ impl OutputHotplugFixture {
             pending_disabled: Vec::new(),
             workspaces: WorkspaceOutputState::default(),
             global_active_workspace: 0,
+            spaces: (0..TEST_WORKSPACE_COUNT)
+                .map(|_| Space::default())
+                .collect(),
+            smithay_outputs: HashMap::new(),
         }
     }
 
@@ -48,6 +154,32 @@ impl OutputHotplugFixture {
             pending_disabled: Vec::new(),
             workspaces: WorkspaceOutputState::default(),
             global_active_workspace: 0,
+            spaces: (0..TEST_WORKSPACE_COUNT)
+                .map(|_| Space::default())
+                .collect(),
+            smithay_outputs: HashMap::new(),
+        }
+    }
+
+    fn sync_smithay_output_state(&mut self, name: &str, width: i32, height: i32, x: i32, y: i32) {
+        let Some(output) = self.smithay_outputs.get(name).cloned() else {
+            return;
+        };
+
+        if output.current_mode().map(|mode| (mode.size.w, mode.size.h)) != Some((width, height)) {
+            output.change_current_state(
+                Some(OutputMode {
+                    size: (width, height).into(),
+                    refresh: 60_000,
+                }),
+                None,
+                None,
+                None,
+            );
+        }
+        output.change_current_state(None, None, None, Some((x, y).into()));
+        for space in &mut self.spaces {
+            space.map_output(&output, (x, y));
         }
     }
 
@@ -75,6 +207,10 @@ impl OutputHotplugFixture {
         if !target.enabled {
             return None;
         }
+
+        self.smithay_outputs
+            .entry(target.name.clone())
+            .or_insert_with(|| make_output(&target.name, target.width, target.height));
 
         let id = self.registry.upsert(OutputRegistration {
             name: target.name.clone(),
@@ -105,6 +241,13 @@ impl OutputHotplugFixture {
                     primary: Some(output.primary),
                 },
             );
+            self.sync_smithay_output_state(
+                &output.name,
+                output.width,
+                output.height,
+                output.x,
+                output.y,
+            );
         }
 
         self.workspaces.sync_outputs_with_workspace_state(
@@ -112,10 +255,17 @@ impl OutputHotplugFixture {
             self.global_active_workspace,
             TEST_WORKSPACE_COUNT,
         );
+        self.refresh_all_spaces();
         Some(id)
     }
 
     fn remove_output(&mut self, name: &str) -> bool {
+        if let Some(output) = self.smithay_outputs.remove(name) {
+            for space in &mut self.spaces {
+                space.unmap_output(&output);
+            }
+        }
+
         let removed = self.registry.remove_by_name(name).is_some();
         if removed {
             self.workspaces.sync_outputs_with_workspace_state(
@@ -123,6 +273,7 @@ impl OutputHotplugFixture {
                 self.global_active_workspace,
                 TEST_WORKSPACE_COUNT,
             );
+            self.refresh_all_spaces();
         }
         removed
     }
@@ -172,6 +323,13 @@ impl OutputHotplugFixture {
                     primary: Some(output.primary),
                 },
             );
+            self.sync_smithay_output_state(
+                &output.name,
+                output.width,
+                output.height,
+                output.x,
+                output.y,
+            );
         }
 
         self.workspaces.sync_outputs_with_workspace_state(
@@ -179,6 +337,7 @@ impl OutputHotplugFixture {
             self.global_active_workspace,
             TEST_WORKSPACE_COUNT,
         );
+        self.refresh_all_spaces();
         true
     }
 
@@ -239,6 +398,10 @@ impl OutputHotplugFixture {
                     transform: Transform::Normal,
                     refresh_millihz: Some(60_000),
                 });
+                self.smithay_outputs.insert(
+                    output.name.clone(),
+                    make_output(&output.name, output.width, output.height),
+                );
             }
             let _ = self.registry.reconfigure_by_name(
                 &output.name,
@@ -255,15 +418,29 @@ impl OutputHotplugFixture {
                     primary: Some(output.primary),
                 },
             );
+            self.sync_smithay_output_state(
+                &output.name,
+                output.width,
+                output.height,
+                output.x,
+                output.y,
+            );
         }
         self.workspaces.sync_outputs_with_workspace_state(
             &self.registry,
             self.global_active_workspace,
             TEST_WORKSPACE_COUNT,
         );
+        self.refresh_all_spaces();
     }
 
     fn simulate_disable_output(&mut self, name: &str) -> bool {
+        if let Some(output) = self.smithay_outputs.remove(name) {
+            for space in &mut self.spaces {
+                space.unmap_output(&output);
+            }
+        }
+
         let Some(existing) = self.registry.by_name(name).cloned() else {
             return false;
         };
@@ -282,6 +459,39 @@ impl OutputHotplugFixture {
             );
         }
         removed
+    }
+
+    fn map_window(
+        &mut self,
+        name: &str,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+        workspace: usize,
+    ) -> TestSpaceElement {
+        let elem = TestSpaceElement::new(name, x, y, w, h);
+        self.spaces[workspace].map_element(elem.clone(), (x, y), false);
+        self.spaces[workspace].refresh();
+        elem
+    }
+
+    fn window_location(&self, name: &str, workspace: usize) -> Option<(i32, i32)> {
+        self.spaces[workspace]
+            .elements()
+            .find(|e| e.name == name)
+            .and_then(|e| self.spaces[workspace].element_location(e))
+            .map(|p| (p.x, p.y))
+    }
+
+    fn window_count(&self, workspace: usize) -> usize {
+        self.spaces[workspace].elements().count()
+    }
+
+    fn refresh_all_spaces(&mut self) {
+        for space in &mut self.spaces {
+            space.refresh();
+        }
     }
 
     fn snapshot(&self) -> String {
@@ -738,6 +948,109 @@ fn reload_safety_net_re_enables_all_disabled_via_harness() {
         fixture.snapshot(),
         r#"drm-0: (0,0 1920x1080) primary=true workspace=0"#
     );
+}
+
+#[test]
+fn window_on_removed_output_stays_at_logical_position() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+
+    let w1 = fixture.map_window("w1", 2000, 200, 300, 300, 0);
+    assert_eq!(fixture.window_count(0), 1);
+    assert_eq!(fixture.window_location("w1", 0), Some((2000, 200)));
+
+    assert!(fixture.remove_output("drm-1"));
+    fixture.refresh_all_spaces();
+
+    assert_eq!(fixture.window_location("w1", 0), Some((2000, 200)));
+    assert!(w1.entered().is_empty());
+}
+
+#[test]
+fn window_on_remaining_output_undisturbed_by_sibling_removal() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+
+    let w1 = fixture.map_window("w1", 200, 200, 300, 300, 0);
+    assert_eq!(w1.entered(), vec!["drm-0".to_string()]);
+
+    assert!(fixture.remove_output("drm-1"));
+    fixture.refresh_all_spaces();
+
+    assert_eq!(fixture.window_location("w1", 0), Some((200, 200)));
+    assert_eq!(w1.entered(), vec!["drm-0".to_string()]);
+}
+
+#[test]
+fn window_straddling_two_outputs_loses_one_on_removal() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+
+    let w1 = fixture.map_window("w1", 1800, 100, 400, 400, 0);
+    assert_eq!(w1.entered(), vec!["drm-0".to_string(), "drm-1".to_string()]);
+
+    assert!(fixture.remove_output("drm-1"));
+    fixture.refresh_all_spaces();
+
+    assert_eq!(w1.entered(), vec!["drm-0".to_string()]);
+    assert_eq!(fixture.window_location("w1", 0), Some((1800, 100)));
+}
+
+#[test]
+fn reconfigure_geometry_keeps_window_position_updates_overlap() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+
+    let w1 = fixture.map_window("w1", 1800, 100, 400, 400, 0);
+    assert_eq!(w1.entered(), vec!["drm-0".to_string(), "drm-1".to_string()]);
+
+    assert!(fixture.reconfigure_output("drm-0", 2400, 1080));
+    fixture.refresh_all_spaces();
+
+    assert_eq!(fixture.window_location("w1", 0), Some((1800, 100)));
+    assert_eq!(w1.entered(), vec!["drm-0".to_string()]);
+}
+
+#[test]
+fn cyclic_add_remove_add_does_not_leak_entered_outputs() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+
+    let w1 = fixture.map_window("w1", 100, 100, 200, 200, 0);
+    assert_eq!(w1.entered(), vec!["drm-0".to_string()]);
+
+    for _ in 0..3 {
+        assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+        fixture.refresh_all_spaces();
+        assert!(fixture.remove_output("drm-1"));
+        fixture.refresh_all_spaces();
+    }
+
+    assert_eq!(w1.entered(), vec!["drm-0".to_string()]);
+}
+
+#[test]
+fn multiple_windows_distributed_across_outputs_snapshot() {
+    let mut fixture = OutputHotplugFixture::new();
+    assert!(fixture.add_output("drm-0", 1920, 1080).is_some());
+    assert!(fixture.add_output("drm-1", 1920, 1080).is_some());
+
+    let w_left = fixture.map_window("w_left", 100, 100, 200, 200, 0);
+    let w_right = fixture.map_window("w_right", 2100, 100, 200, 200, 0);
+    fixture.refresh_all_spaces();
+
+    assert_eq!(w_left.entered(), vec!["drm-0".to_string()]);
+    assert_eq!(w_right.entered(), vec!["drm-1".to_string()]);
+
+    assert!(fixture.remove_output("drm-0"));
+    fixture.refresh_all_spaces();
+
+    assert!(w_left.entered().is_empty());
+    assert_eq!(w_right.entered(), vec!["drm-1".to_string()]);
 }
 
 fn entry_with(
