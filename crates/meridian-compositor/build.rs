@@ -9,18 +9,18 @@ fn main() {
     let height = 256u32;
     let mut img = RgbaImage::new(width, height);
 
-    // Catppuccin Mocha radial gradient: dark center bloom on deep navy background.
-    // Center: #313244 (surface), edges: #1e1e2e (background).
+    // Tokyo Night radial gradient: subtle center fade with brighter rim.
+    // Center: #24283b (surface), edges: #414868 (border).
     for (x, y, pixel) in img.enumerate_pixels_mut() {
         let cx = x as f32 - width as f32 / 2.0;
         let cy = y as f32 - height as f32 / 2.0;
         let dist = (cx * cx + cy * cy).sqrt() / (width.min(height) as f32 / 2.0);
-        // Smooth falloff: brighter at center, darker at edges
-        let t = (1.0_f32 - dist.clamp(0.0, 1.0)).powi(2) * 0.35;
+        let t = dist.clamp(0.0, 1.0);
+        let t = t * t * (3.0 - 2.0 * t);
         *pixel = Rgba([
-            lerp(0x1e, 0x31, t), // r
-            lerp(0x1e, 0x32, t), // g
-            lerp(0x2e, 0x44, t), // b
+            lerp(0x24, 0x41, t), // r
+            lerp(0x28, 0x48, t), // g
+            lerp(0x3b, 0x68, t), // b
             255,
         ]);
     }
