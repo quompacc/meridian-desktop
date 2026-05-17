@@ -42,6 +42,26 @@ impl OutputPowerManager {
     pub fn known_count(&self) -> usize {
         self.modes.len()
     }
+
+    /// Compute how many outputs would be in mode On after applying
+    /// `new_mode` to `candidate`, given the currently known output names.
+    pub fn projected_on_count(
+        &self,
+        known_outputs: &[String],
+        candidate: &str,
+        new_mode: OutputPowerMode,
+    ) -> usize {
+        known_outputs
+            .iter()
+            .filter(|name| {
+                if name.as_str() == candidate {
+                    matches!(new_mode, OutputPowerMode::On)
+                } else {
+                    matches!(self.mode_for(name), OutputPowerMode::On)
+                }
+            })
+            .count()
+    }
 }
 
 #[cfg(test)]
@@ -93,5 +113,93 @@ mod tests {
         let mut manager = OutputPowerManager::new();
         assert_eq!(manager.forget("unknown"), OutputPowerMode::On);
         assert_eq!(manager.known_count(), 0);
+    }
+
+    #[test]
+    fn projected_on_count_no_change_keeps_count() {
+        let manager = OutputPowerManager::new();
+        let outputs = vec!["o1".to_string(), "o2".to_string(), "o3".to_string()];
+        assert_eq!(
+            manager.projected_on_count(&outputs, "o1", OutputPowerMode::On),
+            3
+        );
+    }
+
+    #[test]
+    fn projected_on_count_turning_off_one_of_many() {
+        let manager = OutputPowerManager::new();
+        let outputs = vec!["o1".to_string(), "o2".to_string(), "o3".to_string()];
+        assert_eq!(
+            manager.projected_on_count(&outputs, "o2", OutputPowerMode::Off),
+            2
+        );
+    }
+
+    #[test]
+    fn projected_on_count_turning_off_last_returns_zero() {
+        let manager = OutputPowerManager::new();
+        let outputs = vec!["o1".to_string()];
+        assert_eq!(
+            manager.projected_on_count(&outputs, "o1", OutputPowerMode::Off),
+            0
+        );
+    }
+
+    #[test]
+    fn projected_on_count_turning_on_already_off() {
+        let mut manager = OutputPowerManager::new();
+        assert!(manager.set_mode("o1", OutputPowerMode::Off));
+        let outputs = vec!["o1".to_string(), "o2".to_string(), "o3".to_string()];
+        assert_eq!(
+            manager.projected_on_count(&outputs, "o1", OutputPowerMode::On),
+            3
+        );
+    }
+
+    #[test]
+    fn safety_net_rejects_last_on_off_via_projected_count() {
+        let manager = OutputPowerManager::new();
+        let outputs = vec!["solo".to_string()];
+        assert_eq!(
+            manager.projected_on_count(&outputs, "solo", OutputPowerMode::Off),
+            0
+        );
+    }
+
+    #[test]
+    fn safety_net_allows_off_when_other_on_exists() {
+        let manager = OutputPowerManager::new();
+        let outputs = vec!["a".to_string(), "b".to_string()];
+        assert_eq!(
+            manager.projected_on_count(&outputs, "a", OutputPowerMode::Off),
+            1
+        );
+    }
+
+    #[test]
+    fn safety_net_allows_on_anytime() {
+        let mut manager = OutputPowerManager::new();
+        assert!(manager.set_mode("a", OutputPowerMode::Off));
+        let outputs = vec!["a".to_string()];
+        assert_eq!(
+            manager.projected_on_count(&outputs, "a", OutputPowerMode::On),
+            1
+        );
+    }
+
+    #[test]
+    fn cycle_off_on_off_with_multiple_outputs_consistent() {
+        let mut manager = OutputPowerManager::new();
+        let outputs = vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        assert!(manager.set_mode("a", OutputPowerMode::Off));
+        assert_eq!(
+            manager.projected_on_count(&outputs, "a", OutputPowerMode::On),
+            3
+        );
+        assert!(manager.set_mode("a", OutputPowerMode::On));
+        assert_eq!(
+            manager.projected_on_count(&outputs, "b", OutputPowerMode::Off),
+            2
+        );
     }
 }

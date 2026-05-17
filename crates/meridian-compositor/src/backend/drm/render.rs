@@ -20,7 +20,7 @@ use smithay::{
 use tracing::{debug, error};
 
 use crate::{
-    state::{LockPhase, MeridianState},
+    state::{LockPhase, MeridianState, OutputPowerMode},
     wallpaper::WallpaperGpuCache,
 };
 
@@ -127,6 +127,15 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
     *last_pointer_location = pointer_location;
 
     for out in outputs.iter_mut() {
+        let output_name_for_power = out.output.name();
+        if matches!(
+            state.output_power_manager.mode_for(&output_name_for_power),
+            OutputPowerMode::Off
+        ) {
+            metrics.outputs_skipped_power_off += 1;
+            dirty_stats.record_skipped_power_off(out.output_id);
+            continue;
+        }
         if out.frame_in_flight {
             metrics.outputs_skipped_in_flight += 1;
             continue;

@@ -43,6 +43,7 @@ pub(super) struct RenderPassMetrics {
     pub outputs_processed: u64,
     pub outputs_skipped_clean: u64,
     pub outputs_skipped_in_flight: u64,
+    pub outputs_skipped_power_off: u64,
     pub queued_frames: u64,
     pub queue_failures: u64,
     pub rendered_outputs_with_layers: u64,
@@ -112,6 +113,7 @@ pub struct DrmTimingStats {
     empty_frames: u64,
     outputs_skipped_clean: u64,
     outputs_skipped_in_flight: u64,
+    outputs_skipped_power_off: u64,
     vblank_events: u64,
     vblank_with_output: u64,
     queue_failures: u64,
@@ -138,6 +140,7 @@ pub struct PerOutputDirtyStats {
     pub dirty_set_count: u64,
     pub dirty_clear_count: u64,
     pub skipped_clean_count: u64,
+    pub skipped_power_off_count: u64,
     pub rendered_dirty_count: u64,
     pub rendered_while_not_dirty_count: u64,
 }
@@ -222,6 +225,16 @@ impl DrmDirtyStats {
             .skipped_clean_count += 1;
     }
 
+    pub fn record_skipped_power_off(&mut self, output_id: OutputId) {
+        if !self.enabled {
+            return;
+        }
+        self.per_output
+            .entry(output_id)
+            .or_default()
+            .skipped_power_off_count += 1;
+    }
+
     pub fn record_rendered_dirty(&mut self, output_id: OutputId) {
         if !self.enabled {
             return;
@@ -271,12 +284,13 @@ impl DrmDirtyStats {
                     .get(&output_id)
                     .map_or("<unknown>", String::as_str);
                 tracing::info!(
-                    "drm dirty output stats (1s): output_id={} output={} dirty_set_count={} dirty_clear_count={} skipped_clean_count={} rendered_dirty_count={} rendered_while_not_dirty_count={}",
+                    "drm dirty output stats (1s): output_id={} output={} dirty_set_count={} dirty_clear_count={} skipped_clean_count={} skipped_power_off_count={} rendered_dirty_count={} rendered_while_not_dirty_count={}",
                     output_id.0,
                     output_name,
                     stats.dirty_set_count,
                     stats.dirty_clear_count,
                     stats.skipped_clean_count,
+                    stats.skipped_power_off_count,
                     stats.rendered_dirty_count,
                     stats.rendered_while_not_dirty_count
                 );
@@ -306,6 +320,7 @@ impl DrmTimingStats {
             empty_frames: 0,
             outputs_skipped_clean: 0,
             outputs_skipped_in_flight: 0,
+            outputs_skipped_power_off: 0,
             vblank_events: 0,
             vblank_with_output: 0,
             queue_failures: 0,
@@ -368,6 +383,7 @@ impl DrmTimingStats {
         self.empty_frames += metrics.empty_frames;
         self.outputs_skipped_clean += metrics.outputs_skipped_clean;
         self.outputs_skipped_in_flight += metrics.outputs_skipped_in_flight;
+        self.outputs_skipped_power_off += metrics.outputs_skipped_power_off;
         self.queue_failures += metrics.queue_failures;
         self.queued_frames_pending += metrics.queued_frames as i64;
         self.rendered_outputs_with_layers += metrics.rendered_outputs_with_layers;
@@ -434,12 +450,13 @@ impl DrmTimingStats {
         };
 
         tracing::info!(
-            "drm timing summary: ticks={} frames={} empty_frames={} outputs_skipped_clean={} outputs_skipped_in_flight={} vblank_events={} vblank_with_output={} queued_pending={} queue_failures={} timer_fire_ms(avg/min/max)={:.2}/{:.2}/{:.2} timer_lag_ms(avg/min/max)={:.2}/{:.2}/{:.2} tick_ms(avg/min/max)={:.2}/{:.2}/{:.2} render_ms(avg/min/max)={:.2}/{:.2}/{:.2} output_pass_ms(avg/min/max)={:.2}/{:.2}/{:.2} commit_ms(avg/min/max)={:.2}/{:.2}/{:.2} queue_ms(avg/min/max)={:.2}/{:.2}/{:.2} vblank_wait_ms(avg/min/max)={:.2}/{:.2}/{:.2} vblank_handler_ms(avg/min/max)={:.2}/{:.2}/{:.2} frame_submitted_ms(avg/min/max)={:.2}/{:.2}/{:.2} render_elements_per_frame_avg={:.1} layer_surfaces_per_frame_avg={:.1}",
+            "drm timing summary: ticks={} frames={} empty_frames={} outputs_skipped_clean={} outputs_skipped_in_flight={} outputs_skipped_power_off={} vblank_events={} vblank_with_output={} queued_pending={} queue_failures={} timer_fire_ms(avg/min/max)={:.2}/{:.2}/{:.2} timer_lag_ms(avg/min/max)={:.2}/{:.2}/{:.2} tick_ms(avg/min/max)={:.2}/{:.2}/{:.2} render_ms(avg/min/max)={:.2}/{:.2}/{:.2} output_pass_ms(avg/min/max)={:.2}/{:.2}/{:.2} commit_ms(avg/min/max)={:.2}/{:.2}/{:.2} queue_ms(avg/min/max)={:.2}/{:.2}/{:.2} vblank_wait_ms(avg/min/max)={:.2}/{:.2}/{:.2} vblank_handler_ms(avg/min/max)={:.2}/{:.2}/{:.2} frame_submitted_ms(avg/min/max)={:.2}/{:.2}/{:.2} render_elements_per_frame_avg={:.1} layer_surfaces_per_frame_avg={:.1}",
             self.ticks,
             self.frames,
             self.empty_frames,
             self.outputs_skipped_clean,
             self.outputs_skipped_in_flight,
+            self.outputs_skipped_power_off,
             self.vblank_events,
             self.vblank_with_output,
             self.queued_frames_pending,
@@ -490,6 +507,7 @@ impl DrmTimingStats {
         self.empty_frames = 0;
         self.outputs_skipped_clean = 0;
         self.outputs_skipped_in_flight = 0;
+        self.outputs_skipped_power_off = 0;
         self.vblank_events = 0;
         self.vblank_with_output = 0;
         self.queue_failures = 0;

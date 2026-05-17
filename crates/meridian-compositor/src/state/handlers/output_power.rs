@@ -103,6 +103,37 @@ impl Dispatch<ZwlrOutputPowerV1, OutputPowerData> for MeridianState {
                     return;
                 };
 
+                let known = state
+                    .output_registry
+                    .list()
+                    .iter()
+                    .map(|info| info.name.clone())
+                    .collect::<Vec<_>>();
+                let projected =
+                    state
+                        .output_power_manager
+                        .projected_on_count(&known, &output_name, new_mode);
+                if projected == 0 {
+                    tracing::warn!(
+                        "wlr-output-power: rejecting set_mode({:?}) for {} - would leave zero outputs On (VM self-lockout guard)",
+                        new_mode,
+                        output_name
+                    );
+                    resource.failed();
+                    if let Some(resources) = state.output_power_resources.get_mut(&output_name) {
+                        resources.retain(|entry| entry.id() != resource.id());
+                    }
+                    let remove_bucket = state
+                        .output_power_resources
+                        .get(&output_name)
+                        .is_some_and(|resources| resources.is_empty());
+                    if remove_bucket {
+                        state.output_power_resources.remove(&output_name);
+                    }
+                    *data.output_name.lock().unwrap() = None;
+                    return;
+                }
+
                 let changed = state.output_power_manager.set_mode(&output_name, new_mode);
                 if let Some(resources) = state.output_power_resources.get(&output_name) {
                     for resource in resources {
@@ -121,6 +152,13 @@ impl Dispatch<ZwlrOutputPowerV1, OutputPowerData> for MeridianState {
                         "wlr-output-power: output={} mode set to {:?} (no change)",
                         output_name,
                         new_mode
+                    );
+                }
+                if changed && matches!(new_mode, OutputPowerMode::On) {
+                    state.mark_all_outputs_dirty("output-power-on");
+                    tracing::debug!(
+                        "wlr-output-power: output {} marked dirty after power-on",
+                        output_name
                     );
                 }
             }

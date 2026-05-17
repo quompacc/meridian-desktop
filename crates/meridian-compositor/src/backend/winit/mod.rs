@@ -19,7 +19,7 @@ use smithay::{
 };
 
 use crate::{
-    state::{MeridianState, OutputReconfigure, OutputRegistration},
+    state::{MeridianState, OutputPowerMode, OutputReconfigure, OutputRegistration},
     wallpaper::WallpaperGpuCache,
 };
 
@@ -140,73 +140,76 @@ pub fn init_winit(
                 }
             }
             WinitEvent::Redraw => {
-                let size = backend.window_size();
-                let damage = Rectangle::from_size(size);
-                let age = backend.buffer_age().unwrap_or(0);
-                collect_layer_data(
-                    &output,
-                    &mut render_scratch.lower_layer_data,
-                    &mut render_scratch.upper_layer_data,
-                );
-
+                if !matches!(state.output_power_manager.mode_for(&output.name()), OutputPowerMode::Off)
                 {
-                    let (renderer, mut framebuffer) = backend.bind().unwrap();
-                    let scale = Scale::from(1.0f64);
-                    render_layer_elements(
-                        renderer,
-                        &render_scratch.lower_layer_data,
-                        scale,
-                        &mut render_scratch.lower_layer_elements,
-                    );
-                    render_layer_elements(
-                        renderer,
-                        &render_scratch.upper_layer_data,
-                        scale,
-                        &mut render_scratch.upper_layer_elements,
-                    );
-                    scene::render_elements_for_output(
-                        state,
-                        renderer,
+                    let size = backend.window_size();
+                    let damage = Rectangle::from_size(size);
+                    let age = backend.buffer_age().unwrap_or(0);
+                    collect_layer_data(
                         &output,
-                        &mut wallpaper_cache,
-                        size.w as u32,
-                        size.h as u32,
-                        &mut render_scratch,
+                        &mut render_scratch.lower_layer_data,
+                        &mut render_scratch.upper_layer_data,
                     );
 
-                    let bg = [0.0_f32; 4];
-                    render_output::<_, WinitRenderElements, Window, _>(
-                        &output,
-                        renderer,
-                        &mut framebuffer,
-                        1.0,
-                        age,
-                        std::iter::empty::<&smithay::desktop::Space<Window>>(),
-                        &render_scratch.final_elements,
-                        &mut damage_tracker,
-                        bg,
-                    )
-                    .unwrap();
-                }
+                    {
+                        let (renderer, mut framebuffer) = backend.bind().unwrap();
+                        let scale = Scale::from(1.0f64);
+                        render_layer_elements(
+                            renderer,
+                            &render_scratch.lower_layer_data,
+                            scale,
+                            &mut render_scratch.lower_layer_elements,
+                        );
+                        render_layer_elements(
+                            renderer,
+                            &render_scratch.upper_layer_data,
+                            scale,
+                            &mut render_scratch.upper_layer_elements,
+                        );
+                        scene::render_elements_for_output(
+                            state,
+                            renderer,
+                            &output,
+                            &mut wallpaper_cache,
+                            size.w as u32,
+                            size.h as u32,
+                            &mut render_scratch,
+                        );
 
-                backend.submit(Some(&[damage])).unwrap();
+                        let bg = [0.0_f32; 4];
+                        render_output::<_, WinitRenderElements, Window, _>(
+                            &output,
+                            renderer,
+                            &mut framebuffer,
+                            1.0,
+                            age,
+                            std::iter::empty::<&smithay::desktop::Space<Window>>(),
+                            &render_scratch.final_elements,
+                            &mut damage_tracker,
+                            bg,
+                        )
+                        .unwrap();
+                    }
 
-                let time = state.start_time.elapsed();
-                state
-                    .workspaces
-                    .active_space()
-                    .elements()
-                    .for_each(|window| {
-                        window.send_frame(&output, time, Some(Duration::ZERO), |_, _| {
-                            Some(output.clone())
+                    backend.submit(Some(&[damage])).unwrap();
+
+                    let time = state.start_time.elapsed();
+                    state
+                        .workspaces
+                        .active_space()
+                        .elements()
+                        .for_each(|window| {
+                            window.send_frame(&output, time, Some(Duration::ZERO), |_, _| {
+                                Some(output.clone())
+                            });
                         });
-                    });
-                send_layer_frames(
-                    &output,
-                    time,
-                    &render_scratch.lower_layer_data,
-                    &render_scratch.upper_layer_data,
-                );
+                    send_layer_frames(
+                        &output,
+                        time,
+                        &render_scratch.lower_layer_data,
+                        &render_scratch.upper_layer_data,
+                    );
+                }
 
                 state.workspaces.active_space_mut().refresh();
                 state.popups.cleanup();
