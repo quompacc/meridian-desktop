@@ -107,17 +107,15 @@ pub(crate) struct SsdResizeBandMetrics {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
-pub(crate) struct SsdShadowMetrics {
-    pub(crate) rect: Rectangle<i32, Logical>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SsdShadowDonutMetrics {
-    pub(crate) top: Rectangle<i32, Logical>,
-    pub(crate) bottom: Rectangle<i32, Logical>,
-    pub(crate) left: Rectangle<i32, Logical>,
-    pub(crate) right: Rectangle<i32, Logical>,
+pub(crate) struct SsdShadowLayout {
+    pub(crate) corner_tl: Rectangle<i32, Logical>,
+    pub(crate) corner_tr: Rectangle<i32, Logical>,
+    pub(crate) corner_bl: Rectangle<i32, Logical>,
+    pub(crate) corner_br: Rectangle<i32, Logical>,
+    pub(crate) edge_top: Rectangle<i32, Logical>,
+    pub(crate) edge_bottom: Rectangle<i32, Logical>,
+    pub(crate) edge_left: Rectangle<i32, Logical>,
+    pub(crate) edge_right: Rectangle<i32, Logical>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -225,30 +223,11 @@ impl SsdChromeMetrics {
         })
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn shadow_metrics(self, shadow_radius: i32) -> Option<SsdShadowMetrics> {
-        if self.frame.border_width <= 0 {
-            return None;
-        }
-
-        let sw = (self.frame.frame_size.w + shadow_radius * 2).max(1);
-        let sh = (self.frame.client_size.h
-            + self.frame.titlebar_height
-            + self.frame.border_width
-            + shadow_radius * 2)
-            .max(1);
-        let shadow_rect = Rectangle::new(
-            (
-                self.frame.frame_origin.x - shadow_radius,
-                self.frame.frame_origin.y - shadow_radius,
-            )
-                .into(),
-            (sw, sh).into(),
-        );
-        Some(SsdShadowMetrics { rect: shadow_rect })
-    }
-
-    pub(crate) fn shadow_donut_metrics(self, shadow_radius: i32) -> Option<SsdShadowDonutMetrics> {
+    pub(crate) fn shadow_layout(
+        self,
+        shadow_radius: i32,
+        shadow_offset_y: i32,
+    ) -> Option<SsdShadowLayout> {
         if self.frame.border_width <= 0 || shadow_radius <= 0 {
             return None;
         }
@@ -257,20 +236,18 @@ impl SsdChromeMetrics {
         let fx = self.frame.frame_origin.x;
         let fy = self.frame.frame_origin.y;
         let fw = self.frame.frame_size.w;
-        // Keep vertical extent aligned with current shadow behavior.
-        let fh = (self.frame.client_size.h + self.frame.titlebar_height + self.frame.border_width)
-            .max(1);
+        let fh = self.frame.frame_size.h;
+        let oy = shadow_offset_y;
 
-        let top = Rectangle::new((fx - sr, fy - sr).into(), (fw + sr * 2, sr).into());
-        let bottom = Rectangle::new((fx - sr, fy + fh).into(), (fw + sr * 2, sr).into());
-        let left = Rectangle::new((fx - sr, fy).into(), (sr, fh).into());
-        let right = Rectangle::new((fx + fw, fy).into(), (sr, fh).into());
-
-        Some(SsdShadowDonutMetrics {
-            top,
-            bottom,
-            left,
-            right,
+        Some(SsdShadowLayout {
+            corner_tl: Rectangle::new((fx - sr, fy - sr + oy).into(), (sr, sr).into()),
+            corner_tr: Rectangle::new((fx + fw, fy - sr + oy).into(), (sr, sr).into()),
+            corner_bl: Rectangle::new((fx - sr, fy + fh + oy).into(), (sr, sr).into()),
+            corner_br: Rectangle::new((fx + fw, fy + fh + oy).into(), (sr, sr).into()),
+            edge_top: Rectangle::new((fx, fy - sr + oy).into(), (fw, sr).into()),
+            edge_bottom: Rectangle::new((fx, fy + fh + oy).into(), (fw, sr).into()),
+            edge_left: Rectangle::new((fx - sr, fy + oy).into(), (sr, fh).into()),
+            edge_right: Rectangle::new((fx + fw, fy + oy).into(), (sr, fh).into()),
         })
     }
 }
@@ -462,40 +439,29 @@ mod tests {
     }
 
     #[test]
-    fn shadow_extent_matches_current_buffer_formula() {
+    fn shadow_layout_corners_and_edges_cover_frame_perimeter() {
         let frame = SsdFrameMetrics::from_frame_origin((10, 20).into(), (640, 400).into(), 2, 32);
         let chrome = SsdChromeMetrics::new(frame);
-        let shadow = chrome.shadow_metrics(16).expect("shadow metrics");
+        let layout = chrome.shadow_layout(16, 4).expect("shadow layout");
 
-        assert_eq!(shadow.rect.loc, Point::from((-6, 4)));
-        assert_eq!(shadow.rect.size, Size::from((676, 466)));
+        assert_eq!(layout.corner_tl.loc, Point::from((-6, 8)));
+        assert_eq!(layout.corner_tr.loc, Point::from((654, 8)));
+        assert_eq!(layout.corner_bl.loc, Point::from((-6, 460)));
+        assert_eq!(layout.corner_br.loc, Point::from((654, 460)));
+        assert_eq!(layout.edge_top.loc, Point::from((10, 8)));
+        assert_eq!(layout.edge_top.size, Size::from((644, 16)));
+        assert_eq!(layout.edge_bottom.loc, Point::from((10, 460)));
+        assert_eq!(layout.edge_bottom.size, Size::from((644, 16)));
+        assert_eq!(layout.edge_left.loc, Point::from((-6, 24)));
+        assert_eq!(layout.edge_left.size, Size::from((16, 436)));
+        assert_eq!(layout.edge_right.loc, Point::from((654, 24)));
+        assert_eq!(layout.edge_right.size, Size::from((16, 436)));
     }
 
     #[test]
-    fn shadow_extent_absent_without_border() {
+    fn shadow_layout_absent_without_border() {
         let frame = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 0, 32);
         let chrome = SsdChromeMetrics::new(frame);
-        assert!(chrome.shadow_metrics(16).is_none());
-    }
-
-    #[test]
-    fn donut_metrics_strip_widths_match_radius_and_frame() {
-        let frame = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
-        let chrome = SsdChromeMetrics::new(frame);
-        let donut = chrome.shadow_donut_metrics(24).expect("donut");
-
-        assert_eq!(donut.top.loc, Point::from((-24, -24)));
-        assert_eq!(donut.top.size, Size::from((692, 24)));
-        assert_eq!(donut.bottom.loc, Point::from((-24, 434)));
-        assert_eq!(donut.left.loc, Point::from((-24, 0)));
-        assert_eq!(donut.left.size, Size::from((24, 434)));
-        assert_eq!(donut.right.loc, Point::from((644, 0)));
-    }
-
-    #[test]
-    fn donut_metrics_absent_without_border() {
-        let frame = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 0, 32);
-        let chrome = SsdChromeMetrics::new(frame);
-        assert!(chrome.shadow_donut_metrics(24).is_none());
+        assert!(chrome.shadow_layout(24, 0).is_none());
     }
 }

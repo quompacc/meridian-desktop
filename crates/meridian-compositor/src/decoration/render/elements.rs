@@ -13,11 +13,11 @@ use smithay::{
 use super::{
     super::{
         icons::{IconTint, WindowIcon},
-        model::{HoveredButton, STRIP_BOTTOM, STRIP_LEFT, STRIP_RIGHT, STRIP_TOP},
+        model::HoveredButton,
         DecorationManager, DecorationRenderElement, BUTTON_HEIGHT, BUTTON_ICON_PX, BUTTON_WIDTH,
         TITLE_BAR_HEIGHT,
     },
-    buffers::{layer_radius, update_buffers, SHADOW_LAYERS},
+    buffers::{effective_shadow_alpha, effective_shadow_radius, update_buffers},
     geometry::{SsdChromeMetrics, SsdFrameMetrics},
 };
 
@@ -216,33 +216,52 @@ impl DecorationManager {
         }
 
         if theme.shadow && bw > 0 {
-            let oy = theme.shadow_offset_y;
+            let sr = effective_shadow_radius(theme.shadow_radius as i32, deco.is_focused);
+            let alpha = effective_shadow_alpha(theme.shadow_alpha, deco.is_focused);
             let chrome = SsdChromeMetrics::new(SsdFrameMetrics::from_frame_origin(
                 window_loc,
                 content_size,
                 bw,
                 title_h,
             ));
-            for (layer_idx, layer) in SHADOW_LAYERS.iter().enumerate() {
-                let sr = layer_radius(theme, deco.is_focused, layer.radius_scale);
-                if let Some(donut) = chrome.shadow_donut_metrics(sr) {
-                    let strips = &deco.buffers.shadow_strips[layer_idx];
-                    for (strip_idx, rect) in [
-                        (STRIP_TOP, donut.top),
-                        (STRIP_BOTTOM, donut.bottom),
-                        (STRIP_LEFT, donut.left),
-                        (STRIP_RIGHT, donut.right),
-                    ] {
-                        elements.push(
-                            SolidColorRenderElement::from_buffer(
-                                &strips[strip_idx],
-                                phys(rect.loc.x, rect.loc.y + oy),
-                                scale,
-                                1.0,
-                                Kind::Unspecified,
-                            )
-                            .into(),
-                        );
+            if let Some(layout) = chrome.shadow_layout(sr, theme.shadow_offset_y) {
+                let shadow = self.shadow_cache.get_for(sr as u32, alpha);
+
+                for (rect, buffer) in [
+                    (layout.corner_tl, shadow.corner_tl),
+                    (layout.corner_tr, shadow.corner_tr),
+                    (layout.corner_bl, shadow.corner_bl),
+                    (layout.corner_br, shadow.corner_br),
+                ] {
+                    if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
+                        renderer,
+                        phys_f64(rect.loc.x, rect.loc.y),
+                        buffer,
+                        None,
+                        None,
+                        Some(rect.size),
+                        Kind::Unspecified,
+                    ) {
+                        elements.push(DecorationRenderElement::Icon(element));
+                    }
+                }
+
+                for (rect, buffer) in [
+                    (layout.edge_top, shadow.edge_top),
+                    (layout.edge_bottom, shadow.edge_bottom),
+                    (layout.edge_left, shadow.edge_left),
+                    (layout.edge_right, shadow.edge_right),
+                ] {
+                    if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
+                        renderer,
+                        phys_f64(rect.loc.x, rect.loc.y),
+                        buffer,
+                        None,
+                        None,
+                        Some(rect.size),
+                        Kind::Unspecified,
+                    ) {
+                        elements.push(DecorationRenderElement::Icon(element));
                     }
                 }
             }

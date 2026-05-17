@@ -11,10 +11,12 @@ use smithay::reexports::wayland_server::{
 pub mod icons;
 mod model;
 mod render;
+mod shadow_bitmap;
 
 pub use model::HoveredButton;
 use model::WindowDecoration;
 use render::icon_cache::IconCache;
+use render::shadow_cache::ShadowCache;
 
 pub const TITLE_BAR_HEIGHT: i32 = 32;
 pub const BUTTON_WIDTH: i32 = 28;
@@ -52,6 +54,7 @@ pub enum DecorationHit {
 pub struct DecorationManager {
     decorations: HashMap<ObjectId, WindowDecoration>,
     icon_cache: IconCache,
+    shadow_cache: ShadowCache,
 }
 
 impl DecorationManager {
@@ -59,6 +62,7 @@ impl DecorationManager {
         Self {
             decorations: HashMap::new(),
             icon_cache: IconCache::new(BUTTON_ICON_PX, BUTTON_STROKE_WIDTH),
+            shadow_cache: ShadowCache::new(),
         }
     }
 
