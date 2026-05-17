@@ -214,6 +214,11 @@ impl MeridianState {
                                 output.name
                             );
                         }
+                    } else if self.drm_backend.is_none() {
+                        tracing::warn!(
+                            "output {} enable skipped: drm backend not active (winit?) — cannot apply live",
+                            output.name
+                        );
                     } else {
                         tracing::warn!(
                             "output {} flagged for enable but not in disabled_outputs (was likely never connected) — needs hotplug",
@@ -258,10 +263,17 @@ impl MeridianState {
                     }
                     continue;
                 }
-                tracing::warn!(
-                    "output {} enabled toggle requires restart (P1.6b not yet implemented)",
-                    output.name
-                );
+                if self.drm_backend.is_none() {
+                    tracing::warn!(
+                        "output {} enabled toggle skipped: drm backend not active (winit?)",
+                        output.name
+                    );
+                } else {
+                    tracing::debug!(
+                        "output {} enabled toggle no-op: drm backend present but disable/enable path did not match",
+                        output.name
+                    );
+                }
                 continue;
             }
 

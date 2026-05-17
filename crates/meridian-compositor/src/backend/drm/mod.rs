@@ -614,7 +614,7 @@ impl DrmBackend {
 
     pub fn rebuild_compositor_for_mode(
         &mut self,
-        _state_display_handle: &smithay::reexports::wayland_server::DisplayHandle,
+        state_display_handle: &smithay::reexports::wayland_server::DisplayHandle,
         output_name: &str,
         new_mode_override: &OutputModeConfig,
     ) -> bool {
@@ -687,7 +687,7 @@ impl DrmBackend {
 
         let smithay_output = self.outputs[idx].output.clone();
         let rebuilt = match init::build_drm_compositor(init::DrmCompositorBuildParams {
-            state_display_handle: _state_display_handle,
+            state_display_handle,
             device_fd,
             drm: &mut drm,
             crtc,
