@@ -227,6 +227,9 @@ impl DecorationManager {
                     [colors.border.r, colors.border.g, colors.border.b, 255]
                 };
                 let radius_px = slices.corner_tl.size.w as u32;
+                let buffer_extent = (radius_px * 2) as f64;
+                let src =
+                    smithay::utils::Rectangle::from_size((buffer_extent, buffer_extent).into());
                 let corners = self.corner_cache.get_for(radius_px, frame_color);
                 for (rect, buffer) in [
                     (slices.corner_tl, corners.tl),
@@ -239,7 +242,7 @@ impl DecorationManager {
                         phys_f64(rect.loc.x, rect.loc.y),
                         buffer,
                         None,
-                        None,
+                        Some(src),
                         Some(rect.size),
                         Kind::Unspecified,
                     ) {
@@ -293,8 +296,11 @@ impl DecorationManager {
         if theme.shadow && bw > 0 {
             let sr = effective_shadow_radius(theme.shadow_radius as i32, deco.is_focused);
             let alpha = effective_shadow_alpha(theme.shadow_alpha, deco.is_focused);
-            if let Some(layout) = chrome.shadow_layout(sr, theme.shadow_offset_y) {
-                let shadow = self.shadow_cache.get_for(sr as u32, alpha);
+            let frame_radius = theme.corner_radius as i32;
+            if let Some(layout) = chrome.shadow_layout(sr, theme.shadow_offset_y, frame_radius) {
+                let shadow = self
+                    .shadow_cache
+                    .get_for(sr as u32, alpha, frame_radius as u32);
 
                 for (rect, buffer) in [
                     (layout.corner_tl, shadow.corner_tl),
