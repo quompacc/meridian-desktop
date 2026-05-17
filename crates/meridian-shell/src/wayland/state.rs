@@ -729,6 +729,18 @@ impl MeridianShell {
             ClickAction::FocusWindow(id) => {
                 self.ipc.send(&ShellCommand::FocusWindow { id });
             }
+            ClickAction::LaunchPinnedApp(idx) => {
+                if let Some(app) = self.pinned_apps.get(idx).cloned() {
+                    let command = ShellCommand::LaunchApp {
+                        program: app.program,
+                        args: app.args,
+                        terminal: app.terminal,
+                    };
+                    if !self.ipc.send(&command) {
+                        tracing::warn!("IPC unavailable, pinned app launch skipped: {}", idx);
+                    }
+                }
+            }
             ClickAction::LaunchApp(index) => {
                 self.launcher_state.launch_app(index, &mut self.ipc);
             }
@@ -786,6 +798,7 @@ impl MeridianShell {
                     .launch_app(self.launcher_state.selected_index, &mut self.ipc);
                 self.close_launcher_after_launch(qh, RepaintReason::Pointer);
             }
+            ClickAction::LaunchPinnedApp(_) => {}
             ClickAction::LauncherAction { action, index } => {
                 self.launcher_state.set_selected_index(index);
                 match self.launcher_state.trigger_action(action, &mut self.ipc) {

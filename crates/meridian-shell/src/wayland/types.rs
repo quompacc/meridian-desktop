@@ -21,6 +21,7 @@ pub(crate) struct WindowInfo {
 pub enum ClickAction {
     SwitchWorkspace(u8),
     FocusWindow(String),
+    LaunchPinnedApp(usize),
     SelectLauncherCategory(u8),
     LaunchApp(usize),
     LauncherAction {

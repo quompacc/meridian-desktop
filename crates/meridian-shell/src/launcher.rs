@@ -863,6 +863,7 @@ impl LauncherState {
                 ClickAction::LauncherAction { index, .. } => Some(index),
                 ClickAction::SwitchWorkspace(_) => None,
                 ClickAction::FocusWindow(_) => None,
+                ClickAction::LaunchPinnedApp(_) => None,
                 ClickAction::SelectLauncherCategory(_) => None,
                 ClickAction::ToggleLauncher => None,
                 ClickAction::Clock => None,

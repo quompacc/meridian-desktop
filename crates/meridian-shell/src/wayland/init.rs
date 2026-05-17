@@ -17,9 +17,9 @@ use tracing::{debug, info, warn};
 use wayland_client::{globals::registry_queue_init, Connection, QueueHandle};
 
 use crate::{
-    launcher, panel, TextRenderer, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT,
-    LAUNCHER_WIDTH, PANEL_HEIGHT, SHELL_POPUP_BOTTOM_MARGIN, WORKSPACE_POPUP_HEIGHT,
-    WORKSPACE_POPUP_WIDTH,
+    default_pinned_apps, launcher, panel, TextRenderer, CALENDAR_POPUP_HEIGHT,
+    CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, PANEL_HEIGHT, SHELL_POPUP_BOTTOM_MARGIN,
+    WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
 };
 
 use super::{
@@ -194,6 +194,7 @@ pub(crate) fn initialize(
         font: RefCell::new(font),
         ipc: IpcClient::connect(),
         panel_state: panel::PanelState::new(),
+        pinned_apps: default_pinned_apps(),
         launcher_state: launcher::LauncherState::new(),
         workspace_state: crate::workspaces::WorkspacePopupState::new(),
         focused_window_id: None,

@@ -276,6 +276,7 @@ impl MeridianShell {
                     theme: &self.theme,
                     active_workspace: panel_active_workspace,
                     total_workspaces: 9,
+                    pinned_apps: &self.pinned_apps,
                     window_entries: &panel_window_entries,
                     clock: &clock,
                     width,

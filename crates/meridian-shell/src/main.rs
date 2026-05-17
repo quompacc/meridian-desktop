@@ -14,6 +14,8 @@ mod ui;
 mod wayland;
 mod workspaces;
 
+use panel::PinnedApp;
+
 pub use draw::{Painter, TextRenderer};
 pub use wayland::{ClickAction, ClickZone, IpcClient, Rect};
 use wayland::{CommitReason, RepaintReason};
@@ -26,6 +28,29 @@ pub const CALENDAR_POPUP_HEIGHT: u32 = 220;
 pub const WORKSPACE_POPUP_WIDTH: u32 = 280;
 pub const WORKSPACE_POPUP_HEIGHT: u32 = 200;
 pub const SHELL_POPUP_BOTTOM_MARGIN: i32 = 2;
+
+pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
+    vec![
+        PinnedApp {
+            label: "Term".to_string(),
+            program: "kitty".to_string(),
+            args: vec![],
+            terminal: false,
+        },
+        PinnedApp {
+            label: "Web".to_string(),
+            program: "firefox".to_string(),
+            args: vec![],
+            terminal: false,
+        },
+        PinnedApp {
+            label: "Files".to_string(),
+            program: "xdg-open".to_string(),
+            args: vec![std::env::var("HOME").unwrap_or_else(|_| "/".to_string())],
+            terminal: false,
+        },
+    ]
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
@@ -91,4 +116,21 @@ fn insert_commit_stats_timer(
             TimeoutAction::ToDuration(Duration::from_secs(1))
         })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::default_pinned_apps;
+
+    #[test]
+    fn default_pinned_apps_contains_expected_entries() {
+        let pinned = default_pinned_apps();
+        assert_eq!(pinned.len(), 3);
+        assert_eq!(pinned[0].label, "Term");
+        assert_eq!(pinned[0].program, "kitty");
+        assert_eq!(pinned[1].label, "Web");
+        assert_eq!(pinned[1].program, "firefox");
+        assert_eq!(pinned[2].label, "Files");
+        assert_eq!(pinned[2].program, "xdg-open");
+    }
 }

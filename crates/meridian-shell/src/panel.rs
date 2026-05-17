@@ -17,6 +17,14 @@ pub struct PanelState {
     pub clicks: Vec<ClickZone>,
 }
 
+#[derive(Debug, Clone)]
+pub struct PinnedApp {
+    pub label: String,
+    pub program: String,
+    pub args: Vec<String>,
+    pub terminal: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PanelWindowEntry {
     pub id: String,
@@ -30,6 +38,7 @@ pub struct PanelDrawInput<'a> {
     pub theme: &'a ThemeConfig,
     pub active_workspace: u8,
     pub total_workspaces: u8,
+    pub pinned_apps: &'a [PinnedApp],
     pub window_entries: &'a [PanelWindowEntry],
     pub clock: &'a str,
     pub width: u32,
@@ -52,6 +61,7 @@ pub fn draw_panel(
         theme,
         active_workspace,
         total_workspaces,
+        pinned_apps,
         window_entries,
         clock,
         width,
@@ -103,8 +113,44 @@ pub fn draw_panel(
         rect: launcher_rect,
         action: ClickAction::ToggleLauncher,
     });
-    let launcher_sep_x = launcher_rect.x + launcher_rect.w + 8;
-    let center_left = launcher_sep_x + 8;
+    let launcher_x_end = launcher_rect.x + launcher_rect.w;
+
+    // ── Left: Pinned apps ───────────────────────────────────────────────────
+    let mut pinned_x = launcher_x_end + 12;
+    for (idx, app) in pinned_apps.iter().enumerate() {
+        let rect = Rect {
+            x: pinned_x,
+            y: tokens::panel::WORKSPACE_BUTTON_Y,
+            w: tokens::panel::PINNED_TILE_W,
+            h: tokens::panel::WORKSPACE_BUTTON_H,
+        };
+        let hovered = hover_pos
+            .map(|(px, py)| rect.contains(px, py))
+            .unwrap_or(false);
+        let bg = if hovered {
+            colors.border
+        } else {
+            colors.surface
+        };
+        painter.roundish_rect_with_radius(rect, bg, 0);
+        painter.text_centered(font, &app.label, rect, colors.text);
+        panel_state.clicks.push(ClickZone {
+            rect,
+            action: ClickAction::LaunchPinnedApp(idx),
+        });
+        pinned_x += tokens::panel::PINNED_TILE_W + tokens::panel::PINNED_TILE_GAP;
+    }
+
+    let launcher_sep_x = launcher_x_end + 8;
+    draw_section_separator(painter, launcher_sep_x, panel_card.y, panel_card.h, theme);
+
+    let center_left = if pinned_apps.is_empty() {
+        launcher_x_end + 12
+    } else {
+        let sep_x = pinned_x - tokens::panel::PINNED_TILE_GAP + 4;
+        draw_section_separator(painter, sep_x, panel_card.y, panel_card.h, theme);
+        sep_x + tokens::panel::PINNED_SECTION_GAP
+    };
 
     // ── Right: Clock / Workspace indicator / Tray slot ─────────────────────
     let clock_measured = font
@@ -174,8 +220,6 @@ pub fn draw_panel(
         w: tokens::panel::TRAY_SLOT_W,
         h: tokens::panel::WORKSPACE_BUTTON_H,
     };
-
-    draw_section_separator(painter, launcher_sep_x, panel_card.y, panel_card.h, theme);
 
     // ── Center: Read-only workspace window list ────────────────────────────
     let center_right = tray_slot_rect.x - 8;
