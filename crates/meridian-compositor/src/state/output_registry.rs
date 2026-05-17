@@ -80,6 +80,10 @@ impl OutputRegistry {
         self.outputs.iter().find(|output| output.id == id)
     }
 
+    pub fn by_name(&self, name: &str) -> Option<&OutputInfo> {
+        self.outputs.iter().find(|output| output.name == name)
+    }
+
     pub fn contains_id(&self, id: OutputId) -> bool {
         self.by_id(id).is_some()
     }

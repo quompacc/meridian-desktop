@@ -34,6 +34,8 @@ mod client;
 mod handlers;
 mod ipc;
 mod layout;
+#[cfg(test)]
+mod output_hotplug_tests;
 mod output_layout;
 mod output_registry;
 mod setup;
