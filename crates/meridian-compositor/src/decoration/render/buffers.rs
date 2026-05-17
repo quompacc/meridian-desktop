@@ -1,10 +1,28 @@
 use meridian_config::{Decorations, ThemeColors};
 
 use super::super::{
-    model::{opaque, HoveredButton, WindowDecoration, SHADOW_COLOR},
+    model::{opaque, HoveredButton, WindowDecoration},
     BUTTON_HEIGHT, BUTTON_WIDTH, TITLE_BAR_HEIGHT,
 };
 use super::geometry::{SsdChromeMetrics, SsdFrameMetrics};
+
+const INACTIVE_SHADOW_ALPHA: f32 = 0.3;
+
+pub(super) fn effective_shadow_alpha(theme: &Decorations, focused: bool) -> f32 {
+    if focused {
+        theme.shadow_alpha
+    } else {
+        INACTIVE_SHADOW_ALPHA
+    }
+}
+
+pub(super) fn effective_shadow_radius(theme: &Decorations, focused: bool) -> i32 {
+    if focused {
+        theme.shadow_radius as i32
+    } else {
+        (theme.shadow_radius as i32) / 2
+    }
+}
 
 // Keep explicit decoration/render parameters to avoid risky context bundling in render code.
 #[allow(clippy::too_many_arguments)]
@@ -75,7 +93,13 @@ pub(super) fn update_buffers(
             .update((total_w.max(1), bw), border_f32);
     }
     if theme.shadow && bw > 0 {
-        let sr = theme.shadow_radius as i32;
+        let sr = effective_shadow_radius(theme, deco.is_focused);
+        let shadow_color = [
+            0.0f32,
+            0.0,
+            0.0,
+            effective_shadow_alpha(theme, deco.is_focused),
+        ];
         let shadow = SsdChromeMetrics::new(SsdFrameMetrics::from_frame_origin(
             (0, 0).into(),
             (cw, ch).into(),
@@ -86,10 +110,45 @@ pub(super) fn update_buffers(
         .expect("shadow metrics should exist when border width is positive");
         deco.buffers
             .shadow
-            .update((shadow.rect.size.w, shadow.rect.size.h), SHADOW_COLOR);
+            .update((shadow.rect.size.w, shadow.rect.size.h), shadow_color);
     }
 
     deco.last_content_size = (cw, ch);
     deco.last_bw = bw;
     deco.dirty = false;
+}
+
+#[cfg(test)]
+mod tests {
+    use meridian_config::Decorations;
+
+    use super::{effective_shadow_alpha, effective_shadow_radius};
+
+    #[test]
+    fn effective_shadow_alpha_uses_theme_for_focused_window() {
+        let theme = Decorations {
+            shadow_alpha: 0.5,
+            ..Default::default()
+        };
+        assert_eq!(effective_shadow_alpha(&theme, true), 0.5);
+    }
+
+    #[test]
+    fn effective_shadow_alpha_drops_to_inactive_when_unfocused() {
+        let theme = Decorations {
+            shadow_alpha: 0.5,
+            ..Default::default()
+        };
+        assert_eq!(effective_shadow_alpha(&theme, false), 0.3);
+    }
+
+    #[test]
+    fn effective_shadow_radius_halves_when_unfocused() {
+        let theme = Decorations {
+            shadow_radius: 24,
+            ..Default::default()
+        };
+        assert_eq!(effective_shadow_radius(&theme, true), 24);
+        assert_eq!(effective_shadow_radius(&theme, false), 12);
+    }
 }

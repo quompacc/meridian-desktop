@@ -1,7 +1,7 @@
 use meridian_config::{Color, Decorations};
 use smithay::backend::renderer::element::solid::SolidColorBuffer;
 
-use super::{BUTTON_HEIGHT, BUTTON_WIDTH, SHADOW_ALPHA};
+use super::{BUTTON_HEIGHT, BUTTON_WIDTH};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HoveredButton {
@@ -107,8 +107,6 @@ pub(super) fn opaque(c: Color) -> [f32; 4] {
         1.0,
     ]
 }
-
-pub(super) const SHADOW_COLOR: [f32; 4] = [0.0f32, 0.0, 0.0, SHADOW_ALPHA];
 
 #[cfg(test)]
 mod tests {

@@ -22,7 +22,6 @@ pub const BUTTON_HEIGHT: i32 = 24;
 pub const BUTTON_ICON_PX: u32 = 16;
 pub const BUTTON_STROKE_WIDTH: f32 = 1.5;
 pub const BUTTON_MARGIN: i32 = 8;
-const SHADOW_ALPHA: f32 = 0.35;
 
 pub enum DecorationRenderElement {
     Solid(SolidColorRenderElement),
