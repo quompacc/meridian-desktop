@@ -343,6 +343,7 @@ impl MeridianState {
         }
 
         self.sync_outputs_with_workspace_state();
+        self.refresh_lock_focus();
         self.mark_all_outputs_dirty("output-layout-reapplied");
     }
 
@@ -667,7 +668,17 @@ impl MeridianState {
         output_id: Option<OutputId>,
         output_name: Option<&str>,
     ) {
+        if let Some(output_name) = output_name {
+            let removed_from_registry = self.output_registry.by_name(output_name).is_none();
+            if removed_from_registry && self.lock_manager.drop_surface(output_name) {
+                tracing::debug!(
+                    "dropped lock surface marker for removed output={}",
+                    output_name
+                );
+            }
+        }
         self.sync_outputs_with_workspace_state();
+        self.refresh_lock_focus();
         self.mark_all_outputs_dirty("output-state-change");
         tracing::debug!(
             "output hotplug state changed: action={} output_id={:?} output_name={:?}",

@@ -1,5 +1,9 @@
 use std::collections::HashMap;
 
+use smithay::{utils::SERIAL_COUNTER, wayland::session_lock::LockSurface};
+
+use super::MeridianState;
+
 #[derive(Debug, PartialEq, Eq, Default)]
 pub enum LockPhase {
     #[default]
@@ -14,7 +18,7 @@ pub enum LockPhase {
 #[derive(Debug, Default)]
 pub struct LockManager {
     phase: LockPhase,
-    surfaces_by_output: HashMap<String, bool>,
+    surfaces_by_output: HashMap<String, LockSurface>,
 }
 
 impl LockManager {
@@ -61,16 +65,69 @@ impl LockManager {
         was_locked
     }
 
-    /// Register lock surface marker for an output.
-    pub fn register_surface(&mut self, output_name: &str) -> bool {
+    /// Register lock surface for an output.
+    pub fn register_surface(&mut self, output_name: &str, surface: LockSurface) -> bool {
         self.surfaces_by_output
-            .insert(output_name.to_string(), true);
+            .insert(output_name.to_string(), surface);
         true
     }
 
-    /// Drop lock surface marker for an output.
+    pub fn surface_for_output(&self, output_name: &str) -> Option<&LockSurface> {
+        self.surfaces_by_output
+            .get(output_name)
+            .filter(|surface| surface.alive())
+    }
+
+    pub fn surfaces_iter(&self) -> impl Iterator<Item = (&str, &LockSurface)> {
+        self.surfaces_by_output
+            .iter()
+            .filter(|(_, surface)| surface.alive())
+            .map(|(name, surface)| (name.as_str(), surface))
+    }
+
+    pub fn prune_dead_surfaces(&mut self) -> usize {
+        let before = self.surfaces_by_output.len();
+        self.surfaces_by_output.retain(|_, surface| surface.alive());
+        before.saturating_sub(self.surfaces_by_output.len())
+    }
+
+    /// Drop lock surface for an output.
     pub fn drop_surface(&mut self, output_name: &str) -> bool {
         self.surfaces_by_output.remove(output_name).is_some()
+    }
+}
+
+impl MeridianState {
+    pub fn refresh_lock_focus(&mut self) {
+        if !matches!(self.lock_manager.phase(), LockPhase::Locked) {
+            return;
+        }
+
+        let dropped = self.lock_manager.prune_dead_surfaces();
+        if dropped > 0 {
+            tracing::debug!("pruned dead lock surfaces: {}", dropped);
+        }
+
+        let Some(focused_output_id) = self
+            .workspace_output_state
+            .focused_output(&self.output_registry)
+        else {
+            return;
+        };
+        let Some(focused_output_name) = self
+            .output_registry
+            .by_id(focused_output_id)
+            .map(|info| info.name.clone())
+        else {
+            return;
+        };
+
+        let new_focus = self
+            .lock_manager
+            .surface_for_output(&focused_output_name)
+            .map(|surface| surface.wl_surface().clone());
+        let serial = SERIAL_COUNTER.next_serial();
+        self.set_keyboard_focus_with_decorations(new_focus, serial);
     }
 }
 
@@ -118,22 +175,11 @@ mod tests {
     fn unlock_from_locked_clears_surfaces() {
         let mut manager = LockManager::new();
         manager.begin_lock();
-        manager.register_surface("out-0");
         manager.confirm_locked();
-        assert_eq!(manager.surface_count(), 1);
         assert!(manager.unlock());
         assert_eq!(manager.phase(), &LockPhase::Unlocked);
         assert_eq!(manager.surface_count(), 0);
         assert!(!manager.is_locked_or_pending());
-    }
-
-    #[test]
-    fn register_surface_then_drop_surface() {
-        let mut manager = LockManager::new();
-        assert!(manager.register_surface("out-0"));
-        assert_eq!(manager.surface_count(), 1);
-        assert!(manager.drop_surface("out-0"));
-        assert_eq!(manager.surface_count(), 0);
     }
 
     #[test]

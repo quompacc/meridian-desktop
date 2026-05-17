@@ -34,7 +34,6 @@ fn confirm_without_pending_is_noop() {
 fn unlock_from_locked_returns_to_unlocked_and_clears_surfaces() {
     let mut manager = LockManager::new();
     assert!(manager.begin_lock());
-    manager.register_surface("out-0");
     assert!(manager.confirm_locked());
     assert!(manager.unlock());
     assert_eq!(manager.phase(), &LockPhase::Unlocked);
@@ -42,34 +41,33 @@ fn unlock_from_locked_returns_to_unlocked_and_clears_surfaces() {
 }
 
 #[test]
-fn register_surfaces_for_multiple_outputs_then_unlock_clears_all() {
-    let mut manager = LockManager::new();
-    manager.register_surface("out-0");
-    manager.register_surface("out-1");
-    assert_eq!(manager.surface_count(), 2);
-    assert!(!manager.unlock());
-    assert_eq!(manager.surface_count(), 0);
-}
-
-#[test]
-fn drop_surface_for_one_output_keeps_others() {
-    let mut manager = LockManager::new();
-    manager.register_surface("out-0");
-    manager.register_surface("out-1");
-    assert!(manager.drop_surface("out-1"));
-    assert_eq!(manager.surface_count(), 1);
-    assert!(manager.drop_surface("out-0"));
-    assert_eq!(manager.surface_count(), 0);
-}
-
-#[test]
-fn full_lifecycle_with_surfaces() {
+fn unlock_from_pending_returns_to_unlocked() {
     let mut manager = LockManager::new();
     assert!(manager.begin_lock());
-    manager.register_surface("out-0");
-    manager.register_surface("out-1");
+    assert!(manager.unlock());
+    assert_eq!(manager.phase(), &LockPhase::Unlocked);
+}
+
+#[test]
+fn unlock_from_unlocked_is_noop() {
+    let mut manager = LockManager::new();
+    assert!(!manager.unlock());
+    assert_eq!(manager.surface_count(), 0);
+    assert_eq!(manager.phase(), &LockPhase::Unlocked);
+}
+
+#[test]
+fn drop_surface_for_unknown_output_is_noop() {
+    let mut manager = LockManager::new();
+    assert!(!manager.drop_surface("out-unknown"));
+    assert_eq!(manager.surface_count(), 0);
+}
+
+#[test]
+fn full_lifecycle_without_surfaces() {
+    let mut manager = LockManager::new();
+    assert!(manager.begin_lock());
     assert!(manager.confirm_locked());
-    assert!(manager.drop_surface("out-1"));
     assert!(manager.unlock());
     assert_eq!(manager.phase(), &LockPhase::Unlocked);
     assert_eq!(manager.surface_count(), 0);

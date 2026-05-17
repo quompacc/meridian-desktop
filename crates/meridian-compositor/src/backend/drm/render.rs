@@ -360,6 +360,22 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
             out.scratch_upper_layer_data.clear();
             out.scratch_lower_layer_elements.clear();
             out.scratch_upper_layer_elements.clear();
+            let output_name = out.output.name();
+            if let Some(lock_surface) = state.lock_manager.surface_for_output(&output_name) {
+                out.scratch_normal
+                    .extend(render_elements_from_surface_tree::<
+                        GlesRenderer,
+                        MeridianRenderElements,
+                    >(
+                        renderer,
+                        lock_surface.wl_surface(),
+                        (0, 0),
+                        scale,
+                        1.0,
+                        Kind::Unspecified,
+                    ));
+            }
+            out.scratch_final.append(&mut out.scratch_normal);
         }
 
         let elements = out.scratch_final.as_slice();

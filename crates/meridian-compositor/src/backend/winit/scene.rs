@@ -1,6 +1,9 @@
 use smithay::{
     backend::renderer::{
-        element::{surface::WaylandSurfaceRenderElement, AsRenderElements},
+        element::{
+            surface::render_elements_from_surface_tree, surface::WaylandSurfaceRenderElement,
+            AsRenderElements, Kind,
+        },
         gles::GlesRenderer,
     },
     desktop::{space::SpaceRenderElements, Window},
@@ -42,7 +45,7 @@ fn render_window_space_elements<C>(
 pub(super) fn render_elements_for_output(
     state: &mut MeridianState,
     renderer: &mut GlesRenderer,
-    _output: &Output,
+    output: &Output,
     wallpaper_cache: &mut Option<WallpaperGpuCache>,
     out_w: u32,
     out_h: u32,
@@ -71,6 +74,20 @@ pub(super) fn render_elements_for_output(
         scratch.upper_layer_data.clear();
         scratch.lower_layer_elements.clear();
         scratch.upper_layer_elements.clear();
+        if let Some(lock_surface) = state.lock_manager.surface_for_output(&output.name()) {
+            scratch.normal.extend(render_elements_from_surface_tree::<
+                GlesRenderer,
+                WinitRenderElements,
+            >(
+                renderer,
+                lock_surface.wl_surface(),
+                (0, 0),
+                scale,
+                1.0,
+                Kind::Unspecified,
+            ));
+            scratch.final_elements.append(&mut scratch.normal);
+        }
         return;
     }
 
