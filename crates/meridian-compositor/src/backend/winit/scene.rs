@@ -12,7 +12,10 @@ use smithay::{
     wayland::seat::WaylandFocus,
 };
 
-use crate::{state::MeridianState, wallpaper::WallpaperGpuCache};
+use crate::{
+    state::{LockPhase, MeridianState},
+    wallpaper::WallpaperGpuCache,
+};
 
 use super::{WinitRenderElements, WinitRenderScratch};
 
@@ -74,7 +77,8 @@ pub(super) fn render_elements_for_output(
         scratch.upper_layer_data.clear();
         scratch.lower_layer_elements.clear();
         scratch.upper_layer_elements.clear();
-        if let Some(lock_surface) = state.lock_manager.surface_for_output(&output.name()) {
+        let output_name = output.name();
+        if let Some(lock_surface) = state.lock_manager.surface_for_output(&output_name) {
             scratch.normal.extend(render_elements_from_surface_tree::<
                 GlesRenderer,
                 WinitRenderElements,
@@ -87,6 +91,15 @@ pub(super) fn render_elements_for_output(
                 Kind::Unspecified,
             ));
             scratch.final_elements.append(&mut scratch.normal);
+        }
+        if matches!(state.lock_manager.phase(), LockPhase::Pending) {
+            let maybe_ready_locker = state.lock_manager.record_pending_frame(&output_name);
+            if let Some(locker) = maybe_ready_locker {
+                locker.lock();
+                let _ = state.lock_manager.confirm_locked();
+                state.refresh_lock_focus();
+                tracing::info!("session lock confirmed after cleared frames");
+            }
         }
         return;
     }

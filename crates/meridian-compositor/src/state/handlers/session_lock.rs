@@ -14,21 +14,36 @@ impl SessionLockHandler for MeridianState {
     }
 
     fn lock(&mut self, confirmation: SessionLocker) {
-        if !self.lock_manager.begin_lock() {
+        if !matches!(self.lock_manager.phase(), LockPhase::Unlocked) {
             tracing::warn!(
                 "session lock requested but state was already locked/pending — drop confirmation"
             );
             drop(confirmation);
             return;
         }
-        tracing::info!("session lock requested → phase=Pending");
+        let targets = self
+            .output_registry
+            .list()
+            .iter()
+            .map(|info| info.name.clone())
+            .collect::<Vec<_>>();
 
-        // MVP-2a: immediate lock confirmation.
-        confirmation.lock();
-        let _ = self.lock_manager.confirm_locked();
-        tracing::info!("session lock confirmed → phase=Locked (MVP: immediate)");
-        self.refresh_lock_focus();
-        self.mark_all_outputs_dirty("session-lock-engaged");
+        match self
+            .lock_manager
+            .begin_lock_with_targets(confirmation, targets)
+        {
+            None => {
+                tracing::info!("session lock requested → phase=Pending, awaiting cleared frames");
+                self.mark_all_outputs_dirty("session-lock-pending");
+            }
+            Some(locker) => {
+                locker.lock();
+                let _ = self.lock_manager.confirm_locked();
+                tracing::info!("session lock requested with no outputs → phase=Locked immediately");
+                self.mark_all_outputs_dirty("session-lock-engaged");
+                self.refresh_lock_focus();
+            }
+        }
     }
 
     fn unlock(&mut self) {

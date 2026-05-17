@@ -1,6 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use smithay::{utils::SERIAL_COUNTER, wayland::session_lock::LockSurface};
+use smithay::{
+    utils::SERIAL_COUNTER,
+    wayland::session_lock::{LockSurface, SessionLocker},
+};
 
 use super::MeridianState;
 
@@ -19,6 +22,8 @@ pub enum LockPhase {
 pub struct LockManager {
     phase: LockPhase,
     surfaces_by_output: HashMap<String, LockSurface>,
+    pending_locker: Option<SessionLocker>,
+    pending_targets: HashSet<String>,
 }
 
 impl LockManager {
@@ -38,14 +43,26 @@ impl LockManager {
         self.surfaces_by_output.len()
     }
 
-    /// Transition Unlocked → Pending. Returns true iff previous state
-    /// was Unlocked.
-    pub fn begin_lock(&mut self) -> bool {
+    /// Transition Unlocked → Pending with a confirmation locker and
+    /// the output names that must each render one pending frame.
+    ///
+    /// Returns `Some(locker)` only for the zero-target fast path.
+    pub fn begin_lock_with_targets(
+        &mut self,
+        locker: SessionLocker,
+        targets: impl IntoIterator<Item = String>,
+    ) -> Option<SessionLocker> {
         if !matches!(self.phase, LockPhase::Unlocked) {
-            return false;
+            drop(locker);
+            return None;
         }
+        self.pending_targets = targets.into_iter().collect();
         self.phase = LockPhase::Pending;
-        true
+        if self.pending_targets.is_empty() {
+            return Some(locker);
+        }
+        self.pending_locker = Some(locker);
+        None
     }
 
     /// Transition Pending → Locked. Returns true iff successful.
@@ -62,7 +79,43 @@ impl LockManager {
         let was_locked = !matches!(self.phase, LockPhase::Unlocked);
         self.phase = LockPhase::Unlocked;
         self.surfaces_by_output.clear();
+        self.pending_locker = None;
+        self.pending_targets.clear();
         was_locked
+    }
+
+    /// Mark one pending target as rendered.
+    pub fn record_pending_frame(&mut self, output_name: &str) -> Option<SessionLocker> {
+        if !matches!(self.phase, LockPhase::Pending) {
+            return None;
+        }
+        self.pending_targets.remove(output_name);
+        if self.pending_targets.is_empty() {
+            self.pending_locker.take()
+        } else {
+            None
+        }
+    }
+
+    /// Drop a pending target when its output disappears.
+    pub fn forget_pending_target(&mut self, output_name: &str) -> Option<SessionLocker> {
+        if !matches!(self.phase, LockPhase::Pending) {
+            return None;
+        }
+        self.pending_targets.remove(output_name);
+        if self.pending_targets.is_empty() {
+            self.pending_locker.take()
+        } else {
+            None
+        }
+    }
+
+    pub fn pending_target_count(&self) -> usize {
+        self.pending_targets.len()
+    }
+
+    pub fn has_pending_locker(&self) -> bool {
+        self.pending_locker.is_some()
     }
 
     /// Register lock surface for an output.
@@ -94,6 +147,21 @@ impl LockManager {
     /// Drop lock surface for an output.
     pub fn drop_surface(&mut self, output_name: &str) -> bool {
         self.surfaces_by_output.remove(output_name).is_some()
+    }
+}
+
+#[cfg(test)]
+impl LockManager {
+    /// Test-only helper to enter pending state without constructing
+    /// a real `SessionLocker`.
+    pub fn begin_pending_for_test(&mut self, targets: impl IntoIterator<Item = String>) -> bool {
+        if !matches!(self.phase, LockPhase::Unlocked) {
+            return false;
+        }
+        self.pending_targets = targets.into_iter().collect();
+        self.pending_locker = None;
+        self.phase = LockPhase::Pending;
+        true
     }
 }
 
@@ -146,7 +214,7 @@ mod tests {
     #[test]
     fn begin_lock_from_unlocked_transitions_to_pending() {
         let mut manager = LockManager::new();
-        assert!(manager.begin_lock());
+        assert!(manager.begin_pending_for_test(["out-0".to_string()]));
         assert_eq!(manager.phase(), &LockPhase::Pending);
         assert!(manager.is_locked_or_pending());
     }
@@ -154,11 +222,11 @@ mod tests {
     #[test]
     fn begin_lock_from_pending_or_locked_is_noop() {
         let mut manager = LockManager::new();
-        assert!(manager.begin_lock());
-        assert!(!manager.begin_lock());
+        assert!(manager.begin_pending_for_test(["out-0".to_string()]));
+        assert!(!manager.begin_pending_for_test(["out-1".to_string()]));
         assert_eq!(manager.phase(), &LockPhase::Pending);
         assert!(manager.confirm_locked());
-        assert!(!manager.begin_lock());
+        assert!(!manager.begin_pending_for_test(["out-2".to_string()]));
         assert_eq!(manager.phase(), &LockPhase::Locked);
     }
 
@@ -166,7 +234,7 @@ mod tests {
     fn confirm_locked_only_from_pending() {
         let mut manager = LockManager::new();
         assert!(!manager.confirm_locked());
-        assert!(manager.begin_lock());
+        assert!(manager.begin_pending_for_test(["out-0".to_string()]));
         assert!(manager.confirm_locked());
         assert!(!manager.confirm_locked());
     }
@@ -174,7 +242,7 @@ mod tests {
     #[test]
     fn unlock_from_locked_clears_surfaces() {
         let mut manager = LockManager::new();
-        manager.begin_lock();
+        manager.begin_pending_for_test(["out-0".to_string()]);
         manager.confirm_locked();
         assert!(manager.unlock());
         assert_eq!(manager.phase(), &LockPhase::Unlocked);
@@ -186,11 +254,64 @@ mod tests {
     fn full_lifecycle_unlocked_pending_locked_unlocked() {
         let mut manager = LockManager::new();
         assert_eq!(manager.phase(), &LockPhase::Unlocked);
-        assert!(manager.begin_lock());
+        assert!(manager.begin_pending_for_test(["out-0".to_string()]));
         assert_eq!(manager.phase(), &LockPhase::Pending);
         assert!(manager.confirm_locked());
         assert_eq!(manager.phase(), &LockPhase::Locked);
         assert!(manager.unlock());
+        assert_eq!(manager.phase(), &LockPhase::Unlocked);
+    }
+
+    #[test]
+    fn begin_pending_with_targets_keeps_phase_pending_until_all_frames() {
+        let mut manager = LockManager::new();
+        assert!(manager.begin_pending_for_test(["a".to_string(), "b".to_string()]));
+        assert_eq!(manager.pending_target_count(), 2);
+        assert_eq!(manager.phase(), &LockPhase::Pending);
+
+        let _ = manager.record_pending_frame("a");
+        assert_eq!(manager.pending_target_count(), 1);
+        assert_eq!(manager.phase(), &LockPhase::Pending);
+    }
+
+    #[test]
+    fn record_pending_frame_unknown_output_is_noop() {
+        let mut manager = LockManager::new();
+        assert!(manager.begin_pending_for_test(["a".to_string()]));
+        let _ = manager.record_pending_frame("unknown");
+        assert_eq!(manager.pending_target_count(), 1);
+        assert_eq!(manager.phase(), &LockPhase::Pending);
+    }
+
+    #[test]
+    fn record_pending_frame_last_target_returns_ready_signal() {
+        let mut manager = LockManager::new();
+        assert!(manager.begin_pending_for_test(["a".to_string(), "b".to_string()]));
+        let _ = manager.record_pending_frame("a");
+        assert_eq!(manager.pending_target_count(), 1);
+        let _ = manager.record_pending_frame("b");
+        assert_eq!(manager.pending_target_count(), 0);
+    }
+
+    #[test]
+    fn forget_pending_target_drains_just_like_record() {
+        let mut manager = LockManager::new();
+        assert!(manager.begin_pending_for_test(["a".to_string(), "b".to_string()]));
+        let _ = manager.forget_pending_target("a");
+        assert_eq!(manager.pending_target_count(), 1);
+        let _ = manager.forget_pending_target("b");
+        assert_eq!(manager.pending_target_count(), 0);
+    }
+
+    #[test]
+    fn unlock_during_pending_clears_targets_and_locker_state() {
+        let mut manager = LockManager::new();
+        assert!(manager.begin_pending_for_test(["a".to_string()]));
+        assert_eq!(manager.pending_target_count(), 1);
+        assert!(!manager.has_pending_locker());
+        assert!(manager.unlock());
+        assert_eq!(manager.pending_target_count(), 0);
+        assert!(!manager.has_pending_locker());
         assert_eq!(manager.phase(), &LockPhase::Unlocked);
     }
 }

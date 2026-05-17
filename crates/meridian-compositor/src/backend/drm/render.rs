@@ -19,7 +19,10 @@ use smithay::{
 };
 use tracing::{debug, error};
 
-use crate::{state::MeridianState, wallpaper::WallpaperGpuCache};
+use crate::{
+    state::{LockPhase, MeridianState},
+    wallpaper::WallpaperGpuCache,
+};
 
 use super::{DrmBackend, RenderPassMetrics};
 
@@ -376,6 +379,15 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                     ));
             }
             out.scratch_final.append(&mut out.scratch_normal);
+            if matches!(state.lock_manager.phase(), LockPhase::Pending) {
+                let maybe_ready_locker = state.lock_manager.record_pending_frame(&output_name);
+                if let Some(locker) = maybe_ready_locker {
+                    locker.lock();
+                    let _ = state.lock_manager.confirm_locked();
+                    state.refresh_lock_focus();
+                    tracing::info!("session lock confirmed after cleared frames");
+                }
+            }
         }
 
         let elements = out.scratch_final.as_slice();

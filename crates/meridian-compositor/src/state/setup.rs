@@ -676,6 +676,15 @@ impl MeridianState {
                     output_name
                 );
             }
+            if removed_from_registry {
+                let maybe_ready_locker = self.lock_manager.forget_pending_target(output_name);
+                if let Some(locker) = maybe_ready_locker {
+                    locker.lock();
+                    let _ = self.lock_manager.confirm_locked();
+                    self.refresh_lock_focus();
+                    tracing::info!("session lock confirmed (last pending target was disconnected)");
+                }
+            }
         }
         self.sync_outputs_with_workspace_state();
         self.refresh_lock_focus();
