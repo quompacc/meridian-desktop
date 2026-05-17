@@ -4,12 +4,10 @@ use smithay::{
 };
 
 use crate::decoration::shadow_bitmap::{
-    flip_horizontal, flip_vertical, rasterize_edge_left, rasterize_edge_top,
-    rasterize_shadow_corner_with_frame,
+    flip_horizontal, flip_vertical, rasterize_corner, rasterize_edge_left, rasterize_edge_top,
 };
 
 pub(crate) struct ShadowBuffers<'a> {
-    pub(crate) internal_size: u32,
     pub(crate) corner_tl: &'a MemoryRenderBuffer,
     pub(crate) corner_tr: &'a MemoryRenderBuffer,
     pub(crate) corner_bl: &'a MemoryRenderBuffer,
@@ -31,8 +29,6 @@ pub(crate) struct ShadowCache {
     edge_right: Option<MemoryRenderBuffer>,
     last_radius: u32,
     last_alpha: f32,
-    last_frame_radius: u32,
-    last_internal_size: u32,
     initialized: bool,
     #[cfg(test)]
     rebuild_count: usize,
@@ -51,31 +47,22 @@ impl ShadowCache {
             edge_right: None,
             last_radius: 0,
             last_alpha: 0.0,
-            last_frame_radius: 0,
-            last_internal_size: 0,
             initialized: false,
             #[cfg(test)]
             rebuild_count: 0,
         }
     }
 
-    pub(crate) fn get_for(
-        &mut self,
-        radius_px: u32,
-        base_alpha: f32,
-        frame_radius_px: u32,
-    ) -> ShadowBuffers<'_> {
+    pub(crate) fn get_for(&mut self, radius_px: u32, base_alpha: f32) -> ShadowBuffers<'_> {
         let radius_px = radius_px.max(1);
         if !self.initialized
             || radius_px != self.last_radius
             || (base_alpha - self.last_alpha).abs() > 0.001
-            || frame_radius_px != self.last_frame_radius
         {
-            self.rebuild(radius_px, base_alpha, frame_radius_px);
+            self.rebuild(radius_px, base_alpha);
         }
 
         ShadowBuffers {
-            internal_size: self.last_internal_size,
             corner_tl: self
                 .corner_tl
                 .as_ref()
@@ -111,18 +98,17 @@ impl ShadowCache {
         }
     }
 
-    fn rebuild(&mut self, radius_px: u32, base_alpha: f32, frame_radius_px: u32) {
-        let (corner_tl_pixels, internal_size) =
-            rasterize_shadow_corner_with_frame(radius_px, frame_radius_px, base_alpha);
-        let corner_tr_pixels = flip_horizontal(&corner_tl_pixels, internal_size, internal_size);
-        let corner_bl_pixels = flip_vertical(&corner_tl_pixels, internal_size, internal_size);
-        let corner_br_pixels = flip_vertical(&corner_tr_pixels, internal_size, internal_size);
+    fn rebuild(&mut self, radius_px: u32, base_alpha: f32) {
+        let corner_tl_pixels = rasterize_corner(radius_px, base_alpha);
+        let corner_tr_pixels = flip_horizontal(&corner_tl_pixels, radius_px, radius_px);
+        let corner_bl_pixels = flip_vertical(&corner_tl_pixels, radius_px, radius_px);
+        let corner_br_pixels = flip_vertical(&corner_tr_pixels, radius_px, radius_px);
         let edge_top_pixels = rasterize_edge_top(radius_px, base_alpha);
         let edge_bottom_pixels = flip_vertical(&edge_top_pixels, 1, radius_px);
         let edge_left_pixels = rasterize_edge_left(radius_px, base_alpha);
         let edge_right_pixels = flip_horizontal(&edge_left_pixels, radius_px, 1);
 
-        let corner_size = (internal_size as i32, internal_size as i32);
+        let corner_size = (radius_px as i32, radius_px as i32);
         self.corner_tl = Some(MemoryRenderBuffer::from_slice(
             &corner_tl_pixels,
             Fourcc::Abgr8888,
@@ -191,8 +177,6 @@ impl ShadowCache {
 
         self.last_radius = radius_px;
         self.last_alpha = base_alpha;
-        self.last_frame_radius = frame_radius_px;
-        self.last_internal_size = internal_size;
         self.initialized = true;
         #[cfg(test)]
         {
@@ -214,23 +198,23 @@ mod tests {
     fn test_shadow_cache_lazy_builds_on_first_get() {
         let mut cache = ShadowCache::new();
         assert_eq!(cache.rebuild_count(), 0);
-        let _ = cache.get_for(24, 0.5, 12);
+        let _ = cache.get_for(24, 0.22);
         assert_eq!(cache.rebuild_count(), 1);
     }
 
     #[test]
     fn test_shadow_cache_rebuilds_on_radius_change() {
         let mut cache = ShadowCache::new();
-        let _ = cache.get_for(24, 0.5, 12);
-        let _ = cache.get_for(32, 0.5, 12);
+        let _ = cache.get_for(24, 0.22);
+        let _ = cache.get_for(40, 0.22);
         assert_eq!(cache.rebuild_count(), 2);
     }
 
     #[test]
     fn test_shadow_cache_does_not_rebuild_on_identical_request() {
         let mut cache = ShadowCache::new();
-        let first_ptr = cache.get_for(24, 0.5, 12).corner_tl as *const _ as usize;
-        let second_ptr = cache.get_for(24, 0.5, 12).corner_tl as *const _ as usize;
+        let first_ptr = cache.get_for(40, 0.22).corner_tl as *const _ as usize;
+        let second_ptr = cache.get_for(40, 0.22).corner_tl as *const _ as usize;
         assert_eq!(first_ptr, second_ptr);
         assert_eq!(cache.rebuild_count(), 1);
     }

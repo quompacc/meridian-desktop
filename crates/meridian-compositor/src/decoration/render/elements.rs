@@ -18,26 +18,10 @@ use super::{
         TITLE_BAR_HEIGHT,
     },
     buffers::{effective_shadow_alpha, effective_shadow_radius, update_buffers},
-    button_bg_cache::ButtonBgTint,
     geometry::{SsdChromeMetrics, SsdFrameMetrics},
 };
 
-fn button_bg_tint_for_hover(
-    hovered: Option<HoveredButton>,
-    this: HoveredButton,
-) -> Option<ButtonBgTint> {
-    if hovered != Some(this) {
-        return None;
-    }
-
-    match this {
-        HoveredButton::Close => Some(ButtonBgTint::RedHover),
-        HoveredButton::Maximize | HoveredButton::Minimize => Some(ButtonBgTint::SurfaceHover),
-    }
-}
-
 impl DecorationManager {
-    // Keep explicit render inputs to make ordering-sensitive decoration composition obvious.
     #[allow(clippy::too_many_arguments)]
     pub fn render_elements(
         &mut self,
@@ -124,21 +108,15 @@ impl DecorationManager {
             ) {
                 elements.push(DecorationRenderElement::Icon(icon));
             }
-            if let Some(tint) =
-                button_bg_tint_for_hover(deco.hovered_button(), HoveredButton::Close)
-            {
-                if let Ok(bg) = MemoryRenderBufferRenderElement::from_buffer(
-                    renderer,
-                    phys_f64(buttons.close_rect.loc.x, buttons.close_rect.loc.y),
-                    self.button_bg_cache.get_for(tint, colors),
-                    None,
-                    None,
-                    Some(buttons.close_rect.size),
+            elements.push(DecorationRenderElement::Solid(
+                SolidColorRenderElement::from_buffer(
+                    &deco.buffers.close_bg,
+                    phys(buttons.close_rect.loc.x, buttons.close_rect.loc.y),
+                    scale,
+                    1.0,
                     Kind::Unspecified,
-                ) {
-                    elements.push(DecorationRenderElement::Icon(bg));
-                }
-            }
+                ),
+            ));
 
             let (maximize_icon_x, maximize_icon_y) = icon_pos(buttons.maximize_rect);
             if let Ok(icon) = MemoryRenderBufferRenderElement::from_buffer(
@@ -153,21 +131,15 @@ impl DecorationManager {
             ) {
                 elements.push(DecorationRenderElement::Icon(icon));
             }
-            if let Some(tint) =
-                button_bg_tint_for_hover(deco.hovered_button(), HoveredButton::Maximize)
-            {
-                if let Ok(bg) = MemoryRenderBufferRenderElement::from_buffer(
-                    renderer,
-                    phys_f64(buttons.maximize_rect.loc.x, buttons.maximize_rect.loc.y),
-                    self.button_bg_cache.get_for(tint, colors),
-                    None,
-                    None,
-                    Some(buttons.maximize_rect.size),
+            elements.push(DecorationRenderElement::Solid(
+                SolidColorRenderElement::from_buffer(
+                    &deco.buffers.maximize_bg,
+                    phys(buttons.maximize_rect.loc.x, buttons.maximize_rect.loc.y),
+                    scale,
+                    1.0,
                     Kind::Unspecified,
-                ) {
-                    elements.push(DecorationRenderElement::Icon(bg));
-                }
-            }
+                ),
+            ));
 
             let (minimize_icon_x, minimize_icon_y) = icon_pos(buttons.minimize_rect);
             if let Ok(icon) = MemoryRenderBufferRenderElement::from_buffer(
@@ -182,129 +154,83 @@ impl DecorationManager {
             ) {
                 elements.push(DecorationRenderElement::Icon(icon));
             }
-            if let Some(tint) =
-                button_bg_tint_for_hover(deco.hovered_button(), HoveredButton::Minimize)
-            {
-                if let Ok(bg) = MemoryRenderBufferRenderElement::from_buffer(
-                    renderer,
-                    phys_f64(buttons.minimize_rect.loc.x, buttons.minimize_rect.loc.y),
-                    self.button_bg_cache.get_for(tint, colors),
-                    None,
-                    None,
-                    Some(buttons.minimize_rect.size),
+            elements.push(DecorationRenderElement::Solid(
+                SolidColorRenderElement::from_buffer(
+                    &deco.buffers.minimize_bg,
+                    phys(buttons.minimize_rect.loc.x, buttons.minimize_rect.loc.y),
+                    scale,
+                    1.0,
                     Kind::Unspecified,
-                ) {
-                    elements.push(DecorationRenderElement::Icon(bg));
-                }
+                ),
+            ));
+
+            elements.push(DecorationRenderElement::Solid(
+                SolidColorRenderElement::from_buffer(
+                    &deco.buffers.titlebar,
+                    phys(x, y),
+                    scale,
+                    1.0,
+                    Kind::Unspecified,
+                ),
+            ));
+
+            if deco.is_focused {
+                elements.push(DecorationRenderElement::Solid(
+                    SolidColorRenderElement::from_buffer(
+                        &deco.buffers.title_separator,
+                        phys(x, y + TITLE_BAR_HEIGHT + bw),
+                        scale,
+                        1.0,
+                        Kind::Unspecified,
+                    ),
+                ));
             }
         }
 
-        if show_title || bw > 0 {
-            if let Some(slices) = chrome.frame_slices(theme.corner_radius as i32) {
-                for (buffer, rect) in [
-                    (&deco.buffers.middle_belt, slices.middle_belt),
-                    (&deco.buffers.top_strip, slices.top_strip),
-                    (&deco.buffers.left_strip, slices.left_strip),
-                    (&deco.buffers.right_strip, slices.right_strip),
-                    (&deco.buffers.bottom_border, slices.bottom_border),
-                ] {
-                    if rect.size.w > 0 && rect.size.h > 0 {
-                        elements.push(DecorationRenderElement::Solid(
-                            SolidColorRenderElement::from_buffer(
-                                buffer,
-                                phys(rect.loc.x, rect.loc.y),
-                                scale,
-                                1.0,
-                                Kind::Unspecified,
-                            ),
-                        ));
-                    }
-                }
-
-                let frame_color = if deco.is_focused {
-                    [colors.accent.r, colors.accent.g, colors.accent.b, 255]
-                } else {
-                    [colors.border.r, colors.border.g, colors.border.b, 255]
-                };
-                let radius_px = slices.corner_tl.size.w as u32;
-                let buffer_extent = (radius_px * 2) as f64;
-                let src =
-                    smithay::utils::Rectangle::from_size((buffer_extent, buffer_extent).into());
-                let corners = self.corner_cache.get_for(radius_px, frame_color);
-                for (rect, buffer) in [
-                    (slices.corner_tl, corners.tl),
-                    (slices.corner_tr, corners.tr),
-                    (slices.corner_bl, corners.bl),
-                    (slices.corner_br, corners.br),
-                ] {
-                    if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
-                        renderer,
-                        phys_f64(rect.loc.x, rect.loc.y),
-                        buffer,
-                        None,
-                        Some(src),
-                        Some(rect.size),
-                        Kind::Unspecified,
-                    ) {
-                        elements.push(DecorationRenderElement::Icon(element));
-                    }
-                }
-            } else {
-                if show_title {
-                    elements.push(DecorationRenderElement::Solid(
-                        SolidColorRenderElement::from_buffer(
-                            &deco.buffers.top_strip,
-                            phys(x, y),
-                            scale,
-                            1.0,
-                            Kind::Unspecified,
-                        ),
-                    ));
-                }
-                if bw > 0 {
-                    elements.push(DecorationRenderElement::Solid(
-                        SolidColorRenderElement::from_buffer(
-                            &deco.buffers.left_strip,
-                            phys(x, y + title_h),
-                            scale,
-                            1.0,
-                            Kind::Unspecified,
-                        ),
-                    ));
-                    elements.push(DecorationRenderElement::Solid(
-                        SolidColorRenderElement::from_buffer(
-                            &deco.buffers.right_strip,
-                            phys(x + bw + cw, y + title_h),
-                            scale,
-                            1.0,
-                            Kind::Unspecified,
-                        ),
-                    ));
-                    elements.push(DecorationRenderElement::Solid(
-                        SolidColorRenderElement::from_buffer(
-                            &deco.buffers.bottom_border,
-                            phys(x, y + title_h + bw + ch),
-                            scale,
-                            1.0,
-                            Kind::Unspecified,
-                        ),
-                    ));
-                }
-            }
+        if bw > 0 {
+            elements.push(DecorationRenderElement::Solid(
+                SolidColorRenderElement::from_buffer(
+                    &deco.buffers.border_top,
+                    phys(x, y),
+                    scale,
+                    1.0,
+                    Kind::Unspecified,
+                ),
+            ));
+            elements.push(DecorationRenderElement::Solid(
+                SolidColorRenderElement::from_buffer(
+                    &deco.buffers.border_left,
+                    phys(x, y + title_h),
+                    scale,
+                    1.0,
+                    Kind::Unspecified,
+                ),
+            ));
+            elements.push(DecorationRenderElement::Solid(
+                SolidColorRenderElement::from_buffer(
+                    &deco.buffers.border_right,
+                    phys(x + bw + cw, y + title_h),
+                    scale,
+                    1.0,
+                    Kind::Unspecified,
+                ),
+            ));
+            elements.push(DecorationRenderElement::Solid(
+                SolidColorRenderElement::from_buffer(
+                    &deco.buffers.border_bottom,
+                    phys(x, y + title_h + bw + ch),
+                    scale,
+                    1.0,
+                    Kind::Unspecified,
+                ),
+            ));
         }
 
         if theme.shadow && bw > 0 {
             let sr = effective_shadow_radius(theme.shadow_radius as i32, deco.is_focused);
             let alpha = effective_shadow_alpha(theme.shadow_alpha, deco.is_focused);
-            let frame_radius = theme.corner_radius as i32;
-            if let Some(layout) = chrome.shadow_layout(sr, theme.shadow_offset_y, frame_radius) {
-                let shadow = self
-                    .shadow_cache
-                    .get_for(sr as u32, alpha, frame_radius as u32);
-                let shadow_corner_size = shadow.internal_size as f64;
-                let shadow_src = smithay::utils::Rectangle::from_size(
-                    (shadow_corner_size, shadow_corner_size).into(),
-                );
+            if let Some(layout) = chrome.shadow_layout(sr, theme.shadow_offset_y) {
+                let shadow = self.shadow_cache.get_for(sr as u32, alpha);
 
                 for (rect, buffer) in [
                     (layout.corner_tl, shadow.corner_tl),
@@ -317,7 +243,7 @@ impl DecorationManager {
                         phys_f64(rect.loc.x, rect.loc.y),
                         buffer,
                         None,
-                        Some(shadow_src),
+                        None,
                         Some(rect.size),
                         Kind::Unspecified,
                     ) {

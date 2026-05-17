@@ -8,7 +8,6 @@ use smithay::reexports::wayland_server::{
     backend::ObjectId, protocol::wl_surface::WlSurface, Resource,
 };
 
-mod corner_mask_bitmap;
 pub mod icons;
 mod model;
 mod render;
@@ -16,18 +15,15 @@ mod shadow_bitmap;
 
 pub use model::HoveredButton;
 use model::WindowDecoration;
-use render::button_bg_cache::ButtonBgCache;
-use render::corner_cache::CornerCache;
 use render::icon_cache::IconCache;
 use render::shadow_cache::ShadowCache;
 
 pub const TITLE_BAR_HEIGHT: i32 = 32;
-pub const BUTTON_WIDTH: i32 = 28;
-pub const BUTTON_HEIGHT: i32 = 24;
-pub const BUTTON_ICON_PX: u32 = 16;
-pub const BUTTON_STROKE_WIDTH: f32 = 1.5;
+pub const BUTTON_WIDTH: i32 = 32;
+pub const BUTTON_HEIGHT: i32 = 28;
+pub const BUTTON_ICON_PX: u32 = 14;
+pub const BUTTON_STROKE_WIDTH: f32 = 1.25;
 pub const BUTTON_MARGIN: i32 = 8;
-pub const BUTTON_CORNER_RADIUS: u32 = 6;
 
 pub enum DecorationRenderElement {
     Solid(SolidColorRenderElement),
@@ -58,8 +54,6 @@ pub enum DecorationHit {
 pub struct DecorationManager {
     decorations: HashMap<ObjectId, WindowDecoration>,
     icon_cache: IconCache,
-    corner_cache: CornerCache,
-    button_bg_cache: ButtonBgCache,
     shadow_cache: ShadowCache,
 }
 
@@ -68,12 +62,6 @@ impl DecorationManager {
         Self {
             decorations: HashMap::new(),
             icon_cache: IconCache::new(BUTTON_ICON_PX, BUTTON_STROKE_WIDTH),
-            corner_cache: CornerCache::new(),
-            button_bg_cache: ButtonBgCache::new(
-                BUTTON_WIDTH as u32,
-                BUTTON_HEIGHT as u32,
-                BUTTON_CORNER_RADIUS,
-            ),
             shadow_cache: ShadowCache::new(),
         }
     }

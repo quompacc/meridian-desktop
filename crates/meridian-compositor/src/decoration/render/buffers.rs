@@ -1,9 +1,6 @@
 use meridian_config::{Decorations, ThemeColors};
 
-use super::{
-    super::model::{opaque, WindowDecoration},
-    geometry::{SsdChromeMetrics, SsdFrameMetrics},
-};
+use super::super::model::{opaque, HoveredButton, WindowDecoration};
 
 const INACTIVE_SHADOW_ALPHA: f32 = 0.3;
 
@@ -23,11 +20,10 @@ pub(super) fn effective_shadow_radius(theme_radius: i32, focused: bool) -> i32 {
     }
 }
 
-// Keep explicit decoration/render parameters to avoid risky context bundling in render code.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn update_buffers(
     deco: &mut WindowDecoration,
-    theme: &Decorations,
+    _theme: &Decorations,
     colors: &ThemeColors,
     show_title: bool,
     bw: i32,
@@ -36,72 +32,73 @@ pub(super) fn update_buffers(
     title_h: i32,
     cw: i32,
 ) {
-    let frame_f32 = opaque(if deco.is_focused {
-        colors.accent
-    } else {
-        colors.border
-    });
     let transparent = [0.0f32; 4];
 
-    let set_strip = |buffer: &mut smithay::backend::renderer::element::solid::SolidColorBuffer,
-                     width: i32,
-                     height: i32| {
-        if width > 0 && height > 0 {
-            buffer.update((width, height), frame_f32);
+    if show_title {
+        deco.buffers.titlebar.update(
+            (total_w.max(1), (title_h + bw).max(1)),
+            opaque(colors.surface),
+        );
+        if deco.is_focused {
+            deco.buffers
+                .title_separator
+                .update((total_w.max(1), 1), opaque(colors.accent));
         } else {
-            buffer.update((1, 1), transparent);
-        }
-    };
-
-    if show_title || bw > 0 {
-        if let Some(s) = SsdChromeMetrics::new(SsdFrameMetrics::from_frame_origin(
-            (0, 0).into(),
-            (cw, ch).into(),
-            bw,
-            title_h,
-        ))
-        .frame_slices(theme.corner_radius as i32)
-        {
-            set_strip(
-                &mut deco.buffers.top_strip,
-                s.top_strip.size.w,
-                s.top_strip.size.h,
-            );
-            set_strip(
-                &mut deco.buffers.middle_belt,
-                s.middle_belt.size.w,
-                s.middle_belt.size.h,
-            );
-            set_strip(
-                &mut deco.buffers.left_strip,
-                s.left_strip.size.w,
-                s.left_strip.size.h,
-            );
-            set_strip(
-                &mut deco.buffers.right_strip,
-                s.right_strip.size.w,
-                s.right_strip.size.h,
-            );
-            set_strip(
-                &mut deco.buffers.bottom_border,
-                s.bottom_border.size.w,
-                s.bottom_border.size.h,
-            );
-        } else {
-            let top_h = if show_title { title_h + bw } else { bw };
-            set_strip(&mut deco.buffers.top_strip, total_w, top_h);
-            set_strip(&mut deco.buffers.middle_belt, 0, 0);
-            set_strip(&mut deco.buffers.left_strip, bw, ch);
-            set_strip(&mut deco.buffers.right_strip, bw, ch);
-            set_strip(&mut deco.buffers.bottom_border, total_w, bw);
+            deco.buffers.title_separator.update((1, 1), transparent);
         }
     } else {
-        set_strip(&mut deco.buffers.top_strip, 0, 0);
-        set_strip(&mut deco.buffers.middle_belt, 0, 0);
-        set_strip(&mut deco.buffers.left_strip, 0, 0);
-        set_strip(&mut deco.buffers.right_strip, 0, 0);
-        set_strip(&mut deco.buffers.bottom_border, 0, 0);
+        deco.buffers.titlebar.update((1, 1), transparent);
+        deco.buffers.title_separator.update((1, 1), transparent);
     }
+
+    if bw > 0 {
+        let border_f32 = opaque(colors.border);
+        deco.buffers
+            .border_top
+            .update((total_w.max(1), bw), border_f32);
+        deco.buffers
+            .border_left
+            .update((bw, (ch + bw).max(1)), border_f32);
+        deco.buffers
+            .border_right
+            .update((bw, (ch + bw).max(1)), border_f32);
+        deco.buffers
+            .border_bottom
+            .update((total_w.max(1), bw), border_f32);
+    } else {
+        deco.buffers.border_top.update((1, 1), transparent);
+        deco.buffers.border_left.update((1, 1), transparent);
+        deco.buffers.border_right.update((1, 1), transparent);
+        deco.buffers.border_bottom.update((1, 1), transparent);
+    }
+
+    let close_bg = if deco.hovered_button() == Some(HoveredButton::Close) {
+        opaque(colors.error)
+    } else {
+        transparent
+    };
+    let max_bg = if deco.hovered_button() == Some(HoveredButton::Maximize) {
+        opaque(colors.surface)
+    } else {
+        transparent
+    };
+    let min_bg = if deco.hovered_button() == Some(HoveredButton::Minimize) {
+        opaque(colors.surface)
+    } else {
+        transparent
+    };
+    deco.buffers.close_bg.update(
+        (super::super::BUTTON_WIDTH, super::super::BUTTON_HEIGHT),
+        close_bg,
+    );
+    deco.buffers.maximize_bg.update(
+        (super::super::BUTTON_WIDTH, super::super::BUTTON_HEIGHT),
+        max_bg,
+    );
+    deco.buffers.minimize_bg.update(
+        (super::super::BUTTON_WIDTH, super::super::BUTTON_HEIGHT),
+        min_bg,
+    );
 
     deco.last_content_size = (cw, ch);
     deco.last_bw = bw;
@@ -124,7 +121,7 @@ mod tests {
 
     #[test]
     fn effective_shadow_radius_halves_when_unfocused() {
-        assert_eq!(effective_shadow_radius(24, true), 24);
-        assert_eq!(effective_shadow_radius(24, false), 12);
+        assert_eq!(effective_shadow_radius(40, true), 40);
+        assert_eq!(effective_shadow_radius(40, false), 20);
     }
 }

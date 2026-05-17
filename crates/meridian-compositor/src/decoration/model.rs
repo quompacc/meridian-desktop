@@ -9,22 +9,30 @@ pub enum HoveredButton {
 }
 
 pub(super) struct DecorationBuffers {
-    pub(super) top_strip: SolidColorBuffer,
-    pub(super) left_strip: SolidColorBuffer,
-    pub(super) right_strip: SolidColorBuffer,
-    pub(super) middle_belt: SolidColorBuffer,
-    pub(super) bottom_border: SolidColorBuffer,
+    pub(super) titlebar: SolidColorBuffer,
+    pub(super) border_top: SolidColorBuffer,
+    pub(super) border_left: SolidColorBuffer,
+    pub(super) border_right: SolidColorBuffer,
+    pub(super) border_bottom: SolidColorBuffer,
+    pub(super) title_separator: SolidColorBuffer,
+    pub(super) close_bg: SolidColorBuffer,
+    pub(super) maximize_bg: SolidColorBuffer,
+    pub(super) minimize_bg: SolidColorBuffer,
 }
 
 impl DecorationBuffers {
     pub(super) fn new() -> Self {
         let z = [0.0f32; 4];
         Self {
-            top_strip: SolidColorBuffer::new((1, 1), z),
-            left_strip: SolidColorBuffer::new((1, 1), z),
-            right_strip: SolidColorBuffer::new((1, 1), z),
-            middle_belt: SolidColorBuffer::new((1, 1), z),
-            bottom_border: SolidColorBuffer::new((1, 1), z),
+            titlebar: SolidColorBuffer::new((1, 1), z),
+            border_top: SolidColorBuffer::new((1, 1), z),
+            border_left: SolidColorBuffer::new((1, 1), z),
+            border_right: SolidColorBuffer::new((1, 1), z),
+            border_bottom: SolidColorBuffer::new((1, 1), z),
+            title_separator: SolidColorBuffer::new((1, 1), z),
+            close_bg: SolidColorBuffer::new((1, 1), z),
+            maximize_bg: SolidColorBuffer::new((1, 1), z),
+            minimize_bg: SolidColorBuffer::new((1, 1), z),
         }
     }
 }

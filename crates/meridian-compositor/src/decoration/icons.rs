@@ -14,7 +14,7 @@ pub enum IconTint {
 
 type Segment = ((f32, f32), (f32, f32));
 
-const SAMPLE_GRID: u32 = 4;
+const SAMPLE_GRID: u32 = 8;
 const VIEWBOX_SIZE: f32 = 16.0;
 
 const MINIMIZE_SEGMENTS: [Segment; 1] = [((3.0, 8.0), (13.0, 8.0))];
