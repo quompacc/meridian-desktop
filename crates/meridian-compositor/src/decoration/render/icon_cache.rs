@@ -42,7 +42,7 @@ impl IconCache {
             let pixels = rasterize(kind, self.icon_size_px, stroke, self.stroke_width);
             MemoryRenderBuffer::from_slice(
                 &pixels,
-                Fourcc::Argb8888,
+                Fourcc::Abgr8888,
                 (self.icon_size_px as i32, self.icon_size_px as i32),
                 1,
                 Transform::Normal,

@@ -328,6 +328,10 @@ fn update_hover_cursor_feedback(state: &mut MeridianState, location: Point<f64, 
     }
     if hover_changed {
         state.mark_all_outputs_dirty("decoration-button-hover-change");
+        tracing::info!(
+            "decoration hover change: hovered_button={:?}",
+            hovered_button
+        );
     }
     // TODO(phase-3): Motion updates hover state, but non-motion pointer leave still needs explicit clear.
 

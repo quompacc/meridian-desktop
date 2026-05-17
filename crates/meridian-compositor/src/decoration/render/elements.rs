@@ -67,20 +67,6 @@ impl DecorationManager {
         };
         let phys_f64 = |lx: i32, ly: i32| phys(lx, ly).to_f64();
 
-        if theme.shadow && bw > 0 {
-            let sr = theme.shadow_radius as i32;
-            elements.push(
-                SolidColorRenderElement::from_buffer(
-                    &deco.buffers.shadow,
-                    phys(x - sr, y - sr),
-                    scale,
-                    1.0,
-                    Kind::Unspecified,
-                )
-                .into(),
-            );
-        }
-
         if show_title {
             let chrome = SsdChromeMetrics::new(SsdFrameMetrics::from_frame_origin(
                 window_loc,
@@ -227,6 +213,20 @@ impl DecorationManager {
                     Kind::Unspecified,
                 ),
             ));
+        }
+
+        if theme.shadow && bw > 0 {
+            let sr = theme.shadow_radius as i32;
+            elements.push(
+                SolidColorRenderElement::from_buffer(
+                    &deco.buffers.shadow,
+                    phys(x - sr, y - sr),
+                    scale,
+                    1.0,
+                    Kind::Unspecified,
+                )
+                .into(),
+            );
         }
 
         elements
