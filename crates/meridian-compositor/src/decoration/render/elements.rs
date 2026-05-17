@@ -13,7 +13,7 @@ use smithay::{
 use super::{
     super::{
         icons::{IconTint, WindowIcon},
-        model::HoveredButton,
+        model::{HoveredButton, STRIP_BOTTOM, STRIP_LEFT, STRIP_RIGHT, STRIP_TOP},
         DecorationManager, DecorationRenderElement, BUTTON_HEIGHT, BUTTON_ICON_PX, BUTTON_WIDTH,
         TITLE_BAR_HEIGHT,
     },
@@ -33,7 +33,7 @@ impl DecorationManager {
         theme: &Decorations,
         colors: &ThemeColors,
         scale: Scale<f64>,
-    ) -> SmallVec<[DecorationRenderElement; 16]> {
+    ) -> SmallVec<[DecorationRenderElement; 32]> {
         let deco = match self.decorations.get_mut(&Self::key(surface)) {
             Some(d) => d,
             None => return SmallVec::new(),
@@ -60,7 +60,7 @@ impl DecorationManager {
         let x = window_loc.x;
         let y = window_loc.y;
         let ps = scale.x;
-        let mut elements: SmallVec<[DecorationRenderElement; 16]> = SmallVec::new();
+        let mut elements: SmallVec<[DecorationRenderElement; 32]> = SmallVec::new();
 
         let phys = |lx: i32, ly: i32| -> Point<i32, Physical> {
             Point::from(((lx as f64 * ps) as i32, (ly as f64 * ps) as i32))
@@ -217,23 +217,34 @@ impl DecorationManager {
 
         if theme.shadow && bw > 0 {
             let oy = theme.shadow_offset_y;
-            let shadow_buffers = [
-                &deco.buffers.shadow_inner,
-                &deco.buffers.shadow_mid,
-                &deco.buffers.shadow_outer,
-            ];
-            for (layer, buffer) in SHADOW_LAYERS.iter().zip(shadow_buffers) {
+            let chrome = SsdChromeMetrics::new(SsdFrameMetrics::from_frame_origin(
+                window_loc,
+                content_size,
+                bw,
+                title_h,
+            ));
+            for (layer_idx, layer) in SHADOW_LAYERS.iter().enumerate() {
                 let sr = layer_radius(theme, deco.is_focused, layer.radius_scale);
-                elements.push(
-                    SolidColorRenderElement::from_buffer(
-                        buffer,
-                        phys(x - sr, y - sr + oy),
-                        scale,
-                        1.0,
-                        Kind::Unspecified,
-                    )
-                    .into(),
-                );
+                if let Some(donut) = chrome.shadow_donut_metrics(sr) {
+                    let strips = &deco.buffers.shadow_strips[layer_idx];
+                    for (strip_idx, rect) in [
+                        (STRIP_TOP, donut.top),
+                        (STRIP_BOTTOM, donut.bottom),
+                        (STRIP_LEFT, donut.left),
+                        (STRIP_RIGHT, donut.right),
+                    ] {
+                        elements.push(
+                            SolidColorRenderElement::from_buffer(
+                                &strips[strip_idx],
+                                phys(rect.loc.x, rect.loc.y + oy),
+                                scale,
+                                1.0,
+                                Kind::Unspecified,
+                            )
+                            .into(),
+                        );
+                    }
+                }
             }
         }
 

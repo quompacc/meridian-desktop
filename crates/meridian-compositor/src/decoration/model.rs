@@ -10,6 +10,13 @@ pub enum HoveredButton {
     Minimize,
 }
 
+pub(super) const SHADOW_LAYER_COUNT: usize = 5;
+pub(super) const SHADOW_STRIP_COUNT: usize = 4;
+pub(super) const STRIP_TOP: usize = 0;
+pub(super) const STRIP_BOTTOM: usize = 1;
+pub(super) const STRIP_LEFT: usize = 2;
+pub(super) const STRIP_RIGHT: usize = 3;
+
 pub(super) struct DecorationBuffers {
     pub(super) titlebar: SolidColorBuffer,
     pub(super) close_bg: SolidColorBuffer,
@@ -19,14 +26,14 @@ pub(super) struct DecorationBuffers {
     pub(super) border_left: SolidColorBuffer,
     pub(super) border_right: SolidColorBuffer,
     pub(super) border_bottom: SolidColorBuffer,
-    pub(super) shadow_inner: SolidColorBuffer,
-    pub(super) shadow_mid: SolidColorBuffer,
-    pub(super) shadow_outer: SolidColorBuffer,
+    pub(super) shadow_strips: [[SolidColorBuffer; SHADOW_STRIP_COUNT]; SHADOW_LAYER_COUNT],
 }
 
 impl DecorationBuffers {
     pub(super) fn new() -> Self {
         let z = [0.0f32; 4];
+        let shadow_strips =
+            std::array::from_fn(|_| std::array::from_fn(|_| SolidColorBuffer::new((1, 1), z)));
         Self {
             titlebar: SolidColorBuffer::new((1, 1), z),
             close_bg: SolidColorBuffer::new((BUTTON_WIDTH, BUTTON_HEIGHT), z),
@@ -36,9 +43,7 @@ impl DecorationBuffers {
             border_left: SolidColorBuffer::new((1, 1), z),
             border_right: SolidColorBuffer::new((1, 1), z),
             border_bottom: SolidColorBuffer::new((1, 1), z),
-            shadow_inner: SolidColorBuffer::new((1, 1), z),
-            shadow_mid: SolidColorBuffer::new((1, 1), z),
-            shadow_outer: SolidColorBuffer::new((1, 1), z),
+            shadow_strips,
         }
     }
 }

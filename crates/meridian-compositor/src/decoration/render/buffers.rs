@@ -1,7 +1,10 @@
 use meridian_config::{Decorations, ThemeColors};
 
 use super::super::{
-    model::{opaque, HoveredButton, WindowDecoration},
+    model::{
+        opaque, HoveredButton, WindowDecoration, SHADOW_LAYER_COUNT, STRIP_BOTTOM, STRIP_LEFT,
+        STRIP_RIGHT, STRIP_TOP,
+    },
     BUTTON_HEIGHT, BUTTON_WIDTH, TITLE_BAR_HEIGHT,
 };
 use super::geometry::{SsdChromeMetrics, SsdFrameMetrics};
@@ -14,18 +17,26 @@ pub(super) struct ShadowLayer {
     pub(super) alpha_scale: f32,
 }
 
-pub(super) const SHADOW_LAYERS: [ShadowLayer; 3] = [
+pub(super) const SHADOW_LAYERS: [ShadowLayer; SHADOW_LAYER_COUNT] = [
     ShadowLayer {
-        radius_scale: 1.0 / 3.0,
-        alpha_scale: 0.8,
+        radius_scale: 0.20,
+        alpha_scale: 0.85,
     },
     ShadowLayer {
-        radius_scale: 2.0 / 3.0,
-        alpha_scale: 0.4,
+        radius_scale: 0.40,
+        alpha_scale: 0.55,
     },
     ShadowLayer {
-        radius_scale: 1.0,
-        alpha_scale: 0.2,
+        radius_scale: 0.60,
+        alpha_scale: 0.35,
+    },
+    ShadowLayer {
+        radius_scale: 0.80,
+        alpha_scale: 0.20,
+    },
+    ShadowLayer {
+        radius_scale: 1.00,
+        alpha_scale: 0.10,
     },
 ];
 
@@ -125,12 +136,8 @@ pub(super) fn update_buffers(
     }
     if theme.shadow && bw > 0 {
         let frame = SsdFrameMetrics::from_frame_origin((0, 0).into(), (cw, ch).into(), bw, title_h);
-        let mut shadow_buffers = [
-            &mut deco.buffers.shadow_inner,
-            &mut deco.buffers.shadow_mid,
-            &mut deco.buffers.shadow_outer,
-        ];
-        for (layer, buffer) in SHADOW_LAYERS.iter().zip(shadow_buffers.iter_mut()) {
+        let chrome = SsdChromeMetrics::new(frame);
+        for (layer_idx, layer) in SHADOW_LAYERS.iter().enumerate() {
             let sr = layer_radius(theme, deco.is_focused, layer.radius_scale);
             let color = [
                 0.0f32,
@@ -138,10 +145,13 @@ pub(super) fn update_buffers(
                 0.0,
                 layer_alpha(theme, deco.is_focused, layer.alpha_scale),
             ];
-            let shadow = SsdChromeMetrics::new(frame)
-                .shadow_metrics(sr)
-                .expect("shadow metrics should exist when border width is positive");
-            buffer.update((shadow.rect.size.w, shadow.rect.size.h), color);
+            if let Some(donut) = chrome.shadow_donut_metrics(sr) {
+                let strips = &mut deco.buffers.shadow_strips[layer_idx];
+                strips[STRIP_TOP].update((donut.top.size.w, donut.top.size.h), color);
+                strips[STRIP_BOTTOM].update((donut.bottom.size.w, donut.bottom.size.h), color);
+                strips[STRIP_LEFT].update((donut.left.size.w, donut.left.size.h), color);
+                strips[STRIP_RIGHT].update((donut.right.size.w, donut.right.size.h), color);
+            }
         }
     }
 
@@ -215,7 +225,7 @@ mod tests {
         };
         let inner = layer_radius(&theme, true, SHADOW_LAYERS[0].radius_scale);
         let mid = layer_radius(&theme, true, SHADOW_LAYERS[1].radius_scale);
-        let outer = layer_radius(&theme, true, SHADOW_LAYERS[2].radius_scale);
+        let outer = layer_radius(&theme, true, SHADOW_LAYERS[4].radius_scale);
         assert!(inner < mid);
         assert!(mid < outer);
     }
@@ -226,10 +236,11 @@ mod tests {
             shadow_alpha: 0.5,
             ..Default::default()
         };
-        let total: f32 = SHADOW_LAYERS
-            .iter()
-            .map(|layer| layer_alpha(&theme, true, layer.alpha_scale))
-            .sum();
-        assert!(total < 1.0);
+        let composed = 1.0f32
+            - SHADOW_LAYERS
+                .iter()
+                .map(|layer| layer_alpha(&theme, true, layer.alpha_scale))
+                .fold(1.0f32, |acc, alpha| acc * (1.0 - alpha));
+        assert!(composed < 1.0);
     }
 }
