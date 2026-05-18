@@ -1,4 +1,4 @@
-const SHADOW_SIGMA: f32 = 0.70;
+const SHADOW_SIGMA: f32 = 1.0;
 
 fn alpha_to_u8(alpha: f32) -> u8 {
     (alpha.clamp(0.0, 1.0) * 255.0).round() as u8
