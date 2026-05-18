@@ -2152,18 +2152,28 @@ fn draw_tile_start_view(
             y: raw_rect.y - launcher_state.tile_scroll_y,
             ..raw_rect
         };
-        if rect.y + rect.h <= card.y || rect.y >= card.y + card.h {
+        if rect.y + rect.h <= tile_area.y || rect.y >= tile_area.y + tile_area.h {
             continue;
         }
 
         let is_hovered = launcher_state.hover_app_tile == Some((tile.col, tile.row));
-        let tile_bg = if is_hovered {
+        painter.rect(rect, theme.colors.surface);
+        subtle_border(painter, rect, theme);
+        // 3px accent top stripe; switch to accent_alt on hover.
+        let indicator_color = if is_hovered {
             theme.colors.accent_alt
         } else {
             theme.colors.accent
         };
-        painter.rect(rect, tile_bg);
-        subtle_border(painter, rect, theme);
+        painter.rect(
+            Rect {
+                x: rect.x,
+                y: rect.y,
+                w: rect.w,
+                h: 3,
+            },
+            indicator_color,
+        );
 
         let Some(app) = launcher_state.apps.get(tile.app_index) else {
             continue;
@@ -2192,12 +2202,7 @@ fn draw_tile_start_view(
             let initial = app_initial_char(&app.name);
             let mut initial_buf = [0u8; 4];
             let label = initial.encode_utf8(&mut initial_buf);
-            painter.text_centered(
-                font,
-                label,
-                icon_rect,
-                crate::ui::primitives::active_accent_foreground(),
-            );
+            painter.text_centered(font, label, icon_rect, theme.colors.text);
         }
 
         let label_rect = Rect {
@@ -2206,12 +2211,7 @@ fn draw_tile_start_view(
             w: rect.w,
             h: TILE_LABEL_H,
         };
-        painter.text_centered(
-            font,
-            &app.name,
-            label_rect,
-            crate::ui::primitives::active_accent_foreground(),
-        );
+        painter.text_centered(font, &app.name, label_rect, theme.colors.text);
         launcher_state.clicks.push(ClickZone {
             rect,
             action: ClickAction::LaunchApp(tile.app_index),
@@ -2241,6 +2241,40 @@ fn draw_tile_start_view(
             },
             theme.colors.accent,
         );
+    }
+
+    // Cover bands above and below the tile_area: tiles that scrolled into
+    // the header/search or footer region get painted over with surface_alt
+    // before the header/search/footer themselves render on top.
+    let cover_left = card.x + 1;
+    let cover_right_excl = card.x + card.w - 1;
+    let cover_w = (cover_right_excl - cover_left).max(0);
+    if cover_w > 0 {
+        let top_cover_h = (tile_area.y - (card.y + 1)).max(0);
+        if top_cover_h > 0 {
+            painter.rect(
+                Rect {
+                    x: cover_left,
+                    y: card.y + 1,
+                    w: cover_w,
+                    h: top_cover_h,
+                },
+                colors.surface_alt,
+            );
+        }
+        let bottom_cover_y = tile_area.y + tile_area.h;
+        let bottom_cover_h = ((card.y + card.h - 1) - bottom_cover_y).max(0);
+        if bottom_cover_h > 0 {
+            painter.rect(
+                Rect {
+                    x: cover_left,
+                    y: bottom_cover_y,
+                    w: cover_w,
+                    h: bottom_cover_h,
+                },
+                colors.surface_alt,
+            );
+        }
     }
 
     painter.text_clipped(
