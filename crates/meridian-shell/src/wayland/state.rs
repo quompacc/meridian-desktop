@@ -876,9 +876,14 @@ impl MeridianShell {
     pub(crate) fn handle_launcher_click(&mut self, qh: &QueueHandle<Self>, action: ClickAction) {
         match action {
             ClickAction::LaunchApp(index) => {
-                self.launcher_state.set_selected_index(index);
-                self.launcher_state
-                    .launch_app(self.launcher_state.selected_index, &mut self.ipc);
+                if self.launcher_state.view() == crate::launcher::LauncherView::TileStart {
+                    self.launcher_state
+                        .launch_app_by_app_index(index, &mut self.ipc);
+                } else {
+                    self.launcher_state.set_selected_index(index);
+                    self.launcher_state
+                        .launch_app(self.launcher_state.selected_index, &mut self.ipc);
+                }
                 self.close_launcher_after_launch(qh, RepaintReason::Pointer);
             }
             ClickAction::LaunchPinnedApp(_) => {}

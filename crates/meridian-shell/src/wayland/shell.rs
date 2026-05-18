@@ -195,6 +195,8 @@ pub(crate) struct LauncherRenderSignature {
     pub(crate) query: String,
     pub(crate) mode: crate::launcher::LauncherMode,
     pub(crate) view: crate::launcher::LauncherView,
+    pub(crate) pinned_tiles_hash: u64,
+    pub(crate) hover_pinned_tile: Option<(u8, u8)>,
     pub(crate) sidebar_category: crate::launcher::SidebarCategory,
     pub(crate) pending_action_confirmation: Option<crate::launcher::LauncherAction>,
     pub(crate) selected_index: usize,
@@ -329,6 +331,8 @@ mod tests {
             query: String::new(),
             mode: LauncherMode::Apps,
             view: LauncherView::TileStart,
+            pinned_tiles_hash: 0,
+            hover_pinned_tile: None,
             sidebar_category: SidebarCategory::System,
             pending_action_confirmation: None,
             selected_index: 0,
@@ -357,5 +361,21 @@ mod tests {
         all_apps.view = LauncherView::AllApps;
 
         assert_ne!(tile_start, all_apps);
+    }
+
+    #[test]
+    fn launcher_signature_changes_with_hover_pinned_tile() {
+        let without = base_launcher_signature();
+        let mut with = base_launcher_signature();
+        with.hover_pinned_tile = Some((1, 0));
+        assert_ne!(without, with);
+    }
+
+    #[test]
+    fn launcher_signature_changes_with_pinned_tiles_hash() {
+        let zero = base_launcher_signature();
+        let mut other = base_launcher_signature();
+        other.pinned_tiles_hash = 0xdead_beef;
+        assert_ne!(zero, other);
     }
 }

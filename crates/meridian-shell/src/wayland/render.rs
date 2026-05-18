@@ -106,6 +106,17 @@ impl MeridianShell {
         hasher.finish()
     }
 
+    fn pinned_tiles_hash(tiles: &[crate::launcher::PinnedTile]) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        for tile in tiles {
+            tile.col.hash(&mut hasher);
+            tile.row.hash(&mut hasher);
+            tile.size.hash(&mut hasher);
+            tile.app_index.hash(&mut hasher);
+        }
+        hasher.finish()
+    }
+
     fn launcher_render_signature(
         &self,
         width: u32,
@@ -119,6 +130,8 @@ impl MeridianShell {
             query: self.launcher_state.query.clone(),
             mode: self.launcher_state.current_mode(),
             view: self.launcher_state.view(),
+            pinned_tiles_hash: Self::pinned_tiles_hash(&self.launcher_state.pinned_tiles),
+            hover_pinned_tile: self.launcher_state.hover_pinned_tile,
             sidebar_category: self.launcher_state.sidebar_category,
             pending_action_confirmation: self.launcher_state.pending_action_confirmation(),
             selected_index: self.launcher_state.selected_index,
