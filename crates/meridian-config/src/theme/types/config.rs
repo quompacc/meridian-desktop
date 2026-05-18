@@ -57,8 +57,8 @@ impl Default for Decorations {
             border_width: 1,
             corner_radius: 0,
             shadow: true,
-            shadow_radius: 56,
-            shadow_radius_top: 18,
+            shadow_radius: 16,
+            shadow_radius_top: 8,
             shadow_alpha: 0.18,
             shadow_offset_y: 0,
             gap: 8,
@@ -177,8 +177,8 @@ mod tests {
         assert_eq!(decorations.border_width, 1);
         assert_eq!(decorations.corner_radius, 0);
         assert!(decorations.shadow);
-        assert_eq!(decorations.shadow_radius, 56);
-        assert_eq!(decorations.shadow_radius_top, 18);
+        assert_eq!(decorations.shadow_radius, 16);
+        assert_eq!(decorations.shadow_radius_top, 8);
         assert_eq!(decorations.shadow_alpha, 0.18);
         assert_eq!(decorations.shadow_offset_y, 0);
         assert_eq!(decorations.gap, 8);
@@ -208,8 +208,8 @@ mod tests {
         assert_eq!(config.decorations.border_width, 1);
         assert_eq!(config.decorations.corner_radius, 0);
         assert!(config.decorations.shadow);
-        assert_eq!(config.decorations.shadow_radius, 56);
-        assert_eq!(config.decorations.shadow_radius_top, 18);
+        assert_eq!(config.decorations.shadow_radius, 16);
+        assert_eq!(config.decorations.shadow_radius_top, 8);
         assert_eq!(config.decorations.shadow_alpha, 0.18);
         assert_eq!(config.decorations.shadow_offset_y, 0);
         assert_eq!(config.decorations.gap, 8);
