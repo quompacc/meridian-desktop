@@ -822,6 +822,7 @@ impl MeridianShell {
             ClickAction::LauncherAction { action, .. } => {
                 let _result = self.launcher_state.trigger_action(action, &mut self.ipc);
             }
+            ClickAction::SetLauncherView(_) => {}
             ClickAction::SelectLauncherCategory(_) => {}
             ClickAction::ToggleLauncher => {
                 self.toggle_launcher();
@@ -897,6 +898,11 @@ impl MeridianShell {
             }
             ClickAction::SelectLauncherCategory(raw) => {
                 if self.launcher_state.set_sidebar_category_from_click(raw) {
+                    self.draw_launcher(qh, RepaintReason::Pointer);
+                }
+            }
+            ClickAction::SetLauncherView(view) => {
+                if self.launcher_state.set_view(view) {
                     self.draw_launcher(qh, RepaintReason::Pointer);
                 }
             }

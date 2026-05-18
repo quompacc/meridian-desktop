@@ -61,6 +61,8 @@ const FOOTER_MODE_PILL_H: i32 = 24;
 const FOOTER_ACTION_BUTTON_H: i32 = 28;
 const FOOTER_ACTION_BUTTON_MIN_W: i32 = 150;
 const FOOTER_ACTION_BUTTON_MAX_W: i32 = 220;
+const TILE_START_SWITCH_BUTTON_W: i32 = 140;
+const ALL_APPS_BACK_BUTTON_W: i32 = 120;
 const SIDEBAR_ITEM_X_INSET: i32 = 8;
 const SIDEBAR_ITEM_W_INSET: i32 = 16;
 const SIDEBAR_ITEM_H: i32 = 24;
@@ -206,6 +208,19 @@ impl LauncherMode {
         match self {
             Self::Apps => "Apps",
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LauncherView {
+    TileStart,
+    AllApps,
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for LauncherView {
+    fn default() -> Self {
+        Self::TileStart
     }
 }
 
@@ -678,6 +693,7 @@ pub struct LauncherState {
     pub apps: Vec<DesktopApp>,
     pub sidebar_category: SidebarCategory,
     pending_action_confirmation: Option<LauncherAction>,
+    view: LauncherView,
 }
 
 struct VisibleApps {
@@ -726,6 +742,7 @@ impl LauncherState {
             clicks: Vec::new(),
             apps,
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         }
     }
 
@@ -738,6 +755,7 @@ impl LauncherState {
         self.selected_index = 0;
         self.sidebar_category = SidebarCategory::Favorites;
         self.pending_action_confirmation = None;
+        self.view = LauncherView::TileStart;
         self.open
     }
 
@@ -747,6 +765,7 @@ impl LauncherState {
         self.selected_index = 0;
         self.sidebar_category = SidebarCategory::Favorites;
         self.pending_action_confirmation = None;
+        self.view = LauncherView::TileStart;
     }
 
     pub fn filtered_apps(&self) -> Vec<DesktopApp> {
@@ -755,6 +774,20 @@ impl LauncherState {
 
     pub fn pending_action_confirmation(&self) -> Option<LauncherAction> {
         self.pending_action_confirmation
+    }
+
+    pub fn view(&self) -> LauncherView {
+        self.view
+    }
+
+    pub fn set_view(&mut self, view: LauncherView) -> bool {
+        if self.view == view {
+            return false;
+        }
+        self.view = view;
+        self.selected_index = 0;
+        self.pending_action_confirmation = None;
+        true
     }
 
     pub fn current_mode(&self) -> LauncherMode {
@@ -897,6 +930,7 @@ impl LauncherState {
                 ClickAction::FocusWindow(_) => None,
                 ClickAction::LaunchPinnedApp(_) => None,
                 ClickAction::SelectLauncherCategory(_) => None,
+                ClickAction::SetLauncherView(_) => None,
                 ClickAction::ToggleLauncher => None,
                 ClickAction::Clock => None,
                 ClickAction::ToggleWorkspacePopup => None,
@@ -1017,6 +1051,10 @@ impl LauncherState {
         }
 
         if is_escape {
+            if self.view() == LauncherView::AllApps {
+                self.set_view(LauncherView::TileStart);
+                return LauncherInputResult::Redraw;
+            }
             self.close();
             return LauncherInputResult::Close;
         }
@@ -1218,6 +1256,37 @@ fn compute_launcher_layout(width: u32, height: u32, footer_rows: usize) -> Launc
     }
 }
 
+fn result_count_label(total: usize, buf: &mut [u8; 32]) -> &str {
+    if total == 1 {
+        return "1 result";
+    }
+
+    let mut n = total;
+    let mut digits = [0u8; 20];
+    let mut len = 0usize;
+    loop {
+        digits[len] = b'0' + (n % 10) as u8;
+        len += 1;
+        n /= 10;
+        if n == 0 {
+            break;
+        }
+    }
+
+    let mut out_len = 0usize;
+    for idx in (0..len).rev() {
+        buf[out_len] = digits[idx];
+        out_len += 1;
+    }
+    const SUFFIX: &[u8] = b" results";
+    for byte in SUFFIX {
+        buf[out_len] = *byte;
+        out_len += 1;
+    }
+
+    std::str::from_utf8(&buf[..out_len]).unwrap_or("results")
+}
+
 pub fn draw_launcher(
     launcher_state: &mut LauncherState,
     painter: &mut Painter<'_>,
@@ -1231,6 +1300,32 @@ pub fn draw_launcher(
         return;
     }
 
+    launcher_state.clicks.clear();
+    match launcher_state.view() {
+        LauncherView::TileStart => {
+            draw_tile_start_view(launcher_state, painter, font, theme, width, height)
+        }
+        LauncherView::AllApps => draw_all_apps_view(
+            launcher_state,
+            painter,
+            font,
+            theme,
+            icon_cache,
+            width,
+            height,
+        ),
+    }
+}
+
+fn draw_all_apps_view(
+    launcher_state: &mut LauncherState,
+    painter: &mut Painter<'_>,
+    font: &RefCell<Option<TextRenderer>>,
+    theme: &ThemeConfig,
+    icon_cache: &IconCache,
+    width: u32,
+    height: u32,
+) {
     let colors = &theme.colors;
     painter.clear(colors.surface_alt);
     let actions = launcher_state.visible_actions();
@@ -1261,8 +1356,6 @@ pub fn draw_launcher(
         colors.border,
     );
 
-    launcher_state.clicks.clear();
-
     let visible = launcher_state.visible_apps();
     let apps = visible.apps;
     let results_total = visible.total_results + actions.len();
@@ -1281,14 +1374,11 @@ pub fn draw_launcher(
             .max(0),
         colors.text,
     );
-    let count_text = if results_total == 1 {
-        "1 result".to_string()
-    } else {
-        format!("{} results", results_total)
-    };
+    let mut count_text_buf = [0u8; 32];
+    let count_text = result_count_label(results_total, &mut count_text_buf);
     painter.text_clipped(
         font,
-        &count_text,
+        count_text,
         layout.header.x + layout.header.w - HEADER_COUNT_WIDTH - HEADER_COUNT_RIGHT_INSET,
         layout.header.y + HEADER_COUNT_BASELINE_OFFSET,
         HEADER_COUNT_WIDTH,
@@ -1635,6 +1725,7 @@ pub fn draw_launcher(
         );
 
         let mut action_y = footer_y;
+        let mut primary_action_rect = None;
         for (offset, action) in actions.iter().enumerate() {
             let index = apps.len() + offset;
             let is_selected = index == selected_idx;
@@ -1653,6 +1744,9 @@ pub fn draw_launcher(
                 w: action_button_w,
                 h: FOOTER_ACTION_BUTTON_H,
             };
+            if primary_action_rect.is_none() {
+                primary_action_rect = Some(rect);
+            }
             let row_state = if is_selected {
                 InteractiveState::Selected
             } else {
@@ -1681,6 +1775,203 @@ pub fn draw_launcher(
             });
             action_y += tokens::launcher::APP_ROW_H + tokens::launcher::ROW_GAP;
         }
+
+        if let Some(action_rect) = primary_action_rect {
+            let right_min_x = layout.footer_right.x + tokens::launcher::INNER_PADDING;
+            let mut back_rect = Rect {
+                x: action_rect.x - FOOTER_SECTION_GAP - ALL_APPS_BACK_BUTTON_W,
+                y: footer_y,
+                w: ALL_APPS_BACK_BUTTON_W,
+                h: FOOTER_ACTION_BUTTON_H,
+            };
+            if back_rect.x < right_min_x {
+                let fallback_w =
+                    (layout.footer_left.w - tokens::launcher::INNER_PADDING * 2).max(0);
+                if fallback_w > 0 {
+                    back_rect = Rect {
+                        x: layout.footer_left.x + tokens::launcher::INNER_PADDING,
+                        y: footer_y,
+                        w: fallback_w,
+                        h: FOOTER_ACTION_BUTTON_H,
+                    };
+                } else {
+                    back_rect.w = 0;
+                }
+            }
+
+            if back_rect.w > 0 {
+                let text_color =
+                    draw_panel_button(painter, back_rect, theme, InteractiveState::Default, false);
+                painter.text_clipped(
+                    font,
+                    "< Tiles",
+                    back_rect.x + tokens::launcher::INNER_PADDING,
+                    back_rect.y + 18,
+                    back_rect.w - tokens::launcher::INNER_PADDING * 2,
+                    text_color,
+                );
+                launcher_state.clicks.push(ClickZone {
+                    rect: back_rect,
+                    action: ClickAction::SetLauncherView(LauncherView::TileStart),
+                });
+            }
+        }
+    }
+}
+
+fn draw_tile_start_view(
+    launcher_state: &mut LauncherState,
+    painter: &mut Painter<'_>,
+    font: &RefCell<Option<TextRenderer>>,
+    theme: &ThemeConfig,
+    width: u32,
+    height: u32,
+) {
+    let colors = &theme.colors;
+    painter.clear(colors.surface_alt);
+
+    let actions = launcher_state.visible_actions();
+    let visible = launcher_state.visible_apps();
+    let results_total = visible.total_results + actions.len();
+
+    let card = Rect {
+        x: tokens::launcher::OUTER_PADDING / 2,
+        y: tokens::launcher::OUTER_PADDING / 2,
+        w: width as i32 - tokens::launcher::OUTER_PADDING,
+        h: height as i32 - tokens::launcher::OUTER_PADDING,
+    };
+    let content = Rect {
+        x: card.x + tokens::launcher::OUTER_PADDING / 2,
+        y: card.y + tokens::launcher::OUTER_PADDING / 2,
+        w: card.w - tokens::launcher::OUTER_PADDING,
+        h: card.h - tokens::launcher::OUTER_PADDING,
+    };
+    let header = Rect {
+        x: content.x,
+        y: content.y,
+        w: content.w,
+        h: tokens::launcher::HEADER_H,
+    };
+    let search = Rect {
+        x: content.x,
+        y: content.y + tokens::launcher::HEADER_H + 6,
+        w: content.w,
+        h: tokens::launcher::SEARCH_H,
+    };
+    let footer_h = FOOTER_ACTION_BUTTON_H + FOOTER_BAR_V_PADDING * 2;
+    let footer = Rect {
+        x: content.x,
+        y: content.y + content.h - footer_h - FOOTER_BOTTOM_MARGIN,
+        w: content.w,
+        h: footer_h,
+    };
+    let pinned_placeholder = Rect {
+        x: content.x,
+        y: search.y + search.h + tokens::launcher::LIST_TOP_GAP + 6,
+        w: content.w,
+        h: (footer.y - FOOTER_TOP_GAP - (search.y + search.h + tokens::launcher::LIST_TOP_GAP + 6))
+            .max(0),
+    };
+
+    painter.rect(card, colors.surface_alt);
+    subtle_border(painter, card, theme);
+
+    painter.text_clipped(
+        font,
+        "Launcher",
+        header.x,
+        header.y + HEADER_TITLE_BASELINE_OFFSET,
+        (header.w - HEADER_COUNT_WIDTH - HEADER_COUNT_RIGHT_INSET - HEADER_TITLE_TO_COUNT_GAP)
+            .max(0),
+        colors.text,
+    );
+    let mut count_text_buf = [0u8; 32];
+    let count_text = result_count_label(results_total, &mut count_text_buf);
+    painter.text_clipped(
+        font,
+        count_text,
+        header.x + header.w - HEADER_COUNT_WIDTH - HEADER_COUNT_RIGHT_INSET,
+        header.y + HEADER_COUNT_BASELINE_OFFSET,
+        HEADER_COUNT_WIDTH,
+        colors.border,
+    );
+
+    painter.rect(search, colors.surface);
+    subtle_border(painter, search, theme);
+    draw_active_indicator(painter, search, ActiveIndicatorEdge::Bottom, theme);
+    let query_text = if launcher_state.query.is_empty() {
+        "Search apps by name or executable"
+    } else {
+        &launcher_state.query
+    };
+    let query_color = if launcher_state.query.is_empty() {
+        colors.border
+    } else {
+        colors.text
+    };
+    painter.text_clipped(
+        font,
+        query_text,
+        search.x + tokens::launcher::INNER_PADDING,
+        search.y + SEARCH_TEXT_BASELINE_OFFSET,
+        search.w - tokens::launcher::INNER_PADDING * 2,
+        query_color,
+    );
+
+    painter.rect(pinned_placeholder, colors.surface_alt);
+    painter.stroke_rect(pinned_placeholder, colors.border);
+    painter.text_centered(
+        font,
+        "Pinned tiles — Phase 2",
+        pinned_placeholder,
+        colors.border,
+    );
+
+    fill_surface_with_radius(
+        painter,
+        footer,
+        theme,
+        SurfaceKind::Background,
+        tokens::launcher::LIST_ROW_RADIUS,
+    );
+    painter.rect(
+        Rect {
+            x: footer.x,
+            y: footer.y - (FOOTER_TOP_GAP / 2).max(1),
+            w: footer.w,
+            h: 1,
+        },
+        colors.border,
+    );
+
+    let button_available = (footer.w - tokens::launcher::INNER_PADDING * 2).max(0);
+    let button_w = TILE_START_SWITCH_BUTTON_W.min(button_available);
+    if button_w > 0 {
+        let button_rect = Rect {
+            x: footer.x + footer.w - tokens::launcher::INNER_PADDING - button_w,
+            y: footer.y + FOOTER_BAR_V_PADDING,
+            w: button_w,
+            h: FOOTER_ACTION_BUTTON_H,
+        };
+        let text_color = draw_panel_button(
+            painter,
+            button_rect,
+            theme,
+            InteractiveState::Default,
+            false,
+        );
+        painter.text_clipped(
+            font,
+            "All apps >",
+            button_rect.x + tokens::launcher::INNER_PADDING,
+            button_rect.y + 18,
+            button_rect.w - tokens::launcher::INNER_PADDING * 2,
+            text_color,
+        );
+        launcher_state.clicks.push(ClickZone {
+            rect: button_rect,
+            action: ClickAction::SetLauncherView(LauncherView::AllApps),
+        });
     }
 }
 
@@ -1750,8 +2041,9 @@ mod tests {
     use super::{
         app_initial, compute_launcher_layout, desktop_app_dirs, is_executable_available,
         parse_exec_argv, ClickAction, ClickZone, DesktopApp, LauncherAction,
-        LauncherActionActivationResult, LauncherInputResult, LauncherState, Rect, SidebarCategory,
-        FOOTER_ACTION_BUTTON_H, FOOTER_BAR_V_PADDING, MAX_RESULTS, XDG_DATA_DIRS_DEFAULT,
+        LauncherActionActivationResult, LauncherInputResult, LauncherState, LauncherView, Rect,
+        SidebarCategory, FOOTER_ACTION_BUTTON_H, FOOTER_BAR_V_PADDING, MAX_RESULTS,
+        XDG_DATA_DIRS_DEFAULT,
     };
     use crate::{icons::IconCache, Painter};
 
@@ -1993,6 +2285,51 @@ Exec=foot
         let state = LauncherState::new_with_apps(apps);
         assert_eq!(state.apps.len(), 1);
         assert_eq!(state.apps[0].name, "Provided");
+    }
+
+    #[test]
+    fn launcher_state_default_view_is_tile_start() {
+        let state = LauncherState::new_with_apps(Vec::new());
+        assert_eq!(state.view(), LauncherView::TileStart);
+    }
+
+    #[test]
+    fn escape_in_all_apps_view_returns_to_tile_start_without_closing() {
+        let mut state = LauncherState::new_with_apps(Vec::new());
+        state.open = true;
+        state.set_view(LauncherView::AllApps);
+
+        let result = state.handle_key(None, false, false, true, false, false);
+
+        assert!(matches!(result, LauncherInputResult::Redraw));
+        assert!(state.open);
+        assert_eq!(state.view(), LauncherView::TileStart);
+    }
+
+    #[test]
+    fn escape_in_tile_start_closes_launcher() {
+        let mut state = LauncherState::new_with_apps(Vec::new());
+        state.open = true;
+        assert_eq!(state.view(), LauncherView::TileStart);
+
+        let result = state.handle_key(None, false, false, true, false, false);
+
+        assert!(matches!(result, LauncherInputResult::Close));
+        assert!(!state.open);
+    }
+
+    #[test]
+    fn set_view_resets_selection_and_pending_confirmation() {
+        let mut state = LauncherState::new_with_apps(Vec::new());
+        state.open = true;
+        state.selected_index = 5;
+        state.pending_action_confirmation = Some(LauncherAction::ExitMeridian);
+
+        let changed = state.set_view(LauncherView::AllApps);
+
+        assert!(changed);
+        assert_eq!(state.selected_index, 0);
+        assert!(state.pending_action_confirmation().is_none());
     }
 
     #[test]
@@ -2327,6 +2664,7 @@ Exec=viewer %U
                 DesktopApp::new("Gamma".to_string(), vec!["gamma".to_string()], false),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let moved = state.handle_key(None, false, false, false, false, true);
@@ -2392,6 +2730,7 @@ Exec=viewer %U
             clicks: Vec::new(),
             apps: vec![app_with_categories("Settings", "settings", &["settings"])],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         assert_eq!(state.visible_actions(), vec![LauncherAction::ExitMeridian]);
@@ -2412,6 +2751,7 @@ Exec=viewer %U
                 false,
             )],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
         assert_eq!(state.visible_actions(), vec![LauncherAction::ExitMeridian]);
 
@@ -2432,6 +2772,7 @@ Exec=viewer %U
             clicks: Vec::new(),
             apps: vec![app_with_categories("Settings", "settings", &["settings"])],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
         let app_results = state.filtered_apps();
         assert_eq!(app_results.len(), 1);
@@ -2448,6 +2789,7 @@ Exec=viewer %U
             clicks: Vec::new(),
             apps: vec![app_with_categories("Settings", "settings", &["settings"])],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let result = state.handle_key(None, false, true, false, false, false);
@@ -2467,6 +2809,7 @@ Exec=viewer %U
             clicks: Vec::new(),
             apps: vec![app_with_categories("Settings", "settings", &["settings"])],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let result = state.handle_key(None, false, true, false, false, false);
@@ -2492,6 +2835,7 @@ Exec=viewer %U
             clicks: Vec::new(),
             apps,
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let visible = state.visible_apps();
@@ -2516,6 +2860,7 @@ Exec=viewer %U
             clicks: Vec::new(),
             apps: vec![app_with_categories("Settings", "settings", &["settings"])],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let first = state.activate_action(LauncherAction::ExitMeridian);
@@ -2539,6 +2884,7 @@ Exec=viewer %U
             clicks: Vec::new(),
             apps: vec![app_with_categories("Settings", "settings", &["settings"])],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         assert_eq!(
@@ -2580,6 +2926,7 @@ Exec=viewer %U
                 false,
             )],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let redraw = state.handle_key(Some('t'), false, false, false, false, false);
@@ -2609,6 +2956,7 @@ Exec=viewer %U
                 DesktopApp::new("C".to_string(), vec!["c".to_string()], false),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let changed = state.update_hover_selection(10.0, 10.0);
@@ -2637,6 +2985,7 @@ Exec=viewer %U
                 DesktopApp::new("B".to_string(), vec!["b".to_string()], false),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let changed = state.update_hover_selection(30.0, 30.0);
@@ -2665,6 +3014,7 @@ Exec=viewer %U
             }],
             apps: vec![app_with_categories("Settings", "settings", &["settings"])],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let changed = state.update_hover_selection(10.0, 10.0);
@@ -2694,6 +3044,7 @@ Exec=viewer %U
                 DesktopApp::new("C".to_string(), vec!["c".to_string()], false),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         assert!(state.update_hover_selection(5.0, 5.0));
@@ -2718,6 +3069,7 @@ Exec=viewer %U
                 false,
             )],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let result = state.handle_key(None, false, true, false, false, false);
@@ -2741,6 +3093,7 @@ Exec=viewer %U
                 DesktopApp::new("Beta".to_string(), vec!["beta".to_string()], false),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let result = state.handle_key(None, false, true, false, false, false);
@@ -2764,6 +3117,7 @@ Exec=viewer %U
                 DesktopApp::new("Terminal".to_string(), vec!["foot".to_string()], true),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let visible = state.visible_apps();
@@ -2788,6 +3142,7 @@ Exec=viewer %U
                 DesktopApp::new("Terminal".to_string(), vec!["foot".to_string()], true),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let visible = state.visible_apps();
@@ -2815,6 +3170,7 @@ Exec=viewer %U
                 DesktopApp::new("Terminal".to_string(), vec!["foot".to_string()], true),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let visible = state.visible_apps();
@@ -2858,6 +3214,7 @@ Exec=viewer %U
                 ),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let visible = state.visible_apps();
@@ -2883,6 +3240,7 @@ Exec=viewer %U
                 ),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let visible = state.visible_apps();
@@ -2922,6 +3280,7 @@ Exec=viewer %U
                 app_with_categories("Editor", "editor", &["texteditor"]),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         assert!(state.set_sidebar_category_from_click(SidebarCategory::Internet.to_click_id()));
@@ -2946,6 +3305,7 @@ Exec=viewer %U
                 app_with_categories("Notes", "notes", &["texteditor"]),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         assert!(state.set_sidebar_category_from_click(SidebarCategory::Internet.to_click_id()));
@@ -2969,6 +3329,7 @@ Exec=viewer %U
                 app_with_categories("Settings", "settings", &["settings"]),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         assert!(state.set_sidebar_category_from_click(SidebarCategory::AllApps.to_click_id()));
@@ -2992,6 +3353,7 @@ Exec=viewer %U
                 true,
             )],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         assert!(!state.set_sidebar_category_from_click(SidebarCategory::Favorites.to_click_id()));
@@ -3013,6 +3375,7 @@ Exec=viewer %U
                 DesktopApp::new("Terminal".to_string(), vec!["foot".to_string()], true),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let visible = state.visible_apps();
@@ -3036,6 +3399,7 @@ Exec=viewer %U
                 DesktopApp::new("Browser".to_string(), vec!["browser".to_string()], false),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         let visible = state.visible_apps();
@@ -3060,6 +3424,7 @@ Exec=viewer %U
                 DesktopApp::new("Terminal".to_string(), vec!["foot".to_string()], true),
             ],
             pending_action_confirmation: None,
+            view: LauncherView::TileStart,
         };
 
         assert!(state.set_sidebar_category_from_click(SidebarCategory::Favorites.to_click_id()));

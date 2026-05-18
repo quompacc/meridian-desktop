@@ -1,4 +1,4 @@
-use crate::launcher::LauncherAction;
+use crate::launcher::{LauncherAction, LauncherView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SurfaceKind {
@@ -29,6 +29,7 @@ pub enum ClickAction {
         action: LauncherAction,
         index: usize,
     },
+    SetLauncherView(LauncherView),
     ToggleLauncher,
     ToggleWorkspacePopup,
     ToggleNetworkPopup,
