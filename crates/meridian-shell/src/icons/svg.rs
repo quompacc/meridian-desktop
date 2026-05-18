@@ -10,7 +10,8 @@ pub fn decode_svg(data: &[u8], size: u32) -> Option<IconImage> {
     }
 
     let options = usvg::Options::default();
-    let tree = usvg::Tree::from_data(data, &options).ok()?;
+    let substituted = substitute_color_scheme(data);
+    let tree = usvg::Tree::from_data(&substituted, &options).ok()?;
     let native_size = tree.size();
     let native_w = native_size.width();
     let native_h = native_size.height();
@@ -33,6 +34,40 @@ pub fn decode_svg(data: &[u8], size: u32) -> Option<IconImage> {
         height: size,
         bgra,
     })
+}
+
+fn substitute_color_scheme(data: &[u8]) -> Vec<u8> {
+    const REPLACEMENTS: &[(&[u8], &[u8])] = &[
+        (b"color:#232629", b"color:#c0caf5"),
+        (b"color: #232629", b"color:#c0caf5"),
+        (b"color:#2a2e32", b"color:#c0caf5"),
+        (b"color: #2a2e32", b"color:#c0caf5"),
+        (b"color:#fcfcfc", b"color:#c0caf5"),
+        (b"color: #fcfcfc", b"color:#c0caf5"),
+    ];
+    if !REPLACEMENTS
+        .iter()
+        .any(|(needle, _)| memchr_contains(data, needle))
+    {
+        return data.to_vec();
+    }
+    let s = match std::str::from_utf8(data) {
+        Ok(s) => s,
+        Err(_) => return data.to_vec(),
+    };
+    let mut out = s.to_string();
+    for (needle, repl) in REPLACEMENTS {
+        let needle_str = std::str::from_utf8(needle).expect("ascii needle");
+        let repl_str = std::str::from_utf8(repl).expect("ascii repl");
+        out = out.replace(needle_str, repl_str);
+    }
+    out.into_bytes()
+}
+
+fn memchr_contains(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
 }
 
 fn premultiplied_rgba_to_bgra_nonpremul(data: &[u8]) -> Vec<u8> {
@@ -60,7 +95,7 @@ fn unpremultiply_channel(value: u8, alpha: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use super::decode_svg;
+    use super::{decode_svg, substitute_color_scheme};
 
     fn pixel_at(bgra: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
         let offset = ((y * width + x) * 4) as usize;
@@ -114,5 +149,27 @@ mod tests {
         let center = pixel_at(&image.bgra, image.width, 12, 12);
         assert!(center[2] > 200);
         assert!(center[3] >= 120 && center[3] <= 136);
+    }
+
+    #[test]
+    fn decode_svg_substitutes_breeze_color_scheme() {
+        let svg =
+            br#"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+            <defs><style>.ColorScheme-Text { color:#232629; }</style></defs>
+            <rect width="10" height="10" style="fill:currentColor" class="ColorScheme-Text"/>
+        </svg>"#;
+        let image = decode_svg(svg, 10).expect("decode");
+        let off = (5 * 10 + 5) * 4;
+        assert_eq!(image.bgra[off], 0xf5, "B");
+        assert_eq!(image.bgra[off + 1], 0xca, "G");
+        assert_eq!(image.bgra[off + 2], 0xc0, "R");
+        assert!(image.bgra[off + 3] > 200, "alpha-opaque-ish");
+    }
+
+    #[test]
+    fn substitute_color_scheme_no_breeze_marker_is_noop() {
+        let svg = b"<svg><rect fill='#ff0000'/></svg>";
+        let out = substitute_color_scheme(svg);
+        assert_eq!(out.as_slice(), svg);
     }
 }

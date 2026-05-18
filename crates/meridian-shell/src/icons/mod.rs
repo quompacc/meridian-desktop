@@ -14,7 +14,7 @@ pub struct IconImage {
 }
 
 pub fn lookup_default_theme() -> &'static str {
-    "Adwaita"
+    "breeze"
 }
 
 #[cfg(test)]
@@ -22,7 +22,7 @@ mod tests {
     use super::lookup_default_theme;
 
     #[test]
-    fn default_theme_is_adwaita() {
-        assert_eq!(lookup_default_theme(), "Adwaita");
+    fn default_theme_is_breeze() {
+        assert_eq!(lookup_default_theme(), "breeze");
     }
 }
