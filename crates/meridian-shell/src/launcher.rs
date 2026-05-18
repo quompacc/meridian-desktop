@@ -64,12 +64,12 @@ const FOOTER_ACTION_BUTTON_MAX_W: i32 = 220;
 const TILE_START_SWITCH_BUTTON_W: i32 = 140;
 const ALL_APPS_BACK_BUTTON_W: i32 = 120;
 const TILE_GRID_COLS: u8 = 6;
-const TILE_SLOT_PX: i32 = 80;
+const TILE_SLOT_MIN_PX: i32 = 64;
 const TILE_GAP: i32 = 8;
-const TILE_LABEL_H: i32 = 18;
-const TILE_ICON_SIZE_SMALL: u32 = 56;
-const TILE_ICON_SIZE_MEDIUM: u32 = 128;
-const TILE_ICON_SIZE_WIDE: u32 = 128;
+const TILE_LABEL_H: i32 = 22;
+const TILE_ICON_SIZE_SMALL: u32 = 96;
+const TILE_ICON_SIZE_MEDIUM: u32 = 192;
+const TILE_ICON_SIZE_WIDE: u32 = 192;
 const SIDEBAR_ITEM_X_INSET: i32 = 8;
 const SIDEBAR_ITEM_W_INSET: i32 = 16;
 const SIDEBAR_ITEM_H: i32 = 24;
@@ -771,9 +771,12 @@ fn random_tile_size_for_app(app: &DesktopApp) -> TileSize {
     let mut hasher = DefaultHasher::new();
     app.name_key.hash(&mut hasher);
     let bucket = hasher.finish() % 100;
-    if bucket < 10 {
+    // ~15% Wide, ~35% Medium, ~50% Small — genug Variation in den
+    // alphabetisch ersten Viewport-Reihen, ohne dass Wides die Spalten
+    // dominieren (Wide belegt 4 von 6 Cols).
+    if bucket < 15 {
         TileSize::Wide
-    } else if bucket < 40 {
+    } else if bucket < 50 {
         TileSize::Medium
     } else {
         TileSize::Small
@@ -873,9 +876,10 @@ impl TileGridGeometry {
 fn compute_tile_grid_geometry(area: Rect) -> TileGridGeometry {
     let cols = TILE_GRID_COLS;
     let gap = TILE_GAP;
-    let slot = TILE_SLOT_PX;
+    let usable_w = (area.w - gap * (cols as i32 - 1)).max(0);
+    let slot = (usable_w / cols as i32).max(TILE_SLOT_MIN_PX);
     let grid_w = slot * cols as i32 + gap * (cols as i32 - 1);
-    let origin_x = area.x + (area.w - grid_w) / 2;
+    let origin_x = area.x + (area.w - grid_w).max(0) / 2;
     let origin_y = area.y;
     let rows = if slot + gap > 0 {
         (((area.h + gap) / (slot + gap)) as u8).max(1)
@@ -2405,7 +2409,7 @@ mod tests {
         AppTile, ClickAction, ClickZone, DesktopApp, LauncherAction,
         LauncherActionActivationResult, LauncherInputResult, LauncherState, LauncherView, Rect,
         SidebarCategory, TileSize, FOOTER_ACTION_BUTTON_H, FOOTER_BAR_V_PADDING, MAX_RESULTS,
-        TILE_GAP, TILE_GRID_COLS, TILE_SLOT_PX, XDG_DATA_DIRS_DEFAULT,
+        TILE_GAP, TILE_GRID_COLS, TILE_SLOT_MIN_PX, XDG_DATA_DIRS_DEFAULT,
     };
     use crate::{icons::IconCache, Painter};
 
@@ -2714,7 +2718,7 @@ Exec=foot
     }
 
     #[test]
-    fn random_tile_size_distribution_is_roughly_60_30_10() {
+    fn random_tile_size_distribution_is_roughly_50_35_15() {
         let mut wide_count = 0usize;
         let mut medium_count = 0usize;
         let mut small_count = 0usize;
@@ -2726,12 +2730,18 @@ Exec=foot
                 TileSize::Small => small_count += 1,
             }
         }
-        assert!(wide_count <= 30, "wide_count too high: {wide_count}");
         assert!(
-            (40..=80).contains(&medium_count),
+            (10..=60).contains(&wide_count),
+            "wide_count out of range: {wide_count}"
+        );
+        assert!(
+            (50..=90).contains(&medium_count),
             "medium_count out of range: {medium_count}"
         );
-        assert!(small_count >= 90, "small_count too low: {small_count}");
+        assert!(
+            (70..=130).contains(&small_count),
+            "small_count out of range: {small_count}"
+        );
     }
 
     #[test]
@@ -2836,12 +2846,16 @@ Exec=foot
             h: 400,
         };
         let geo = compute_tile_grid_geometry(area);
+        let used_w = geo.slot_w * TILE_GRID_COLS as i32 + geo.gap * (TILE_GRID_COLS as i32 - 1);
         assert_eq!(geo.cols, TILE_GRID_COLS);
-        assert_eq!(geo.slot_w, TILE_SLOT_PX);
+        assert!(geo.slot_w >= TILE_SLOT_MIN_PX);
+        assert!(used_w <= area.w);
     }
 
     #[test]
-    fn compute_tile_grid_geometry_uses_fixed_slot_size() {
+    fn compute_tile_grid_geometry_fills_available_width() {
+        // 848 wide area with 6 cols + 5 gaps (=40) leaves 808px for slots,
+        // so slot_w = 134. The packed grid_w should match within one column.
         let area = Rect {
             x: 50,
             y: 100,
@@ -2849,9 +2863,15 @@ Exec=foot
             h: 450,
         };
         let geo = compute_tile_grid_geometry(area);
-        assert_eq!(geo.slot_w, TILE_SLOT_PX);
-        assert_eq!(geo.slot_h, TILE_SLOT_PX);
-        assert_eq!(geo.cols, TILE_GRID_COLS);
+        let grid_w = geo.slot_w * TILE_GRID_COLS as i32 + geo.gap * (TILE_GRID_COLS as i32 - 1);
+        let leftover = area.w - grid_w;
+        assert!(
+            leftover < geo.slot_w,
+            "leftover {} must be < one slot {} so the grid fills the area",
+            leftover,
+            geo.slot_w
+        );
+        assert!(geo.slot_w >= 100, "slot_w should be >= 100 at this width, got {}", geo.slot_w);
     }
 
     #[test]
@@ -2863,13 +2883,13 @@ Exec=foot
             h: 450,
         };
         let geo = compute_tile_grid_geometry(area);
-        let grid_w = TILE_SLOT_PX * TILE_GRID_COLS as i32 + TILE_GAP * (TILE_GRID_COLS as i32 - 1);
-        assert_eq!(geo.origin_x, area.x + (area.w - grid_w) / 2);
+        let grid_w = geo.slot_w * TILE_GRID_COLS as i32 + geo.gap * (TILE_GRID_COLS as i32 - 1);
+        assert_eq!(geo.origin_x, area.x + (area.w - grid_w).max(0) / 2);
         assert_eq!(geo.origin_y, area.y);
     }
 
     #[test]
-    fn compute_tile_grid_geometry_yields_at_least_five_rows_for_phase2a_tile_area() {
+    fn compute_tile_grid_geometry_yields_at_least_three_rows_for_phase2a_tile_area() {
         let area = Rect {
             x: 0,
             y: 0,
@@ -2878,8 +2898,8 @@ Exec=foot
         };
         let geo = compute_tile_grid_geometry(area);
         assert!(
-            geo.rows >= 5,
-            "expected >=5 rows at slot 80, got {}",
+            geo.rows >= 3,
+            "expected >=3 rows for tile_area at slot ~134, got {}",
             geo.rows
         );
     }

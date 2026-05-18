@@ -194,8 +194,8 @@ pub(crate) fn initialize(
             .map(String::as_str)
             .collect::<Vec<_>>();
         icon_cache.warm(&icon_refs, 24);
-        icon_cache.warm(&icon_refs, 56);
-        icon_cache.warm(&icon_refs, 128);
+        icon_cache.warm(&icon_refs, 96);
+        icon_cache.warm(&icon_refs, 192);
     }
     let mut network_controller = NetworkController::new();
     network_controller.poll();
