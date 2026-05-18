@@ -194,6 +194,7 @@ pub(crate) struct LauncherRenderSignature {
     pub(crate) height: u32,
     pub(crate) query: String,
     pub(crate) mode: crate::launcher::LauncherMode,
+    pub(crate) view: crate::launcher::LauncherView,
     pub(crate) sidebar_category: crate::launcher::SidebarCategory,
     pub(crate) pending_action_confirmation: Option<crate::launcher::LauncherAction>,
     pub(crate) selected_index: usize,
@@ -318,7 +319,7 @@ pub(crate) struct MeridianShell {
 #[cfg(test)]
 mod tests {
     use super::{LauncherRenderSignature, ThemeRenderSignature};
-    use crate::launcher::{LauncherAction, LauncherMode, SidebarCategory};
+    use crate::launcher::{LauncherAction, LauncherMode, LauncherView, SidebarCategory};
 
     fn base_launcher_signature() -> LauncherRenderSignature {
         LauncherRenderSignature {
@@ -327,6 +328,7 @@ mod tests {
             height: 520,
             query: String::new(),
             mode: LauncherMode::Apps,
+            view: LauncherView::TileStart,
             sidebar_category: SidebarCategory::System,
             pending_action_confirmation: None,
             selected_index: 0,
@@ -346,5 +348,14 @@ mod tests {
         with_confirmation.pending_action_confirmation = Some(LauncherAction::ExitMeridian);
 
         assert_ne!(without_confirmation, with_confirmation);
+    }
+
+    #[test]
+    fn launcher_signature_changes_with_view() {
+        let tile_start = base_launcher_signature();
+        let mut all_apps = base_launcher_signature();
+        all_apps.view = LauncherView::AllApps;
+
+        assert_ne!(tile_start, all_apps);
     }
 }
