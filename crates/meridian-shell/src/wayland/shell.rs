@@ -195,8 +195,9 @@ pub(crate) struct LauncherRenderSignature {
     pub(crate) query: String,
     pub(crate) mode: crate::launcher::LauncherMode,
     pub(crate) view: crate::launcher::LauncherView,
-    pub(crate) pinned_tiles_hash: u64,
-    pub(crate) hover_pinned_tile: Option<(u8, u8)>,
+    pub(crate) app_tiles_hash: u64,
+    pub(crate) hover_app_tile: Option<(u8, u8)>,
+    pub(crate) tile_scroll_y: i32,
     pub(crate) sidebar_category: crate::launcher::SidebarCategory,
     pub(crate) pending_action_confirmation: Option<crate::launcher::LauncherAction>,
     pub(crate) selected_index: usize,
@@ -331,8 +332,9 @@ mod tests {
             query: String::new(),
             mode: LauncherMode::Apps,
             view: LauncherView::TileStart,
-            pinned_tiles_hash: 0,
-            hover_pinned_tile: None,
+            app_tiles_hash: 0,
+            hover_app_tile: None,
+            tile_scroll_y: 0,
             sidebar_category: SidebarCategory::System,
             pending_action_confirmation: None,
             selected_index: 0,
@@ -364,18 +366,26 @@ mod tests {
     }
 
     #[test]
-    fn launcher_signature_changes_with_hover_pinned_tile() {
+    fn launcher_signature_changes_with_hover_app_tile() {
         let without = base_launcher_signature();
         let mut with = base_launcher_signature();
-        with.hover_pinned_tile = Some((1, 0));
+        with.hover_app_tile = Some((1, 0));
         assert_ne!(without, with);
     }
 
     #[test]
-    fn launcher_signature_changes_with_pinned_tiles_hash() {
+    fn launcher_signature_changes_with_app_tiles_hash() {
         let zero = base_launcher_signature();
         let mut other = base_launcher_signature();
-        other.pinned_tiles_hash = 0xdead_beef;
+        other.app_tiles_hash = 0xdead_beef;
         assert_ne!(zero, other);
+    }
+
+    #[test]
+    fn launcher_signature_changes_with_tile_scroll() {
+        let a = base_launcher_signature();
+        let mut b = base_launcher_signature();
+        b.tile_scroll_y = 80;
+        assert_ne!(a, b);
     }
 }

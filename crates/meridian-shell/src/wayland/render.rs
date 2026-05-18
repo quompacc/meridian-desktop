@@ -106,7 +106,7 @@ impl MeridianShell {
         hasher.finish()
     }
 
-    fn pinned_tiles_hash(tiles: &[crate::launcher::PinnedTile]) -> u64 {
+    fn app_tiles_hash(tiles: &[crate::launcher::AppTile]) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         for tile in tiles {
             tile.col.hash(&mut hasher);
@@ -130,8 +130,9 @@ impl MeridianShell {
             query: self.launcher_state.query.clone(),
             mode: self.launcher_state.current_mode(),
             view: self.launcher_state.view(),
-            pinned_tiles_hash: Self::pinned_tiles_hash(&self.launcher_state.pinned_tiles),
-            hover_pinned_tile: self.launcher_state.hover_pinned_tile,
+            app_tiles_hash: Self::app_tiles_hash(&self.launcher_state.app_tiles),
+            hover_app_tile: self.launcher_state.hover_app_tile,
+            tile_scroll_y: self.launcher_state.tile_scroll_y,
             sidebar_category: self.launcher_state.sidebar_category,
             pending_action_confirmation: self.launcher_state.pending_action_confirmation(),
             selected_index: self.launcher_state.selected_index,

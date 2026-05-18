@@ -67,10 +67,9 @@ const TILE_GRID_COLS: u8 = 6;
 const TILE_SLOT_PX: i32 = 80;
 const TILE_GAP: i32 = 8;
 const TILE_LABEL_H: i32 = 18;
-const TILE_ICON_SIZE_SMALL: u32 = 32;
-const TILE_ICON_SIZE_MEDIUM: u32 = 48;
-const TILE_ICON_SIZE_WIDE: u32 = 64;
-const MAX_PINNED_TILES: usize = 12;
+const TILE_ICON_SIZE_SMALL: u32 = 56;
+const TILE_ICON_SIZE_MEDIUM: u32 = 128;
+const TILE_ICON_SIZE_WIDE: u32 = 128;
 const SIDEBAR_ITEM_X_INSET: i32 = 8;
 const SIDEBAR_ITEM_W_INSET: i32 = 16;
 const SIDEBAR_ITEM_H: i32 = 24;
@@ -250,7 +249,7 @@ impl TileSize {
 }
 
 #[derive(Debug, Clone)]
-pub struct PinnedTile {
+pub struct AppTile {
     pub app_index: usize,
     pub size: TileSize,
     pub col: u8,
@@ -724,9 +723,11 @@ pub struct LauncherState {
     pub selected_index: usize,
     pub clicks: Vec<ClickZone>,
     pub apps: Vec<DesktopApp>,
-    pub pinned_tiles: Vec<PinnedTile>,
-    pub(crate) pinned_tiles_cached_rows: u8,
-    pub hover_pinned_tile: Option<(u8, u8)>,
+    pub app_tiles: Vec<AppTile>,
+    pub hover_app_tile: Option<(u8, u8)>,
+    pub tile_scroll_y: i32,
+    pub tile_content_h_cache: i32,
+    pub tile_viewport_h_cache: i32,
     pub sidebar_category: SidebarCategory,
     pending_action_confirmation: Option<LauncherAction>,
     view: LauncherView,
@@ -763,94 +764,79 @@ fn search_match_rank(app: &DesktopApp, query: &str) -> u8 {
     }
 }
 
-fn default_tile_size_for_app(app: &DesktopApp) -> TileSize {
-    let name = app.name_key.as_str();
-    const WIDE: &[&str] = &["firefox", "chromium", "chrome", "brave"];
-    const MEDIUM: &[&str] = &[
-        "terminal",
-        "foot",
-        "alacritty",
-        "kitty",
-        "wezterm",
-        "ghostty",
-        "konsole",
-        "kgx",
-        "dolphin",
-        "nautilus",
-        "thunar",
-        "nemo",
-    ];
-    if WIDE.iter().any(|needle| name.contains(needle)) {
-        return TileSize::Wide;
+fn random_tile_size_for_app(app: &DesktopApp) -> TileSize {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    app.name_key.hash(&mut hasher);
+    let bucket = hasher.finish() % 100;
+    if bucket < 10 {
+        TileSize::Wide
+    } else if bucket < 40 {
+        TileSize::Medium
+    } else {
+        TileSize::Small
     }
-    if MEDIUM.iter().any(|needle| name.contains(needle)) {
-        return TileSize::Medium;
-    }
-    TileSize::Small
 }
 
-fn pack_pinned_tiles(apps: &[DesktopApp], max_rows: u8) -> Vec<PinnedTile> {
-    if max_rows == 0 {
-        return Vec::new();
-    }
+fn pack_app_tiles(apps: &[DesktopApp]) -> Vec<AppTile> {
     let cols = TILE_GRID_COLS as usize;
-    let rows = max_rows as usize;
+    let mut rows = 1usize;
     let mut occupied = vec![false; cols * rows];
     let mut tiles = Vec::new();
 
     for (app_index, app) in apps.iter().enumerate() {
-        if !is_pinned_candidate(app) {
-            continue;
-        }
-        if tiles.len() >= MAX_PINNED_TILES {
-            break;
-        }
-
-        let size = default_tile_size_for_app(app);
+        let size = random_tile_size_for_app(app);
         let (tile_w, tile_h) = size.grid_units();
         let tile_w = tile_w as usize;
         let tile_h = tile_h as usize;
-        if tile_w > cols || tile_h > rows {
+        if tile_w > cols {
             continue;
         }
 
         let mut found = None;
-        for row in 0..rows {
-            for col in 0..cols {
-                if col + tile_w > cols || row + tile_h > rows {
-                    continue;
-                }
-                let mut fits = true;
-                for yy in row..(row + tile_h) {
-                    for xx in col..(col + tile_w) {
-                        if occupied[yy * cols + xx] {
-                            fits = false;
+        while found.is_none() {
+            for row in 0..rows {
+                for col in 0..cols {
+                    if col + tile_w > cols || row + tile_h > rows {
+                        continue;
+                    }
+                    let mut fits = true;
+                    for yy in row..(row + tile_h) {
+                        for xx in col..(col + tile_w) {
+                            if occupied[yy * cols + xx] {
+                                fits = false;
+                                break;
+                            }
+                        }
+                        if !fits {
                             break;
                         }
                     }
-                    if !fits {
+                    if fits {
+                        found = Some((col, row));
                         break;
                     }
                 }
-                if fits {
-                    found = Some((col, row));
+                if found.is_some() {
                     break;
                 }
             }
-            if found.is_some() {
-                break;
+
+            if found.is_none() {
+                rows += 1;
+                occupied.extend(std::iter::repeat_n(false, cols));
             }
         }
 
-        let Some((col, row)) = found else {
-            break;
-        };
+        let Some((col, row)) = found else { continue };
         for yy in row..(row + tile_h) {
             for xx in col..(col + tile_w) {
                 occupied[yy * cols + xx] = true;
             }
         }
-        tiles.push(PinnedTile {
+        tiles.push(AppTile {
             app_index,
             size,
             col: col as u8,
@@ -914,7 +900,7 @@ impl LauncherState {
     }
 
     pub fn new_with_apps(apps: Vec<DesktopApp>) -> Self {
-        let pinned_tiles = pack_pinned_tiles(&apps, 4);
+        let app_tiles = pack_app_tiles(&apps);
         Self {
             open: false,
             query: String::new(),
@@ -922,9 +908,11 @@ impl LauncherState {
             sidebar_category: SidebarCategory::Favorites,
             clicks: Vec::new(),
             apps,
-            pinned_tiles,
-            pinned_tiles_cached_rows: 4,
-            hover_pinned_tile: None,
+            app_tiles,
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
         }
@@ -934,14 +922,16 @@ impl LauncherState {
         self.open = !self.open;
         if self.open {
             self.apps = DesktopApp::load_system();
-            self.pinned_tiles = pack_pinned_tiles(&self.apps, 4);
-            self.pinned_tiles_cached_rows = 4;
+            self.app_tiles = pack_app_tiles(&self.apps);
         }
         self.query.clear();
         self.selected_index = 0;
         self.sidebar_category = SidebarCategory::Favorites;
         self.pending_action_confirmation = None;
-        self.hover_pinned_tile = None;
+        self.hover_app_tile = None;
+        self.tile_scroll_y = 0;
+        self.tile_content_h_cache = 0;
+        self.tile_viewport_h_cache = 0;
         self.view = LauncherView::TileStart;
         self.open
     }
@@ -952,7 +942,10 @@ impl LauncherState {
         self.selected_index = 0;
         self.sidebar_category = SidebarCategory::Favorites;
         self.pending_action_confirmation = None;
-        self.hover_pinned_tile = None;
+        self.hover_app_tile = None;
+        self.tile_scroll_y = 0;
+        self.tile_content_h_cache = 0;
+        self.tile_viewport_h_cache = 0;
         self.view = LauncherView::TileStart;
     }
 
@@ -975,8 +968,18 @@ impl LauncherState {
         self.view = view;
         self.selected_index = 0;
         self.pending_action_confirmation = None;
-        self.hover_pinned_tile = None;
+        self.hover_app_tile = None;
         true
+    }
+
+    pub fn scroll_tile_area(&mut self, delta_y: i32, viewport_h: i32, content_h: i32) -> bool {
+        let max = (content_h - viewport_h).max(0);
+        let next = (self.tile_scroll_y + delta_y).clamp(0, max);
+        if next != self.tile_scroll_y {
+            self.tile_scroll_y = next;
+            return true;
+        }
+        false
     }
 
     pub fn current_mode(&self) -> LauncherMode {
@@ -1135,14 +1138,14 @@ impl LauncherState {
             false
         };
 
-        let hover_changed = self.update_pinned_hover(x, y);
+        let hover_changed = self.update_app_hover(x, y);
         selected_changed || hover_changed
     }
 
-    pub fn update_pinned_hover(&mut self, x: f64, y: f64) -> bool {
+    pub fn update_app_hover(&mut self, x: f64, y: f64) -> bool {
         if self.view != LauncherView::TileStart {
-            if self.hover_pinned_tile.is_some() {
-                self.hover_pinned_tile = None;
+            if self.hover_app_tile.is_some() {
+                self.hover_app_tile = None;
                 return true;
             }
             return false;
@@ -1152,8 +1155,7 @@ impl LauncherState {
         for zone in &self.clicks {
             if let ClickAction::LaunchApp(idx) = zone.action {
                 if zone.rect.contains(x, y) {
-                    if let Some(tile) = self.pinned_tiles.iter().find(|tile| tile.app_index == idx)
-                    {
+                    if let Some(tile) = self.app_tiles.iter().find(|tile| tile.app_index == idx) {
                         found = Some((tile.col, tile.row));
                         break;
                     }
@@ -1161,8 +1163,8 @@ impl LauncherState {
             }
         }
 
-        if self.hover_pinned_tile != found {
-            self.hover_pinned_tile = found;
+        if self.hover_app_tile != found {
+            self.hover_app_tile = found;
             return true;
         }
         false
@@ -2117,63 +2119,40 @@ fn draw_tile_start_view(
     painter.rect(card, colors.surface_alt);
     subtle_border(painter, card, theme);
 
-    painter.text_clipped(
-        font,
-        "Launcher",
-        header.x,
-        header.y + HEADER_TITLE_BASELINE_OFFSET,
-        (header.w - HEADER_COUNT_WIDTH - HEADER_COUNT_RIGHT_INSET - HEADER_TITLE_TO_COUNT_GAP)
-            .max(0),
-        colors.text,
-    );
-    let mut count_text_buf = [0u8; 32];
-    let count_text = result_count_label(results_total, &mut count_text_buf);
-    painter.text_clipped(
-        font,
-        count_text,
-        header.x + header.w - HEADER_COUNT_WIDTH - HEADER_COUNT_RIGHT_INSET,
-        header.y + HEADER_COUNT_BASELINE_OFFSET,
-        HEADER_COUNT_WIDTH,
-        colors.border,
-    );
-
-    painter.rect(search, colors.surface);
-    subtle_border(painter, search, theme);
-    draw_active_indicator(painter, search, ActiveIndicatorEdge::Bottom, theme);
-    let query_text = if launcher_state.query.is_empty() {
-        "Search apps by name or executable"
-    } else {
-        &launcher_state.query
-    };
-    let query_color = if launcher_state.query.is_empty() {
-        colors.border
-    } else {
-        colors.text
-    };
-    painter.text_clipped(
-        font,
-        query_text,
-        search.x + tokens::launcher::INNER_PADDING,
-        search.y + SEARCH_TEXT_BASELINE_OFFSET,
-        search.w - tokens::launcher::INNER_PADDING * 2,
-        query_color,
-    );
-
     painter.rect(tile_area, colors.surface_alt);
-    painter.stroke_rect(tile_area, colors.border);
-
     let geo = compute_tile_grid_geometry(tile_area);
-    if launcher_state.pinned_tiles_cached_rows != geo.rows {
-        launcher_state.pinned_tiles = pack_pinned_tiles(&launcher_state.apps, geo.rows);
-        launcher_state.pinned_tiles_cached_rows = geo.rows;
-    }
+    debug_assert!(geo.rows >= 1);
+    launcher_state.tile_viewport_h_cache = tile_area.h;
 
-    for tile in &launcher_state.pinned_tiles {
-        if tile.col >= geo.cols || tile.row >= geo.rows {
+    let max_row_units = launcher_state
+        .app_tiles
+        .iter()
+        .map(|tile| tile.row as i32 + tile.size.grid_units().1 as i32)
+        .max()
+        .unwrap_or(0);
+    let content_h = if max_row_units == 0 {
+        0
+    } else {
+        max_row_units * (geo.slot_h + geo.gap) + geo.slot_h
+    };
+    launcher_state.tile_content_h_cache = content_h;
+    let max_scroll = (content_h - tile_area.h).max(0);
+    launcher_state.tile_scroll_y = launcher_state.tile_scroll_y.clamp(0, max_scroll);
+
+    for tile in &launcher_state.app_tiles {
+        if tile.col >= geo.cols {
             continue;
         }
-        let rect = geo.tile_rect(tile.col, tile.row, tile.size);
-        let is_hovered = launcher_state.hover_pinned_tile == Some((tile.col, tile.row));
+        let raw_rect = geo.tile_rect(tile.col, tile.row, tile.size);
+        let rect = Rect {
+            y: raw_rect.y - launcher_state.tile_scroll_y,
+            ..raw_rect
+        };
+        if rect.y + rect.h <= card.y || rect.y >= card.y + card.h {
+            continue;
+        }
+
+        let is_hovered = launcher_state.hover_app_tile == Some((tile.col, tile.row));
         let tile_bg = if is_hovered {
             theme.colors.accent_alt
         } else {
@@ -2192,7 +2171,7 @@ fn draw_tile_start_view(
         };
         let icon_size_i32 = icon_size as i32;
         let icon_y = rect.y + (rect.h - TILE_LABEL_H - icon_size_i32).max(0) / 2;
-        let icon_x = rect.x + (rect.w - icon_size_i32).max(0) / 2;
+        let icon_x = rect.x + (rect.w - icon_size_i32) / 2;
         let icon_rect = Rect {
             x: icon_x,
             y: icon_y,
@@ -2234,6 +2213,73 @@ fn draw_tile_start_view(
             action: ClickAction::LaunchApp(tile.app_index),
         });
     }
+
+    if content_h > tile_area.h {
+        let track = Rect {
+            x: tile_area.x + tile_area.w - 6,
+            y: tile_area.y,
+            w: 6,
+            h: tile_area.h,
+        };
+        painter.rect(track, theme.colors.border);
+        let handle_h =
+            ((tile_area.h as f32 * tile_area.h as f32) / content_h as f32).max(20.0) as i32;
+        let scroll_range = (content_h - tile_area.h).max(1);
+        let handle_y = tile_area.y
+            + ((tile_area.h - handle_h) as f32
+                * (launcher_state.tile_scroll_y as f32 / scroll_range as f32)) as i32;
+        painter.rect(
+            Rect {
+                x: track.x,
+                y: handle_y,
+                w: track.w,
+                h: handle_h,
+            },
+            theme.colors.accent,
+        );
+    }
+
+    painter.text_clipped(
+        font,
+        "Launcher",
+        header.x,
+        header.y + HEADER_TITLE_BASELINE_OFFSET,
+        (header.w - HEADER_COUNT_WIDTH - HEADER_COUNT_RIGHT_INSET - HEADER_TITLE_TO_COUNT_GAP)
+            .max(0),
+        colors.text,
+    );
+    let mut count_text_buf = [0u8; 32];
+    let count_text = result_count_label(results_total, &mut count_text_buf);
+    painter.text_clipped(
+        font,
+        count_text,
+        header.x + header.w - HEADER_COUNT_WIDTH - HEADER_COUNT_RIGHT_INSET,
+        header.y + HEADER_COUNT_BASELINE_OFFSET,
+        HEADER_COUNT_WIDTH,
+        colors.border,
+    );
+
+    painter.rect(search, colors.surface);
+    subtle_border(painter, search, theme);
+    draw_active_indicator(painter, search, ActiveIndicatorEdge::Bottom, theme);
+    let query_text = if launcher_state.query.is_empty() {
+        "Search apps by name or executable"
+    } else {
+        &launcher_state.query
+    };
+    let query_color = if launcher_state.query.is_empty() {
+        colors.border
+    } else {
+        colors.text
+    };
+    painter.text_clipped(
+        font,
+        query_text,
+        search.x + tokens::launcher::INNER_PADDING,
+        search.y + SEARCH_TEXT_BASELINE_OFFSET,
+        search.w - tokens::launcher::INNER_PADDING * 2,
+        query_color,
+    );
 
     fill_surface_with_radius(
         painter,
@@ -2354,12 +2400,12 @@ mod tests {
     };
 
     use super::{
-        app_initial, compute_launcher_layout, compute_tile_grid_geometry,
-        default_tile_size_for_app, desktop_app_dirs, is_executable_available, pack_pinned_tiles,
-        parse_exec_argv, ClickAction, ClickZone, DesktopApp, LauncherAction,
-        LauncherActionActivationResult, LauncherInputResult, LauncherState, LauncherView,
-        PinnedTile, Rect, SidebarCategory, TileSize, FOOTER_ACTION_BUTTON_H, FOOTER_BAR_V_PADDING,
-        MAX_RESULTS, TILE_GAP, TILE_GRID_COLS, TILE_SLOT_PX, XDG_DATA_DIRS_DEFAULT,
+        app_initial, compute_launcher_layout, compute_tile_grid_geometry, desktop_app_dirs,
+        is_executable_available, pack_app_tiles, parse_exec_argv, random_tile_size_for_app,
+        AppTile, ClickAction, ClickZone, DesktopApp, LauncherAction,
+        LauncherActionActivationResult, LauncherInputResult, LauncherState, LauncherView, Rect,
+        SidebarCategory, TileSize, FOOTER_ACTION_BUTTON_H, FOOTER_BAR_V_PADDING, MAX_RESULTS,
+        TILE_GAP, TILE_GRID_COLS, TILE_SLOT_PX, XDG_DATA_DIRS_DEFAULT,
     };
     use crate::{icons::IconCache, Painter};
 
@@ -2660,38 +2706,67 @@ Exec=foot
     }
 
     #[test]
-    fn default_tile_size_for_firefox_is_wide() {
-        let app = pinned_test_app("Firefox");
-        assert_eq!(default_tile_size_for_app(&app), TileSize::Wide);
+    fn random_tile_size_is_deterministic_for_same_name() {
+        let app = pinned_test_app("app042");
+        let a = random_tile_size_for_app(&app);
+        let b = random_tile_size_for_app(&app);
+        assert_eq!(a, b);
     }
 
     #[test]
-    fn default_tile_size_for_terminal_is_medium() {
-        let app = pinned_test_app("kitty");
-        assert_eq!(default_tile_size_for_app(&app), TileSize::Medium);
-    }
-
-    #[test]
-    fn default_tile_size_for_dolphin_is_medium() {
-        let app = pinned_test_app("dolphin");
-        assert_eq!(default_tile_size_for_app(&app), TileSize::Medium);
-    }
-
-    #[test]
-    fn default_tile_size_for_unknown_is_small() {
-        let app = pinned_test_app("Calculator");
-        assert_eq!(default_tile_size_for_app(&app), TileSize::Small);
-    }
-
-    #[test]
-    fn pack_pinned_tiles_places_small_tiles_left_to_right() {
-        let mut apps = Vec::new();
-        for idx in 0..6 {
-            let mut app = pinned_test_app(&format!("app-{idx}"));
-            app.program = "firefox".to_string();
-            apps.push(app);
+    fn random_tile_size_distribution_is_roughly_60_30_10() {
+        let mut wide_count = 0usize;
+        let mut medium_count = 0usize;
+        let mut small_count = 0usize;
+        for idx in 0..200 {
+            let app = pinned_test_app(&format!("app{idx:03}"));
+            match random_tile_size_for_app(&app) {
+                TileSize::Wide => wide_count += 1,
+                TileSize::Medium => medium_count += 1,
+                TileSize::Small => small_count += 1,
+            }
         }
-        let tiles = pack_pinned_tiles(&apps, 3);
+        assert!(wide_count <= 30, "wide_count too high: {wide_count}");
+        assert!(
+            (40..=80).contains(&medium_count),
+            "medium_count out of range: {medium_count}"
+        );
+        assert!(small_count >= 90, "small_count too low: {small_count}");
+    }
+
+    #[test]
+    fn random_tile_size_two_different_names_can_differ() {
+        let mut found = false;
+        for a_idx in 0..40 {
+            for b_idx in (a_idx + 1)..40 {
+                let a = pinned_test_app(&format!("app{a_idx:03}"));
+                let b = pinned_test_app(&format!("app{b_idx:03}"));
+                if random_tile_size_for_app(&a) != random_tile_size_for_app(&b) {
+                    found = true;
+                    break;
+                }
+            }
+            if found {
+                break;
+            }
+        }
+        assert!(found, "expected at least one differing random tile size");
+    }
+
+    #[test]
+    fn pack_app_tiles_places_tiles_left_to_right() {
+        let mut apps = Vec::new();
+        for idx in 0..500 {
+            let app = pinned_test_app(&format!("app{idx:03}"));
+            if random_tile_size_for_app(&app) == TileSize::Small {
+                apps.push(app);
+            }
+            if apps.len() == 6 {
+                break;
+            }
+        }
+        assert_eq!(apps.len(), 6, "need at least 6 small apps for this test");
+        let tiles = pack_app_tiles(&apps);
         assert_eq!(tiles.len(), 6);
         for (idx, tile) in tiles.iter().enumerate() {
             assert_eq!(tile.col, idx as u8);
@@ -2701,29 +2776,42 @@ Exec=foot
     }
 
     #[test]
-    fn pack_pinned_tiles_wraps_to_next_row_when_row_full() {
+    fn pack_app_tiles_wraps_to_next_row_when_row_full() {
         let mut apps = Vec::new();
-        for idx in 0..7 {
-            let mut app = pinned_test_app(&format!("app-{idx}"));
-            app.program = "firefox".to_string();
-            apps.push(app);
+        for idx in 0..600 {
+            let app = pinned_test_app(&format!("app{idx:03}"));
+            if random_tile_size_for_app(&app) == TileSize::Small {
+                apps.push(app);
+            }
+            if apps.len() == 7 {
+                break;
+            }
         }
-        let tiles = pack_pinned_tiles(&apps, 3);
+        assert_eq!(apps.len(), 7, "need at least 7 small apps for this test");
+        let tiles = pack_app_tiles(&apps);
         assert_eq!(tiles.len(), 7);
         assert_eq!(tiles[6].col, 0);
         assert_eq!(tiles[6].row, 1);
     }
 
     #[test]
-    fn pack_pinned_tiles_keeps_wide_in_one_row() {
-        let mut wide = pinned_test_app("Firefox");
-        wide.program = "firefox".to_string();
-        let mut small_a = pinned_test_app("alpha");
-        small_a.program = "kitty".to_string();
-        let mut small_b = pinned_test_app("beta");
-        small_b.program = "dolphin".to_string();
-
-        let tiles = pack_pinned_tiles(&[wide, small_a, small_b], 2);
+    fn pack_app_tiles_keeps_wide_in_one_row() {
+        let mut wide = None;
+        let mut small = Vec::new();
+        for idx in 0..2000 {
+            let app = pinned_test_app(&format!("app{idx:04}"));
+            match random_tile_size_for_app(&app) {
+                TileSize::Wide if wide.is_none() => wide = Some(app),
+                TileSize::Small if small.len() < 2 => small.push(app),
+                _ => {}
+            }
+            if wide.is_some() && small.len() == 2 {
+                break;
+            }
+        }
+        let wide = wide.expect("need one wide app");
+        assert_eq!(small.len(), 2, "need two small apps");
+        let tiles = pack_app_tiles(&[wide, small[0].clone(), small[1].clone()]);
         assert_eq!(tiles.len(), 3);
         assert_eq!(tiles[0].size, TileSize::Wide);
         assert_eq!((tiles[0].col, tiles[0].row), (0, 0));
@@ -2732,10 +2820,11 @@ Exec=foot
     }
 
     #[test]
-    fn pack_pinned_tiles_skips_tile_that_does_not_fit_vertically() {
-        let app = pinned_test_app("kitty");
-        let tiles = pack_pinned_tiles(&[app], 1);
-        assert!(tiles.is_empty());
+    fn app_tile_count_matches_loaded_apps() {
+        let apps = DesktopApp::load_system();
+        let tiles = pack_app_tiles(&apps);
+        eprintln!("APP_TILE_COUNT={}", tiles.len());
+        assert_eq!(tiles.len(), apps.len());
     }
 
     #[test]
@@ -2796,18 +2885,24 @@ Exec=foot
     }
 
     #[test]
-    fn pack_pinned_tiles_fits_wide_plus_two_medium() {
-        let apps = vec![
-            pinned_test_app("firefox"),
-            pinned_test_app("kitty"),
-            pinned_test_app("dolphin"),
-        ];
-        let tiles = pack_pinned_tiles(&apps, 5);
-        assert_eq!(
-            tiles.len(),
-            3,
-            "all three should fit when 5 rows are available"
-        );
+    fn scroll_tile_area_clamps_to_zero_when_content_fits_viewport() {
+        let mut state = LauncherState::new_with_apps(Vec::new());
+        assert!(!state.scroll_tile_area(120, 500, 400));
+        assert_eq!(state.tile_scroll_y, 0);
+    }
+
+    #[test]
+    fn scroll_tile_area_clamps_to_max_at_end() {
+        let mut state = LauncherState::new_with_apps(Vec::new());
+        assert!(state.scroll_tile_area(9_999, 200, 1_000));
+        assert_eq!(state.tile_scroll_y, 800);
+    }
+
+    #[test]
+    fn scroll_tile_area_returns_true_when_position_changes() {
+        let mut state = LauncherState::new_with_apps(Vec::new());
+        assert!(state.scroll_tile_area(60, 200, 1_000));
+        assert_eq!(state.tile_scroll_y, 60);
     }
 
     #[test]
@@ -3156,9 +3251,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::AllApps,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let moved = state.handle_key(None, false, false, false, false, true);
@@ -3225,9 +3322,11 @@ Exec=viewer %U
             apps: vec![app_with_categories("Settings", "settings", &["settings"])],
             pending_action_confirmation: None,
             view: LauncherView::AllApps,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         assert_eq!(state.visible_actions(), vec![LauncherAction::ExitMeridian]);
@@ -3249,9 +3348,11 @@ Exec=viewer %U
             )],
             pending_action_confirmation: None,
             view: LauncherView::AllApps,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
         assert_eq!(state.visible_actions(), vec![LauncherAction::ExitMeridian]);
 
@@ -3273,9 +3374,11 @@ Exec=viewer %U
             apps: vec![app_with_categories("Settings", "settings", &["settings"])],
             pending_action_confirmation: None,
             view: LauncherView::AllApps,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
         let app_results = state.filtered_apps();
         assert_eq!(app_results.len(), 1);
@@ -3293,9 +3396,11 @@ Exec=viewer %U
             apps: vec![app_with_categories("Settings", "settings", &["settings"])],
             pending_action_confirmation: None,
             view: LauncherView::AllApps,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let result = state.handle_key(None, false, true, false, false, false);
@@ -3316,9 +3421,11 @@ Exec=viewer %U
             apps: vec![app_with_categories("Settings", "settings", &["settings"])],
             pending_action_confirmation: None,
             view: LauncherView::AllApps,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let result = state.handle_key(None, false, true, false, false, false);
@@ -3345,9 +3452,11 @@ Exec=viewer %U
             apps,
             pending_action_confirmation: None,
             view: LauncherView::AllApps,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let visible = state.visible_apps();
@@ -3373,9 +3482,11 @@ Exec=viewer %U
             apps: vec![app_with_categories("Settings", "settings", &["settings"])],
             pending_action_confirmation: None,
             view: LauncherView::AllApps,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let first = state.activate_action(LauncherAction::ExitMeridian);
@@ -3400,9 +3511,11 @@ Exec=viewer %U
             apps: vec![app_with_categories("Settings", "settings", &["settings"])],
             pending_action_confirmation: None,
             view: LauncherView::AllApps,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         assert_eq!(
@@ -3445,9 +3558,11 @@ Exec=viewer %U
             )],
             pending_action_confirmation: None,
             view: LauncherView::AllApps,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let redraw = state.handle_key(Some('t'), false, false, false, false, false);
@@ -3478,9 +3593,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::AllApps,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let changed = state.update_hover_selection(10.0, 10.0);
@@ -3489,7 +3606,7 @@ Exec=viewer %U
     }
 
     #[test]
-    fn update_pinned_hover_sets_and_clears_hover_tile_for_tile_start_view() {
+    fn update_app_hover_sets_and_clears_hover_tile_for_tile_start_view() {
         let mut state = LauncherState {
             open: true,
             query: String::new(),
@@ -3505,22 +3622,24 @@ Exec=viewer %U
                 action: ClickAction::LaunchApp(0),
             }],
             apps: vec![pinned_test_app("Firefox")],
-            pinned_tiles: vec![PinnedTile {
+            app_tiles: vec![AppTile {
                 app_index: 0,
                 size: TileSize::Wide,
                 col: 0,
                 row: 0,
             }],
-            pinned_tiles_cached_rows: 2,
-            hover_pinned_tile: None,
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
         };
 
-        assert!(state.update_pinned_hover(10.0, 10.0));
-        assert_eq!(state.hover_pinned_tile, Some((0, 0)));
-        assert!(state.update_pinned_hover(200.0, 200.0));
-        assert_eq!(state.hover_pinned_tile, None);
+        assert!(state.update_app_hover(10.0, 10.0));
+        assert_eq!(state.hover_app_tile, Some((0, 0)));
+        assert!(state.update_app_hover(200.0, 200.0));
+        assert_eq!(state.hover_app_tile, None);
     }
 
     #[test]
@@ -3545,9 +3664,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let changed = state.update_hover_selection(30.0, 30.0);
@@ -3577,9 +3698,11 @@ Exec=viewer %U
             apps: vec![app_with_categories("Settings", "settings", &["settings"])],
             pending_action_confirmation: None,
             view: LauncherView::AllApps,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let changed = state.update_hover_selection(10.0, 10.0);
@@ -3610,9 +3733,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::AllApps,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         assert!(state.update_hover_selection(5.0, 5.0));
@@ -3638,9 +3763,11 @@ Exec=viewer %U
             )],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let result = state.handle_key(None, false, true, false, false, false);
@@ -3665,9 +3792,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let result = state.handle_key(None, false, true, false, false, false);
@@ -3692,9 +3821,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let visible = state.visible_apps();
@@ -3720,9 +3851,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let visible = state.visible_apps();
@@ -3751,9 +3884,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let visible = state.visible_apps();
@@ -3798,9 +3933,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let visible = state.visible_apps();
@@ -3827,9 +3964,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let visible = state.visible_apps();
@@ -3870,9 +4009,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         assert!(state.set_sidebar_category_from_click(SidebarCategory::Internet.to_click_id()));
@@ -3898,9 +4039,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         assert!(state.set_sidebar_category_from_click(SidebarCategory::Internet.to_click_id()));
@@ -3925,9 +4068,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         assert!(state.set_sidebar_category_from_click(SidebarCategory::AllApps.to_click_id()));
@@ -3952,9 +4097,11 @@ Exec=viewer %U
             )],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         assert!(!state.set_sidebar_category_from_click(SidebarCategory::Favorites.to_click_id()));
@@ -3977,9 +4124,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let visible = state.visible_apps();
@@ -4004,9 +4153,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         let visible = state.visible_apps();
@@ -4032,9 +4183,11 @@ Exec=viewer %U
             ],
             pending_action_confirmation: None,
             view: LauncherView::TileStart,
-            pinned_tiles: Vec::new(),
-            pinned_tiles_cached_rows: 0,
-            hover_pinned_tile: None,
+            app_tiles: Vec::new(),
+            hover_app_tile: None,
+            tile_scroll_y: 0,
+            tile_content_h_cache: 0,
+            tile_viewport_h_cache: 0,
         };
 
         assert!(state.set_sidebar_category_from_click(SidebarCategory::Favorites.to_click_id()));

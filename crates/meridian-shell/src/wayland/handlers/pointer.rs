@@ -70,6 +70,28 @@ impl PointerHandler for MeridianShell {
                 self.draw_workspace_popup(qh, RepaintReason::Pointer);
             }
 
+            if let PointerEventKind::Axis { vertical, .. } = event.kind {
+                if self.pointer_surface == SurfaceKind::Launcher
+                    && self.launcher_state.view() == crate::launcher::LauncherView::TileStart
+                {
+                    let step_px: i32 = 60;
+                    let delta_px = if vertical.discrete != 0 {
+                        vertical.discrete * step_px
+                    } else {
+                        vertical.absolute as i32
+                    };
+                    if delta_px != 0
+                        && self.launcher_state.scroll_tile_area(
+                            delta_px,
+                            self.launcher_state.tile_viewport_h_cache,
+                            self.launcher_state.tile_content_h_cache,
+                        )
+                    {
+                        self.draw_launcher(qh, RepaintReason::Pointer);
+                    }
+                }
+            }
+
             if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
                 let action = match self.pointer_surface {
                     SurfaceKind::Panel => self

@@ -194,9 +194,8 @@ pub(crate) fn initialize(
             .map(String::as_str)
             .collect::<Vec<_>>();
         icon_cache.warm(&icon_refs, 24);
-        for tile_size in [32u32, 48, 64] {
-            icon_cache.warm(&icon_refs, tile_size);
-        }
+        icon_cache.warm(&icon_refs, 56);
+        icon_cache.warm(&icon_refs, 128);
     }
     let mut network_controller = NetworkController::new();
     network_controller.poll();
