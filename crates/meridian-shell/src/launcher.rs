@@ -64,6 +64,7 @@ const FOOTER_ACTION_BUTTON_MAX_W: i32 = 220;
 const TILE_START_SWITCH_BUTTON_W: i32 = 140;
 const ALL_APPS_BACK_BUTTON_W: i32 = 120;
 const TILE_GRID_COLS: u8 = 6;
+const TILE_SLOT_PX: i32 = 104;
 const TILE_GAP: i32 = 8;
 const TILE_LABEL_H: i32 = 18;
 const TILE_ICON_SIZE_SMALL: u32 = 32;
@@ -886,19 +887,20 @@ impl TileGridGeometry {
 fn compute_tile_grid_geometry(area: Rect) -> TileGridGeometry {
     let cols = TILE_GRID_COLS;
     let gap = TILE_GAP;
-    let usable_w = (area.w - gap * (cols as i32 - 1)).max(0);
-    let slot_w = (usable_w / cols as i32).max(0);
-    let slot_h = slot_w;
-    let rows = if slot_h + gap > 0 {
-        (((area.h + gap) / (slot_h + gap)) as u8).max(1)
+    let slot = TILE_SLOT_PX;
+    let grid_w = slot * cols as i32 + gap * (cols as i32 - 1);
+    let origin_x = area.x + (area.w - grid_w) / 2;
+    let origin_y = area.y;
+    let rows = if slot + gap > 0 {
+        (((area.h + gap) / (slot + gap)) as u8).max(1)
     } else {
         1
     };
     TileGridGeometry {
-        origin_x: area.x,
-        origin_y: area.y,
-        slot_w,
-        slot_h,
+        origin_x,
+        origin_y,
+        slot_w: slot,
+        slot_h: slot,
         gap,
         cols,
         rows,
@@ -2173,6 +2175,15 @@ fn draw_tile_start_view(
         let rect = geo.tile_rect(tile.col, tile.row, tile.size);
         painter.rect(rect, theme.colors.surface);
         subtle_border(painter, rect, theme);
+        painter.rect(
+            Rect {
+                x: rect.x,
+                y: rect.y,
+                w: rect.w,
+                h: 2,
+            },
+            theme.colors.accent,
+        );
         if launcher_state.hover_pinned_tile == Some((tile.col, tile.row)) {
             draw_active_indicator(painter, rect, ActiveIndicatorEdge::Bottom, theme);
         }
@@ -2351,7 +2362,7 @@ mod tests {
         parse_exec_argv, ClickAction, ClickZone, DesktopApp, LauncherAction,
         LauncherActionActivationResult, LauncherInputResult, LauncherState, LauncherView,
         PinnedTile, Rect, SidebarCategory, TileSize, FOOTER_ACTION_BUTTON_H, FOOTER_BAR_V_PADDING,
-        MAX_RESULTS, TILE_GRID_COLS, XDG_DATA_DIRS_DEFAULT,
+        MAX_RESULTS, TILE_GAP, TILE_GRID_COLS, TILE_SLOT_PX, XDG_DATA_DIRS_DEFAULT,
     };
     use crate::{icons::IconCache, Painter};
 
@@ -2739,10 +2750,67 @@ Exec=foot
             h: 400,
         };
         let geo = compute_tile_grid_geometry(area);
-        let used_w = geo.slot_w * TILE_GRID_COLS as i32 + geo.gap * (TILE_GRID_COLS as i32 - 1);
         assert_eq!(geo.cols, TILE_GRID_COLS);
-        assert!(geo.slot_w > 0);
-        assert!(used_w <= area.w);
+        assert_eq!(geo.slot_w, TILE_SLOT_PX);
+    }
+
+    #[test]
+    fn compute_tile_grid_geometry_uses_fixed_slot_size() {
+        let area = Rect {
+            x: 50,
+            y: 100,
+            w: 848,
+            h: 450,
+        };
+        let geo = compute_tile_grid_geometry(area);
+        assert_eq!(geo.slot_w, TILE_SLOT_PX);
+        assert_eq!(geo.slot_h, TILE_SLOT_PX);
+        assert_eq!(geo.cols, TILE_GRID_COLS);
+    }
+
+    #[test]
+    fn compute_tile_grid_geometry_centers_grid_horizontally() {
+        let area = Rect {
+            x: 50,
+            y: 100,
+            w: 848,
+            h: 450,
+        };
+        let geo = compute_tile_grid_geometry(area);
+        let grid_w = TILE_SLOT_PX * TILE_GRID_COLS as i32 + TILE_GAP * (TILE_GRID_COLS as i32 - 1);
+        assert_eq!(geo.origin_x, area.x + (area.w - grid_w) / 2);
+        assert_eq!(geo.origin_y, area.y);
+    }
+
+    #[test]
+    fn compute_tile_grid_geometry_yields_four_rows_for_phase2a_tile_area() {
+        let area = Rect {
+            x: 0,
+            y: 0,
+            w: 848,
+            h: 450,
+        };
+        let geo = compute_tile_grid_geometry(area);
+        assert!(
+            geo.rows >= 4,
+            "expected >=4 rows for default tile_area, got {}",
+            geo.rows
+        );
+    }
+
+    #[test]
+    fn pack_pinned_tiles_fits_wide_plus_two_medium_in_four_rows() {
+        let apps = vec![
+            pinned_test_app("firefox"),
+            pinned_test_app("kitty"),
+            pinned_test_app("dolphin"),
+        ];
+        let tiles = pack_pinned_tiles(&apps, 4);
+        assert_eq!(
+            tiles.len(),
+            3,
+            "all three should fit when 4 rows are available"
+        );
     }
 
     #[test]
