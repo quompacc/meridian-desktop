@@ -2243,39 +2243,36 @@ fn draw_tile_start_view(
         );
     }
 
-    // Cover bands above and below the tile_area: tiles that scrolled into
-    // the header/search or footer region get painted over with surface_alt
-    // before the header/search/footer themselves render on top.
-    let cover_left = card.x + 1;
-    let cover_right_excl = card.x + card.w - 1;
-    let cover_w = (cover_right_excl - cover_left).max(0);
-    if cover_w > 0 {
-        let top_cover_h = (tile_area.y - (card.y + 1)).max(0);
-        if top_cover_h > 0 {
-            painter.rect(
-                Rect {
-                    x: cover_left,
-                    y: card.y + 1,
-                    w: cover_w,
-                    h: top_cover_h,
-                },
-                colors.surface_alt,
-            );
-        }
-        let bottom_cover_y = tile_area.y + tile_area.h;
-        let bottom_cover_h = ((card.y + card.h - 1) - bottom_cover_y).max(0);
-        if bottom_cover_h > 0 {
-            painter.rect(
-                Rect {
-                    x: cover_left,
-                    y: bottom_cover_y,
-                    w: cover_w,
-                    h: bottom_cover_h,
-                },
-                colors.surface_alt,
-            );
-        }
+    // Cover bands above and below tile_area, spanning the full canvas
+    // width: tiles that scrolled into the header/search/footer region (or
+    // into the OUTER_PADDING ring between the card border and the canvas
+    // edge) get painted over with surface_alt before the header/search/
+    // footer redraw on top.
+    if tile_area.y > 0 {
+        painter.rect(
+            Rect {
+                x: 0,
+                y: 0,
+                w: width as i32,
+                h: tile_area.y,
+            },
+            colors.surface_alt,
+        );
     }
+    let bottom_cover_y = tile_area.y + tile_area.h;
+    if bottom_cover_y < height as i32 {
+        painter.rect(
+            Rect {
+                x: 0,
+                y: bottom_cover_y,
+                w: width as i32,
+                h: height as i32 - bottom_cover_y,
+            },
+            colors.surface_alt,
+        );
+    }
+    // Cover bands erase the card border on the top/bottom edges; redraw it.
+    subtle_border(painter, card, theme);
 
     painter.text_clipped(
         font,
