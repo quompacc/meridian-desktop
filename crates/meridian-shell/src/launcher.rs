@@ -64,7 +64,7 @@ const FOOTER_ACTION_BUTTON_MAX_W: i32 = 220;
 const TILE_START_SWITCH_BUTTON_W: i32 = 140;
 const ALL_APPS_BACK_BUTTON_W: i32 = 120;
 const TILE_GRID_COLS: u8 = 6;
-const TILE_SLOT_PX: i32 = 104;
+const TILE_SLOT_PX: i32 = 80;
 const TILE_GAP: i32 = 8;
 const TILE_LABEL_H: i32 = 18;
 const TILE_ICON_SIZE_SMALL: u32 = 32;
@@ -2173,20 +2173,14 @@ fn draw_tile_start_view(
             continue;
         }
         let rect = geo.tile_rect(tile.col, tile.row, tile.size);
-        painter.rect(rect, theme.colors.surface);
+        let is_hovered = launcher_state.hover_pinned_tile == Some((tile.col, tile.row));
+        let tile_bg = if is_hovered {
+            theme.colors.accent_alt
+        } else {
+            theme.colors.accent
+        };
+        painter.rect(rect, tile_bg);
         subtle_border(painter, rect, theme);
-        painter.rect(
-            Rect {
-                x: rect.x,
-                y: rect.y,
-                w: rect.w,
-                h: 2,
-            },
-            theme.colors.accent,
-        );
-        if launcher_state.hover_pinned_tile == Some((tile.col, tile.row)) {
-            draw_active_indicator(painter, rect, ActiveIndicatorEdge::Bottom, theme);
-        }
 
         let Some(app) = launcher_state.apps.get(tile.app_index) else {
             continue;
@@ -2215,13 +2209,11 @@ fn draw_tile_start_view(
             let initial = app_initial_char(&app.name);
             let mut initial_buf = [0u8; 4];
             let label = initial.encode_utf8(&mut initial_buf);
-            draw_initial_badge(
-                painter,
+            painter.text_centered(
                 font,
-                icon_rect,
                 label,
-                theme,
-                InteractiveState::Default,
+                icon_rect,
+                crate::ui::primitives::active_accent_foreground(),
             );
         }
 
@@ -2231,7 +2223,12 @@ fn draw_tile_start_view(
             w: rect.w,
             h: TILE_LABEL_H,
         };
-        painter.text_centered(font, &app.name, label_rect, theme.colors.text);
+        painter.text_centered(
+            font,
+            &app.name,
+            label_rect,
+            crate::ui::primitives::active_accent_foreground(),
+        );
         launcher_state.clicks.push(ClickZone {
             rect,
             action: ClickAction::LaunchApp(tile.app_index),
@@ -2783,7 +2780,7 @@ Exec=foot
     }
 
     #[test]
-    fn compute_tile_grid_geometry_yields_four_rows_for_phase2a_tile_area() {
+    fn compute_tile_grid_geometry_yields_at_least_five_rows_for_phase2a_tile_area() {
         let area = Rect {
             x: 0,
             y: 0,
@@ -2792,24 +2789,24 @@ Exec=foot
         };
         let geo = compute_tile_grid_geometry(area);
         assert!(
-            geo.rows >= 4,
-            "expected >=4 rows for default tile_area, got {}",
+            geo.rows >= 5,
+            "expected >=5 rows at slot 80, got {}",
             geo.rows
         );
     }
 
     #[test]
-    fn pack_pinned_tiles_fits_wide_plus_two_medium_in_four_rows() {
+    fn pack_pinned_tiles_fits_wide_plus_two_medium() {
         let apps = vec![
             pinned_test_app("firefox"),
             pinned_test_app("kitty"),
             pinned_test_app("dolphin"),
         ];
-        let tiles = pack_pinned_tiles(&apps, 4);
+        let tiles = pack_pinned_tiles(&apps, 5);
         assert_eq!(
             tiles.len(),
             3,
-            "all three should fit when 4 rows are available"
+            "all three should fit when 5 rows are available"
         );
     }
 
