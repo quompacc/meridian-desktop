@@ -39,38 +39,11 @@ pub fn draw_workspace_popup(
     let total_workspaces = input.total_workspaces.max(1);
 
     painter.clear(colors.surface_alt);
-    painter.rect(
+    painter.stroke_rect(
         Rect {
             x: 0,
             y: 0,
             w: width,
-            h: 1,
-        },
-        colors.border,
-    );
-    painter.rect(
-        Rect {
-            x: 0,
-            y: height - 1,
-            w: width,
-            h: 1,
-        },
-        colors.border,
-    );
-    painter.rect(
-        Rect {
-            x: 0,
-            y: 0,
-            w: 1,
-            h: height,
-        },
-        colors.border,
-    );
-    painter.rect(
-        Rect {
-            x: width - 1,
-            y: 0,
-            w: 1,
             h: height,
         },
         colors.border,

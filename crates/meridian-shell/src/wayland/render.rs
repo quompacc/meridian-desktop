@@ -505,14 +505,14 @@ impl MeridianShell {
             };
 
             let mut painter = Painter::new(canvas, width as i32, height as i32);
-            painter.clear(self.theme.colors.background);
+            painter.clear(self.theme.colors.surface_alt);
             let card = Rect {
                 x: 4,
                 y: 4,
                 w: width as i32 - 8,
                 h: height as i32 - 8,
             };
-            painter.roundish_rect_with_radius(card, self.theme.colors.surface, 12);
+            painter.rect(card, self.theme.colors.surface);
             painter.stroke_rect(card, self.theme.colors.border);
 
             let maybe_model = time::local_date().and_then(|date| {
@@ -604,7 +604,7 @@ impl MeridianShell {
                                 h: (cell_rect.h - 4).max(0),
                             };
                             if highlight.w > 0 && highlight.h > 0 {
-                                painter.roundish_rect(highlight, self.theme.colors.accent);
+                                painter.rect(highlight, self.theme.colors.accent);
                             }
                             painter.text_centered(
                                 &self.font,
