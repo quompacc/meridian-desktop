@@ -1,4 +1,4 @@
-const SHADOW_SIGMA: f32 = 0.55;
+const SHADOW_SIGMA: f32 = 0.70;
 
 fn alpha_to_u8(alpha: f32) -> u8 {
     (alpha.clamp(0.0, 1.0) * 255.0).round() as u8
@@ -138,7 +138,10 @@ pub(crate) fn flip_vertical(pixels: &[u8], width: u32, height: u32) -> Vec<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::{gaussian_falloff, rasterize_corner, rasterize_corner_rect, rasterize_edge_top};
+    use super::{
+        flip_vertical, gaussian_falloff, rasterize_corner, rasterize_corner_rect,
+        rasterize_edge_top,
+    };
 
     #[test]
     fn test_gaussian_falloff_unit_interval() {
@@ -190,6 +193,28 @@ mod tests {
     fn test_rasterize_corner_rect_outer_corner_is_transparent() {
         let pixels = rasterize_corner_rect(40, 12, 0.5);
         assert_eq!(pixels[3], 0);
+    }
+
+    #[test]
+    fn flip_vertical_of_corner_rect_places_max_alpha_at_top_row() {
+        let w = 40u32;
+        let h = 40u32;
+        let pixels = rasterize_corner_rect(w, h, 1.0);
+        let flipped = flip_vertical(&pixels, w, h);
+
+        let top_right_alpha_off = ((w - 1) * 4 + 3) as usize;
+        let bottom_right_alpha_off = (((h - 1) * w + (w - 1)) * 4 + 3) as usize;
+
+        assert!(
+            flipped[top_right_alpha_off] >= 250,
+            "expected ~255, got {}",
+            flipped[top_right_alpha_off]
+        );
+        assert!(
+            flipped[bottom_right_alpha_off] <= 40,
+            "expected near 0, got {}",
+            flipped[bottom_right_alpha_off]
+        );
     }
 
     #[test]

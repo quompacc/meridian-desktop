@@ -108,12 +108,11 @@ impl ShadowCache {
     }
 
     fn rebuild(&mut self, radius_side_px: u32, radius_top_px: u32, base_alpha: f32) {
-        let corner_top_pixels = rasterize_corner_rect(radius_side_px, radius_top_px, base_alpha);
-        let corner_tr_pixels = flip_horizontal(&corner_top_pixels, radius_side_px, radius_top_px);
-        let corner_bottom_pixels =
-            rasterize_corner_rect(radius_side_px, radius_side_px, base_alpha);
-        let corner_br_pixels =
-            flip_horizontal(&corner_bottom_pixels, radius_side_px, radius_side_px);
+        let corner_tl_pixels = rasterize_corner_rect(radius_side_px, radius_top_px, base_alpha);
+        let corner_tr_pixels = flip_horizontal(&corner_tl_pixels, radius_side_px, radius_top_px);
+        let bottom_base = rasterize_corner_rect(radius_side_px, radius_side_px, base_alpha);
+        let corner_bl_pixels = flip_vertical(&bottom_base, radius_side_px, radius_side_px);
+        let corner_br_pixels = flip_horizontal(&corner_bl_pixels, radius_side_px, radius_side_px);
 
         let edge_top_pixels = rasterize_edge_top(radius_top_px, base_alpha);
         let edge_bottom_unflipped = rasterize_edge_top(radius_side_px, base_alpha);
@@ -124,7 +123,7 @@ impl ShadowCache {
         let top_corner_size = (radius_side_px as i32, radius_top_px as i32);
         let bottom_corner_size = (radius_side_px as i32, radius_side_px as i32);
         self.corner_tl = Some(MemoryRenderBuffer::from_slice(
-            &corner_top_pixels,
+            &corner_tl_pixels,
             Fourcc::Abgr8888,
             top_corner_size,
             1,
@@ -140,7 +139,7 @@ impl ShadowCache {
             None,
         ));
         self.corner_bl = Some(MemoryRenderBuffer::from_slice(
-            &corner_bottom_pixels,
+            &corner_bl_pixels,
             Fourcc::Abgr8888,
             bottom_corner_size,
             1,
