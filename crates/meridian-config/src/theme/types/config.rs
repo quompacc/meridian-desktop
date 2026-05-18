@@ -56,7 +56,7 @@ impl Default for Decorations {
         Self {
             border_width: 1,
             corner_radius: 0,
-            shadow: true,
+            shadow: false,
             shadow_radius: 16,
             shadow_radius_top: 8,
             shadow_alpha: 0.18,
@@ -176,7 +176,7 @@ mod tests {
         let decorations = Decorations::default();
         assert_eq!(decorations.border_width, 1);
         assert_eq!(decorations.corner_radius, 0);
-        assert!(decorations.shadow);
+        assert!(!decorations.shadow);
         assert_eq!(decorations.shadow_radius, 16);
         assert_eq!(decorations.shadow_radius_top, 8);
         assert_eq!(decorations.shadow_alpha, 0.18);
@@ -207,7 +207,7 @@ mod tests {
         assert_eq!(config.colors.success, Color::rgb(0x9e, 0xce, 0x6a));
         assert_eq!(config.decorations.border_width, 1);
         assert_eq!(config.decorations.corner_radius, 0);
-        assert!(config.decorations.shadow);
+        assert!(!config.decorations.shadow);
         assert_eq!(config.decorations.shadow_radius, 16);
         assert_eq!(config.decorations.shadow_radius_top, 8);
         assert_eq!(config.decorations.shadow_alpha, 0.18);
