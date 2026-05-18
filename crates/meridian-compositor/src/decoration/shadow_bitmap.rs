@@ -1,4 +1,15 @@
 const SHADOW_SIGMA: f32 = 0.55;
+/// Fraction of the corner's smaller dimension that stays at full
+/// base_alpha (rounded inner contour). Beyond this, gaussian falloff
+/// applies to the remaining distance.
+const SHADOW_CORNER_INNER_FRACTION: f32 = 0.35;
+/// Cap so very large corners don't get an absurdly wide flat core.
+const SHADOW_CORNER_INNER_MAX_PX: f32 = 6.0;
+
+fn corner_inner_inset(width_px: u32, height_px: u32) -> f32 {
+    let smaller = width_px.min(height_px) as f32;
+    (smaller * SHADOW_CORNER_INNER_FRACTION).min(SHADOW_CORNER_INNER_MAX_PX)
+}
 
 fn alpha_to_u8(alpha: f32) -> u8 {
     (alpha.clamp(0.0, 1.0) * 255.0).round() as u8
@@ -17,17 +28,21 @@ pub(crate) fn rasterize_corner(radius_px: u32, base_alpha: f32) -> Vec<u8> {
         return Vec::new();
     }
 
-    let sr = radius_px as f32;
     let inner_x = (radius_px - 1) as f32;
     let inner_y = (radius_px - 1) as f32;
+    let inset = corner_inner_inset(radius_px, radius_px);
+    let outer_diag = (inner_x * inner_x + inner_y * inner_y).sqrt();
+    let falloff_range = (outer_diag - inset).max(1.0);
     let mut out = vec![0u8; (radius_px * radius_px * 4) as usize];
 
     for y in 0..radius_px {
         for x in 0..radius_px {
             let dx = inner_x - x as f32;
             let dy = inner_y - y as f32;
-            let dist = (dx * dx + dy * dy).sqrt() / sr;
-            let alpha = base_alpha * gaussian_falloff(dist.min(1.0));
+            let d = (dx * dx + dy * dy).sqrt();
+            let effective = (d - inset).max(0.0);
+            let t = (effective / falloff_range).min(1.0);
+            let alpha = base_alpha * gaussian_falloff(t);
             let a = alpha_to_u8(alpha);
             let off = ((y * radius_px + x) * 4) as usize;
             out[off] = 0;
@@ -48,18 +63,21 @@ pub(crate) fn rasterize_corner_rect(width_px: u32, height_px: u32, base_alpha: f
         return rasterize_corner(width_px, base_alpha);
     }
 
-    let sw = width_px as f32;
-    let sh = height_px as f32;
     let inner_x = (width_px - 1) as f32;
     let inner_y = (height_px - 1) as f32;
+    let inset = corner_inner_inset(width_px, height_px);
+    let outer_diag = (inner_x * inner_x + inner_y * inner_y).sqrt();
+    let falloff_range = (outer_diag - inset).max(1.0);
     let mut out = vec![0u8; (width_px * height_px * 4) as usize];
 
     for y in 0..height_px {
         for x in 0..width_px {
-            let dx = (inner_x - x as f32) / sw;
-            let dy = (inner_y - y as f32) / sh;
-            let dist = (dx * dx + dy * dy).sqrt();
-            let alpha = base_alpha * gaussian_falloff(dist.min(1.0));
+            let dx = inner_x - x as f32;
+            let dy = inner_y - y as f32;
+            let d = (dx * dx + dy * dy).sqrt();
+            let effective = (d - inset).max(0.0);
+            let t = (effective / falloff_range).min(1.0);
+            let alpha = base_alpha * gaussian_falloff(t);
             let a = alpha_to_u8(alpha);
             let off = ((y * width_px + x) * 4) as usize;
             out[off] = 0;
@@ -211,10 +229,38 @@ mod tests {
             flipped[top_right_alpha_off]
         );
         assert!(
-            flipped[bottom_right_alpha_off] <= 40,
-            "expected near 0, got {}",
+            flipped[bottom_right_alpha_off] <= 100,
+            "expected low alpha, got {}",
             flipped[bottom_right_alpha_off]
         );
+    }
+
+    #[test]
+    fn test_rasterize_corner_rounded_core_extends_inward() {
+        let r = 16u32;
+        let pixels = rasterize_corner(r, 1.0);
+        let inner_off = (((r - 1) * r + (r - 1)) * 4 + 3) as usize;
+        assert_eq!(pixels[inner_off], 255);
+        let near_off = ((12 * r + 12) * 4 + 3) as usize;
+        assert_eq!(
+            pixels[near_off], 255,
+            "pixel within inset should be max alpha"
+        );
+        let outer_off = ((r + 1) * 4 + 3) as usize;
+        assert!(
+            pixels[outer_off] < 30,
+            "pixel near outer corner should be near zero, got {}",
+            pixels[outer_off]
+        );
+    }
+
+    #[test]
+    fn test_rasterize_corner_rect_top_keeps_rounded_core_for_asymmetric() {
+        let pixels = rasterize_corner_rect(16, 8, 1.0);
+        let inner_off = ((7 * 16 + 15) * 4 + 3) as usize;
+        assert_eq!(pixels[inner_off], 255);
+        let near_off = ((7 * 16 + 13) * 4 + 3) as usize;
+        assert_eq!(pixels[near_off], 255);
     }
 
     #[test]
