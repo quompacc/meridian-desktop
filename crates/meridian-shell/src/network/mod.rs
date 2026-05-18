@@ -39,6 +39,7 @@ impl NetworkState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn summary(&self) -> String {
         match self {
             Self::Connected {
