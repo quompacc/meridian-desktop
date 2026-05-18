@@ -17,7 +17,10 @@ use super::{
         DecorationManager, DecorationRenderElement, BUTTON_HEIGHT, BUTTON_ICON_PX, BUTTON_WIDTH,
         TITLE_BAR_HEIGHT,
     },
-    buffers::{effective_shadow_alpha, effective_shadow_radius, update_buffers},
+    buffers::{
+        effective_shadow_alpha, effective_shadow_radius, effective_shadow_radius_top,
+        update_buffers,
+    },
     geometry::{SsdChromeMetrics, SsdFrameMetrics},
 };
 
@@ -228,9 +231,10 @@ impl DecorationManager {
 
         if theme.shadow && bw > 0 {
             let sr = effective_shadow_radius(theme.shadow_radius as i32, deco.is_focused);
+            let srt = effective_shadow_radius_top(theme.shadow_radius_top as i32, deco.is_focused);
             let alpha = effective_shadow_alpha(theme.shadow_alpha, deco.is_focused);
-            if let Some(layout) = chrome.shadow_layout(sr, theme.shadow_offset_y) {
-                let shadow = self.shadow_cache.get_for(sr as u32, alpha);
+            if let Some(layout) = chrome.shadow_layout(sr, srt, theme.shadow_offset_y) {
+                let shadow = self.shadow_cache.get_for(sr as u32, srt as u32, alpha);
 
                 for (rect, buffer) in [
                     (layout.corner_tl, shadow.corner_tl),

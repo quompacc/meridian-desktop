@@ -4,7 +4,7 @@ use smithay::{
 };
 
 use crate::decoration::shadow_bitmap::{
-    flip_horizontal, flip_vertical, rasterize_corner, rasterize_edge_left, rasterize_edge_top,
+    flip_horizontal, flip_vertical, rasterize_corner_rect, rasterize_edge_left, rasterize_edge_top,
 };
 
 pub(crate) struct ShadowBuffers<'a> {
@@ -27,7 +27,8 @@ pub(crate) struct ShadowCache {
     edge_bottom: Option<MemoryRenderBuffer>,
     edge_left: Option<MemoryRenderBuffer>,
     edge_right: Option<MemoryRenderBuffer>,
-    last_radius: u32,
+    last_radius_side: u32,
+    last_radius_top: u32,
     last_alpha: f32,
     initialized: bool,
     #[cfg(test)]
@@ -45,7 +46,8 @@ impl ShadowCache {
             edge_bottom: None,
             edge_left: None,
             edge_right: None,
-            last_radius: 0,
+            last_radius_side: 0,
+            last_radius_top: 0,
             last_alpha: 0.0,
             initialized: false,
             #[cfg(test)]
@@ -53,13 +55,20 @@ impl ShadowCache {
         }
     }
 
-    pub(crate) fn get_for(&mut self, radius_px: u32, base_alpha: f32) -> ShadowBuffers<'_> {
-        let radius_px = radius_px.max(1);
+    pub(crate) fn get_for(
+        &mut self,
+        radius_side_px: u32,
+        radius_top_px: u32,
+        base_alpha: f32,
+    ) -> ShadowBuffers<'_> {
+        let radius_side_px = radius_side_px.max(1);
+        let radius_top_px = radius_top_px.max(1);
         if !self.initialized
-            || radius_px != self.last_radius
+            || radius_side_px != self.last_radius_side
+            || radius_top_px != self.last_radius_top
             || (base_alpha - self.last_alpha).abs() > 0.001
         {
-            self.rebuild(radius_px, base_alpha);
+            self.rebuild(radius_side_px, radius_top_px, base_alpha);
         }
 
         ShadowBuffers {
@@ -98,21 +107,26 @@ impl ShadowCache {
         }
     }
 
-    fn rebuild(&mut self, radius_px: u32, base_alpha: f32) {
-        let corner_tl_pixels = rasterize_corner(radius_px, base_alpha);
-        let corner_tr_pixels = flip_horizontal(&corner_tl_pixels, radius_px, radius_px);
-        let corner_bl_pixels = flip_vertical(&corner_tl_pixels, radius_px, radius_px);
-        let corner_br_pixels = flip_vertical(&corner_tr_pixels, radius_px, radius_px);
-        let edge_top_pixels = rasterize_edge_top(radius_px, base_alpha);
-        let edge_bottom_pixels = flip_vertical(&edge_top_pixels, 1, radius_px);
-        let edge_left_pixels = rasterize_edge_left(radius_px, base_alpha);
-        let edge_right_pixels = flip_horizontal(&edge_left_pixels, radius_px, 1);
+    fn rebuild(&mut self, radius_side_px: u32, radius_top_px: u32, base_alpha: f32) {
+        let corner_top_pixels = rasterize_corner_rect(radius_side_px, radius_top_px, base_alpha);
+        let corner_tr_pixels = flip_horizontal(&corner_top_pixels, radius_side_px, radius_top_px);
+        let corner_bottom_pixels =
+            rasterize_corner_rect(radius_side_px, radius_side_px, base_alpha);
+        let corner_br_pixels =
+            flip_horizontal(&corner_bottom_pixels, radius_side_px, radius_side_px);
 
-        let corner_size = (radius_px as i32, radius_px as i32);
+        let edge_top_pixels = rasterize_edge_top(radius_top_px, base_alpha);
+        let edge_bottom_unflipped = rasterize_edge_top(radius_side_px, base_alpha);
+        let edge_bottom_pixels = flip_vertical(&edge_bottom_unflipped, 1, radius_side_px);
+        let edge_left_pixels = rasterize_edge_left(radius_side_px, base_alpha);
+        let edge_right_pixels = flip_horizontal(&edge_left_pixels, radius_side_px, 1);
+
+        let top_corner_size = (radius_side_px as i32, radius_top_px as i32);
+        let bottom_corner_size = (radius_side_px as i32, radius_side_px as i32);
         self.corner_tl = Some(MemoryRenderBuffer::from_slice(
-            &corner_tl_pixels,
+            &corner_top_pixels,
             Fourcc::Abgr8888,
-            corner_size,
+            top_corner_size,
             1,
             Transform::Normal,
             None,
@@ -120,15 +134,15 @@ impl ShadowCache {
         self.corner_tr = Some(MemoryRenderBuffer::from_slice(
             &corner_tr_pixels,
             Fourcc::Abgr8888,
-            corner_size,
+            top_corner_size,
             1,
             Transform::Normal,
             None,
         ));
         self.corner_bl = Some(MemoryRenderBuffer::from_slice(
-            &corner_bl_pixels,
+            &corner_bottom_pixels,
             Fourcc::Abgr8888,
-            corner_size,
+            bottom_corner_size,
             1,
             Transform::Normal,
             None,
@@ -136,7 +150,7 @@ impl ShadowCache {
         self.corner_br = Some(MemoryRenderBuffer::from_slice(
             &corner_br_pixels,
             Fourcc::Abgr8888,
-            corner_size,
+            bottom_corner_size,
             1,
             Transform::Normal,
             None,
@@ -145,7 +159,7 @@ impl ShadowCache {
         self.edge_top = Some(MemoryRenderBuffer::from_slice(
             &edge_top_pixels,
             Fourcc::Abgr8888,
-            (1, radius_px as i32),
+            (1, radius_top_px as i32),
             1,
             Transform::Normal,
             None,
@@ -153,7 +167,7 @@ impl ShadowCache {
         self.edge_bottom = Some(MemoryRenderBuffer::from_slice(
             &edge_bottom_pixels,
             Fourcc::Abgr8888,
-            (1, radius_px as i32),
+            (1, radius_side_px as i32),
             1,
             Transform::Normal,
             None,
@@ -161,7 +175,7 @@ impl ShadowCache {
         self.edge_left = Some(MemoryRenderBuffer::from_slice(
             &edge_left_pixels,
             Fourcc::Abgr8888,
-            (radius_px as i32, 1),
+            (radius_side_px as i32, 1),
             1,
             Transform::Normal,
             None,
@@ -169,13 +183,14 @@ impl ShadowCache {
         self.edge_right = Some(MemoryRenderBuffer::from_slice(
             &edge_right_pixels,
             Fourcc::Abgr8888,
-            (radius_px as i32, 1),
+            (radius_side_px as i32, 1),
             1,
             Transform::Normal,
             None,
         ));
 
-        self.last_radius = radius_px;
+        self.last_radius_side = radius_side_px;
+        self.last_radius_top = radius_top_px;
         self.last_alpha = base_alpha;
         self.initialized = true;
         #[cfg(test)]
@@ -198,24 +213,33 @@ mod tests {
     fn test_shadow_cache_lazy_builds_on_first_get() {
         let mut cache = ShadowCache::new();
         assert_eq!(cache.rebuild_count(), 0);
-        let _ = cache.get_for(24, 0.22);
+        let _ = cache.get_for(24, 24, 0.22);
         assert_eq!(cache.rebuild_count(), 1);
     }
 
     #[test]
     fn test_shadow_cache_rebuilds_on_radius_change() {
         let mut cache = ShadowCache::new();
-        let _ = cache.get_for(24, 0.22);
-        let _ = cache.get_for(40, 0.22);
+        let _ = cache.get_for(24, 24, 0.22);
+        let _ = cache.get_for(40, 40, 0.22);
         assert_eq!(cache.rebuild_count(), 2);
     }
 
     #[test]
     fn test_shadow_cache_does_not_rebuild_on_identical_request() {
         let mut cache = ShadowCache::new();
-        let first_ptr = cache.get_for(40, 0.22).corner_tl as *const _ as usize;
-        let second_ptr = cache.get_for(40, 0.22).corner_tl as *const _ as usize;
+        let first_ptr = cache.get_for(40, 40, 0.22).corner_tl as *const _ as usize;
+        let second_ptr = cache.get_for(40, 40, 0.22).corner_tl as *const _ as usize;
         assert_eq!(first_ptr, second_ptr);
         assert_eq!(cache.rebuild_count(), 1);
+    }
+
+    #[test]
+    fn test_shadow_cache_rebuilds_on_top_radius_change() {
+        let mut cache = ShadowCache::new();
+        let _ = cache.get_for(40, 12, 0.18);
+        let _ = cache.get_for(40, 12, 0.18);
+        let _ = cache.get_for(40, 20, 0.18);
+        assert_eq!(cache.rebuild_count(), 2);
     }
 }

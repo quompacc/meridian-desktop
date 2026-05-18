@@ -226,13 +226,15 @@ impl SsdChromeMetrics {
     pub(crate) fn shadow_layout(
         self,
         shadow_radius: i32,
+        shadow_radius_top: i32,
         shadow_offset_y: i32,
     ) -> Option<SsdShadowLayout> {
-        if self.frame.border_width <= 0 || shadow_radius <= 0 {
+        if self.frame.border_width <= 0 || shadow_radius <= 0 || shadow_radius_top <= 0 {
             return None;
         }
 
         let sr = shadow_radius;
+        let srt = shadow_radius_top;
         let fx = self.frame.frame_origin.x;
         let fy = self.frame.frame_origin.y;
         let fw = self.frame.frame_size.w;
@@ -240,11 +242,11 @@ impl SsdChromeMetrics {
         let oy = shadow_offset_y;
 
         Some(SsdShadowLayout {
-            corner_tl: Rectangle::new((fx - sr, fy - sr + oy).into(), (sr, sr).into()),
-            corner_tr: Rectangle::new((fx + fw, fy - sr + oy).into(), (sr, sr).into()),
+            corner_tl: Rectangle::new((fx - sr, fy - srt + oy).into(), (sr, srt).into()),
+            corner_tr: Rectangle::new((fx + fw, fy - srt + oy).into(), (sr, srt).into()),
             corner_bl: Rectangle::new((fx - sr, fy + fh + oy).into(), (sr, sr).into()),
             corner_br: Rectangle::new((fx + fw, fy + fh + oy).into(), (sr, sr).into()),
-            edge_top: Rectangle::new((fx, fy - sr + oy).into(), (fw, sr).into()),
+            edge_top: Rectangle::new((fx, fy - srt + oy).into(), (fw, srt).into()),
             edge_bottom: Rectangle::new((fx, fy + fh + oy).into(), (fw, sr).into()),
             edge_left: Rectangle::new((fx - sr, fy + oy).into(), (sr, fh).into()),
             edge_right: Rectangle::new((fx + fw, fy + oy).into(), (sr, fh).into()),
@@ -442,7 +444,7 @@ mod tests {
     fn shadow_layout_corners_and_edges_cover_frame_perimeter() {
         let frame = SsdFrameMetrics::from_frame_origin((10, 20).into(), (640, 400).into(), 2, 32);
         let chrome = SsdChromeMetrics::new(frame);
-        let layout = chrome.shadow_layout(16, 4).expect("shadow layout");
+        let layout = chrome.shadow_layout(16, 16, 4).expect("shadow layout");
 
         assert_eq!(layout.corner_tl.loc, Point::from((-6, 8)));
         assert_eq!(layout.corner_tr.loc, Point::from((654, 8)));
@@ -462,14 +464,14 @@ mod tests {
     fn shadow_layout_absent_without_border() {
         let frame = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 0, 32);
         let chrome = SsdChromeMetrics::new(frame);
-        assert!(chrome.shadow_layout(40, 0).is_none());
+        assert!(chrome.shadow_layout(40, 40, 0).is_none());
     }
 
     #[test]
     fn shadow_layout_edges_cover_full_frame_sides() {
         let frame = SsdFrameMetrics::from_frame_origin((10, 20).into(), (640, 400).into(), 2, 32);
         let chrome = SsdChromeMetrics::new(frame);
-        let layout = chrome.shadow_layout(16, 4).expect("shadow layout");
+        let layout = chrome.shadow_layout(16, 16, 4).expect("shadow layout");
 
         assert_eq!(layout.edge_top.loc, Point::from((10, 8)));
         assert_eq!(layout.edge_top.size, Size::from((644, 16)));

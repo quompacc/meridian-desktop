@@ -45,6 +45,7 @@ pub struct Decorations {
     pub corner_radius: u32,
     pub shadow: bool,
     pub shadow_radius: u32,
+    pub shadow_radius_top: u32,
     pub shadow_alpha: f32,
     pub shadow_offset_y: i32,
     pub gap: u32,
@@ -57,7 +58,8 @@ impl Default for Decorations {
             corner_radius: 0,
             shadow: true,
             shadow_radius: 40,
-            shadow_alpha: 0.22,
+            shadow_radius_top: 12,
+            shadow_alpha: 0.18,
             shadow_offset_y: 0,
             gap: 8,
         }
@@ -176,7 +178,8 @@ mod tests {
         assert_eq!(decorations.corner_radius, 0);
         assert!(decorations.shadow);
         assert_eq!(decorations.shadow_radius, 40);
-        assert_eq!(decorations.shadow_alpha, 0.22);
+        assert_eq!(decorations.shadow_radius_top, 12);
+        assert_eq!(decorations.shadow_alpha, 0.18);
         assert_eq!(decorations.shadow_offset_y, 0);
         assert_eq!(decorations.gap, 8);
     }
@@ -206,7 +209,8 @@ mod tests {
         assert_eq!(config.decorations.corner_radius, 0);
         assert!(config.decorations.shadow);
         assert_eq!(config.decorations.shadow_radius, 40);
-        assert_eq!(config.decorations.shadow_alpha, 0.22);
+        assert_eq!(config.decorations.shadow_radius_top, 12);
+        assert_eq!(config.decorations.shadow_alpha, 0.18);
         assert_eq!(config.decorations.shadow_offset_y, 0);
         assert_eq!(config.decorations.gap, 8);
     }

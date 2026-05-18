@@ -20,6 +20,14 @@ pub(super) fn effective_shadow_radius(theme_radius: i32, focused: bool) -> i32 {
     }
 }
 
+pub(super) fn effective_shadow_radius_top(theme_radius_top: i32, focused: bool) -> i32 {
+    if focused {
+        theme_radius_top
+    } else {
+        theme_radius_top / 2
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn update_buffers(
     deco: &mut WindowDecoration,
@@ -107,7 +115,7 @@ pub(super) fn update_buffers(
 
 #[cfg(test)]
 mod tests {
-    use super::{effective_shadow_alpha, effective_shadow_radius};
+    use super::{effective_shadow_alpha, effective_shadow_radius, effective_shadow_radius_top};
 
     #[test]
     fn effective_shadow_alpha_uses_theme_for_focused_window() {
@@ -123,5 +131,15 @@ mod tests {
     fn effective_shadow_radius_halves_when_unfocused() {
         assert_eq!(effective_shadow_radius(40, true), 40);
         assert_eq!(effective_shadow_radius(40, false), 20);
+    }
+
+    #[test]
+    fn effective_shadow_radius_top_uses_theme_for_focused() {
+        assert_eq!(effective_shadow_radius_top(12, true), 12);
+    }
+
+    #[test]
+    fn effective_shadow_radius_top_halves_when_unfocused() {
+        assert_eq!(effective_shadow_radius_top(12, false), 6);
     }
 }
