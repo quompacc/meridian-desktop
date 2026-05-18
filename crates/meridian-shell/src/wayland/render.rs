@@ -106,13 +106,17 @@ impl MeridianShell {
         hasher.finish()
     }
 
-    fn app_tiles_hash(tiles: &[crate::launcher::AppTile]) -> u64 {
+    fn app_sections_hash(sections: &[crate::launcher::AppSection]) -> u64 {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        for tile in tiles {
-            tile.col.hash(&mut hasher);
-            tile.row.hash(&mut hasher);
-            tile.size.hash(&mut hasher);
-            tile.app_index.hash(&mut hasher);
+        for section in sections {
+            section.letter.hash(&mut hasher);
+            section.rows.hash(&mut hasher);
+            for tile in &section.tiles {
+                tile.col.hash(&mut hasher);
+                tile.row.hash(&mut hasher);
+                tile.size.hash(&mut hasher);
+                tile.app_index.hash(&mut hasher);
+            }
         }
         hasher.finish()
     }
@@ -130,8 +134,8 @@ impl MeridianShell {
             query: self.launcher_state.query.clone(),
             mode: self.launcher_state.current_mode(),
             view: self.launcher_state.view(),
-            app_tiles_hash: Self::app_tiles_hash(&self.launcher_state.app_tiles),
-            hover_app_tile: self.launcher_state.hover_app_tile,
+            app_sections_hash: Self::app_sections_hash(&self.launcher_state.app_sections),
+            hover_app_index: self.launcher_state.hover_app_index,
             tile_scroll_y: self.launcher_state.tile_scroll_y,
             sidebar_category: self.launcher_state.sidebar_category,
             pending_action_confirmation: self.launcher_state.pending_action_confirmation(),

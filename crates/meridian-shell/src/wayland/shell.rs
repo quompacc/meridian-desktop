@@ -195,8 +195,8 @@ pub(crate) struct LauncherRenderSignature {
     pub(crate) query: String,
     pub(crate) mode: crate::launcher::LauncherMode,
     pub(crate) view: crate::launcher::LauncherView,
-    pub(crate) app_tiles_hash: u64,
-    pub(crate) hover_app_tile: Option<(u8, u8)>,
+    pub(crate) app_sections_hash: u64,
+    pub(crate) hover_app_index: Option<usize>,
     pub(crate) tile_scroll_y: i32,
     pub(crate) sidebar_category: crate::launcher::SidebarCategory,
     pub(crate) pending_action_confirmation: Option<crate::launcher::LauncherAction>,
@@ -332,8 +332,8 @@ mod tests {
             query: String::new(),
             mode: LauncherMode::Apps,
             view: LauncherView::TileStart,
-            app_tiles_hash: 0,
-            hover_app_tile: None,
+            app_sections_hash: 0,
+            hover_app_index: None,
             tile_scroll_y: 0,
             sidebar_category: SidebarCategory::System,
             pending_action_confirmation: None,
@@ -366,18 +366,18 @@ mod tests {
     }
 
     #[test]
-    fn launcher_signature_changes_with_hover_app_tile() {
+    fn launcher_signature_changes_with_hover_app_index() {
         let without = base_launcher_signature();
         let mut with = base_launcher_signature();
-        with.hover_app_tile = Some((1, 0));
+        with.hover_app_index = Some(7);
         assert_ne!(without, with);
     }
 
     #[test]
-    fn launcher_signature_changes_with_app_tiles_hash() {
+    fn launcher_signature_changes_with_app_sections_hash() {
         let zero = base_launcher_signature();
         let mut other = base_launcher_signature();
-        other.app_tiles_hash = 0xdead_beef;
+        other.app_sections_hash = 0xdead_beef;
         assert_ne!(zero, other);
     }
 
