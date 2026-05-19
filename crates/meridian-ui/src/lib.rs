@@ -8,7 +8,9 @@ pub mod effect;
 pub mod paint;
 pub mod style;
 pub mod widget;
+pub use paint::{compute_layout, render, PixelSize, Rect};
 pub use style::Theme;
+pub use widget::Widget;
 
 #[cfg(test)]
 mod smoke {
