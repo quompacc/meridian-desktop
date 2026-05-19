@@ -62,6 +62,7 @@ impl PointerHandler for MeridianShell {
                     let tree = crate::ui_preview::build_ui_preview_widget_tree(
                         crate::LAUNCHER_WIDTH,
                         crate::LAUNCHER_HEIGHT,
+                        &self.icon_cache,
                     );
                     let pixel_size = meridian_ui::PixelSize {
                         width: crate::LAUNCHER_WIDTH,
@@ -90,14 +91,30 @@ impl PointerHandler for MeridianShell {
                                 self.draw_launcher(qh, RepaintReason::Pointer);
                             }
                             if let Some(clicked_path) = clicked_path {
-                                let action = crate::widget_traversal::find_widget_at_path(
+                                if let Some(widget) = crate::widget_traversal::find_widget_at_path(
                                     &*tree,
                                     &clicked_path,
-                                )
-                                .and_then(|w| w.id())
-                                .and_then(crate::widget_action::action_for_id);
-                                if let Some(action) = action {
-                                    self.dispatch_widget_action(qh, action);
+                                ) {
+                                    if let Some(action) =
+                                        widget.id().and_then(crate::widget_action::action_for_id)
+                                    {
+                                        self.dispatch_widget_action(qh, action);
+                                    } else if let Some(exec) = widget.launch_exec() {
+                                        self.dispatch_widget_action(
+                                            qh,
+                                            crate::widget_action::WidgetAction::LaunchExec(
+                                                exec.to_string(),
+                                            ),
+                                        );
+                                    } else if let Some((program, args)) = widget.launch_info() {
+                                        self.dispatch_widget_action(
+                                            qh,
+                                            crate::widget_action::WidgetAction::LaunchApp {
+                                                program: program.to_string(),
+                                                args: args.to_vec(),
+                                            },
+                                        );
+                                    }
                                 }
                             }
                         }

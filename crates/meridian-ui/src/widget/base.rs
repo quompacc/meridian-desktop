@@ -25,6 +25,23 @@ pub trait Widget {
         None
     }
 
+    /// Optional launch info for widgets that represent launchable apps.
+    ///
+    /// Returns `(exec, args)` if this widget can be launched.
+    /// Render paths ignore this field.
+    fn launch_info(&self) -> Option<(&str, &[String])> {
+        None
+    }
+
+    /// Optional exec path for widgets that represent launchable apps.
+    ///
+    /// Returns the program name if this widget can be launched.
+    /// Simpler alternative to `launch_info` for widgets without args.
+    /// Render paths ignore this field.
+    fn launch_exec(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Child widgets in tree order.
     fn children(&self) -> &[Box<dyn Widget>] {
         &[]

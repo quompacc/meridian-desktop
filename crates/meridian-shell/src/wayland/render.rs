@@ -441,7 +441,13 @@ impl MeridianShell {
                         _ => meridian_ui::WidgetState::Idle,
                     }
                 };
-                ui_preview::draw_ui_preview_sandbox(canvas, width, height, &state_fn);
+                ui_preview::draw_ui_preview_sandbox(
+                    canvas,
+                    width,
+                    height,
+                    &self.icon_cache,
+                    &state_fn,
+                );
             } else {
                 let mut painter = Painter::new(canvas, width as i32, height as i32);
                 launcher::draw_launcher(

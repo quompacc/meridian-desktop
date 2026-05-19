@@ -1,6 +1,8 @@
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum WidgetAction {
     ToggleUiPreview,
+    LaunchApp { program: String, args: Vec<String> },
+    LaunchExec(String),
     PowerOff,
     PowerRestart,
     PowerSleep,
@@ -45,5 +47,16 @@ mod tests {
     #[test]
     fn action_for_id_empty() {
         assert_eq!(action_for_id(""), None);
+    }
+
+    #[test]
+    fn launch_app_variant_is_debug_printable() {
+        let action = WidgetAction::LaunchApp {
+            program: "firefox".to_string(),
+            args: vec!["--new-window".to_string()],
+        };
+        let dbg = format!("{:?}", action);
+        assert!(dbg.contains("LaunchApp"));
+        assert!(dbg.contains("firefox"));
     }
 }

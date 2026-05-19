@@ -179,6 +179,22 @@ pub(crate) fn initialize(
         ],
         22,
     );
+    icon_cache.warm(
+        &[
+            "thunderbird",
+            "chromium",
+            "system-file-manager",
+            "gwenview",
+            "amarok",
+            "marble",
+            "akregator",
+            "org.kde.discover",
+            "org.kde.korganizer",
+            "org.kde.kweather",
+            "org.kde.knotes",
+        ],
+        64,
+    );
     let launcher_apps = launcher::DesktopApp::load_system();
     let mut seen_icons = HashSet::new();
     let mut launcher_icons = Vec::new();

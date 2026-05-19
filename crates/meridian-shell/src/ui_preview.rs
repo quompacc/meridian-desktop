@@ -12,6 +12,8 @@ use meridian_ui::{
 };
 use tiny_skia::Pixmap;
 
+use crate::icons::{IconCache, IconImage};
+
 const FOOTER_HEIGHT: i32 = 56;
 const FOOTER_PADDING_X: i32 = 28;
 const FOOTER_CLUSTER_GAP: i32 = 8;
@@ -19,23 +21,96 @@ const FOOTER_SWITCH_WIDTH: i32 = 144;
 const FOOTER_SWITCH_HEIGHT: i32 = 48;
 const FOOTER_POWER_BUTTON_SIZE: i32 = 48;
 
-pub(crate) fn build_ui_preview_widget_tree(width: u32, height: u32) -> Box<dyn Widget> {
+const TILE_ICON_SIZE: u32 = 64;
+
+fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
+    let w = img.width;
+    let h = img.height;
+    let mut pixmap = Pixmap::new(w, h)?;
+    let data = pixmap.data_mut();
+    for (i, chunk) in img.bgra.chunks_exact(4).enumerate() {
+        let b = chunk[0];
+        let g = chunk[1];
+        let r = chunk[2];
+        let a = chunk[3];
+        let out_idx = i * 4;
+        data[out_idx] = ((r as u16 * a as u16) / 255) as u8;
+        data[out_idx + 1] = ((g as u16 * a as u16) / 255) as u8;
+        data[out_idx + 2] = ((b as u16 * a as u16) / 255) as u8;
+        data[out_idx + 3] = a;
+    }
+    Some(pixmap)
+}
+
+pub(crate) fn build_ui_preview_widget_tree(
+    width: u32,
+    height: u32,
+    icon_cache: &IconCache,
+) -> Box<dyn Widget> {
     let theme = Theme::TOKYO_NIGHT_METRO;
     let gap = theme.spacing.md;
     let pal = Palette::TOKYO_NIGHT_METRO;
-    let tiles: Vec<Box<dyn Widget>> = vec![
-        Box::new(Tile::new("Mail", pal.accent_alt, TileSize::Large)),
-        Box::new(Tile::new("Edge", pal.accent, TileSize::Wide)),
-        Box::new(Tile::new("OneDrive", pal.warning, TileSize::Wide)),
-        Box::new(Tile::new("Photos", pal.accent, TileSize::Small)),
-        Box::new(Tile::new("Music", pal.accent_alt, TileSize::Small)),
-        Box::new(Tile::new("Maps", pal.success, TileSize::Small)),
-        Box::new(Tile::new("News", pal.warning, TileSize::Small)),
-        Box::new(Tile::new("Store", pal.error, TileSize::Small)),
-        Box::new(Tile::new("Calendar", pal.accent, TileSize::Small)),
-        Box::new(Tile::new("Weather", pal.accent_alt, TileSize::Small)),
-        Box::new(Tile::new("Notes", pal.success, TileSize::Small)),
+
+    let mapping: &[(&str, &str, &str)] = &[
+        ("Mail", "thunderbird", "thunderbird"),
+        ("Edge", "chromium", "chromium"),
+        ("OneDrive", "dolphin", "system-file-manager"),
+        ("Photos", "gwenview", "gwenview"),
+        ("Music", "amarok", "amarok"),
+        ("Maps", "marble", "marble"),
+        ("News", "akregator", "akregator"),
+        ("Store", "discover", "org.kde.discover"),
+        ("Calendar", "korganizer", "org.kde.korganizer"),
+        ("Weather", "kweather", "org.kde.kweather"),
+        ("Notes", "knotes", "org.kde.knotes"),
     ];
+
+    let accent_cycle = [
+        pal.accent_alt,
+        pal.accent,
+        pal.warning,
+        pal.accent,
+        pal.accent_alt,
+        pal.success,
+        pal.warning,
+        pal.error,
+        pal.accent,
+        pal.accent_alt,
+        pal.success,
+    ];
+    let size_cycle = [
+        TileSize::Large,
+        TileSize::Wide,
+        TileSize::Wide,
+        TileSize::Small,
+        TileSize::Small,
+        TileSize::Small,
+        TileSize::Small,
+        TileSize::Small,
+        TileSize::Small,
+        TileSize::Small,
+        TileSize::Small,
+    ];
+
+    let tiles: Vec<Box<dyn Widget>> = mapping
+        .iter()
+        .enumerate()
+        .map(|(i, &(label, exec, icon_name))| {
+            let accent = accent_cycle[i];
+            let size = size_cycle[i];
+            let maybe_pixmap = icon_cache
+                .lookup(icon_name, TILE_ICON_SIZE)
+                .and_then(icon_image_to_pixmap);
+            Box::new(Tile::with_exec_and_icon(
+                label,
+                accent,
+                size,
+                exec,
+                maybe_pixmap,
+            )) as Box<dyn Widget>
+        })
+        .collect();
+
     let mosaic_height = height.saturating_sub(FOOTER_HEIGHT.max(0) as u32);
     let mosaic_grid = Container::grid(TILE_BASE_SIZE, 8, gap, width, mosaic_height, tiles);
     let mosaic_section = Container::centered_viewport(
@@ -110,6 +185,7 @@ pub(crate) fn draw_ui_preview_sandbox(
     canvas: &mut [u8],
     width: u32,
     height: u32,
+    icon_cache: &IconCache,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
 ) {
     let expected_len = (width as usize)
@@ -126,7 +202,7 @@ pub(crate) fn draw_ui_preview_sandbox(
     let theme = Theme::TOKYO_NIGHT_METRO;
     pixmap.fill(to_tiny_skia_color(theme.palette.background));
 
-    let root = build_ui_preview_widget_tree(width, height);
+    let root = build_ui_preview_widget_tree(width, height, icon_cache);
 
     if let Ok(layout) = compute_layout(&*root, PixelSize { width, height }) {
         let mut pixmap_canvas = pixmap.as_mut();
@@ -158,6 +234,7 @@ mod tests {
     use meridian_ui::WidgetState;
 
     use super::{blit_rgba_to_argb, build_ui_preview_widget_tree, draw_ui_preview_sandbox};
+    use crate::icons::IconCache;
 
     #[test]
     fn blit_rgba_to_argb_swaps_red_and_blue() {
@@ -186,15 +263,19 @@ mod tests {
         let width = 128;
         let height = 96;
         let mut canvas = vec![0_u8; (width * height * 4) as usize];
+        let icon_cache = IconCache::new();
 
-        draw_ui_preview_sandbox(&mut canvas, width, height, &|_| WidgetState::Idle);
+        draw_ui_preview_sandbox(&mut canvas, width, height, &icon_cache, &|_| {
+            WidgetState::Idle
+        });
 
         assert!(canvas.iter().any(|byte| *byte != 0));
     }
 
     #[test]
     fn build_ui_preview_widget_tree_has_root_column_with_two_sections() {
-        let tree = build_ui_preview_widget_tree(880, 620);
+        let icon_cache = IconCache::new();
+        let tree = build_ui_preview_widget_tree(880, 620, &icon_cache);
         let children = tree.children();
         assert_eq!(children.len(), 2, "root column should have 2 children");
         // Mosaic section
@@ -206,5 +287,26 @@ mod tests {
             !footer.children().is_empty(),
             "footer should contain left/right clusters"
         );
+    }
+
+    #[test]
+    fn icon_image_to_pixmap_bgra_to_premul() {
+        use super::icon_image_to_pixmap;
+        use crate::icons::IconImage;
+
+        let img = IconImage {
+            width: 1,
+            height: 1,
+            bgra: vec![0, 0, 255, 128],
+        };
+        let pixmap = icon_image_to_pixmap(&img).expect("pixmap");
+        assert_eq!(pixmap.width(), 1);
+        assert_eq!(pixmap.height(), 1);
+        let px = pixmap.pixel(0, 0).expect("pixel");
+        // BGRA [0,0,255,128]: R=255*128/255=128, G=0, B=0, A=128
+        assert_eq!(px.red(), 128);
+        assert_eq!(px.green(), 0);
+        assert_eq!(px.blue(), 0);
+        assert_eq!(px.alpha(), 128);
     }
 }

@@ -18,6 +18,9 @@ pub use paint::{compute_layout, render, render_idle, PixelSize, Rect};
 pub use style::Theme;
 pub use widget::{Button, Tile, TileSize, Widget};
 
+pub use taffy::prelude::span as grid_span;
+pub use taffy::prelude::Style as WidgetStyle;
+
 #[cfg(test)]
 mod smoke {
     use taffy::prelude::*;

@@ -19,7 +19,7 @@ impl Color {
         Self::rgba(r, g, b, 0xff)
     }
 
-    pub(crate) fn lerp(&self, other: Color, t: f32) -> Color {
+    pub fn lerp(&self, other: Color, t: f32) -> Color {
         let t = t.clamp(0.0, 1.0);
         let lerp_u8 = |x: u8, y: u8| -> u8 {
             (x as f32 + (y as f32 - x as f32) * t)

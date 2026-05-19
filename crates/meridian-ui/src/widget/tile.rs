@@ -6,7 +6,7 @@
 //! is introduced.
 
 use taffy::prelude::{span, Style};
-use tiny_skia::PixmapMut;
+use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, Transform};
 
 use crate::{
     effect::{paint_metro_surface, paint_text},
@@ -66,6 +66,8 @@ pub struct Tile {
     accent: Color,
     size: TileSize,
     id: Option<&'static str>,
+    icon: Option<Pixmap>,
+    exec: Option<&'static str>,
 }
 
 impl Tile {
@@ -75,6 +77,8 @@ impl Tile {
             accent,
             size,
             id: None,
+            icon: None,
+            exec: None,
         }
     }
 
@@ -84,6 +88,25 @@ impl Tile {
             accent,
             size,
             id: Some(id),
+            icon: None,
+            exec: None,
+        }
+    }
+
+    pub fn with_exec_and_icon(
+        label: &'static str,
+        accent: Color,
+        size: TileSize,
+        exec: &'static str,
+        icon: Option<Pixmap>,
+    ) -> Self {
+        Self {
+            label,
+            accent,
+            size,
+            id: None,
+            icon,
+            exec: Some(exec),
         }
     }
 
@@ -103,6 +126,10 @@ impl Tile {
 impl Widget for Tile {
     fn id(&self) -> Option<&'static str> {
         self.id
+    }
+
+    fn launch_exec(&self) -> Option<&'static str> {
+        self.exec
     }
 
     fn style(&self) -> Style {
@@ -136,6 +163,22 @@ impl Widget for Tile {
             font_size,
             theme.palette.text,
         );
+
+        if let Some(ref icon) = self.icon {
+            let iw = icon.width() as i32;
+            let ih = icon.height() as i32;
+            let x = area.x + (area.width - iw) / 2;
+            let icon_center_y = area.y + (area.height as f32 * 0.35) as i32;
+            let y = icon_center_y - ih / 2;
+            canvas.draw_pixmap(
+                x,
+                y,
+                icon.as_ref(),
+                &PixmapPaint::default(),
+                Transform::identity(),
+                None,
+            );
+        }
     }
 }
 
@@ -245,5 +288,49 @@ mod tests {
         assert!(stripe_px.blue() > body_px.blue());
         assert!(stripe_px.green() < stripe_px.blue());
         assert_eq!(STRIPE_HEIGHT, 4);
+    }
+
+    #[test]
+    fn tile_with_exec_stores_exec() {
+        let tile = Tile::with_exec_and_icon(
+            "X",
+            Palette::TOKYO_NIGHT_METRO.accent,
+            TileSize::Small,
+            "firefox",
+            None,
+        );
+        assert_eq!(tile.launch_exec(), Some("firefox"));
+    }
+
+    #[test]
+    fn tile_new_launch_exec_is_none() {
+        let tile = Tile::new("X", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Small);
+        assert_eq!(tile.launch_exec(), None);
+    }
+
+    #[test]
+    fn tile_paint_with_none_icon_does_not_panic() {
+        let tile = Tile::with_exec_and_icon(
+            "X",
+            Palette::TOKYO_NIGHT_METRO.accent,
+            TileSize::Small,
+            "firefox",
+            None,
+        );
+        let (width, height) = TileSize::Small.dimensions();
+        let mut pixmap = Pixmap::new(width as u32, height as u32).expect("pixmap");
+        let mut canvas = pixmap.as_mut();
+        tile.paint(
+            Rect {
+                x: 0,
+                y: 0,
+                width,
+                height,
+            },
+            &mut canvas,
+            &Theme::TOKYO_NIGHT_METRO,
+            WidgetState::Idle,
+        );
+        drop(canvas);
     }
 }
