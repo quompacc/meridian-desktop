@@ -33,7 +33,6 @@ const FOOTER_SWITCH_WIDTH: i32 = 144;
 const FOOTER_SWITCH_HEIGHT: i32 = 48;
 const FOOTER_POWER_BUTTON_SIZE: i32 = 48;
 
-const TILE_ICON_SIZE: u32 = 96;
 const POWER_ICON_SIZE: u32 = 32;
 
 fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
@@ -153,16 +152,24 @@ pub(crate) fn build_ui_preview_widget_tree(
         TileSize::Small,
         TileSize::Small,
     ];
-    let max_apps = apps.len().min(11);
-    let tiles: Vec<Box<dyn Widget>> = apps[..max_apps]
+    let filtered_apps: Vec<&DesktopApp> = apps
+        .iter()
+        .filter(|app| !app.terminal && app.icon_name.is_some())
+        .take(11)
+        .collect();
+    let tiles: Vec<Box<dyn Widget>> = filtered_apps
         .iter()
         .enumerate()
         .map(|(i, app)| {
             let accent = accent_cycle[i];
             let size = size_cycle[i];
             let icon_name = app.icon_name.as_deref().unwrap_or("");
+            let icon_lookup_size = match size {
+                TileSize::Large | TileSize::Wide => 96,
+                _ => 24,
+            };
             let maybe_pixmap = icon_cache
-                .lookup(icon_name, TILE_ICON_SIZE)
+                .lookup(icon_name, icon_lookup_size)
                 .and_then(icon_image_to_pixmap);
             Box::new(DynTile {
                 label: app.name.clone().into_boxed_str(),

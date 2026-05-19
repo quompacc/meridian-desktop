@@ -116,14 +116,16 @@ impl Widget for Button {
             WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
         };
         paint_metro_surface(canvas, area, body_color, self.accent, theme, STRIPE_HEIGHT);
-        paint_text(
-            canvas,
-            self.label,
-            area.x + BUTTON_LABEL_PADDING_X,
-            area.y + area.height - BUTTON_LABEL_BASELINE_FROM_BOTTOM,
-            BUTTON_LABEL_FONT_PX,
-            theme.palette.text,
-        );
+        if self.icon.is_none() {
+            paint_text(
+                canvas,
+                self.label,
+                area.x + BUTTON_LABEL_PADDING_X,
+                area.y + area.height - BUTTON_LABEL_BASELINE_FROM_BOTTOM,
+                BUTTON_LABEL_FONT_PX,
+                theme.palette.text,
+            );
+        }
 
         if let Some(ref icon) = self.icon {
             let iw = icon.width() as i32;
