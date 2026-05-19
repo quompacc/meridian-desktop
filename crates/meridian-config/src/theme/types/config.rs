@@ -21,6 +21,10 @@ pub struct ThemeColors {
 }
 
 impl Default for ThemeColors {
+    // MIRROR von `meridian_ui::Palette::TOKYO_NIGHT_METRO`
+    // (crates/meridian-ui/src/style/color.rs). Werte synchron halten bis die
+    // Token-Migration mit dem Launcher-Rework abgeschlossen ist; siehe
+    // memory/meridian_ui_token_migration_pending.md.
     fn default() -> Self {
         Self {
             background: Color::rgb(0x1a, 0x1b, 0x26),

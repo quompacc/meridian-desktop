@@ -2,6 +2,10 @@ use meridian_config::Color;
 
 pub const ACCENT_FOREGROUND: Color = Color::rgb(0x1a, 0x1b, 0x26);
 
+// MIRROR von `meridian_ui::Spacing::DEFAULT` (crates/meridian-ui/src/style/spacing.rs).
+// XS..XL müssen synchron bleiben; XXL=16 existiert nur hier. Migration zu
+// meridian_ui::Spacing kommt mit dem Launcher-Rework, siehe
+// memory/meridian_ui_token_migration_pending.md.
 #[allow(dead_code)]
 pub mod spacing {
     pub const XS: i32 = 4;
@@ -12,6 +16,9 @@ pub mod spacing {
     pub const XXL: i32 = 16;
 }
 
+// MIRROR von `meridian_ui::Radius::METRO` (crates/meridian-ui/src/style/radius.rs).
+// Metro = alle 0. Synchron halten bis Launcher-Rework die Migration zieht;
+// siehe memory/meridian_ui_token_migration_pending.md.
 #[allow(dead_code)]
 pub mod radius {
     pub const SM: i32 = 0;
