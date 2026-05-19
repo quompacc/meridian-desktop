@@ -5,7 +5,7 @@
 //! in the render path and is an accepted step-5 trade-off until path caching
 //! is introduced.
 
-use taffy::prelude::{length, span, Size, Style};
+use taffy::prelude::{span, Style};
 use tiny_skia::PixmapMut;
 
 use crate::{
@@ -85,13 +85,8 @@ impl Tile {
 
 impl Widget for Tile {
     fn style(&self) -> Style {
-        let (width, height) = self.size.dimensions();
         let (col_span, row_span) = self.size.cell_span();
         Style {
-            size: Size {
-                width: length(width as f32),
-                height: length(height as f32),
-            },
             grid_column: span(col_span as u16),
             grid_row: span(row_span as u16),
             ..Default::default()
@@ -171,61 +166,21 @@ mod tests {
     }
 
     #[test]
-    fn tile_style_uses_size_variant_dimensions() {
-        let small = Tile::new("small", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Small);
-        let medium = Tile::new(
-            "medium",
-            Palette::TOKYO_NIGHT_METRO.accent,
-            TileSize::Medium,
-        );
-        let wide = Tile::new("wide", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Wide);
-        let large = Tile::new("large", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Large);
+    fn tile_style_forwards_cell_spans() {
+        let small = Tile::new("small", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Small).style();
+        let medium =
+            Tile::new("medium", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Medium).style();
+        let wide = Tile::new("wide", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Wide).style();
+        let large = Tile::new("large", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Large).style();
 
-        let small_style = small.style();
-        let medium_style = medium.style();
-        let wide_style = wide.style();
-        let large_style = large.style();
-
-        assert_eq!(
-            small_style.size.width,
-            taffy::prelude::length(TILE_SMALL_WIDTH as f32)
-        );
-        assert_eq!(
-            small_style.size.height,
-            taffy::prelude::length(TILE_SMALL_HEIGHT as f32)
-        );
-        assert_eq!(
-            medium_style.size.width,
-            taffy::prelude::length(TILE_MEDIUM_WIDTH as f32)
-        );
-        assert_eq!(
-            medium_style.size.height,
-            taffy::prelude::length(TILE_MEDIUM_HEIGHT as f32)
-        );
-        assert_eq!(
-            wide_style.size.width,
-            taffy::prelude::length(TILE_WIDE_WIDTH as f32)
-        );
-        assert_eq!(
-            wide_style.size.height,
-            taffy::prelude::length(TILE_WIDE_HEIGHT as f32)
-        );
-        assert_eq!(
-            large_style.size.width,
-            taffy::prelude::length(TILE_LARGE_WIDTH as f32)
-        );
-        assert_eq!(
-            large_style.size.height,
-            taffy::prelude::length(TILE_LARGE_HEIGHT as f32)
-        );
-        assert_eq!(small_style.grid_column, taffy::prelude::span(1));
-        assert_eq!(small_style.grid_row, taffy::prelude::span(1));
-        assert_eq!(medium_style.grid_column, taffy::prelude::span(2));
-        assert_eq!(medium_style.grid_row, taffy::prelude::span(2));
-        assert_eq!(wide_style.grid_column, taffy::prelude::span(4));
-        assert_eq!(wide_style.grid_row, taffy::prelude::span(2));
-        assert_eq!(large_style.grid_column, taffy::prelude::span(4));
-        assert_eq!(large_style.grid_row, taffy::prelude::span(4));
+        assert_eq!(small.grid_column, taffy::prelude::span(1));
+        assert_eq!(small.grid_row, taffy::prelude::span(1));
+        assert_eq!(medium.grid_column, taffy::prelude::span(2));
+        assert_eq!(medium.grid_row, taffy::prelude::span(2));
+        assert_eq!(wide.grid_column, taffy::prelude::span(4));
+        assert_eq!(wide.grid_row, taffy::prelude::span(2));
+        assert_eq!(large.grid_column, taffy::prelude::span(4));
+        assert_eq!(large.grid_row, taffy::prelude::span(4));
     }
 
     #[test]
