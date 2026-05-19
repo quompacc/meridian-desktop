@@ -9,7 +9,7 @@ use taffy::prelude::{span, Style};
 use tiny_skia::PixmapMut;
 
 use crate::{
-    effect::{paint_fill, rounded_rect_path},
+    effect::paint_metro_surface,
     paint::Rect,
     style::{Color, Theme},
 };
@@ -94,24 +94,7 @@ impl Widget for Tile {
     }
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme) {
-        if let Some(body_path) = rounded_rect_path(area, theme.radius.lg) {
-            paint_fill(canvas, &body_path, theme.palette.surface);
-        }
-
-        let stripe_height = STRIPE_HEIGHT.max(0).min(area.height);
-        if stripe_height <= 0 {
-            return;
-        }
-
-        let stripe_rect = Rect {
-            x: area.x,
-            y: area.y,
-            width: area.width,
-            height: stripe_height,
-        };
-        if let Some(stripe_path) = rounded_rect_path(stripe_rect, 0) {
-            paint_fill(canvas, &stripe_path, self.accent);
-        }
+        paint_metro_surface(canvas, area, self.accent, theme, STRIPE_HEIGHT);
     }
 }
 
@@ -168,8 +151,12 @@ mod tests {
     #[test]
     fn tile_style_forwards_cell_spans() {
         let small = Tile::new("small", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Small).style();
-        let medium =
-            Tile::new("medium", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Medium).style();
+        let medium = Tile::new(
+            "medium",
+            Palette::TOKYO_NIGHT_METRO.accent,
+            TileSize::Medium,
+        )
+        .style();
         let wide = Tile::new("wide", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Wide).style();
         let large = Tile::new("large", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Large).style();
 

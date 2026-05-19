@@ -6,8 +6,10 @@
 
 mod border;
 mod fill;
+mod metro_surface;
 mod radius;
 
 pub use border::paint_border;
 pub use fill::paint_fill;
+pub use metro_surface::paint_metro_surface;
 pub use radius::rounded_rect_path;

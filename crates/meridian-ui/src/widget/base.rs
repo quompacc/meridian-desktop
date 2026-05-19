@@ -81,6 +81,21 @@ impl Container {
         )
     }
 
+    pub fn column(gap_px: i32, children: Vec<Box<dyn Widget>>) -> Self {
+        let gap = gap_px.max(0) as f32;
+        Self::new(
+            Style {
+                flex_direction: FlexDirection::Column,
+                gap: Size {
+                    width: length(0.0),
+                    height: length(gap),
+                },
+                ..Default::default()
+            },
+            children,
+        )
+    }
+
     pub fn grid(
         cell_size_px: i32,
         columns: u32,
@@ -113,6 +128,58 @@ impl Container {
             children,
         )
     }
+
+    pub fn footer_row(
+        viewport_width: u32,
+        height: i32,
+        padding_px: i32,
+        cluster_gap_px: i32,
+        left_children: Vec<Box<dyn Widget>>,
+        right_children: Vec<Box<dyn Widget>>,
+    ) -> Self {
+        let padding = padding_px.max(0) as f32;
+        let left_cluster = Box::new(Self::horizontal_cluster(cluster_gap_px, left_children));
+        let right_cluster = Box::new(Self::horizontal_cluster(cluster_gap_px, right_children));
+
+        Self::new(
+            Style {
+                flex_direction: FlexDirection::Row,
+                justify_content: Some(JustifyContent::SpaceBetween),
+                align_items: Some(AlignItems::Center),
+                size: Size {
+                    width: length(viewport_width as f32),
+                    height: length(height.max(0) as f32),
+                },
+                padding: taffy::prelude::Rect {
+                    left: length(padding),
+                    right: length(padding),
+                    top: length(0.0),
+                    bottom: length(0.0),
+                },
+                ..Default::default()
+            },
+            vec![
+                left_cluster as Box<dyn Widget>,
+                right_cluster as Box<dyn Widget>,
+            ],
+        )
+    }
+
+    fn horizontal_cluster(gap_px: i32, children: Vec<Box<dyn Widget>>) -> Self {
+        let gap = gap_px.max(0) as f32;
+        Self::new(
+            Style {
+                flex_direction: FlexDirection::Row,
+                align_items: Some(AlignItems::Center),
+                gap: Size {
+                    width: length(gap),
+                    height: length(0.0),
+                },
+                ..Default::default()
+            },
+            children,
+        )
+    }
 }
 
 impl Widget for Container {
@@ -134,7 +201,7 @@ mod tests {
     use super::{Container, Widget};
     use crate::paint::{compute_layout, PixelSize};
     use crate::style::Palette;
-    use crate::widget::{Tile, TileSize};
+    use crate::widget::{Button, Tile, TileSize};
 
     #[test]
     fn container_leaf_has_no_children() {
@@ -292,5 +359,71 @@ mod tests {
         assert_eq!(relative(3), (pitch * 6, pitch * 2));
         assert_eq!(relative(4), (0, pitch * 4));
         assert_eq!(relative(5), (pitch, pitch * 4));
+    }
+
+    #[test]
+    fn column_stacks_children_vertically_with_gap() {
+        let children: Vec<Box<dyn Widget>> = vec![
+            Box::new(Container::leaf(Style {
+                size: Size {
+                    width: length(100.0),
+                    height: length(80.0),
+                },
+                ..Default::default()
+            })),
+            Box::new(Container::leaf(Style {
+                size: Size {
+                    width: length(100.0),
+                    height: length(40.0),
+                },
+                ..Default::default()
+            })),
+        ];
+        let root = Container::column(12, children);
+        let layout = compute_layout(
+            &root,
+            PixelSize {
+                width: 400,
+                height: 400,
+            },
+        )
+        .expect("layout computes");
+
+        let first = layout.root.children[0].rect;
+        let second = layout.root.children[1].rect;
+        assert_eq!(second.y - first.y, 92);
+    }
+
+    #[test]
+    fn footer_row_places_left_and_right_clusters() {
+        let left = vec![Box::new(Button::new(
+            "switch",
+            Palette::TOKYO_NIGHT_METRO.accent,
+            144,
+            48,
+        )) as Box<dyn Widget>];
+        let right = vec![
+            Box::new(Button::new("a", Palette::TOKYO_NIGHT_METRO.error, 48, 48)) as Box<dyn Widget>,
+            Box::new(Button::new("b", Palette::TOKYO_NIGHT_METRO.warning, 48, 48))
+                as Box<dyn Widget>,
+            Box::new(Button::new("c", Palette::TOKYO_NIGHT_METRO.accent, 48, 48))
+                as Box<dyn Widget>,
+        ];
+        let root = Container::footer_row(880, 56, 28, 8, left, right);
+        let layout = compute_layout(
+            &root,
+            PixelSize {
+                width: 880,
+                height: 56,
+            },
+        )
+        .expect("layout computes");
+
+        assert_eq!(layout.root.children.len(), 2);
+        let left_cluster = layout.root.children[0].rect;
+        let right_cluster = layout.root.children[1].rect;
+        assert_eq!(left_cluster.x, 28);
+        assert_eq!(right_cluster.x + right_cluster.width, 880 - 28);
+        assert!(right_cluster.x > left_cluster.x + left_cluster.width);
     }
 }
