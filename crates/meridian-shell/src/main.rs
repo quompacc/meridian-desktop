@@ -7,6 +7,7 @@ use smithay_client_toolkit::reexports::calloop::{
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
+mod app_view;
 mod buffer;
 mod draw;
 mod icons;

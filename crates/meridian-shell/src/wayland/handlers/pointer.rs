@@ -59,12 +59,22 @@ impl PointerHandler for MeridianShell {
 
             if self.ui_preview_enabled && self.pointer_surface == SurfaceKind::Launcher {
                 if let Some(ev) = translate_pointer_event(&event.kind, event.position) {
-                    let tree = crate::ui_preview::build_ui_preview_widget_tree(
-                        crate::LAUNCHER_WIDTH,
-                        crate::LAUNCHER_HEIGHT,
-                        &self.launcher_state.apps,
-                        &self.icon_cache,
-                    );
+                    let tree = if self.app_view_open {
+                        crate::app_view::build_app_view_widget_tree(
+                            crate::LAUNCHER_WIDTH,
+                            crate::LAUNCHER_HEIGHT,
+                            &self.launcher_state.apps,
+                            self.app_view_category,
+                            &self.icon_cache,
+                        )
+                    } else {
+                        crate::ui_preview::build_ui_preview_widget_tree(
+                            crate::LAUNCHER_WIDTH,
+                            crate::LAUNCHER_HEIGHT,
+                            &self.launcher_state.apps,
+                            &self.icon_cache,
+                        )
+                    };
                     let pixel_size = meridian_ui::PixelSize {
                         width: crate::LAUNCHER_WIDTH,
                         height: crate::LAUNCHER_HEIGHT,

@@ -307,6 +307,8 @@ pub(crate) fn initialize(
         launcher_dirty: true,
         ui_preview_enabled,
         ui_preview_widget_state: None,
+        app_view_open: false,
+        app_view_category: Default::default(),
         calendar_dirty: true,
         workspace_dirty: true,
         network_dirty: true,

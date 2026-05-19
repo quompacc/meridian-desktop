@@ -120,6 +120,21 @@ impl Container {
         )
     }
 
+    pub fn row(gap_px: i32, children: Vec<Box<dyn Widget>>) -> Self {
+        let gap = gap_px.max(0) as f32;
+        Self::new(
+            Style {
+                flex_direction: FlexDirection::Row,
+                gap: Size {
+                    width: length(gap),
+                    height: length(0.0),
+                },
+                ..Default::default()
+            },
+            children,
+        )
+    }
+
     pub fn grid(
         cell_size_px: i32,
         columns: u32,
@@ -417,6 +432,28 @@ mod tests {
         let first = layout.root.children[0].rect;
         let second = layout.root.children[1].rect;
         assert_eq!(second.y - first.y, 92);
+    }
+
+    #[test]
+    fn container_row_has_correct_child_count() {
+        let children: Vec<Box<dyn Widget>> = vec![
+            Box::new(Container::leaf(Style {
+                size: Size {
+                    width: length(100.0),
+                    height: length(50.0),
+                },
+                ..Default::default()
+            })),
+            Box::new(Container::leaf(Style {
+                size: Size {
+                    width: length(80.0),
+                    height: length(50.0),
+                },
+                ..Default::default()
+            })),
+        ];
+        let root = Container::row(8, children);
+        assert_eq!(root.children().len(), 2);
     }
 
     #[test]

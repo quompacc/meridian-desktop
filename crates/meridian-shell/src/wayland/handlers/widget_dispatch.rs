@@ -11,7 +11,17 @@ impl MeridianShell {
         use crate::widget_action::WidgetAction;
         match action {
             WidgetAction::ToggleUiPreview => {
-                self.ui_preview_enabled = false;
+                self.app_view_open = true;
+                self.ui_preview_widget_state = None;
+                self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
+            }
+            WidgetAction::ShowTileView => {
+                self.app_view_open = false;
+                self.ui_preview_widget_state = None;
+                self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
+            }
+            WidgetAction::SetCategory(cat) => {
+                self.app_view_category = cat;
                 self.ui_preview_widget_state = None;
                 self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
             }

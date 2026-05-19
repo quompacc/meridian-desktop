@@ -441,14 +441,26 @@ impl MeridianShell {
                         _ => meridian_ui::WidgetState::Idle,
                     }
                 };
-                ui_preview::draw_ui_preview_sandbox(
-                    canvas,
-                    width,
-                    height,
-                    &self.launcher_state.apps,
-                    &self.icon_cache,
-                    &state_fn,
-                );
+                if self.app_view_open {
+                    crate::app_view::draw_app_view(
+                        canvas,
+                        width,
+                        height,
+                        &self.launcher_state.apps,
+                        self.app_view_category,
+                        &self.icon_cache,
+                        &state_fn,
+                    );
+                } else {
+                    ui_preview::draw_ui_preview_sandbox(
+                        canvas,
+                        width,
+                        height,
+                        &self.launcher_state.apps,
+                        &self.icon_cache,
+                        &state_fn,
+                    );
+                }
             } else {
                 let mut painter = Painter::new(canvas, width as i32, height as i32);
                 launcher::draw_launcher(

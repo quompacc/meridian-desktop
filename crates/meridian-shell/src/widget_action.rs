@@ -1,6 +1,10 @@
+use crate::app_view::AppCategory;
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum WidgetAction {
     ToggleUiPreview,
+    ShowTileView,
+    SetCategory(AppCategory),
     LaunchApp { program: String, args: Vec<String> },
     LaunchExec(String),
     PowerOff,
@@ -13,6 +17,14 @@ pub(crate) enum WidgetAction {
 pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
     match id {
         "apps-switch" => Some(WidgetAction::ToggleUiPreview),
+        "show-tile-view" => Some(WidgetAction::ShowTileView),
+        "cat-internet" => Some(WidgetAction::SetCategory(AppCategory::Internet)),
+        "cat-kreativ" => Some(WidgetAction::SetCategory(AppCategory::Kreativ)),
+        "cat-buero" => Some(WidgetAction::SetCategory(AppCategory::Buero)),
+        "cat-entwicklung" => Some(WidgetAction::SetCategory(AppCategory::Entwicklung)),
+        "cat-system" => Some(WidgetAction::SetCategory(AppCategory::System)),
+        "cat-spiele" => Some(WidgetAction::SetCategory(AppCategory::Spiele)),
+        "cat-alle" => Some(WidgetAction::SetCategory(AppCategory::Alle)),
         "power-off" => Some(WidgetAction::PowerOff),
         "power-restart" => Some(WidgetAction::PowerRestart),
         "power-sleep" => Some(WidgetAction::PowerSleep),
@@ -24,6 +36,8 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
 
 #[cfg(test)]
 mod tests {
+    use crate::app_view::AppCategory;
+
     use super::{action_for_id, WidgetAction};
 
     #[test]
@@ -31,6 +45,46 @@ mod tests {
         assert_eq!(
             action_for_id("apps-switch"),
             Some(WidgetAction::ToggleUiPreview)
+        );
+    }
+
+    #[test]
+    fn action_for_id_show_tile_view() {
+        assert_eq!(
+            action_for_id("show-tile-view"),
+            Some(WidgetAction::ShowTileView)
+        );
+    }
+
+    #[test]
+    fn action_for_id_set_category() {
+        assert_eq!(
+            action_for_id("cat-internet"),
+            Some(WidgetAction::SetCategory(AppCategory::Internet))
+        );
+        assert_eq!(
+            action_for_id("cat-kreativ"),
+            Some(WidgetAction::SetCategory(AppCategory::Kreativ))
+        );
+        assert_eq!(
+            action_for_id("cat-buero"),
+            Some(WidgetAction::SetCategory(AppCategory::Buero))
+        );
+        assert_eq!(
+            action_for_id("cat-entwicklung"),
+            Some(WidgetAction::SetCategory(AppCategory::Entwicklung))
+        );
+        assert_eq!(
+            action_for_id("cat-system"),
+            Some(WidgetAction::SetCategory(AppCategory::System))
+        );
+        assert_eq!(
+            action_for_id("cat-spiele"),
+            Some(WidgetAction::SetCategory(AppCategory::Spiele))
+        );
+        assert_eq!(
+            action_for_id("cat-alle"),
+            Some(WidgetAction::SetCategory(AppCategory::Alle))
         );
     }
 
