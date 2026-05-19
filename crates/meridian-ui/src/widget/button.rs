@@ -4,7 +4,7 @@ use taffy::prelude::{length, Size, Style};
 use tiny_skia::PixmapMut;
 
 use crate::{
-    effect::paint_metro_surface,
+    effect::{paint_metro_surface, paint_text},
     paint::Rect,
     style::{Color, Theme},
 };
@@ -13,6 +13,9 @@ use super::{tile::STRIPE_HEIGHT, Widget};
 
 pub const BUTTON_DEFAULT_WIDTH: i32 = 48;
 pub const BUTTON_DEFAULT_HEIGHT: i32 = 48;
+pub const BUTTON_LABEL_PADDING_X: i32 = 6;
+pub const BUTTON_LABEL_BASELINE_FROM_BOTTOM: i32 = 8;
+pub const BUTTON_LABEL_FONT_PX: f32 = 11.0;
 
 pub struct Button {
     label: &'static str,
@@ -61,6 +64,14 @@ impl Widget for Button {
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme) {
         paint_metro_surface(canvas, area, self.accent, theme, STRIPE_HEIGHT);
+        paint_text(
+            canvas,
+            self.label,
+            area.x + BUTTON_LABEL_PADDING_X,
+            area.y + area.height - BUTTON_LABEL_BASELINE_FROM_BOTTOM,
+            BUTTON_LABEL_FONT_PX,
+            theme.palette.text,
+        );
     }
 }
 

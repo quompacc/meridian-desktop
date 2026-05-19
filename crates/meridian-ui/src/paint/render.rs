@@ -113,12 +113,8 @@ mod tests {
             },
             ..Default::default()
         }));
-        let button = Box::new(Button::new(
-            "p",
-            Palette::TOKYO_NIGHT_METRO.accent,
-            100,
-            40,
-        )) as Box<dyn Widget>;
+        let button = Box::new(Button::new("p", Palette::TOKYO_NIGHT_METRO.accent, 100, 40))
+            as Box<dyn Widget>;
         let root = Container::column(0, vec![spacer, button]);
 
         let layout = compute_layout(

@@ -1,0 +1,156 @@
+//! Text rendering via fontdue.
+//!
+//! The Adwaita Sans Regular font is embedded at compile time. `ui_font()`
+//! parses it on first access (OnceLock) and hands out a `&'static fontdue::Font`
+//! thereafter.
+//!
+//! `paint_text` rasterizes each glyph on demand and alpha-blends it onto the
+//! canvas. Allocation per call (fontdue's rasterize returns a fresh Vec<u8>
+//! per glyph) — acceptable for the current low-frequency render path; a
+//! glyph-cache wrapper is a later optimization.
+
+use std::sync::OnceLock;
+
+use fontdue::{Font, FontSettings};
+use tiny_skia::PixmapMut;
+
+use crate::style::Color;
+
+const UI_FONT_DATA: &[u8] = include_bytes!("../../assets/fonts/AdwaitaSans-Regular.ttf");
+
+static UI_FONT: OnceLock<Font> = OnceLock::new();
+
+pub fn ui_font() -> &'static Font {
+    UI_FONT.get_or_init(|| {
+        Font::from_bytes(UI_FONT_DATA, FontSettings::default())
+            .expect("embedded Adwaita Sans Regular parses")
+    })
+}
+
+pub fn measure_text(text: &str, size_px: f32) -> (i32, i32) {
+    if text.is_empty() {
+        return (0, 0);
+    }
+    let font = ui_font();
+    let mut width: f32 = 0.0;
+    let mut max_above: i32 = 0;
+    let mut max_below: i32 = 0;
+    for c in text.chars() {
+        let metrics = font.metrics(c, size_px);
+        width += metrics.advance_width;
+        let above = (metrics.height as i32 + metrics.ymin).max(0);
+        let below = (-metrics.ymin).max(0);
+        if above > max_above {
+            max_above = above;
+        }
+        if below > max_below {
+            max_below = below;
+        }
+    }
+    (width.round() as i32, max_above + max_below)
+}
+
+pub fn paint_text(
+    canvas: &mut PixmapMut<'_>,
+    text: &str,
+    x: i32,
+    baseline: i32,
+    size_px: f32,
+    color: Color,
+) {
+    if text.is_empty() {
+        return;
+    }
+    let font = ui_font();
+    let canvas_w = canvas.width() as i32;
+    let canvas_h = canvas.height() as i32;
+    let stride = canvas_w as usize * 4;
+    let data = canvas.data_mut();
+
+    let mut pen_x = x as f32;
+    for c in text.chars() {
+        let (metrics, bitmap) = font.rasterize(c, size_px);
+        let left = pen_x.round() as i32 + metrics.xmin;
+        let top = baseline - metrics.height as i32 - metrics.ymin;
+
+        let gw = metrics.width;
+        let gh = metrics.height;
+        for gy in 0..gh {
+            let dy = top + gy as i32;
+            if dy < 0 || dy >= canvas_h {
+                continue;
+            }
+            for gx in 0..gw {
+                let dx = left + gx as i32;
+                if dx < 0 || dx >= canvas_w {
+                    continue;
+                }
+                let alpha = bitmap[gy * gw + gx];
+                if alpha == 0 {
+                    continue;
+                }
+                let idx = dy as usize * stride + dx as usize * 4;
+                let src_a = ((alpha as u16) * (color.a as u16) / 255) as u8;
+                let inv = 255u16 - src_a as u16;
+                let src_r = ((color.r as u16) * (src_a as u16) / 255) as u8;
+                let src_g = ((color.g as u16) * (src_a as u16) / 255) as u8;
+                let src_b = ((color.b as u16) * (src_a as u16) / 255) as u8;
+                data[idx] = (src_r as u16 + (data[idx] as u16) * inv / 255) as u8;
+                data[idx + 1] = (src_g as u16 + (data[idx + 1] as u16) * inv / 255) as u8;
+                data[idx + 2] = (src_b as u16 + (data[idx + 2] as u16) * inv / 255) as u8;
+                data[idx + 3] = (src_a as u16 + (data[idx + 3] as u16) * inv / 255) as u8;
+            }
+        }
+
+        pen_x += metrics.advance_width;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tiny_skia::Pixmap;
+
+    #[test]
+    fn font_parses_with_line_metrics() {
+        let font = ui_font();
+        assert!(font.horizontal_line_metrics(14.0).is_some());
+    }
+
+    #[test]
+    fn measure_text_returns_positive_for_non_empty() {
+        let (w, h) = measure_text("Hello", 14.0);
+        assert!(w > 0);
+        assert!(h > 0);
+    }
+
+    #[test]
+    fn measure_text_empty_is_zero() {
+        let (w, h) = measure_text("", 14.0);
+        assert_eq!(w, 0);
+        assert_eq!(h, 0);
+    }
+
+    #[test]
+    fn paint_text_writes_pixels() {
+        let mut pixmap = Pixmap::new(64, 32).expect("pixmap");
+        let mut canvas = pixmap.as_mut();
+        let color = Color::rgb(0xff, 0xff, 0xff);
+        paint_text(&mut canvas, "X", 8, 22, 14.0, color);
+        drop(canvas);
+
+        let any_drawn = (0..32)
+            .any(|y| (0..64).any(|x| pixmap.pixel(x, y).map(|p| p.alpha() > 0).unwrap_or(false)));
+        assert!(any_drawn, "paint_text must touch at least one pixel");
+    }
+
+    #[test]
+    fn paint_text_empty_string_is_noop() {
+        let mut pixmap = Pixmap::new(32, 16).expect("pixmap");
+        let before = pixmap.data().to_vec();
+        let mut canvas = pixmap.as_mut();
+        paint_text(&mut canvas, "", 0, 12, 14.0, Color::rgb(0xff, 0xff, 0xff));
+        drop(canvas);
+        assert_eq!(pixmap.data(), before.as_slice());
+    }
+}

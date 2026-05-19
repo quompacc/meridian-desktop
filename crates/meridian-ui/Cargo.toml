@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+fontdue = "0.9"
 taffy = { workspace = true }
 tiny-skia = { workspace = true }

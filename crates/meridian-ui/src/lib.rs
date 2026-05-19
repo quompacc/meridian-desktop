@@ -8,7 +8,10 @@ pub mod effect;
 pub mod paint;
 pub mod style;
 pub mod widget;
-pub use effect::{paint_border, paint_fill, paint_metro_surface, rounded_rect_path};
+pub use effect::{
+    measure_text, paint_border, paint_fill, paint_metro_surface, paint_text, rounded_rect_path,
+    ui_font,
+};
 pub use paint::{compute_layout, render, PixelSize, Rect};
 pub use style::Theme;
 pub use widget::{Button, Tile, TileSize, Widget};

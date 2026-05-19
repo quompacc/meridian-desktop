@@ -9,7 +9,7 @@ use taffy::prelude::{span, Style};
 use tiny_skia::PixmapMut;
 
 use crate::{
-    effect::paint_metro_surface,
+    effect::{paint_metro_surface, paint_text},
     paint::Rect,
     style::{Color, Theme},
 };
@@ -26,6 +26,11 @@ pub const TILE_WIDE_HEIGHT: i32 = TILE_BASE_SIZE * 2;
 pub const TILE_LARGE_WIDTH: i32 = TILE_BASE_SIZE * 4;
 pub const TILE_LARGE_HEIGHT: i32 = TILE_BASE_SIZE * 4;
 pub const STRIPE_HEIGHT: i32 = 4;
+
+pub const TILE_LABEL_PADDING_X: i32 = 8;
+pub const TILE_LABEL_BASELINE_FROM_BOTTOM: i32 = 10;
+pub const TILE_LABEL_FONT_SMALL_PX: f32 = 11.0;
+pub const TILE_LABEL_FONT_DEFAULT_PX: f32 = 14.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TileSize {
@@ -95,6 +100,18 @@ impl Widget for Tile {
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme) {
         paint_metro_surface(canvas, area, self.accent, theme, STRIPE_HEIGHT);
+        let font_size = match self.size {
+            TileSize::Small => TILE_LABEL_FONT_SMALL_PX,
+            _ => TILE_LABEL_FONT_DEFAULT_PX,
+        };
+        paint_text(
+            canvas,
+            self.label,
+            area.x + TILE_LABEL_PADDING_X,
+            area.y + area.height - TILE_LABEL_BASELINE_FROM_BOTTOM,
+            font_size,
+            theme.palette.text,
+        );
     }
 }
 
