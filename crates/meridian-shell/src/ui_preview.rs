@@ -11,7 +11,7 @@ use meridian_ui::{
     PixelSize, Theme, TileSize, WidgetState,
 };
 use meridian_ui::{
-    effect::{paint_metro_surface, paint_text},
+    effect::{paint_fill, paint_metro_surface, paint_text, rounded_rect_path},
     paint::Rect,
     style::Color,
 };
@@ -32,8 +32,32 @@ const FOOTER_CLUSTER_GAP: i32 = 8;
 const FOOTER_SWITCH_WIDTH: i32 = 144;
 const FOOTER_SWITCH_HEIGHT: i32 = 48;
 const FOOTER_POWER_BUTTON_SIZE: i32 = 48;
+const DIVIDER_HEIGHT: i32 = 2;
 
 const POWER_ICON_SIZE: u32 = 32;
+
+struct Divider {
+    width: i32,
+    color: Color,
+}
+
+impl Widget for Divider {
+    fn style(&self) -> meridian_ui::WidgetStyle {
+        meridian_ui::WidgetStyle {
+            size: meridian_ui::UiSize {
+                width: meridian_ui::ui_length(self.width as f32),
+                height: meridian_ui::ui_length(DIVIDER_HEIGHT as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, _theme: &Theme, _state: WidgetState) {
+        if let Some(path) = rounded_rect_path(area, 0) {
+            paint_fill(canvas, &path, self.color);
+        }
+    }
+}
 
 fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
     let w = img.width;
@@ -154,7 +178,14 @@ pub(crate) fn build_ui_preview_widget_tree(
     ];
     let filtered_apps: Vec<&DesktopApp> = apps
         .iter()
-        .filter(|app| !app.terminal && app.icon_name.is_some())
+        .filter(|app| {
+            !app.terminal
+                && app
+                    .icon_name
+                    .as_deref()
+                    .and_then(|name| icon_cache.lookup(name, 24))
+                    .is_some()
+        })
         .take(11)
         .collect();
     let tiles: Vec<Box<dyn Widget>> = filtered_apps
@@ -180,7 +211,7 @@ pub(crate) fn build_ui_preview_widget_tree(
             }) as Box<dyn Widget>
         })
         .collect();
-    let mosaic_height = height.saturating_sub(FOOTER_HEIGHT.max(0) as u32);
+    let mosaic_height = height.saturating_sub(FOOTER_HEIGHT.max(0) as u32 + DIVIDER_HEIGHT as u32);
     let mosaic_grid = Container::grid(TILE_BASE_SIZE, 8, gap, width, mosaic_height, tiles);
     let mosaic_section = Container::centered_viewport(
         width,
@@ -263,10 +294,16 @@ pub(crate) fn build_ui_preview_widget_tree(
         footer_right,
     );
 
+    let divider_color = Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 180);
+
     Box::new(Container::column(
         0,
         vec![
             Box::new(mosaic_section) as Box<dyn Widget>,
+            Box::new(Divider {
+                width: width as i32,
+                color: divider_color,
+            }) as Box<dyn Widget>,
             Box::new(footer) as Box<dyn Widget>,
         ],
     ))
@@ -367,16 +404,20 @@ mod tests {
     }
 
     #[test]
-    fn build_ui_preview_widget_tree_has_root_column_with_two_sections() {
+    fn build_ui_preview_widget_tree_has_root_column_with_three_sections() {
         let icon_cache = IconCache::new();
         let tree = build_ui_preview_widget_tree(880, 620, &[], &icon_cache);
         let children = tree.children();
-        assert_eq!(children.len(), 2, "root column should have 2 children");
+        assert_eq!(
+            children.len(),
+            3,
+            "root column should have 3 children (mosaic, divider, footer)"
+        );
         // Mosaic section
         let mosaic = &children[0];
         assert!(!mosaic.children().is_empty(), "mosaic should contain grid");
         // Footer
-        let footer = &children[1];
+        let footer = &children[2];
         assert!(
             !footer.children().is_empty(),
             "footer should contain left/right clusters"

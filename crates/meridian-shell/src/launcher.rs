@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::{
     cell::RefCell,
     cmp::Ordering,
@@ -311,7 +312,7 @@ impl DesktopApp {
         Self::load_from_dirs(desktop_app_dirs())
     }
 
-    fn new(name: String, exec_argv: Vec<String>, terminal: bool) -> Self {
+    pub(crate) fn new(name: String, exec_argv: Vec<String>, terminal: bool) -> Self {
         let name = name.trim().to_string();
         let program = exec_argv.first().cloned().unwrap_or_default();
         let args = exec_argv.iter().skip(1).cloned().collect::<Vec<_>>();
@@ -2519,6 +2520,7 @@ fn is_pinned_candidate(app: &DesktopApp) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #![allow(dead_code)]
     use std::{
         cell::RefCell,
         fs,

@@ -20,8 +20,14 @@ pub use widget::{Button, Tile, TileSize, Widget};
 
 pub use taffy::prelude::length as ui_length;
 pub use taffy::prelude::span as grid_span;
+pub use taffy::prelude::AlignItems;
+pub use taffy::prelude::FlexDirection;
+pub use taffy::prelude::JustifyContent;
+pub use taffy::prelude::Rect as TaffyRect;
 pub use taffy::prelude::Size as UiSize;
 pub use taffy::prelude::Style as WidgetStyle;
+pub use taffy::Overflow;
+pub use taffy::Point as TaffyPoint;
 
 #[cfg(test)]
 mod smoke {

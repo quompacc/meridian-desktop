@@ -1,5 +1,6 @@
 use crate::app_view::AppCategory;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum WidgetAction {
     ToggleUiPreview,
@@ -7,6 +8,10 @@ pub(crate) enum WidgetAction {
     SetCategory(AppCategory),
     LaunchApp { program: String, args: Vec<String> },
     LaunchExec(String),
+    FocusWindow(String),
+    ToggleCalendar,
+    ToggleNetworkPopup,
+    ToggleWorkspacePopup,
     PowerOff,
     PowerRestart,
     PowerSleep,
@@ -14,6 +19,7 @@ pub(crate) enum WidgetAction {
     PowerLogout,
 }
 
+#[allow(dead_code)]
 pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
     match id {
         "apps-switch" => Some(WidgetAction::ToggleUiPreview),
@@ -25,6 +31,10 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
         "cat-system" => Some(WidgetAction::SetCategory(AppCategory::System)),
         "cat-spiele" => Some(WidgetAction::SetCategory(AppCategory::Spiele)),
         "cat-alle" => Some(WidgetAction::SetCategory(AppCategory::Alle)),
+        "panel-launcher" => Some(WidgetAction::ToggleUiPreview),
+        "panel-network" => Some(WidgetAction::ToggleNetworkPopup),
+        "panel-workspace" => Some(WidgetAction::ToggleWorkspacePopup),
+        "panel-clock" => Some(WidgetAction::ToggleCalendar),
         "power-off" => Some(WidgetAction::PowerOff),
         "power-restart" => Some(WidgetAction::PowerRestart),
         "power-sleep" => Some(WidgetAction::PowerSleep),

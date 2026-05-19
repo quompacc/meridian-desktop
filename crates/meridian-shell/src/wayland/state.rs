@@ -553,7 +553,6 @@ impl MeridianShell {
             self.launcher_layer
                 .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
             tracing::debug!("launcher focus request: keyboard_interactivity=Exclusive");
-            self.launcher_last_signature = None;
             self.launcher_width = crate::LAUNCHER_WIDTH;
             self.launcher_height = crate::LAUNCHER_HEIGHT;
         } else {
@@ -579,7 +578,7 @@ impl MeridianShell {
         );
     }
 
-    fn toggle_calendar_popup(&mut self, reason: CommitReason) {
+    pub(super) fn toggle_calendar_popup(&mut self, reason: CommitReason) {
         if self.calendar_popup_open {
             self.close_calendar_popup(reason);
             return;
@@ -639,7 +638,7 @@ impl MeridianShell {
         true
     }
 
-    fn toggle_workspace_popup(&mut self, reason: CommitReason) {
+    pub(super) fn toggle_workspace_popup(&mut self, reason: CommitReason) {
         if self.workspace_popup_open {
             self.close_workspace_popup(reason);
             return;
@@ -699,7 +698,7 @@ impl MeridianShell {
         true
     }
 
-    fn toggle_network_popup(&mut self, reason: CommitReason) {
+    pub(super) fn toggle_network_popup(&mut self, reason: CommitReason) {
         if self.network_popup_open {
             self.close_network_popup(reason);
             return;

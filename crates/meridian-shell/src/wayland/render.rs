@@ -5,15 +5,14 @@ use tracing::{debug, info, warn};
 use wayland_client::QueueHandle;
 
 use crate::{
-    buffer, launcher, network_popup, panel, ui_preview, workspaces, Painter, Rect,
-    CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
-    NETWORK_POPUP_HEIGHT, NETWORK_POPUP_WIDTH, PANEL_HEIGHT, WORKSPACE_POPUP_HEIGHT,
-    WORKSPACE_POPUP_WIDTH,
+    buffer, network_popup, panel, ui_preview, workspaces, Painter, Rect, CALENDAR_POPUP_HEIGHT,
+    CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT,
+    NETWORK_POPUP_WIDTH, PANEL_HEIGHT, WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
 };
 
 use super::{
     calendar::{weekday_labels, CalendarMonthModel},
-    shell::{LauncherRenderSignature, PanelRenderSignature, ThemeRenderSignature},
+    shell::{PanelRenderSignature, ThemeRenderSignature},
     time, CommitReason, CommitSurfaceKind, MeridianShell, RepaintReason, SurfaceKind,
 };
 
@@ -54,7 +53,10 @@ impl MeridianShell {
         }
     }
 
-    fn panel_window_entries(&self, active_workspace: u8) -> Vec<panel::PanelWindowEntry> {
+    pub(crate) fn panel_window_entries(
+        &self,
+        active_workspace: u8,
+    ) -> Vec<panel::PanelWindowEntry> {
         let focused_window_id = self.focused_window_id.as_deref();
         self.windows
             .iter()
@@ -91,58 +93,10 @@ impl MeridianShell {
             clock: clock.to_string(),
             network_icon: self.network_controller.state().icon_name(),
             network_popup_open: self.network_popup_open,
-            theme: self.theme_render_signature(),
-        }
-    }
-
-    fn launcher_apps_hash(apps: &[crate::launcher::DesktopApp]) -> u64 {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        for app in apps {
-            app.name.hash(&mut hasher);
-            app.program.hash(&mut hasher);
-            app.args.hash(&mut hasher);
-            app.terminal.hash(&mut hasher);
-            app.icon_name.hash(&mut hasher);
-        }
-        hasher.finish()
-    }
-
-    fn app_sections_hash(sections: &[crate::launcher::AppSection]) -> u64 {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        for section in sections {
-            section.letter.hash(&mut hasher);
-            section.rows.hash(&mut hasher);
-            for tile in &section.tiles {
-                tile.col.hash(&mut hasher);
-                tile.row.hash(&mut hasher);
-                tile.size.hash(&mut hasher);
-                tile.app_index.hash(&mut hasher);
-            }
-        }
-        hasher.finish()
-    }
-
-    fn launcher_render_signature(
-        &self,
-        width: u32,
-        height: u32,
-        visible_apps: &[crate::launcher::DesktopApp],
-    ) -> LauncherRenderSignature {
-        LauncherRenderSignature {
-            open: self.launcher_state.open,
-            width,
-            height,
-            query: self.launcher_state.query.clone(),
-            mode: self.launcher_state.current_mode(),
-            view: self.launcher_state.view(),
-            app_sections_hash: Self::app_sections_hash(&self.launcher_state.app_sections),
-            hover_app_index: self.launcher_state.hover_app_index,
-            tile_scroll_y: self.launcher_state.tile_scroll_y,
-            sidebar_category: self.launcher_state.sidebar_category,
-            pending_action_confirmation: self.launcher_state.pending_action_confirmation(),
-            selected_index: self.launcher_state.selected_index,
-            visible_apps_len: visible_apps.len(),
-            visible_apps_hash: Self::launcher_apps_hash(visible_apps),
+            hover_widget_path: self
+                .panel_widget_state
+                .as_ref()
+                .map(|(path, _)| path.as_slice().to_vec()),
             theme: self.theme_render_signature(),
         }
     }
@@ -290,25 +244,27 @@ impl MeridianShell {
                 return;
             };
 
-            let mut painter = Painter::new(canvas, width as i32, height as i32);
-            panel::draw_panel(
-                &mut self.panel_state,
-                &mut painter,
-                panel::PanelDrawInput {
-                    font: &self.font,
-                    theme: &self.theme,
-                    icon_cache: &self.icon_cache,
-                    active_workspace: panel_active_workspace,
-                    total_workspaces: 9,
-                    pinned_apps: &self.pinned_apps,
-                    window_entries: &panel_window_entries,
-                    clock: &clock,
-                    network_state: self.network_controller.state(),
-                    network_popup_open: self.network_popup_open,
-                    width,
-                    hover_pos: (self.pointer_surface == SurfaceKind::Panel)
-                        .then_some(self.pointer_position),
-                },
+            let panel_active_w = panel_active_workspace;
+            let state_fn = |path: &[usize]| -> meridian_ui::WidgetState {
+                match self.panel_widget_state.as_ref() {
+                    Some((p, s)) if p.as_slice() == path => *s,
+                    _ => meridian_ui::WidgetState::Idle,
+                }
+            };
+            crate::panel_view::draw_panel_ui(
+                canvas,
+                width,
+                height,
+                &self.pinned_apps,
+                &panel_window_entries,
+                self.network_controller.state(),
+                self.network_popup_open,
+                panel_active_w,
+                9,
+                &clock,
+                &self.icon_cache,
+                &state_fn,
+                &mut self.panel_state.clicks,
             );
             if self.workspace_indicator_dirty {
                 tracing::debug!(
@@ -372,37 +328,6 @@ impl MeridianShell {
             LAUNCHER_WIDTH,
             LAUNCHER_HEIGHT
         );
-        let mut signature = None;
-        if !self.ui_preview_enabled {
-            let visible_apps = self.launcher_state.filtered_apps();
-            let next_signature = self.launcher_render_signature(width, height, &visible_apps);
-            if self.launcher_last_signature.as_ref() == Some(&next_signature) {
-                self.render_stats.launcher.skips += 1;
-                debug!(
-                    "draw_launcher skipped: reason={:?} commit=no signature_unchanged=true",
-                    reason
-                );
-                if self.render_stats_enabled {
-                    debug!("shell render skip: surface=launcher reason=signature-unchanged");
-                }
-                self.launcher_dirty = false;
-                tracing::trace!("draw_launcher skipped: unchanged render signature");
-                return;
-            }
-            if self.render_stats_enabled {
-                let old_sig = self
-                    .launcher_last_signature
-                    .as_ref()
-                    .map(Self::signature_hash)
-                    .unwrap_or(0);
-                let new_sig = Self::signature_hash(&next_signature);
-                debug!(
-                    "shell render commit: surface=launcher reason={:?} old_sig={} new_sig={}",
-                    reason, old_sig, new_sig
-                );
-            }
-            signature = Some(next_signature);
-        }
         self.render_stats.launcher.renders += 1;
 
         let stride = buffer::shm_buffer_stride(width);
@@ -433,44 +358,32 @@ impl MeridianShell {
                 return;
             };
 
-            if self.ui_preview_enabled {
-                let active = self.ui_preview_widget_state.as_ref();
-                let state_fn = |path: &[usize]| -> meridian_ui::WidgetState {
-                    match active {
-                        Some((p, s)) if p.as_slice() == path => *s,
-                        _ => meridian_ui::WidgetState::Idle,
-                    }
-                };
-                if self.app_view_open {
-                    crate::app_view::draw_app_view(
-                        canvas,
-                        width,
-                        height,
-                        &self.launcher_state.apps,
-                        self.app_view_category,
-                        &self.icon_cache,
-                        &state_fn,
-                    );
-                } else {
-                    ui_preview::draw_ui_preview_sandbox(
-                        canvas,
-                        width,
-                        height,
-                        &self.launcher_state.apps,
-                        &self.icon_cache,
-                        &state_fn,
-                    );
+            let active = self.ui_preview_widget_state.as_ref();
+            let state_fn = |path: &[usize]| -> meridian_ui::WidgetState {
+                match active {
+                    Some((p, s)) if p.as_slice() == path => *s,
+                    _ => meridian_ui::WidgetState::Idle,
                 }
-            } else {
-                let mut painter = Painter::new(canvas, width as i32, height as i32);
-                launcher::draw_launcher(
-                    &mut self.launcher_state,
-                    &mut painter,
-                    &self.font,
-                    &self.theme,
-                    &self.icon_cache,
+            };
+            if self.app_view_open {
+                crate::app_view::draw_app_view(
+                    canvas,
                     width,
                     height,
+                    &self.launcher_state.apps,
+                    self.app_view_category,
+                    &self.icon_cache,
+                    &state_fn,
+                    &self.search_query,
+                );
+            } else {
+                ui_preview::draw_ui_preview_sandbox(
+                    canvas,
+                    width,
+                    height,
+                    &self.launcher_state.apps,
+                    &self.icon_cache,
+                    &state_fn,
                 );
             }
 
@@ -492,7 +405,6 @@ impl MeridianShell {
                 "draw_launcher committed: reason={:?} width={} height={}",
                 reason, width, height
             );
-            self.launcher_last_signature = signature;
             self.launcher_dirty = false;
             return;
         }
@@ -507,7 +419,6 @@ impl MeridianShell {
         );
         self.launcher_layer.wl_surface().attach(None, 0, 0);
         self.commit_surface(CommitSurfaceKind::Launcher, reason);
-        self.launcher_last_signature = None;
         self.launcher_dirty = false;
     }
 

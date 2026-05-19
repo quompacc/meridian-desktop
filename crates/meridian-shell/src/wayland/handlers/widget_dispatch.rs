@@ -1,8 +1,10 @@
 use wayland_client::QueueHandle;
 
 use super::MeridianShell;
+use crate::wayland::CommitReason;
 
 impl MeridianShell {
+    #[allow(dead_code)]
     pub(super) fn dispatch_widget_action(
         &mut self,
         qh: &QueueHandle<MeridianShell>,
@@ -17,11 +19,13 @@ impl MeridianShell {
             }
             WidgetAction::ShowTileView => {
                 self.app_view_open = false;
+                self.search_query.clear();
                 self.ui_preview_widget_state = None;
                 self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
             }
             WidgetAction::SetCategory(cat) => {
                 self.app_view_category = cat;
+                self.search_query.clear();
                 self.ui_preview_widget_state = None;
                 self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
             }
@@ -39,6 +43,31 @@ impl MeridianShell {
                     tracing::warn!("launch failed: {:?}", e);
                 }
             },
+            WidgetAction::FocusWindow(id) => {
+                self.ipc
+                    .send(&meridian_ipc::ShellCommand::FocusWindow { id });
+            }
+            WidgetAction::ToggleCalendar => {
+                self.toggle_calendar_popup(CommitReason::Input);
+                self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
+                if self.calendar_popup_open {
+                    self.draw_calendar_popup(qh, crate::wayland::RepaintReason::Pointer);
+                }
+            }
+            WidgetAction::ToggleNetworkPopup => {
+                self.toggle_network_popup(CommitReason::Input);
+                self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
+                if self.network_popup_open {
+                    self.draw_network_popup(qh, crate::wayland::RepaintReason::Pointer);
+                }
+            }
+            WidgetAction::ToggleWorkspacePopup => {
+                self.toggle_workspace_popup(CommitReason::Input);
+                self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
+                if self.workspace_popup_open {
+                    self.draw_workspace_popup(qh, crate::wayland::RepaintReason::Pointer);
+                }
+            }
             WidgetAction::PowerOff
             | WidgetAction::PowerRestart
             | WidgetAction::PowerSleep

@@ -8,10 +8,7 @@ use wayland_client::{
     Connection, QueueHandle,
 };
 
-use crate::{
-    launcher,
-    wayland::{CommitReason, RepaintReason, SurfaceKind},
-};
+use crate::wayland::{CommitReason, RepaintReason, SurfaceKind};
 
 use super::MeridianShell;
 
@@ -91,73 +88,29 @@ impl KeyboardHandler for MeridianShell {
             }
         }
 
-        if !self.launcher_state.open {
-            return;
-        }
-
-        let keycode = event.raw_code;
-        let is_enter = event.keysym == Keysym::Return || event.keysym == Keysym::KP_Enter;
-        let is_backspace = event.keysym == Keysym::BackSpace;
-        let is_up = event.keysym == Keysym::Up || event.keysym == Keysym::KP_Up || keycode == 103;
-        let is_down =
-            event.keysym == Keysym::Down || event.keysym == Keysym::KP_Down || keycode == 108;
-        let ch = event.keysym.key_char().filter(|ch| !ch.is_control());
-        debug!(
-            "launcher key event: keycode={} keysym={:?} utf8={:?} key_char={:?} up={} down={} enter={} esc={} backspace={} focus={:?}",
-            keycode,
-            event.keysym,
-            event.utf8,
-            ch,
-            is_up,
-            is_down,
-            is_enter,
-            is_escape,
-            is_backspace,
-            self.keyboard_focus
-        );
-
-        let result = self.launcher_state.handle_key(
-            event
-                .utf8
-                .as_deref()
-                .and_then(|text| text.chars().next())
-                .or(ch),
-            is_backspace,
-            is_enter,
-            is_escape,
-            is_up,
-            is_down,
-        );
-        debug!(
-            "launcher key result: {:?} selected_index={}",
-            result, self.launcher_state.selected_index
-        );
-        match result {
-            launcher::LauncherInputResult::Close => {
-                self.unmap_launcher(CommitReason::Input);
-                self.draw_panel(qh, RepaintReason::Keyboard);
+        if self.app_view_open {
+            let is_backspace = event.keysym == Keysym::BackSpace;
+            if is_escape && self.search_query.is_empty() {
+                self.app_view_open = false;
+                self.ui_preview_widget_state = None;
+                self.draw_launcher(qh, RepaintReason::Keyboard);
+                return;
             }
-            launcher::LauncherInputResult::Launch(idx) => {
-                self.launcher_state.launch_app(idx, &mut self.ipc);
-                self.close_launcher_after_launch(qh, RepaintReason::Keyboard);
+            if is_escape {
+                self.search_query.clear();
+                self.draw_launcher(qh, RepaintReason::Keyboard);
+                return;
             }
-            launcher::LauncherInputResult::Action(action) => {
-                match self.launcher_state.trigger_action(action, &mut self.ipc) {
-                    launcher::LauncherActionTriggerResult::Armed => {
-                        self.draw_launcher(qh, RepaintReason::Keyboard);
-                    }
-                    launcher::LauncherActionTriggerResult::Sent => {
-                        self.close_launcher_after_launch(qh, RepaintReason::Keyboard);
-                    }
-                    launcher::LauncherActionTriggerResult::Failed => {
-                        self.draw_launcher(qh, RepaintReason::Keyboard);
-                    }
-                }
+            if is_backspace {
+                self.search_query.pop();
+                self.draw_launcher(qh, RepaintReason::Keyboard);
+                return;
             }
-            launcher::LauncherInputResult::Redraw => {
+            let ch = event.keysym.key_char().filter(|c| !c.is_control());
+            if let Some(c) = ch {
+                self.search_query.push(c);
                 self.draw_launcher(qh, RepaintReason::Keyboard);
             }
-            launcher::LauncherInputResult::None => {}
         }
     }
 

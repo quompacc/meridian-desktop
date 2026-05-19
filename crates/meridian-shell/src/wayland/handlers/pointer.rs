@@ -38,9 +38,14 @@ impl PointerHandler for MeridianShell {
             if let PointerEventKind::Leave { .. } = event.kind {
                 self.pointer_position = (-1.0, -1.0);
                 match self.pointer_surface {
-                    SurfaceKind::Panel => self.draw_panel(qh, RepaintReason::Pointer),
+                    SurfaceKind::Panel => {
+                        if self.panel_widget_state.is_some() {
+                            self.panel_widget_state = None;
+                        }
+                        self.draw_panel(qh, RepaintReason::Pointer);
+                    }
                     SurfaceKind::Launcher => {
-                        if self.ui_preview_enabled && self.ui_preview_widget_state.is_some() {
+                        if self.ui_preview_widget_state.is_some() {
                             self.ui_preview_widget_state = None;
                         }
                         self.draw_launcher(qh, RepaintReason::Pointer)
@@ -57,7 +62,7 @@ impl PointerHandler for MeridianShell {
                 continue;
             }
 
-            if self.ui_preview_enabled && self.pointer_surface == SurfaceKind::Launcher {
+            if self.pointer_surface == SurfaceKind::Launcher {
                 if let Some(ev) = translate_pointer_event(&event.kind, event.position) {
                     let tree = if self.app_view_open {
                         crate::app_view::build_app_view_widget_tree(
@@ -66,6 +71,7 @@ impl PointerHandler for MeridianShell {
                             &self.launcher_state.apps,
                             self.app_view_category,
                             &self.icon_cache,
+                            &self.search_query,
                         )
                     } else {
                         crate::ui_preview::build_ui_preview_widget_tree(
@@ -102,10 +108,12 @@ impl PointerHandler for MeridianShell {
                                 self.draw_launcher(qh, RepaintReason::Pointer);
                             }
                             if let Some(clicked_path) = clicked_path {
-                                if let Some(widget) = crate::widget_traversal::find_widget_at_path(
-                                    &*tree,
-                                    &clicked_path,
-                                ) {
+                                if let Some(widget) =
+                                    crate::widget_traversal::find_widget_at_path(
+                                        &*tree,
+                                        &clicked_path,
+                                    )
+                                {
                                     if let Some(action) =
                                         widget.id().and_then(crate::widget_action::action_for_id)
                                     {
@@ -130,11 +138,48 @@ impl PointerHandler for MeridianShell {
                             }
                         }
                         Err(e) => {
-                            tracing::warn!("ui-preview layout failed: {:?}", e);
+                            tracing::warn!("launcher layout failed: {:?}", e);
                         }
                     }
                 }
                 continue;
+            }
+
+            if self.pointer_surface == SurfaceKind::Panel {
+                if let Some(ev) = translate_pointer_event(&event.kind, event.position) {
+                    let tree = crate::panel_view::build_panel_widget_tree(
+                        self.width,
+                        &self.pinned_apps,
+                        &self.panel_window_entries(self.panel_active_workspace()),
+                        self.network_controller.state(),
+                        self.network_popup_open,
+                        self.panel_active_workspace(),
+                        9,
+                        &self.last_clock,
+                        &self.icon_cache,
+                    );
+                    let pixel_size = meridian_ui::PixelSize {
+                        width: self.width,
+                        height: crate::PANEL_HEIGHT,
+                    };
+                    if let Ok(layout) = meridian_ui::compute_layout(&*tree, pixel_size) {
+                        let pos = meridian_ui::PointerPosition {
+                            x: event.position.0 as i32,
+                            y: event.position.1 as i32,
+                        };
+                        let path = meridian_ui::hit_test(&layout, pos);
+                        let new_state = super::pointer_state::apply_pointer_event(
+                            self.panel_widget_state.clone(),
+                            &ev,
+                            path,
+                        );
+                        if new_state != self.panel_widget_state {
+                            self.panel_widget_state = new_state;
+                            self.draw_panel(qh, RepaintReason::Pointer);
+                        }
+                    }
+                }
+                // No continue — Press events must fall through to the ClickZone handler below.
             }
 
             if self.pointer_surface == SurfaceKind::Launcher

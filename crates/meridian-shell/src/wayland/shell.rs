@@ -184,25 +184,7 @@ pub(crate) struct PanelRenderSignature {
     pub(crate) clock: String,
     pub(crate) network_icon: &'static str,
     pub(crate) network_popup_open: bool,
-    pub(crate) theme: ThemeRenderSignature,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct LauncherRenderSignature {
-    pub(crate) open: bool,
-    pub(crate) width: u32,
-    pub(crate) height: u32,
-    pub(crate) query: String,
-    pub(crate) mode: crate::launcher::LauncherMode,
-    pub(crate) view: crate::launcher::LauncherView,
-    pub(crate) app_sections_hash: u64,
-    pub(crate) hover_app_index: Option<usize>,
-    pub(crate) tile_scroll_y: i32,
-    pub(crate) sidebar_category: crate::launcher::SidebarCategory,
-    pub(crate) pending_action_confirmation: Option<crate::launcher::LauncherAction>,
-    pub(crate) selected_index: usize,
-    pub(crate) visible_apps_len: usize,
-    pub(crate) visible_apps_hash: u64,
+    pub(crate) hover_widget_path: Option<Vec<usize>>,
     pub(crate) theme: ThemeRenderSignature,
 }
 
@@ -295,10 +277,11 @@ pub(crate) struct MeridianShell {
     pub(crate) occupied_unavailable_logged: bool,
     pub(crate) panel_dirty: bool,
     pub(crate) launcher_dirty: bool,
-    pub(crate) ui_preview_enabled: bool,
     pub(crate) ui_preview_widget_state: Option<(meridian_ui::WidgetPath, meridian_ui::WidgetState)>,
+    pub(crate) panel_widget_state: Option<(meridian_ui::WidgetPath, meridian_ui::WidgetState)>,
     pub(crate) app_view_open: bool,
     pub(crate) app_view_category: crate::app_view::AppCategory,
+    pub(crate) search_query: String,
     pub(crate) calendar_dirty: bool,
     pub(crate) workspace_dirty: bool,
     pub(crate) network_dirty: bool,
@@ -307,7 +290,6 @@ pub(crate) struct MeridianShell {
     pub(crate) network_popup_open: bool,
     pub(crate) calendar_display_policy: CalendarDisplayPolicy,
     pub(crate) panel_last_signature: Option<PanelRenderSignature>,
-    pub(crate) launcher_last_signature: Option<LauncherRenderSignature>,
     pub(crate) repaint_stats: RepaintStats,
     pub(crate) repaint_stats_enabled: bool,
     pub(crate) last_repaint_stats_log: Instant,
@@ -321,75 +303,4 @@ pub(crate) struct MeridianShell {
     pub(crate) last_clock: String,
     pub(crate) last_tick: Instant,
     pub(crate) exit: bool,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{LauncherRenderSignature, ThemeRenderSignature};
-    use crate::launcher::{LauncherAction, LauncherMode, LauncherView, SidebarCategory};
-
-    fn base_launcher_signature() -> LauncherRenderSignature {
-        LauncherRenderSignature {
-            open: true,
-            width: 720,
-            height: 520,
-            query: String::new(),
-            mode: LauncherMode::Apps,
-            view: LauncherView::TileStart,
-            app_sections_hash: 0,
-            hover_app_index: None,
-            tile_scroll_y: 0,
-            sidebar_category: SidebarCategory::System,
-            pending_action_confirmation: None,
-            selected_index: 0,
-            visible_apps_len: 1,
-            visible_apps_hash: 42,
-            theme: ThemeRenderSignature {
-                font_ui: "Sans".to_string(),
-                colors: [0; 20],
-            },
-        }
-    }
-
-    #[test]
-    fn launcher_signature_changes_with_pending_action_confirmation() {
-        let without_confirmation = base_launcher_signature();
-        let mut with_confirmation = base_launcher_signature();
-        with_confirmation.pending_action_confirmation = Some(LauncherAction::ExitMeridian);
-
-        assert_ne!(without_confirmation, with_confirmation);
-    }
-
-    #[test]
-    fn launcher_signature_changes_with_view() {
-        let tile_start = base_launcher_signature();
-        let mut all_apps = base_launcher_signature();
-        all_apps.view = LauncherView::AllApps;
-
-        assert_ne!(tile_start, all_apps);
-    }
-
-    #[test]
-    fn launcher_signature_changes_with_hover_app_index() {
-        let without = base_launcher_signature();
-        let mut with = base_launcher_signature();
-        with.hover_app_index = Some(7);
-        assert_ne!(without, with);
-    }
-
-    #[test]
-    fn launcher_signature_changes_with_app_sections_hash() {
-        let zero = base_launcher_signature();
-        let mut other = base_launcher_signature();
-        other.app_sections_hash = 0xdead_beef;
-        assert_ne!(zero, other);
-    }
-
-    #[test]
-    fn launcher_signature_changes_with_tile_scroll() {
-        let a = base_launcher_signature();
-        let mut b = base_launcher_signature();
-        b.tile_scroll_y = 80;
-        assert_ne!(a, b);
-    }
 }

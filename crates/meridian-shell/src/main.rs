@@ -15,6 +15,7 @@ mod launcher;
 mod network;
 mod network_popup;
 mod panel;
+mod panel_view;
 mod ui;
 mod ui_preview;
 mod wayland;
@@ -67,15 +68,13 @@ pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let ui_preview_enabled = parse_ui_preview_flag(std::env::args()) || ui_preview_env_enabled();
-
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info"))
         .add_directive("usvg=error".parse().expect("static directive parses"));
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
 
     let mut event_loop = EventLoop::try_new()?;
-    let (mut shell, qh) = wayland::initialize(&mut event_loop, ui_preview_enabled)?;
+    let (mut shell, qh) = wayland::initialize(&mut event_loop)?;
 
     insert_tick_timer(&mut event_loop, qh.clone())?;
     insert_network_poll_timer(&mut event_loop, qh)?;
@@ -86,22 +85,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
-}
-
-fn parse_ui_preview_flag<I: IntoIterator<Item = String>>(argv: I) -> bool {
-    argv.into_iter().any(|arg| arg == "--ui-preview")
-}
-
-fn parse_ui_preview_env(value: Option<&str>) -> bool {
-    value
-        .map(str::trim)
-        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(false)
-}
-
-fn ui_preview_env_enabled() -> bool {
-    let value = std::env::var("MERIDIAN_UI_PREVIEW").ok();
-    parse_ui_preview_env(value.as_deref())
 }
 
 fn insert_tick_timer(
@@ -176,7 +159,7 @@ fn insert_network_poll_timer(
 
 #[cfg(test)]
 mod tests {
-    use super::{default_pinned_apps, parse_ui_preview_env, parse_ui_preview_flag};
+    use super::default_pinned_apps;
 
     #[test]
     fn default_pinned_apps_contains_expected_entries() {
@@ -191,47 +174,5 @@ mod tests {
         assert_eq!(pinned[2].label, "Files");
         assert_eq!(pinned[2].program, "dolphin");
         assert_eq!(pinned[2].icon_name.as_deref(), Some("org.kde.dolphin"));
-    }
-
-    #[test]
-    fn parse_ui_preview_flag_true_when_present() {
-        let args = vec!["meridian-shell".to_string(), "--ui-preview".to_string()];
-        assert!(parse_ui_preview_flag(args));
-    }
-
-    #[test]
-    fn parse_ui_preview_flag_false_when_missing() {
-        let args = vec!["meridian-shell".to_string(), "--other".to_string()];
-        assert!(!parse_ui_preview_flag(args));
-    }
-
-    #[test]
-    fn parse_ui_preview_flag_true_when_repeated() {
-        let args = vec![
-            "meridian-shell".to_string(),
-            "--ui-preview".to_string(),
-            "--ui-preview".to_string(),
-        ];
-        assert!(parse_ui_preview_flag(args));
-    }
-
-    #[test]
-    fn parse_ui_preview_env_truthy_values() {
-        assert!(parse_ui_preview_env(Some("1")));
-        assert!(parse_ui_preview_env(Some("true")));
-        assert!(parse_ui_preview_env(Some("YES")));
-        assert!(parse_ui_preview_env(Some("on")));
-        assert!(parse_ui_preview_env(Some("  1  ")));
-    }
-
-    #[test]
-    fn parse_ui_preview_env_falsy_values() {
-        assert!(!parse_ui_preview_env(None));
-        assert!(!parse_ui_preview_env(Some("")));
-        assert!(!parse_ui_preview_env(Some("0")));
-        assert!(!parse_ui_preview_env(Some("no")));
-        assert!(!parse_ui_preview_env(Some("false")));
-        assert!(!parse_ui_preview_env(Some("off")));
-        assert!(!parse_ui_preview_env(Some("random")));
     }
 }

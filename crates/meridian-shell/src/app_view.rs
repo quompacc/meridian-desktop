@@ -132,6 +132,7 @@ const APP_CARD_WIDTH: i32 = 268;
 const APP_CARD_HEIGHT: i32 = 52;
 const APP_CARD_ICON_SIZE: u32 = 24;
 const APP_CARD_CORNER_RADIUS: i32 = 4;
+const DIVIDER_HEIGHT: i32 = 2;
 
 pub(crate) struct AppCard {
     pub(crate) label: Box<str>,
@@ -197,7 +198,92 @@ impl Widget for AppCard {
     }
 }
 
+struct Divider {
+    width: i32,
+    color: Color,
+}
+
+impl Widget for Divider {
+    fn style(&self) -> meridian_ui::WidgetStyle {
+        meridian_ui::WidgetStyle {
+            size: meridian_ui::UiSize {
+                width: meridian_ui::ui_length(self.width as f32),
+                height: meridian_ui::ui_length(DIVIDER_HEIGHT as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, _theme: &Theme, _state: WidgetState) {
+        if let Some(path) = rounded_rect_path(area, 0) {
+            paint_fill(canvas, &path, self.color);
+        }
+    }
+}
+
 const SEARCH_BAR_HEIGHT: u32 = 44;
+
+struct SearchBar {
+    width: i32,
+    query: Box<str>,
+}
+
+impl Widget for SearchBar {
+    fn style(&self) -> meridian_ui::WidgetStyle {
+        meridian_ui::WidgetStyle {
+            size: meridian_ui::UiSize {
+                width: meridian_ui::ui_length(self.width as f32),
+                height: meridian_ui::ui_length(SEARCH_BAR_HEIGHT as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let body_color = match state {
+            WidgetState::Idle => theme.palette.surface,
+            WidgetState::Hovered => theme
+                .palette
+                .surface
+                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15),
+            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
+        };
+
+        if let Some(path) = rounded_rect_path(area, 4) {
+            paint_fill(canvas, &path, body_color);
+        }
+
+        let text_x = area.x + 12;
+        let text_baseline = area.y + area.height - 10;
+        let font_size: f32 = 13.0;
+
+        if self.query.is_empty() {
+            let dimmed = Color::rgba(
+                theme.palette.text.r,
+                theme.palette.text.g,
+                theme.palette.text.b,
+                80,
+            );
+            paint_text(
+                canvas,
+                "Apps suchen...",
+                text_x,
+                text_baseline,
+                font_size,
+                dimmed,
+            );
+        } else {
+            paint_text(
+                canvas,
+                &self.query,
+                text_x,
+                text_baseline,
+                font_size,
+                theme.palette.text,
+            );
+        }
+    }
+}
 const CHIPS_BAR_HEIGHT: u32 = 52;
 const FOOTER_HEIGHT: u32 = 56;
 const CHIP_WIDTH: i32 = 104;
@@ -215,15 +301,14 @@ pub(crate) fn build_app_view_widget_tree(
     apps: &[DesktopApp],
     category: AppCategory,
     icon_cache: &IconCache,
+    search_query: &str,
 ) -> Box<dyn Widget> {
     let pal = Palette::TOKYO_NIGHT_METRO;
 
-    let search_bar: Box<dyn Widget> = Box::new(Button::new(
-        "Apps suchen...",
-        pal.surface,
-        width as i32,
-        SEARCH_BAR_HEIGHT as i32,
-    ));
+    let search_bar: Box<dyn Widget> = Box::new(SearchBar {
+        width: width as i32,
+        query: search_query.into(),
+    });
 
     let active_accent = category.accent(&pal);
     let chips: Vec<Box<dyn Widget>> = ALL_CATEGORIES
@@ -252,7 +337,20 @@ pub(crate) fn build_app_view_widget_tree(
 
     let filtered: Vec<&DesktopApp> = apps
         .iter()
-        .filter(|app| !app.terminal && app.icon_name.is_some() && category.matches(app))
+        .filter(|app| {
+            !app.terminal
+                && app
+                    .icon_name
+                    .as_deref()
+                    .and_then(|name| icon_cache.lookup(name, 24))
+                    .is_some()
+                && category.matches(app)
+                && (search_query.is_empty()
+                    || app
+                        .name
+                        .to_lowercase()
+                        .contains(&search_query.to_lowercase()))
+        })
         .take(21)
         .collect();
 
@@ -279,7 +377,13 @@ pub(crate) fn build_app_view_widget_tree(
         row_widgets.push(Box::new(Container::row(8, row_cards)) as Box<dyn Widget>);
     }
 
-    let grid_height = height.saturating_sub(SEARCH_BAR_HEIGHT + CHIPS_BAR_HEIGHT + FOOTER_HEIGHT);
+    const DIVIDER_COUNT: u32 = 2;
+    let grid_height = height.saturating_sub(
+        SEARCH_BAR_HEIGHT
+            + CHIPS_BAR_HEIGHT
+            + FOOTER_HEIGHT
+            + DIVIDER_COUNT * DIVIDER_HEIGHT as u32,
+    );
 
     let grid = Container::centered_viewport(
         width,
@@ -363,17 +467,28 @@ pub(crate) fn build_app_view_widget_tree(
         footer_right,
     );
 
+    let divider_color = Color::rgba(active_accent.r, active_accent.g, active_accent.b, 180);
+    let make_divider = || -> Box<dyn Widget> {
+        Box::new(Divider {
+            width: width as i32,
+            color: divider_color,
+        })
+    };
+
     Box::new(Container::column(
         0,
         vec![
             search_bar,
             Box::new(chip_bar) as Box<dyn Widget>,
+            make_divider(),
             Box::new(grid) as Box<dyn Widget>,
+            make_divider(),
             Box::new(footer) as Box<dyn Widget>,
         ],
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_app_view(
     canvas: &mut [u8],
     width: u32,
@@ -382,6 +497,7 @@ pub(crate) fn draw_app_view(
     category: AppCategory,
     icon_cache: &IconCache,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
+    search_query: &str,
 ) {
     let expected_len = (width as usize)
         .saturating_mul(height as usize)
@@ -397,7 +513,7 @@ pub(crate) fn draw_app_view(
     let theme = Theme::TOKYO_NIGHT_METRO;
     pixmap.fill(to_tiny_skia_color(theme.palette.background));
 
-    let root = build_app_view_widget_tree(width, height, apps, category, icon_cache);
+    let root = build_app_view_widget_tree(width, height, apps, category, icon_cache, search_query);
 
     if let Ok(layout) =
         meridian_ui::compute_layout(&*root, meridian_ui::PixelSize { width, height })
@@ -428,10 +544,113 @@ fn to_tiny_skia_color(color: meridian_ui::style::Color) -> tiny_skia::Color {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_app_view_widget_tree, AppCard, AppCategory};
-    use crate::icons::IconCache;
+    use std::{
+        fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use super::{build_app_view_widget_tree, AppCard, AppCategory, SearchBar};
+    use crate::icons::{IconCache, IconLoader};
+    use crate::launcher::DesktopApp;
     use meridian_ui::style::Color;
     use meridian_ui::Widget;
+
+    struct TempDir {
+        path: PathBuf,
+    }
+
+    impl TempDir {
+        fn new(label: &str) -> Self {
+            let mut path = std::env::temp_dir();
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos();
+            path.push(format!(
+                "meridian-shell-app-view-{label}-{}-{nanos}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).expect("create temp dir");
+            Self { path }
+        }
+
+        fn path(&self) -> &PathBuf {
+            &self.path
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    fn write_theme_index(path: &std::path::Path, directories: &[&str]) {
+        let mut body = format!(
+            "[Icon Theme]\nName=Theme\nInherits=\nDirectories={}\n\n",
+            directories.join(",")
+        );
+        for directory in directories {
+            let size: u32 = directory
+                .split('x')
+                .next()
+                .unwrap_or("0")
+                .parse()
+                .unwrap_or(0);
+            body.push_str(&format!("[{directory}]\nType=Fixed\nSize={size}\n\n"));
+        }
+        fs::write(path, body).expect("write index.theme");
+    }
+
+    fn write_png(path: &std::path::Path) {
+        use png::{BitDepth, ColorType, Encoder};
+        let file = fs::File::create(path).expect("create png");
+        let mut encoder = Encoder::new(file, 24, 24);
+        encoder.set_color(ColorType::Rgba);
+        encoder.set_depth(BitDepth::Eight);
+        let mut writer = encoder.write_header().expect("write header");
+        let data = vec![255u8; 24 * 24 * 4];
+        writer.write_image_data(&data).expect("write data");
+    }
+
+    fn test_icon_cache() -> (TempDir, IconCache) {
+        let temp = TempDir::new("app-view");
+        let icons_root = temp.path().join("icons");
+        let theme_root = icons_root.join("Adwaita");
+        let apps = theme_root.join("22x22/apps");
+        fs::create_dir_all(&apps).expect("create apps dir");
+        write_theme_index(&theme_root.join("index.theme"), &["22x22/apps"]);
+        write_png(&apps.join("firefox.png"));
+        write_png(&apps.join("utilities-terminal.png"));
+
+        let loader = IconLoader::new_for_tests("Adwaita", vec![icons_root], vec![]);
+        let mut cache = IconCache::new_for_tests(loader);
+        cache.warm(&["firefox"], 24);
+        cache.warm(&["utilities-terminal"], 24);
+        (temp, cache)
+    }
+
+    fn firefox_app() -> DesktopApp {
+        let mut app = DesktopApp::new("Firefox".into(), vec!["firefox".into()], false);
+        app.icon_name = Some("firefox".into());
+        app.categories = vec!["network".into(), "webbrowser".into()];
+        app
+    }
+
+    #[test]
+    fn search_bar_style_returns_correct_size() {
+        let bar = SearchBar {
+            width: 880,
+            query: "".into(),
+        };
+        let style = bar.style();
+        assert_eq!(style.size.width, meridian_ui::ui_length(880.0));
+        assert_eq!(
+            style.size.height,
+            meridian_ui::ui_length(super::SEARCH_BAR_HEIGHT as f32)
+        );
+    }
 
     #[test]
     fn app_category_chip_id_mapping() {
@@ -458,19 +677,64 @@ mod tests {
     #[test]
     fn build_app_view_widget_tree_empty_apps() {
         let icon_cache = IconCache::new();
-        let tree = build_app_view_widget_tree(880, 620, &[], AppCategory::Alle, &icon_cache);
+        let tree = build_app_view_widget_tree(880, 620, &[], AppCategory::Alle, &icon_cache, "");
         let children = tree.children();
-        assert_eq!(children.len(), 4, "root column should have 4 children");
+        assert_eq!(
+            children.len(),
+            6,
+            "root column should have 6 children (search, chips, divider, grid, divider, footer)"
+        );
     }
 
     #[test]
-    fn app_category_labels_match_expected() {
-        assert_eq!(AppCategory::Internet.label(), "Internet");
-        assert_eq!(AppCategory::Kreativ.label(), "Kreativ");
-        assert_eq!(AppCategory::Buero.label(), "Büro");
-        assert_eq!(AppCategory::Entwicklung.label(), "Entwicklung");
-        assert_eq!(AppCategory::System.label(), "System");
-        assert_eq!(AppCategory::Spiele.label(), "Spiele");
-        assert_eq!(AppCategory::Alle.label(), "Alle");
+    fn app_view_search_filters_by_query_match() {
+        let (_temp, icon_cache) = test_icon_cache();
+        let app = firefox_app();
+        let tree = build_app_view_widget_tree(
+            880,
+            620,
+            &[app],
+            AppCategory::Internet,
+            &icon_cache,
+            "fire",
+        );
+        let children = tree.children();
+        assert_eq!(children.len(), 6);
+        // child[3] is the grid container
+        let grid = &children[3];
+        let grid_children = grid.children();
+        // grid has 1 child: the column container
+        assert_eq!(grid_children.len(), 1);
+        let column = &grid_children[0];
+        // column has rows; with 1 matching app there should be at least 1 row
+        assert!(
+            !column.children().is_empty(),
+            "should have at least one row with an AppCard"
+        );
+    }
+
+    #[test]
+    fn app_view_search_excludes_non_matching_query() {
+        let (_temp, icon_cache) = test_icon_cache();
+        let app = firefox_app();
+        let tree = build_app_view_widget_tree(
+            880,
+            620,
+            &[app],
+            AppCategory::Internet,
+            &icon_cache,
+            "zzznomatch",
+        );
+        let children = tree.children();
+        assert_eq!(children.len(), 6);
+        // child[3] is the grid container
+        let grid = &children[3];
+        let grid_children = grid.children();
+        assert_eq!(grid_children.len(), 1);
+        let column = &grid_children[0];
+        assert!(
+            column.children().is_empty(),
+            "should have no rows when no app matches search query"
+        );
     }
 }

@@ -23,7 +23,6 @@ impl LayerShellHandler for MeridianShell {
             warn!("Launcher layer surface closed by compositor; recovering launcher state");
             self.launcher_state.open = false;
             self.launcher_configured = false;
-            self.launcher_last_signature = None;
             self.launcher_dirty = false;
             self.draw_panel(qh, RepaintReason::LayerConfigure);
             return;

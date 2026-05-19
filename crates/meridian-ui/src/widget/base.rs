@@ -42,6 +42,20 @@ pub trait Widget {
         None
     }
 
+    /// Optional window ID for widgets representing a window entry.
+    ///
+    /// Only `PanelWindowChip` overrides this.
+    fn focus_window_id(&self) -> Option<&str> {
+        None
+    }
+
+    /// Optional pinned app index for widgets representing a pinned app chip.
+    ///
+    /// Only `PanelPinnedChip` overrides this.
+    fn pinned_app_idx(&self) -> Option<usize> {
+        None
+    }
+
     /// Child widgets in tree order.
     fn children(&self) -> &[Box<dyn Widget>] {
         &[]

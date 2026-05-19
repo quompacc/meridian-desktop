@@ -30,7 +30,6 @@ use super::{
 
 pub(crate) fn initialize(
     event_loop: &mut EventLoop<'_, MeridianShell>,
-    ui_preview_enabled: bool,
 ) -> Result<(MeridianShell, QueueHandle<MeridianShell>), Box<dyn std::error::Error>> {
     let conn = Connection::connect_to_env()?;
     info!("Connected to Wayland display");
@@ -305,10 +304,11 @@ pub(crate) fn initialize(
         occupied_unavailable_logged: false,
         panel_dirty: true,
         launcher_dirty: true,
-        ui_preview_enabled,
         ui_preview_widget_state: None,
+        panel_widget_state: None,
         app_view_open: false,
         app_view_category: Default::default(),
+        search_query: String::new(),
         calendar_dirty: true,
         workspace_dirty: true,
         network_dirty: true,
@@ -317,7 +317,6 @@ pub(crate) fn initialize(
         network_popup_open: false,
         calendar_display_policy: CalendarDisplayPolicy::default(),
         panel_last_signature: None,
-        launcher_last_signature: None,
         repaint_stats: Default::default(),
         repaint_stats_enabled: std::env::var("MERIDIAN_SHELL_REPAINT_STATS")
             .map(|value| {
