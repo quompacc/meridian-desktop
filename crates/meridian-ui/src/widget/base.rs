@@ -3,7 +3,7 @@ use taffy::prelude::{
 };
 use tiny_skia::PixmapMut;
 
-use crate::{paint::Rect, style::Theme};
+use crate::{event::WidgetState, paint::Rect, style::Theme};
 
 /// Trait implemented by all renderable UI widgets.
 ///
@@ -16,7 +16,7 @@ pub trait Widget {
     /// Paint this widget into the assigned rectangle.
     ///
     /// Contract: must be allocation-free and side-effect free.
-    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme);
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState);
 
     /// Child widgets in tree order.
     fn children(&self) -> &[Box<dyn Widget>] {
@@ -187,7 +187,8 @@ impl Widget for Container {
         self.style.clone()
     }
 
-    fn paint(&self, _area: Rect, _canvas: &mut PixmapMut<'_>, _theme: &Theme) {}
+    fn paint(&self, _area: Rect, _canvas: &mut PixmapMut<'_>, _theme: &Theme, _state: WidgetState) {
+    }
 
     fn children(&self) -> &[Box<dyn Widget>] {
         &self.children

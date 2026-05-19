@@ -296,6 +296,7 @@ pub(crate) struct MeridianShell {
     pub(crate) panel_dirty: bool,
     pub(crate) launcher_dirty: bool,
     pub(crate) ui_preview_enabled: bool,
+    pub(crate) ui_preview_widget_state: Option<(meridian_ui::WidgetPath, meridian_ui::WidgetState)>,
     pub(crate) calendar_dirty: bool,
     pub(crate) workspace_dirty: bool,
     pub(crate) network_dirty: bool,

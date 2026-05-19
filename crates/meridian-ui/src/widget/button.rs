@@ -5,6 +5,7 @@ use tiny_skia::PixmapMut;
 
 use crate::{
     effect::{paint_metro_surface, paint_text},
+    event::WidgetState,
     paint::Rect,
     style::{Color, Theme},
 };
@@ -62,8 +63,16 @@ impl Widget for Button {
         }
     }
 
-    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme) {
-        paint_metro_surface(canvas, area, self.accent, theme, STRIPE_HEIGHT);
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let body_color = match state {
+            WidgetState::Idle => theme.palette.surface,
+            WidgetState::Hovered => theme
+                .palette
+                .surface
+                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15),
+            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
+        };
+        paint_metro_surface(canvas, area, body_color, self.accent, theme, STRIPE_HEIGHT);
         paint_text(
             canvas,
             self.label,
@@ -80,7 +89,7 @@ mod tests {
     use tiny_skia::Pixmap;
 
     use super::{Button, BUTTON_DEFAULT_HEIGHT, BUTTON_DEFAULT_WIDTH};
-    use crate::{paint::Rect, style::Palette, widget::Widget, Theme};
+    use crate::{event::WidgetState, paint::Rect, style::Palette, widget::Widget, Theme};
 
     #[test]
     fn button_new_stores_fields() {
@@ -124,6 +133,7 @@ mod tests {
             },
             &mut canvas,
             &Theme::TOKYO_NIGHT_METRO,
+            WidgetState::Idle,
         );
         drop(canvas);
 

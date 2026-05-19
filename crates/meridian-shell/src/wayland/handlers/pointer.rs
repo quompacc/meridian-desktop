@@ -9,7 +9,7 @@ use crate::{
     wayland::{RepaintReason, SurfaceKind},
 };
 
-use super::MeridianShell;
+use super::{pointer_translate::translate_pointer_event, MeridianShell};
 
 impl PointerHandler for MeridianShell {
     fn pointer_frame(
@@ -39,7 +39,12 @@ impl PointerHandler for MeridianShell {
                 self.pointer_position = (-1.0, -1.0);
                 match self.pointer_surface {
                     SurfaceKind::Panel => self.draw_panel(qh, RepaintReason::Pointer),
-                    SurfaceKind::Launcher => self.draw_launcher(qh, RepaintReason::Pointer),
+                    SurfaceKind::Launcher => {
+                        if self.ui_preview_enabled && self.ui_preview_widget_state.is_some() {
+                            self.ui_preview_widget_state = None;
+                        }
+                        self.draw_launcher(qh, RepaintReason::Pointer)
+                    }
                     SurfaceKind::WorkspacePopup => {
                         self.draw_workspace_popup(qh, RepaintReason::Pointer)
                     }
@@ -49,6 +54,42 @@ impl PointerHandler for MeridianShell {
                     SurfaceKind::Calendar | SurfaceKind::None => {}
                 }
                 self.pointer_surface = SurfaceKind::None;
+                continue;
+            }
+
+            if self.ui_preview_enabled && self.pointer_surface == SurfaceKind::Launcher {
+                if let Some(ev) = translate_pointer_event(&event.kind, event.position) {
+                    let tree = crate::ui_preview::build_ui_preview_widget_tree(
+                        crate::LAUNCHER_WIDTH,
+                        crate::LAUNCHER_HEIGHT,
+                    );
+                    let pixel_size = meridian_ui::PixelSize {
+                        width: crate::LAUNCHER_WIDTH,
+                        height: crate::LAUNCHER_HEIGHT,
+                    };
+                    let layout = meridian_ui::compute_layout(&*tree, pixel_size);
+                    match layout {
+                        Ok(layout) => {
+                            let pos = meridian_ui::PointerPosition {
+                                x: event.position.0 as i32,
+                                y: event.position.1 as i32,
+                            };
+                            let path = meridian_ui::hit_test(&layout, pos);
+                            let new_state = super::pointer_state::apply_pointer_event(
+                                self.ui_preview_widget_state.clone(),
+                                &ev,
+                                path,
+                            );
+                            if new_state != self.ui_preview_widget_state {
+                                self.ui_preview_widget_state = new_state;
+                                self.draw_launcher(qh, RepaintReason::Pointer);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("ui-preview layout failed: {:?}", e);
+                        }
+                    }
+                }
                 continue;
             }
 

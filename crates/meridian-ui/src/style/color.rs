@@ -18,6 +18,21 @@ impl Color {
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self::rgba(r, g, b, 0xff)
     }
+
+    pub(crate) fn lerp(&self, other: Color, t: f32) -> Color {
+        let t = t.clamp(0.0, 1.0);
+        let lerp_u8 = |x: u8, y: u8| -> u8 {
+            (x as f32 + (y as f32 - x as f32) * t)
+                .round()
+                .clamp(0.0, 255.0) as u8
+        };
+        Color {
+            r: lerp_u8(self.r, other.r),
+            g: lerp_u8(self.g, other.g),
+            b: lerp_u8(self.b, other.b),
+            a: self.a,
+        }
+    }
 }
 
 /// Resolved palette. `Copy` - pass by value, never clone in the render loop.

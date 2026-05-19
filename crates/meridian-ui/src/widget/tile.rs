@@ -10,6 +10,7 @@ use tiny_skia::PixmapMut;
 
 use crate::{
     effect::{paint_metro_surface, paint_text},
+    event::WidgetState,
     paint::Rect,
     style::{Color, Theme},
 };
@@ -98,8 +99,16 @@ impl Widget for Tile {
         }
     }
 
-    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme) {
-        paint_metro_surface(canvas, area, self.accent, theme, STRIPE_HEIGHT);
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let body_color = match state {
+            WidgetState::Idle => theme.palette.surface,
+            WidgetState::Hovered => theme
+                .palette
+                .surface
+                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15),
+            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
+        };
+        paint_metro_surface(canvas, area, body_color, self.accent, theme, STRIPE_HEIGHT);
         let font_size = match self.size {
             TileSize::Small => TILE_LABEL_FONT_SMALL_PX,
             _ => TILE_LABEL_FONT_DEFAULT_PX,
@@ -123,7 +132,7 @@ mod tests {
         Tile, TileSize, STRIPE_HEIGHT, TILE_LARGE_HEIGHT, TILE_LARGE_WIDTH, TILE_MEDIUM_HEIGHT,
         TILE_MEDIUM_WIDTH, TILE_SMALL_HEIGHT, TILE_SMALL_WIDTH, TILE_WIDE_HEIGHT, TILE_WIDE_WIDTH,
     };
-    use crate::{paint::Rect, style::Palette, widget::Widget, Theme};
+    use crate::{event::WidgetState, paint::Rect, style::Palette, widget::Widget, Theme};
 
     #[test]
     fn tile_size_dimensions_match_win10_scale() {
@@ -206,6 +215,7 @@ mod tests {
             },
             &mut canvas,
             &Theme::TOKYO_NIGHT_METRO,
+            WidgetState::Idle,
         );
         drop(canvas);
 

@@ -14,12 +14,13 @@ use super::{paint_fill, rounded_rect_path};
 pub fn paint_metro_surface(
     canvas: &mut PixmapMut<'_>,
     area: Rect,
+    body_color: Color,
     accent: Color,
     theme: &Theme,
     stripe_height: i32,
 ) {
     if let Some(body_path) = rounded_rect_path(area, theme.radius.lg) {
-        paint_fill(canvas, &body_path, theme.palette.surface);
+        paint_fill(canvas, &body_path, body_color);
     }
 
     let stripe_height = stripe_height.max(0).min(area.height);
@@ -53,6 +54,7 @@ mod tests {
         let mut pixmap = Pixmap::new(96, 96).expect("pixmap");
         let mut canvas = pixmap.as_mut();
 
+        let theme = Theme::TOKYO_NIGHT_METRO;
         paint_metro_surface(
             &mut canvas,
             Rect {
@@ -61,8 +63,9 @@ mod tests {
                 width: 96,
                 height: 96,
             },
+            theme.palette.surface,
             Palette::TOKYO_NIGHT_METRO.accent_alt,
-            &Theme::TOKYO_NIGHT_METRO,
+            &theme,
             4,
         );
         drop(canvas);

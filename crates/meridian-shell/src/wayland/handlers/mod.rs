@@ -14,6 +14,8 @@ mod keyboard;
 mod layer;
 mod output;
 mod pointer;
+mod pointer_state;
+mod pointer_translate;
 mod seat;
 mod shm;
 

@@ -5,6 +5,7 @@
 //! Render-loop contracts forbid heap allocation and clone-heavy hot-path logic.
 
 pub mod effect;
+pub mod event;
 pub mod paint;
 pub mod style;
 pub mod widget;
@@ -12,7 +13,8 @@ pub use effect::{
     measure_text, paint_border, paint_fill, paint_metro_surface, paint_text, rounded_rect_path,
     ui_font,
 };
-pub use paint::{compute_layout, render, PixelSize, Rect};
+pub use event::{hit_test, Event, PointerButton, PointerPosition, WidgetPath, WidgetState};
+pub use paint::{compute_layout, render, render_idle, PixelSize, Rect};
 pub use style::Theme;
 pub use widget::{Button, Tile, TileSize, Widget};
 

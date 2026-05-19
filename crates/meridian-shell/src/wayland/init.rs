@@ -280,6 +280,7 @@ pub(crate) fn initialize(
         panel_dirty: true,
         launcher_dirty: true,
         ui_preview_enabled,
+        ui_preview_widget_state: None,
         calendar_dirty: true,
         workspace_dirty: true,
         network_dirty: true,

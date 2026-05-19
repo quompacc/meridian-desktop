@@ -434,7 +434,14 @@ impl MeridianShell {
             };
 
             if self.ui_preview_enabled {
-                ui_preview::draw_ui_preview_sandbox(canvas, width, height);
+                let active = self.ui_preview_widget_state.as_ref();
+                let state_fn = |path: &[usize]| -> meridian_ui::WidgetState {
+                    match active {
+                        Some((p, s)) if p.as_slice() == path => *s,
+                        _ => meridian_ui::WidgetState::Idle,
+                    }
+                };
+                ui_preview::draw_ui_preview_sandbox(canvas, width, height, &state_fn);
             } else {
                 let mut painter = Painter::new(canvas, width as i32, height as i32);
                 launcher::draw_launcher(

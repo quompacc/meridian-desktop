@@ -8,7 +8,7 @@ use meridian_ui::{
     compute_layout, render,
     style::Palette,
     widget::{tile::TILE_BASE_SIZE, Button, Container, Widget},
-    PixelSize, Theme, Tile, TileSize,
+    PixelSize, Theme, Tile, TileSize, WidgetState,
 };
 use tiny_skia::Pixmap;
 
@@ -19,21 +19,8 @@ const FOOTER_SWITCH_WIDTH: i32 = 144;
 const FOOTER_SWITCH_HEIGHT: i32 = 48;
 const FOOTER_POWER_BUTTON_SIZE: i32 = 48;
 
-pub(crate) fn draw_ui_preview_sandbox(canvas: &mut [u8], width: u32, height: u32) {
-    let expected_len = (width as usize)
-        .saturating_mul(height as usize)
-        .saturating_mul(4);
-    if canvas.len() != expected_len {
-        return;
-    }
-
-    let Some(mut pixmap) = Pixmap::new(width, height) else {
-        return;
-    };
-
+pub(crate) fn build_ui_preview_widget_tree(width: u32, height: u32) -> Box<dyn Widget> {
     let theme = Theme::TOKYO_NIGHT_METRO;
-    pixmap.fill(to_tiny_skia_color(theme.palette.background));
-
     let gap = theme.spacing.md;
     let pal = Palette::TOKYO_NIGHT_METRO;
     let tiles: Vec<Box<dyn Widget>> = vec![
@@ -104,17 +91,40 @@ pub(crate) fn draw_ui_preview_sandbox(canvas: &mut [u8], width: u32, height: u32
         footer_right,
     );
 
-    let root = Container::column(
+    Box::new(Container::column(
         0,
         vec![
             Box::new(mosaic_section) as Box<dyn Widget>,
             Box::new(footer) as Box<dyn Widget>,
         ],
-    );
+    ))
+}
 
-    if let Ok(layout) = compute_layout(&root, PixelSize { width, height }) {
+pub(crate) fn draw_ui_preview_sandbox(
+    canvas: &mut [u8],
+    width: u32,
+    height: u32,
+    state_fn: &dyn Fn(&[usize]) -> WidgetState,
+) {
+    let expected_len = (width as usize)
+        .saturating_mul(height as usize)
+        .saturating_mul(4);
+    if canvas.len() != expected_len {
+        return;
+    }
+
+    let Some(mut pixmap) = Pixmap::new(width, height) else {
+        return;
+    };
+
+    let theme = Theme::TOKYO_NIGHT_METRO;
+    pixmap.fill(to_tiny_skia_color(theme.palette.background));
+
+    let root = build_ui_preview_widget_tree(width, height);
+
+    if let Ok(layout) = compute_layout(&*root, PixelSize { width, height }) {
         let mut pixmap_canvas = pixmap.as_mut();
-        let _ = render(&root, &layout, &mut pixmap_canvas, &theme);
+        let _ = render(&*root, &layout, &mut pixmap_canvas, &theme, state_fn);
     }
 
     blit_rgba_to_argb(pixmap.data(), canvas);
@@ -139,7 +149,9 @@ fn to_tiny_skia_color(color: meridian_ui::style::Color) -> tiny_skia::Color {
 
 #[cfg(test)]
 mod tests {
-    use super::{blit_rgba_to_argb, draw_ui_preview_sandbox};
+    use meridian_ui::WidgetState;
+
+    use super::{blit_rgba_to_argb, build_ui_preview_widget_tree, draw_ui_preview_sandbox};
 
     #[test]
     fn blit_rgba_to_argb_swaps_red_and_blue() {
@@ -169,8 +181,24 @@ mod tests {
         let height = 96;
         let mut canvas = vec![0_u8; (width * height * 4) as usize];
 
-        draw_ui_preview_sandbox(&mut canvas, width, height);
+        draw_ui_preview_sandbox(&mut canvas, width, height, &|_| WidgetState::Idle);
 
         assert!(canvas.iter().any(|byte| *byte != 0));
+    }
+
+    #[test]
+    fn build_ui_preview_widget_tree_has_root_column_with_two_sections() {
+        let tree = build_ui_preview_widget_tree(880, 620);
+        let children = tree.children();
+        assert_eq!(children.len(), 2, "root column should have 2 children");
+        // Mosaic section
+        let mosaic = &children[0];
+        assert!(!mosaic.children().is_empty(), "mosaic should contain grid");
+        // Footer
+        let footer = &children[1];
+        assert!(
+            !footer.children().is_empty(),
+            "footer should contain left/right clusters"
+        );
     }
 }

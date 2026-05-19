@@ -7,7 +7,7 @@ mod layout;
 mod render;
 
 pub use layout::{compute_layout, LayoutNode, LayoutTree};
-pub use render::{render, RenderError};
+pub use render::{render, render_idle, RenderError};
 
 /// Pixel-space rectangle used during painting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
