@@ -28,37 +28,19 @@ pub(crate) fn draw_ui_preview_sandbox(canvas: &mut [u8], width: u32, height: u32
     pixmap.fill(to_tiny_skia_color(theme.palette.background));
 
     let gap = theme.spacing.md;
+    let pal = Palette::TOKYO_NIGHT_METRO;
     let tiles: Vec<Box<dyn Widget>> = vec![
-        Box::new(Tile::new(
-            "large",
-            Palette::TOKYO_NIGHT_METRO.accent_alt,
-            TileSize::Large,
-        )),
-        Box::new(Tile::new(
-            "wide",
-            Palette::TOKYO_NIGHT_METRO.accent,
-            TileSize::Wide,
-        )),
-        Box::new(Tile::new(
-            "wide-bottom",
-            Palette::TOKYO_NIGHT_METRO.warning,
-            TileSize::Wide,
-        )),
-        Box::new(Tile::new(
-            "medium-success",
-            Palette::TOKYO_NIGHT_METRO.success,
-            TileSize::Medium,
-        )),
-        Box::new(Tile::new(
-            "small-error",
-            Palette::TOKYO_NIGHT_METRO.error,
-            TileSize::Small,
-        )),
-        Box::new(Tile::new(
-            "small-accent",
-            Palette::TOKYO_NIGHT_METRO.accent,
-            TileSize::Small,
-        )),
+        Box::new(Tile::new("large", pal.accent_alt, TileSize::Large)),
+        Box::new(Tile::new("wide-top", pal.accent, TileSize::Wide)),
+        Box::new(Tile::new("wide-mid", pal.warning, TileSize::Wide)),
+        Box::new(Tile::new("s1", pal.accent, TileSize::Small)),
+        Box::new(Tile::new("s2", pal.accent_alt, TileSize::Small)),
+        Box::new(Tile::new("s3", pal.success, TileSize::Small)),
+        Box::new(Tile::new("s4", pal.warning, TileSize::Small)),
+        Box::new(Tile::new("s5", pal.error, TileSize::Small)),
+        Box::new(Tile::new("s6", pal.accent, TileSize::Small)),
+        Box::new(Tile::new("s7", pal.accent_alt, TileSize::Small)),
+        Box::new(Tile::new("s8", pal.success, TileSize::Small)),
     ];
     let root = Container::grid(TILE_BASE_SIZE, 8, gap, width, height, tiles);
 
