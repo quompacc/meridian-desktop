@@ -6,5 +6,7 @@
 //!   Heap allocation is allowed while building that tree, not while rendering.
 
 pub mod base;
+pub mod tile;
 
 pub use base::{Container, Widget};
+pub use tile::Tile;

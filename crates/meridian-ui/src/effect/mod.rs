@@ -5,7 +5,9 @@
 //! `paint_border` is render-loop code and must remain allocation-free.
 
 mod border;
+mod fill;
 mod radius;
 
 pub use border::paint_border;
+pub use fill::paint_fill;
 pub use radius::rounded_rect_path;

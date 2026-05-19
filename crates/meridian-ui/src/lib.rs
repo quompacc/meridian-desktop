@@ -8,10 +8,10 @@ pub mod effect;
 pub mod paint;
 pub mod style;
 pub mod widget;
-pub use effect::{paint_border, rounded_rect_path};
+pub use effect::{paint_border, paint_fill, rounded_rect_path};
 pub use paint::{compute_layout, render, PixelSize, Rect};
 pub use style::Theme;
-pub use widget::Widget;
+pub use widget::{Tile, Widget};
 
 #[cfg(test)]
 mod smoke {
