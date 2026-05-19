@@ -37,17 +37,17 @@ pub(crate) fn draw_ui_preview_sandbox(canvas: &mut [u8], width: u32, height: u32
     let gap = theme.spacing.md;
     let pal = Palette::TOKYO_NIGHT_METRO;
     let tiles: Vec<Box<dyn Widget>> = vec![
-        Box::new(Tile::new("large", pal.accent_alt, TileSize::Large)),
-        Box::new(Tile::new("wide-top", pal.accent, TileSize::Wide)),
-        Box::new(Tile::new("wide-mid", pal.warning, TileSize::Wide)),
-        Box::new(Tile::new("s1", pal.accent, TileSize::Small)),
-        Box::new(Tile::new("s2", pal.accent_alt, TileSize::Small)),
-        Box::new(Tile::new("s3", pal.success, TileSize::Small)),
-        Box::new(Tile::new("s4", pal.warning, TileSize::Small)),
-        Box::new(Tile::new("s5", pal.error, TileSize::Small)),
-        Box::new(Tile::new("s6", pal.accent, TileSize::Small)),
-        Box::new(Tile::new("s7", pal.accent_alt, TileSize::Small)),
-        Box::new(Tile::new("s8", pal.success, TileSize::Small)),
+        Box::new(Tile::new("Mail", pal.accent_alt, TileSize::Large)),
+        Box::new(Tile::new("Edge", pal.accent, TileSize::Wide)),
+        Box::new(Tile::new("OneDrive", pal.warning, TileSize::Wide)),
+        Box::new(Tile::new("Photos", pal.accent, TileSize::Small)),
+        Box::new(Tile::new("Music", pal.accent_alt, TileSize::Small)),
+        Box::new(Tile::new("Maps", pal.success, TileSize::Small)),
+        Box::new(Tile::new("News", pal.warning, TileSize::Small)),
+        Box::new(Tile::new("Store", pal.error, TileSize::Small)),
+        Box::new(Tile::new("Calendar", pal.accent, TileSize::Small)),
+        Box::new(Tile::new("Weather", pal.accent_alt, TileSize::Small)),
+        Box::new(Tile::new("Notes", pal.success, TileSize::Small)),
     ];
     let mosaic_height = height.saturating_sub(FOOTER_HEIGHT.max(0) as u32);
     let mosaic_grid = Container::grid(TILE_BASE_SIZE, 8, gap, width, mosaic_height, tiles);
@@ -58,38 +58,38 @@ pub(crate) fn draw_ui_preview_sandbox(canvas: &mut [u8], width: u32, height: u32
     );
 
     let footer_left = vec![Box::new(Button::new(
-        "classic-mode",
+        "Apps",
         pal.accent,
         FOOTER_SWITCH_WIDTH,
         FOOTER_SWITCH_HEIGHT,
     )) as Box<dyn Widget>];
     let footer_right = vec![
         Box::new(Button::new(
-            "shutdown",
+            "Off",
             pal.error,
             FOOTER_POWER_BUTTON_SIZE,
             FOOTER_POWER_BUTTON_SIZE,
         )) as Box<dyn Widget>,
         Box::new(Button::new(
-            "restart",
+            "Rst",
             pal.warning,
             FOOTER_POWER_BUTTON_SIZE,
             FOOTER_POWER_BUTTON_SIZE,
         )) as Box<dyn Widget>,
         Box::new(Button::new(
-            "sleep",
+            "Zzz",
             pal.accent,
             FOOTER_POWER_BUTTON_SIZE,
             FOOTER_POWER_BUTTON_SIZE,
         )) as Box<dyn Widget>,
         Box::new(Button::new(
-            "lock",
+            "Lock",
             pal.accent_alt,
             FOOTER_POWER_BUTTON_SIZE,
             FOOTER_POWER_BUTTON_SIZE,
         )) as Box<dyn Widget>,
         Box::new(Button::new(
-            "logout",
+            "Out",
             pal.success,
             FOOTER_POWER_BUTTON_SIZE,
             FOOTER_POWER_BUTTON_SIZE,
