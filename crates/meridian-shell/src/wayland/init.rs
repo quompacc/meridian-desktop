@@ -13,6 +13,10 @@ use smithay_client_toolkit::{
     },
     shm::{slot::SlotPool, Shm},
 };
+use wayland_protocols::ext::{
+    image_capture_source::v1::client::ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
+    image_copy_capture::v1::client::ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1,
+};
 use tracing::{debug, info, warn};
 use wayland_client::{globals::registry_queue_init, Connection, QueueHandle};
 
@@ -37,6 +41,13 @@ pub(crate) fn initialize(
     info!("Registry initialized");
     let qh = event_queue.handle();
     WaylandSource::new(conn.clone(), event_queue).insert(event_loop.handle())?;
+
+    let screencopy_manager = globals
+        .bind::<ExtImageCopyCaptureManagerV1, _, _>(&qh, 1..=1, ())
+        .ok();
+    let capture_source_manager = globals
+        .bind::<ExtOutputImageCaptureSourceManagerV1, _, _>(&qh, 1..=1, ())
+        .ok();
 
     let compositor = CompositorState::bind(&globals, &qh).expect("wl_compositor is not available");
     let layer_shell = LayerShell::bind(&globals, &qh).expect("wlr layer shell is not available");
@@ -343,6 +354,9 @@ pub(crate) fn initialize(
         last_clock: String::new(),
         last_tick: Instant::now(),
         exit: false,
+        screencopy_manager,
+        capture_source_manager,
+        screenshot_capture: None,
     };
 
     shell.commit_surface(CommitSurfaceKind::Panel, CommitReason::InitialCreate);

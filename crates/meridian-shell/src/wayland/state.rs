@@ -854,6 +854,17 @@ impl MeridianShell {
                 }
             }
             ClickAction::TakeScreenshot => {
+                if self.screenshot_capture.is_some() {
+                    return;
+                }
+                let (Some(mgr), Some(src_mgr)) = (
+                    self.screencopy_manager.as_ref(),
+                    self.capture_source_manager.as_ref(),
+                ) else {
+                    tracing::warn!("screenshot: ext_image_copy_capture not available");
+                    return;
+                };
+
                 let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
                 let dir = std::path::PathBuf::from(&home)
                     .join("Pictures")
@@ -864,10 +875,41 @@ impl MeridianShell {
                     .map(|d| d.as_secs())
                     .unwrap_or(0);
                 let path = dir.join(format!("meridian-{}.png", secs));
-                match std::process::Command::new("grim").arg(&path).spawn() {
-                    Ok(_) => tracing::info!("screenshot: spawned grim → {}", path.display()),
-                    Err(e) => tracing::warn!("screenshot: grim spawn failed: {}", e),
-                }
+
+                let Some(wl_output) = self.output_state.outputs().next() else {
+                    tracing::warn!("screenshot: no output available");
+                    return;
+                };
+
+                use wayland_protocols::ext::{
+                    image_capture_source::v1::client::ext_image_capture_source_v1::ExtImageCaptureSourceV1,
+                    image_copy_capture::v1::client::ext_image_copy_capture_manager_v1::Options,
+                };
+                let capture_source: ExtImageCaptureSourceV1 =
+                    src_mgr.create_source(&wl_output, qh, ());
+                let session = mgr.create_session(
+                    &capture_source,
+                    Options::empty(),
+                    qh,
+                    (),
+                );
+                capture_source.destroy();
+
+                self.screenshot_capture =
+                    Some(crate::wayland::screencopy::ScreenshotCapture {
+                        session,
+                        path,
+                        width: 0,
+                        height: 0,
+                        format: None,
+                        constraints_done: false,
+                        pool: None,
+                        buffer: None,
+                        frame: None,
+                        fd: None,
+                        mapped_ptr: std::ptr::null_mut(),
+                        mapped_len: 0,
+                    });
             }
         }
     }

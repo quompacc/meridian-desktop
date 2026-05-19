@@ -13,6 +13,10 @@ use smithay_client_toolkit::{
     },
 };
 use wayland_client::protocol::{wl_keyboard, wl_pointer};
+use wayland_protocols::ext::{
+    image_capture_source::v1::client::ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
+    image_copy_capture::v1::client::ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1,
+};
 
 use crate::{
     icons::IconCache, launcher, network::NetworkController, panel, panel::PanelWindowEntry,
@@ -303,4 +307,7 @@ pub(crate) struct MeridianShell {
     pub(crate) last_clock: String,
     pub(crate) last_tick: Instant,
     pub(crate) exit: bool,
+    pub(crate) screencopy_manager: Option<ExtImageCopyCaptureManagerV1>,
+    pub(crate) capture_source_manager: Option<ExtOutputImageCaptureSourceManagerV1>,
+    pub(crate) screenshot_capture: Option<super::screencopy::ScreenshotCapture>,
 }

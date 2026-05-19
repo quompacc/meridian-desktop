@@ -46,6 +46,10 @@ use crate::{
     wallpaper::WallpaperManager,
     workspace::WorkspaceManager,
 };
+use smithay::wayland::{
+    image_capture_source::{ImageCaptureSourceState, OutputCaptureSourceState},
+    image_copy_capture::ImageCopyCaptureState,
+};
 use wayland_protocols_wlr::output_power_management::v1::server::zwlr_output_power_manager_v1::ZwlrOutputPowerManagerV1;
 
 use super::{
@@ -629,6 +633,12 @@ impl MeridianState {
         let socket_name = Self::init_wayland_listener(display, event_loop)?;
         let loop_signal = event_loop.get_signal();
 
+        let image_capture_source_state = ImageCaptureSourceState::new();
+        let output_capture_source_state =
+            OutputCaptureSourceState::new::<MeridianState>(&display_handle);
+        let image_copy_capture_state =
+            ImageCopyCaptureState::new::<MeridianState>(&display_handle);
+
         let meridian_config = MeridianConfig::load();
         let output_config_entries = meridian_config.outputs.clone();
         let output_layout = super::OutputLayout::from_config_entries(&output_config_entries);
@@ -694,6 +704,11 @@ impl MeridianState {
             minimized_windows: std::collections::HashMap::new(),
             xwayland_or_diag: std::collections::HashMap::new(),
             cursor_status: smithay::input::pointer::CursorImageStatus::default_named(),
+            image_capture_source_state,
+            output_capture_source_state,
+            image_copy_capture_state,
+            screencopy_sessions: Vec::new(),
+            pending_screencopy_frames: Vec::new(),
         })
     }
 

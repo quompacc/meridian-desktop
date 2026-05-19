@@ -3,6 +3,7 @@ mod handlers;
 mod init;
 mod ipc;
 mod render;
+mod screencopy;
 mod shell;
 mod state;
 mod time;

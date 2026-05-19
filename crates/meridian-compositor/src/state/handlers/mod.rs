@@ -3,6 +3,7 @@ pub mod dmabuf;
 pub mod idle;
 mod misc;
 pub mod output_power;
+mod screencopy;
 pub mod session_lock;
 pub mod syncobj;
 pub mod wayland_extra;

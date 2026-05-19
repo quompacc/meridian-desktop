@@ -39,6 +39,11 @@ use smithay::{
 };
 use wayland_protocols_wlr::output_power_management::v1::server::zwlr_output_power_v1::ZwlrOutputPowerV1;
 
+use smithay::wayland::{
+    image_capture_source::{ImageCaptureSourceState, OutputCaptureSourceState},
+    image_copy_capture::{Frame as CaptureFrame, ImageCopyCaptureState, Session as CaptureSession},
+};
+
 use crate::{
     backend::drm::DrmBackend, decoration::DecorationManager, wallpaper::WallpaperManager,
     workspace::WorkspaceManager,
@@ -373,6 +378,11 @@ pub struct MeridianState {
     pub minimized_windows: HashMap<String, MinimizedWindowEntry>,
     pub xwayland_or_diag: HashMap<u32, XwaylandOrDiagEntry>,
     pub cursor_status: CursorImageStatus,
+    pub image_capture_source_state: ImageCaptureSourceState,
+    pub output_capture_source_state: OutputCaptureSourceState,
+    pub image_copy_capture_state: ImageCopyCaptureState,
+    pub screencopy_sessions: Vec<CaptureSession>,
+    pub pending_screencopy_frames: Vec<(CaptureFrame, Output)>,
 }
 
 impl MeridianState {

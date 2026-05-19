@@ -409,6 +409,11 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
             }
         }
 
+        // Serve screencopy BEFORE render_frame so all Wayland surface textures
+        // are still fresh and not yet assigned to KMS hardware planes (which
+        // bypasses the GLES import path and makes draw() silently skip them).
+        serve_screencopy_frames(state, renderer, out, out_size);
+
         let elements = out.scratch_final.as_slice();
 
         let layer_surface_count =
@@ -571,4 +576,93 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
     drm.kms_first_commit_verified = kms_first_commit_verified;
     state.drm_backend = Some(drm);
     metrics
+}
+
+/// Render pending screencopy frames for a single output into the client's SHM buffers.
+fn serve_screencopy_frames(
+    state: &mut MeridianState,
+    renderer: &mut GlesRenderer,
+    out: &super::DrmOutput,
+    out_size: (u32, u32),
+) {
+    use smithay::{
+        backend::{
+            allocator::Fourcc,
+            renderer::{
+                element::{Element, RenderElement},
+                Bind, ExportMem, Frame as RendererFrame, Offscreen, Renderer,
+            },
+        },
+        utils::{Rectangle, Scale, Transform},
+        wayland::{image_copy_capture::CaptureFailureReason, shm::with_buffer_contents_mut},
+    };
+
+    let w = out_size.0 as i32;
+    let h = out_size.1 as i32;
+    // create_buffer() wants Buffer coords; render() wants Physical coords.
+    let buf_size = smithay::utils::Size::<i32, smithay::utils::Buffer>::from((w, h));
+    let phys_size = smithay::utils::Size::<i32, smithay::utils::Physical>::from((w, h));
+    let buf_region = Rectangle::from_size(buf_size);
+    let phys_region = Rectangle::from_size(phys_size);
+
+    let mut i = 0;
+    while i < state.pending_screencopy_frames.len() {
+        if state.pending_screencopy_frames[i].1 != out.output {
+            i += 1;
+            continue;
+        }
+        let (frame, _) = state.pending_screencopy_frames.remove(i);
+
+        let pixels: Option<Vec<u8>> = (|| {
+            let mut tex = <GlesRenderer as Offscreen<smithay::backend::renderer::gles::GlesTexture>>::create_buffer(
+                renderer,
+                Fourcc::Xrgb8888,
+                buf_size,
+            )
+            .ok()?;
+            let mut target = renderer.bind(&mut tex).ok()?;
+            let mut gles_frame = renderer.render(&mut target, phys_size, Transform::Normal).ok()?;
+            let _ = gles_frame.clear([0.0f32, 0.0, 0.0, 1.0].into(), &[phys_region]);
+            for element in out.scratch_final.iter().rev() {
+                let src = element.src();
+                let dst = element.geometry(Scale::from(1.0f64));
+                // damage must be in element-local coords (origin at 0,0 within dst),
+                // not absolute physical coords — passing dst directly would clamp y≥dst.size.h to 0.
+                let element_damage = [smithay::utils::Rectangle::from_size(dst.size)];
+                if let Err(e) = element.draw(&mut gles_frame, src, dst, &element_damage, &[], None) {
+                    tracing::warn!("screencopy: draw error for {:?}: {:?}", std::mem::discriminant(element), e);
+                }
+            }
+            drop(gles_frame);
+            let mapping = renderer
+                .copy_framebuffer(&target, buf_region, Fourcc::Xrgb8888)
+                .ok()?;
+            let raw = renderer.map_texture(&mapping).ok()?;
+            Some(raw.to_vec())
+        })();
+
+        match pixels {
+            Some(pixels) => {
+                let wl_buf = frame.buffer();
+                let ok = with_buffer_contents_mut(&wl_buf, |ptr, len, _| {
+                    let dst = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
+                    let n = pixels.len().min(len);
+                    dst[..n].copy_from_slice(&pixels[..n]);
+                })
+                .is_ok();
+                if ok {
+                    frame.success(
+                        Transform::Normal,
+                        None,
+                        state.start_time.elapsed(),
+                    );
+                } else {
+                    frame.fail(CaptureFailureReason::Unknown);
+                }
+            }
+            None => {
+                frame.fail(CaptureFailureReason::Unknown);
+            }
+        }
+    }
 }
