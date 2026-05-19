@@ -16,17 +16,49 @@ use crate::{
 
 use super::Widget;
 
-pub const TILE_SIZE: i32 = 96;
+pub const TILE_BASE_SIZE: i32 = 96;
+pub const TILE_SMALL_WIDTH: i32 = TILE_BASE_SIZE;
+pub const TILE_SMALL_HEIGHT: i32 = TILE_BASE_SIZE;
+pub const TILE_MEDIUM_WIDTH: i32 = TILE_BASE_SIZE * 2;
+pub const TILE_MEDIUM_HEIGHT: i32 = TILE_BASE_SIZE * 2;
+pub const TILE_WIDE_WIDTH: i32 = TILE_BASE_SIZE * 4;
+pub const TILE_WIDE_HEIGHT: i32 = TILE_BASE_SIZE * 2;
+pub const TILE_LARGE_WIDTH: i32 = TILE_BASE_SIZE * 4;
+pub const TILE_LARGE_HEIGHT: i32 = TILE_BASE_SIZE * 4;
 pub const STRIPE_HEIGHT: i32 = 4;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TileSize {
+    Small,
+    Medium,
+    Wide,
+    Large,
+}
+
+impl TileSize {
+    pub fn dimensions(self) -> (i32, i32) {
+        match self {
+            TileSize::Small => (TILE_SMALL_WIDTH, TILE_SMALL_HEIGHT),
+            TileSize::Medium => (TILE_MEDIUM_WIDTH, TILE_MEDIUM_HEIGHT),
+            TileSize::Wide => (TILE_WIDE_WIDTH, TILE_WIDE_HEIGHT),
+            TileSize::Large => (TILE_LARGE_WIDTH, TILE_LARGE_HEIGHT),
+        }
+    }
+}
 
 pub struct Tile {
     label: &'static str,
     accent: Color,
+    size: TileSize,
 }
 
 impl Tile {
-    pub fn new(label: &'static str, accent: Color) -> Self {
-        Self { label, accent }
+    pub fn new(label: &'static str, accent: Color, size: TileSize) -> Self {
+        Self {
+            label,
+            accent,
+            size,
+        }
     }
 
     pub fn label(&self) -> &'static str {
@@ -36,14 +68,19 @@ impl Tile {
     pub fn accent(&self) -> Color {
         self.accent
     }
+
+    pub fn size(&self) -> TileSize {
+        self.size
+    }
 }
 
 impl Widget for Tile {
     fn style(&self) -> Style {
+        let (width, height) = self.size.dimensions();
         Style {
             size: Size {
-                width: length(TILE_SIZE as f32),
-                height: length(TILE_SIZE as f32),
+                width: length(width as f32),
+                height: length(height as f32),
             },
             ..Default::default()
         }
@@ -75,43 +112,120 @@ impl Widget for Tile {
 mod tests {
     use tiny_skia::Pixmap;
 
-    use super::{Tile, STRIPE_HEIGHT, TILE_SIZE};
+    use super::{
+        Tile, TileSize, STRIPE_HEIGHT, TILE_LARGE_HEIGHT, TILE_LARGE_WIDTH, TILE_MEDIUM_HEIGHT,
+        TILE_MEDIUM_WIDTH, TILE_SMALL_HEIGHT, TILE_SMALL_WIDTH, TILE_WIDE_HEIGHT, TILE_WIDE_WIDTH,
+    };
     use crate::{paint::Rect, style::Palette, widget::Widget, Theme};
 
     #[test]
-    fn tile_new_stores_label_and_accent() {
-        let tile = Tile::new("hello", Palette::TOKYO_NIGHT_METRO.accent_alt);
+    fn tile_size_dimensions_match_win10_scale() {
+        assert_eq!(
+            TileSize::Small.dimensions(),
+            (TILE_SMALL_WIDTH, TILE_SMALL_HEIGHT)
+        );
+        assert_eq!(
+            TileSize::Medium.dimensions(),
+            (TILE_MEDIUM_WIDTH, TILE_MEDIUM_HEIGHT)
+        );
+        assert_eq!(
+            TileSize::Wide.dimensions(),
+            (TILE_WIDE_WIDTH, TILE_WIDE_HEIGHT)
+        );
+        assert_eq!(
+            TileSize::Large.dimensions(),
+            (TILE_LARGE_WIDTH, TILE_LARGE_HEIGHT)
+        );
+    }
+
+    #[test]
+    fn tile_new_stores_label_accent_and_size() {
+        let tile = Tile::new(
+            "hello",
+            Palette::TOKYO_NIGHT_METRO.accent_alt,
+            TileSize::Large,
+        );
         assert_eq!(tile.label(), "hello");
         assert_eq!(tile.accent(), Palette::TOKYO_NIGHT_METRO.accent_alt);
+        assert_eq!(tile.size(), TileSize::Large);
     }
 
     #[test]
-    fn tile_style_is_fixed_square() {
-        let tile = Tile::new("hello", Palette::TOKYO_NIGHT_METRO.accent);
-        let style = tile.style();
-        assert_eq!(style.size.width, taffy::prelude::length(TILE_SIZE as f32));
-        assert_eq!(style.size.height, taffy::prelude::length(TILE_SIZE as f32));
+    fn tile_style_uses_size_variant_dimensions() {
+        let small = Tile::new("small", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Small);
+        let medium = Tile::new(
+            "medium",
+            Palette::TOKYO_NIGHT_METRO.accent,
+            TileSize::Medium,
+        );
+        let wide = Tile::new("wide", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Wide);
+        let large = Tile::new("large", Palette::TOKYO_NIGHT_METRO.accent, TileSize::Large);
+
+        let small_style = small.style();
+        let medium_style = medium.style();
+        let wide_style = wide.style();
+        let large_style = large.style();
+
+        assert_eq!(
+            small_style.size.width,
+            taffy::prelude::length(TILE_SMALL_WIDTH as f32)
+        );
+        assert_eq!(
+            small_style.size.height,
+            taffy::prelude::length(TILE_SMALL_HEIGHT as f32)
+        );
+        assert_eq!(
+            medium_style.size.width,
+            taffy::prelude::length(TILE_MEDIUM_WIDTH as f32)
+        );
+        assert_eq!(
+            medium_style.size.height,
+            taffy::prelude::length(TILE_MEDIUM_HEIGHT as f32)
+        );
+        assert_eq!(
+            wide_style.size.width,
+            taffy::prelude::length(TILE_WIDE_WIDTH as f32)
+        );
+        assert_eq!(
+            wide_style.size.height,
+            taffy::prelude::length(TILE_WIDE_HEIGHT as f32)
+        );
+        assert_eq!(
+            large_style.size.width,
+            taffy::prelude::length(TILE_LARGE_WIDTH as f32)
+        );
+        assert_eq!(
+            large_style.size.height,
+            taffy::prelude::length(TILE_LARGE_HEIGHT as f32)
+        );
     }
 
     #[test]
-    fn tile_paint_draws_stripe_and_body() {
-        let tile = Tile::new("hello", Palette::TOKYO_NIGHT_METRO.accent_alt);
-        let mut pixmap = Pixmap::new(TILE_SIZE as u32, TILE_SIZE as u32).expect("pixmap");
+    fn tile_paint_draws_stripe_and_body_for_wide_tile() {
+        let tile = Tile::new(
+            "hello",
+            Palette::TOKYO_NIGHT_METRO.accent_alt,
+            TileSize::Wide,
+        );
+        let (width, height) = TileSize::Wide.dimensions();
+        let mut pixmap = Pixmap::new(width as u32, height as u32).expect("pixmap");
         let mut canvas = pixmap.as_mut();
         tile.paint(
             Rect {
                 x: 0,
                 y: 0,
-                width: TILE_SIZE,
-                height: TILE_SIZE,
+                width,
+                height,
             },
             &mut canvas,
             &Theme::TOKYO_NIGHT_METRO,
         );
         drop(canvas);
 
-        let stripe_px = pixmap.pixel(50, 1).expect("stripe pixel");
-        let body_px = pixmap.pixel(50, 50).expect("body pixel");
+        let stripe_px = pixmap.pixel((width / 2) as u32, 1).expect("stripe pixel");
+        let body_px = pixmap
+            .pixel((width / 2) as u32, (height / 2) as u32)
+            .expect("body pixel");
 
         assert!(stripe_px.alpha() > 0);
         assert!(body_px.alpha() > 0);

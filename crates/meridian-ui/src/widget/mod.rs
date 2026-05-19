@@ -9,4 +9,4 @@ pub mod base;
 pub mod tile;
 
 pub use base::{Container, Widget};
-pub use tile::Tile;
+pub use tile::{Tile, TileSize};

@@ -1,4 +1,6 @@
-use taffy::prelude::{length, AlignItems, JustifyContent, Size, Style};
+use taffy::prelude::{
+    length, AlignContent, AlignItems, FlexDirection, FlexWrap, JustifyContent, Size, Style,
+};
 use tiny_skia::PixmapMut;
 
 use crate::{paint::Rect, style::Theme};
@@ -51,6 +53,33 @@ impl Container {
             children,
         )
     }
+
+    pub fn flow(
+        viewport_width: u32,
+        viewport_height: u32,
+        gap: i32,
+        children: Vec<Box<dyn Widget>>,
+    ) -> Self {
+        let gap_px = gap.max(0) as f32;
+        Self::new(
+            Style {
+                flex_direction: FlexDirection::Row,
+                flex_wrap: FlexWrap::Wrap,
+                justify_content: Some(JustifyContent::Center),
+                align_content: Some(AlignContent::Center),
+                size: Size {
+                    width: length(viewport_width as f32),
+                    height: length(viewport_height as f32),
+                },
+                gap: Size {
+                    width: length(gap_px),
+                    height: length(gap_px),
+                },
+                ..Default::default()
+            },
+            children,
+        )
+    }
 }
 
 impl Widget for Container {
@@ -70,6 +99,7 @@ mod tests {
     use taffy::prelude::{length, Size, Style};
 
     use super::{Container, Widget};
+    use crate::paint::{compute_layout, PixelSize};
 
     #[test]
     fn container_leaf_has_no_children() {
@@ -102,5 +132,56 @@ mod tests {
         assert_eq!(style.align_items, Some(taffy::prelude::AlignItems::Center));
         assert_eq!(style.size.width, length(880.0));
         assert_eq!(style.size.height, length(620.0));
+    }
+
+    #[test]
+    fn flow_wraps_mixed_child_sizes() {
+        let children: Vec<Box<dyn Widget>> = vec![
+            Box::new(Container::leaf(Style {
+                size: Size {
+                    width: length(200.0),
+                    height: length(80.0),
+                },
+                ..Default::default()
+            })),
+            Box::new(Container::leaf(Style {
+                size: Size {
+                    width: length(140.0),
+                    height: length(90.0),
+                },
+                ..Default::default()
+            })),
+            Box::new(Container::leaf(Style {
+                size: Size {
+                    width: length(120.0),
+                    height: length(70.0),
+                },
+                ..Default::default()
+            })),
+        ];
+        let root = Container::flow(360, 260, 8, children);
+        let layout = compute_layout(
+            &root,
+            PixelSize {
+                width: 360,
+                height: 260,
+            },
+        )
+        .expect("layout computes");
+
+        assert_eq!(layout.root.children.len(), 3);
+        let first = &layout.root.children[0].rect;
+        let second = &layout.root.children[1].rect;
+        let third = &layout.root.children[2].rect;
+
+        assert_eq!(first.width, 200);
+        assert_eq!(second.width, 140);
+        assert_eq!(third.width, 120);
+        assert_eq!(first.height, 80);
+        assert_eq!(second.height, 90);
+        assert_eq!(third.height, 70);
+
+        assert_eq!(first.y, second.y);
+        assert!(third.y > second.y);
     }
 }
