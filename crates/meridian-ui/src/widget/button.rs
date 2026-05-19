@@ -1,7 +1,7 @@
 //! Metro-styled button widget used by preview footer controls.
 
 use taffy::prelude::{length, Size, Style};
-use tiny_skia::PixmapMut;
+use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, Transform};
 
 use crate::{
     effect::{paint_metro_surface, paint_text},
@@ -24,6 +24,7 @@ pub struct Button {
     width: i32,
     height: i32,
     id: Option<&'static str>,
+    icon: Option<Pixmap>,
 }
 
 impl Button {
@@ -34,6 +35,7 @@ impl Button {
             width,
             height,
             id: None,
+            icon: None,
         }
     }
 
@@ -50,6 +52,25 @@ impl Button {
             width,
             height,
             id: Some(id),
+            icon: None,
+        }
+    }
+
+    pub fn with_id_and_icon(
+        id: &'static str,
+        label: &'static str,
+        accent: Color,
+        width: i32,
+        height: i32,
+        icon: Option<Pixmap>,
+    ) -> Self {
+        Self {
+            label,
+            accent,
+            width,
+            height,
+            id: Some(id),
+            icon,
         }
     }
 
@@ -103,6 +124,21 @@ impl Widget for Button {
             BUTTON_LABEL_FONT_PX,
             theme.palette.text,
         );
+
+        if let Some(ref icon) = self.icon {
+            let iw = icon.width() as i32;
+            let ih = icon.height() as i32;
+            let x = area.x + (area.width - iw) / 2;
+            let y = area.y + (area.height - ih) / 2;
+            canvas.draw_pixmap(
+                x,
+                y,
+                icon.as_ref(),
+                &PixmapPaint::default(),
+                Transform::identity(),
+                None,
+            );
+        }
     }
 }
 
@@ -161,5 +197,31 @@ mod tests {
 
         assert!(pixmap.pixel(36, 1).expect("stripe").alpha() > 0);
         assert!(pixmap.pixel(36, 20).expect("body").alpha() > 0);
+    }
+
+    #[test]
+    fn button_with_id_and_icon_none_does_not_panic() {
+        let button = Button::with_id_and_icon(
+            "test-btn",
+            "Test",
+            Palette::TOKYO_NIGHT_METRO.accent,
+            48,
+            48,
+            None,
+        );
+        let mut pixmap = Pixmap::new(48, 48).expect("pixmap");
+        let mut canvas = pixmap.as_mut();
+        button.paint(
+            Rect {
+                x: 0,
+                y: 0,
+                width: 48,
+                height: 48,
+            },
+            &mut canvas,
+            &Theme::TOKYO_NIGHT_METRO,
+            WidgetState::Idle,
+        );
+        drop(canvas);
     }
 }

@@ -8,11 +8,23 @@ use meridian_ui::{
     compute_layout, render,
     style::Palette,
     widget::{tile::TILE_BASE_SIZE, Button, Container, Widget},
-    PixelSize, Theme, Tile, TileSize, WidgetState,
+    PixelSize, Theme, TileSize, WidgetState,
 };
-use tiny_skia::Pixmap;
+use meridian_ui::{
+    effect::{paint_metro_surface, paint_text},
+    paint::Rect,
+    style::Color,
+};
+use tiny_skia::{Pixmap, PixmapMut};
+use tiny_skia::{PixmapPaint, Transform};
 
 use crate::icons::{IconCache, IconImage};
+use crate::launcher::DesktopApp;
+
+use meridian_ui::widget::tile::{
+    STRIPE_HEIGHT, TILE_LABEL_BASELINE_FROM_BOTTOM, TILE_LABEL_FONT_DEFAULT_PX,
+    TILE_LABEL_FONT_SMALL_PX, TILE_LABEL_PADDING_X,
+};
 
 const FOOTER_HEIGHT: i32 = 56;
 const FOOTER_PADDING_X: i32 = 28;
@@ -21,7 +33,8 @@ const FOOTER_SWITCH_WIDTH: i32 = 144;
 const FOOTER_SWITCH_HEIGHT: i32 = 48;
 const FOOTER_POWER_BUTTON_SIZE: i32 = 48;
 
-const TILE_ICON_SIZE: u32 = 64;
+const TILE_ICON_SIZE: u32 = 96;
+const POWER_ICON_SIZE: u32 = 32;
 
 fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
     let w = img.width;
@@ -42,29 +55,78 @@ fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
     Some(pixmap)
 }
 
+pub(crate) struct DynTile {
+    label: Box<str>,
+    exec: Box<str>,
+    accent: Color,
+    size: TileSize,
+    icon: Option<Pixmap>,
+}
+
+impl Widget for DynTile {
+    fn style(&self) -> meridian_ui::WidgetStyle {
+        let (col_span, row_span) = self.size.cell_span();
+        meridian_ui::WidgetStyle {
+            grid_column: meridian_ui::grid_span(col_span as u16),
+            grid_row: meridian_ui::grid_span(row_span as u16),
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let body_color = match state {
+            WidgetState::Idle => theme.palette.surface,
+            WidgetState::Hovered => theme
+                .palette
+                .surface
+                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15),
+            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
+        };
+        paint_metro_surface(canvas, area, body_color, self.accent, theme, STRIPE_HEIGHT);
+        let font_size = match self.size {
+            TileSize::Small => TILE_LABEL_FONT_SMALL_PX,
+            _ => TILE_LABEL_FONT_DEFAULT_PX,
+        };
+        paint_text(
+            canvas,
+            &self.label,
+            area.x + TILE_LABEL_PADDING_X,
+            area.y + area.height - TILE_LABEL_BASELINE_FROM_BOTTOM,
+            font_size,
+            theme.palette.text,
+        );
+
+        if let Some(ref icon) = self.icon {
+            let iw = icon.width() as i32;
+            let ih = icon.height() as i32;
+            let x = area.x + (area.width - iw) / 2;
+            let icon_center_y = area.y + (area.height as f32 * 0.35) as i32;
+            let y = icon_center_y - ih / 2;
+            canvas.draw_pixmap(
+                x,
+                y,
+                icon.as_ref(),
+                &PixmapPaint::default(),
+                Transform::identity(),
+                None,
+            );
+        }
+    }
+
+    fn launch_exec(&self) -> Option<&str> {
+        Some(&self.exec)
+    }
+}
+
 pub(crate) fn build_ui_preview_widget_tree(
     width: u32,
     height: u32,
+    apps: &[DesktopApp],
     icon_cache: &IconCache,
 ) -> Box<dyn Widget> {
     let theme = Theme::TOKYO_NIGHT_METRO;
     let gap = theme.spacing.md;
     let pal = Palette::TOKYO_NIGHT_METRO;
-
-    let mapping: &[(&str, &str, &str)] = &[
-        ("Mail", "thunderbird", "thunderbird"),
-        ("Edge", "chromium", "chromium"),
-        ("OneDrive", "dolphin", "system-file-manager"),
-        ("Photos", "gwenview", "gwenview"),
-        ("Music", "amarok", "amarok"),
-        ("Maps", "marble", "marble"),
-        ("News", "akregator", "akregator"),
-        ("Store", "discover", "org.kde.discover"),
-        ("Calendar", "korganizer", "org.kde.korganizer"),
-        ("Weather", "kweather", "org.kde.kweather"),
-        ("Notes", "knotes", "org.kde.knotes"),
-    ];
-
     let accent_cycle = [
         pal.accent_alt,
         pal.accent,
@@ -91,26 +153,26 @@ pub(crate) fn build_ui_preview_widget_tree(
         TileSize::Small,
         TileSize::Small,
     ];
-
-    let tiles: Vec<Box<dyn Widget>> = mapping
+    let max_apps = apps.len().min(11);
+    let tiles: Vec<Box<dyn Widget>> = apps[..max_apps]
         .iter()
         .enumerate()
-        .map(|(i, &(label, exec, icon_name))| {
+        .map(|(i, app)| {
             let accent = accent_cycle[i];
             let size = size_cycle[i];
+            let icon_name = app.icon_name.as_deref().unwrap_or("");
             let maybe_pixmap = icon_cache
                 .lookup(icon_name, TILE_ICON_SIZE)
                 .and_then(icon_image_to_pixmap);
-            Box::new(Tile::with_exec_and_icon(
-                label,
+            Box::new(DynTile {
+                label: app.name.clone().into_boxed_str(),
+                exec: app.program.clone().into_boxed_str(),
                 accent,
                 size,
-                exec,
-                maybe_pixmap,
-            )) as Box<dyn Widget>
+                icon: maybe_pixmap,
+            }) as Box<dyn Widget>
         })
         .collect();
-
     let mosaic_height = height.saturating_sub(FOOTER_HEIGHT.max(0) as u32);
     let mosaic_grid = Container::grid(TILE_BASE_SIZE, 8, gap, width, mosaic_height, tiles);
     let mosaic_section = Container::centered_viewport(
@@ -126,41 +188,63 @@ pub(crate) fn build_ui_preview_widget_tree(
         FOOTER_SWITCH_WIDTH,
         FOOTER_SWITCH_HEIGHT,
     )) as Box<dyn Widget>];
+
+    let power_off_icon = icon_cache
+        .lookup("system-shutdown", POWER_ICON_SIZE)
+        .and_then(icon_image_to_pixmap);
+    let power_restart_icon = icon_cache
+        .lookup("system-reboot", POWER_ICON_SIZE)
+        .and_then(icon_image_to_pixmap);
+    let power_sleep_icon = icon_cache
+        .lookup("system-suspend", POWER_ICON_SIZE)
+        .and_then(icon_image_to_pixmap);
+    let power_lock_icon = icon_cache
+        .lookup("system-lock-screen", POWER_ICON_SIZE)
+        .and_then(icon_image_to_pixmap);
+    let power_logout_icon = icon_cache
+        .lookup("system-log-out", POWER_ICON_SIZE)
+        .and_then(icon_image_to_pixmap);
+
     let footer_right = vec![
-        Box::new(Button::with_id(
+        Box::new(Button::with_id_and_icon(
             "power-off",
             "Off",
             pal.error,
             FOOTER_POWER_BUTTON_SIZE,
             FOOTER_POWER_BUTTON_SIZE,
+            power_off_icon,
         )) as Box<dyn Widget>,
-        Box::new(Button::with_id(
+        Box::new(Button::with_id_and_icon(
             "power-restart",
             "Rst",
             pal.warning,
             FOOTER_POWER_BUTTON_SIZE,
             FOOTER_POWER_BUTTON_SIZE,
+            power_restart_icon,
         )) as Box<dyn Widget>,
-        Box::new(Button::with_id(
+        Box::new(Button::with_id_and_icon(
             "power-sleep",
             "Zzz",
             pal.accent,
             FOOTER_POWER_BUTTON_SIZE,
             FOOTER_POWER_BUTTON_SIZE,
+            power_sleep_icon,
         )) as Box<dyn Widget>,
-        Box::new(Button::with_id(
+        Box::new(Button::with_id_and_icon(
             "power-lock",
             "Lock",
             pal.accent_alt,
             FOOTER_POWER_BUTTON_SIZE,
             FOOTER_POWER_BUTTON_SIZE,
+            power_lock_icon,
         )) as Box<dyn Widget>,
-        Box::new(Button::with_id(
+        Box::new(Button::with_id_and_icon(
             "power-logout",
             "Out",
             pal.success,
             FOOTER_POWER_BUTTON_SIZE,
             FOOTER_POWER_BUTTON_SIZE,
+            power_logout_icon,
         )) as Box<dyn Widget>,
     ];
     let footer = Container::footer_row(
@@ -185,6 +269,7 @@ pub(crate) fn draw_ui_preview_sandbox(
     canvas: &mut [u8],
     width: u32,
     height: u32,
+    apps: &[DesktopApp],
     icon_cache: &IconCache,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
 ) {
@@ -202,7 +287,7 @@ pub(crate) fn draw_ui_preview_sandbox(
     let theme = Theme::TOKYO_NIGHT_METRO;
     pixmap.fill(to_tiny_skia_color(theme.palette.background));
 
-    let root = build_ui_preview_widget_tree(width, height, icon_cache);
+    let root = build_ui_preview_widget_tree(width, height, apps, icon_cache);
 
     if let Ok(layout) = compute_layout(&*root, PixelSize { width, height }) {
         let mut pixmap_canvas = pixmap.as_mut();
@@ -233,7 +318,9 @@ fn to_tiny_skia_color(color: meridian_ui::style::Color) -> tiny_skia::Color {
 mod tests {
     use meridian_ui::WidgetState;
 
-    use super::{blit_rgba_to_argb, build_ui_preview_widget_tree, draw_ui_preview_sandbox};
+    use super::{
+        blit_rgba_to_argb, build_ui_preview_widget_tree, draw_ui_preview_sandbox, DynTile,
+    };
     use crate::icons::IconCache;
 
     #[test]
@@ -265,7 +352,7 @@ mod tests {
         let mut canvas = vec![0_u8; (width * height * 4) as usize];
         let icon_cache = IconCache::new();
 
-        draw_ui_preview_sandbox(&mut canvas, width, height, &icon_cache, &|_| {
+        draw_ui_preview_sandbox(&mut canvas, width, height, &[], &icon_cache, &|_| {
             WidgetState::Idle
         });
 
@@ -275,7 +362,7 @@ mod tests {
     #[test]
     fn build_ui_preview_widget_tree_has_root_column_with_two_sections() {
         let icon_cache = IconCache::new();
-        let tree = build_ui_preview_widget_tree(880, 620, &icon_cache);
+        let tree = build_ui_preview_widget_tree(880, 620, &[], &icon_cache);
         let children = tree.children();
         assert_eq!(children.len(), 2, "root column should have 2 children");
         // Mosaic section
@@ -308,5 +395,18 @@ mod tests {
         assert_eq!(px.green(), 0);
         assert_eq!(px.blue(), 0);
         assert_eq!(px.alpha(), 128);
+    }
+
+    #[test]
+    fn dyn_tile_launch_exec_returns_program() {
+        use meridian_ui::Widget;
+        let tile = DynTile {
+            label: "Firefox".into(),
+            exec: "firefox".into(),
+            accent: meridian_ui::style::Color::rgb(0, 0, 0),
+            size: meridian_ui::TileSize::Small,
+            icon: None,
+        };
+        assert_eq!(tile.launch_exec(), Some("firefox"));
     }
 }

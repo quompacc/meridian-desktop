@@ -445,6 +445,7 @@ impl MeridianShell {
                     canvas,
                     width,
                     height,
+                    &self.launcher_state.apps,
                     &self.icon_cache,
                     &state_fn,
                 );

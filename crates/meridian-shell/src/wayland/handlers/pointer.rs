@@ -62,6 +62,7 @@ impl PointerHandler for MeridianShell {
                     let tree = crate::ui_preview::build_ui_preview_widget_tree(
                         crate::LAUNCHER_WIDTH,
                         crate::LAUNCHER_HEIGHT,
+                        &self.launcher_state.apps,
                         &self.icon_cache,
                     );
                     let pixel_size = meridian_ui::PixelSize {

@@ -195,6 +195,16 @@ pub(crate) fn initialize(
         ],
         64,
     );
+    icon_cache.warm(
+        &[
+            "system-shutdown",
+            "system-reboot",
+            "system-suspend",
+            "system-lock-screen",
+            "system-log-out",
+        ],
+        32,
+    );
     let launcher_apps = launcher::DesktopApp::load_system();
     let mut seen_icons = HashSet::new();
     let mut launcher_icons = Vec::new();

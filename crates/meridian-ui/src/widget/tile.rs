@@ -128,7 +128,7 @@ impl Widget for Tile {
         self.id
     }
 
-    fn launch_exec(&self) -> Option<&'static str> {
+    fn launch_exec(&self) -> Option<&str> {
         self.exec
     }
 

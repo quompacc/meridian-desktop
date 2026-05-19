@@ -38,7 +38,7 @@ pub trait Widget {
     /// Returns the program name if this widget can be launched.
     /// Simpler alternative to `launch_info` for widgets without args.
     /// Render paths ignore this field.
-    fn launch_exec(&self) -> Option<&'static str> {
+    fn launch_exec(&self) -> Option<&str> {
         None
     }
 
