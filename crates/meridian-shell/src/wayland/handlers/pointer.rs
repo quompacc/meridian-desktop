@@ -108,12 +108,10 @@ impl PointerHandler for MeridianShell {
                                 self.draw_launcher(qh, RepaintReason::Pointer);
                             }
                             if let Some(clicked_path) = clicked_path {
-                                if let Some(widget) =
-                                    crate::widget_traversal::find_widget_at_path(
-                                        &*tree,
-                                        &clicked_path,
-                                    )
-                                {
+                                if let Some(widget) = crate::widget_traversal::find_widget_at_path(
+                                    &*tree,
+                                    &clicked_path,
+                                ) {
                                     if let Some(action) =
                                         widget.id().and_then(crate::widget_action::action_for_id)
                                     {
@@ -157,6 +155,7 @@ impl PointerHandler for MeridianShell {
                         9,
                         &self.last_clock,
                         &self.icon_cache,
+                        None, // screenshot_icon — nur für Hover-Layout, Icon irrelevant
                     );
                     let pixel_size = meridian_ui::PixelSize {
                         width: self.width,

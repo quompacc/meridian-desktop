@@ -175,6 +175,7 @@ pub(crate) fn initialize(
             "network-wireless-disconnected-symbolic",
             "network-vpn-symbolic",
             "network-offline-symbolic",
+            "camera-photo-symbolic",
         ],
         22,
     );

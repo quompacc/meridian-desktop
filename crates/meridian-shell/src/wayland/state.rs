@@ -853,6 +853,22 @@ impl MeridianShell {
                     self.draw_calendar_popup(qh, RepaintReason::Pointer);
                 }
             }
+            ClickAction::TakeScreenshot => {
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+                let dir = std::path::PathBuf::from(&home)
+                    .join("Pictures")
+                    .join("Screenshots");
+                let _ = std::fs::create_dir_all(&dir);
+                let secs = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let path = dir.join(format!("meridian-{}.png", secs));
+                match std::process::Command::new("grim").arg(&path).spawn() {
+                    Ok(_) => tracing::info!("screenshot: spawned grim → {}", path.display()),
+                    Err(e) => tracing::warn!("screenshot: grim spawn failed: {}", e),
+                }
+            }
         }
     }
 
@@ -916,6 +932,7 @@ impl MeridianShell {
             ClickAction::ToggleWorkspacePopup => {}
             ClickAction::ToggleNetworkPopup => {}
             ClickAction::Clock => {}
+            ClickAction::TakeScreenshot => {}
         }
     }
 

@@ -251,6 +251,11 @@ impl MeridianShell {
                     _ => meridian_ui::WidgetState::Idle,
                 }
             };
+            let screenshot_icon = self
+                .icon_cache
+                .lookup("camera-photo-symbolic", 22)
+                .and_then(crate::panel_view::icon_image_to_pixmap);
+
             crate::panel_view::draw_panel_ui(
                 canvas,
                 width,
@@ -263,6 +268,7 @@ impl MeridianShell {
                 9,
                 &clock,
                 &self.icon_cache,
+                screenshot_icon,
                 &state_fn,
                 &mut self.panel_state.clicks,
             );

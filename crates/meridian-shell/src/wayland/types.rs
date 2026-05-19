@@ -34,6 +34,7 @@ pub enum ClickAction {
     ToggleWorkspacePopup,
     ToggleNetworkPopup,
     Clock,
+    TakeScreenshot,
 }
 
 #[derive(Debug, Clone)]

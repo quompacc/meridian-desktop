@@ -22,6 +22,7 @@ const CHIP_H: i32 = 28;
 const LAUNCHER_W: i32 = 58;
 const PINNED_W: i32 = 44;
 const TRAY_W: i32 = 60;
+const SCREENSHOT_W: i32 = 36;
 const WS_W: i32 = 56;
 const CLOCK_PAD: i32 = 8;
 const ICON_SIZE: u32 = 22;
@@ -35,7 +36,7 @@ const GAP: i32 = 4;
 const FONT_SIZE: f32 = 14.0;
 const ACCENT_LINE_H: i32 = 2;
 
-fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
+pub(crate) fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
     let w = img.width;
     let h = img.height;
     let mut pixmap = Pixmap::new(w, h)?;
@@ -59,6 +60,7 @@ fn action_for_id_as_click(id: &str) -> Option<ClickAction> {
         "panel-launcher" => Some(ClickAction::ToggleLauncher),
         "panel-network" => Some(ClickAction::ToggleNetworkPopup),
         "panel-workspace" => Some(ClickAction::ToggleWorkspacePopup),
+        "panel-screenshot" => Some(ClickAction::TakeScreenshot),
         "panel-clock" => Some(ClickAction::Clock),
         _ => None,
     }
@@ -333,6 +335,7 @@ pub(crate) fn build_panel_widget_tree(
     total_workspaces: u8,
     clock: &str,
     icon_cache: &IconCache,
+    screenshot_icon: Option<Pixmap>,
 ) -> Box<dyn Widget> {
     let network_icon = icon_cache
         .lookup(network_state.icon_name(), ICON_SIZE)
@@ -410,6 +413,13 @@ pub(crate) fn build_panel_widget_tree(
     let clock_w = (clock_text_w + 2 * CLOCK_PAD).max(40);
     let ws_text: Box<str> = format!("{}/{}", active_workspace, total_workspaces.max(1)).into();
     let right_children: Vec<Box<dyn Widget>> = vec![
+        Box::new(PanelChip::new(
+            "panel-screenshot",
+            "📷".into(),
+            screenshot_icon,
+            SCREENSHOT_W,
+            false,
+        )),
         Box::new(PanelChip::new(
             "panel-network",
             "NET".into(),
@@ -536,6 +546,7 @@ pub(crate) fn draw_panel_ui(
     total_workspaces: u8,
     clock: &str,
     icon_cache: &IconCache,
+    screenshot_icon: Option<Pixmap>,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
     clicks_out: &mut Vec<ClickZone>,
 ) {
@@ -561,6 +572,7 @@ pub(crate) fn draw_panel_ui(
         total_workspaces,
         clock,
         icon_cache,
+        screenshot_icon,
     );
 
     let Ok(layout) = compute_layout(&*root, PixelSize { width, height }) else {
@@ -643,11 +655,22 @@ mod tests {
     fn build_panel_widget_tree_root_has_three_children() {
         let icon_cache = IconCache::new();
         let network = NetworkState::Disconnected;
-        let tree =
-            build_panel_widget_tree(1920, &[], &[], &network, false, 1, 9, "12:34", &icon_cache);
+        let tree = build_panel_widget_tree(
+            1920,
+            &[],
+            &[],
+            &network,
+            false,
+            1,
+            9,
+            "12:34",
+            &icon_cache,
+            None,
+        );
         assert_eq!(tree.children().len(), 3);
     }
 
+    #[test]
     #[test]
     fn draw_panel_ui_modifies_canvas_and_fills_clicks() {
         let width = 1024u32;
@@ -670,11 +693,20 @@ mod tests {
             9,
             "12:34",
             &icon_cache,
+            None,
             &state_fn,
             &mut clicks,
         );
 
         assert!(canvas.iter().any(|byte| *byte != 0));
         assert!(!clicks.is_empty());
+    }
+
+    #[test]
+    fn action_for_id_as_click_screenshot() {
+        assert!(matches!(
+            action_for_id_as_click("panel-screenshot"),
+            Some(ClickAction::TakeScreenshot)
+        ));
     }
 }
