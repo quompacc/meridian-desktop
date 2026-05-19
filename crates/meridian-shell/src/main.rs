@@ -64,7 +64,7 @@ pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let ui_preview_enabled = parse_ui_preview_flag(std::env::args());
+    let ui_preview_enabled = parse_ui_preview_flag(std::env::args()) || ui_preview_env_enabled();
 
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info"))
@@ -87,6 +87,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn parse_ui_preview_flag<I: IntoIterator<Item = String>>(argv: I) -> bool {
     argv.into_iter().any(|arg| arg == "--ui-preview")
+}
+
+fn parse_ui_preview_env(value: Option<&str>) -> bool {
+    value
+        .map(str::trim)
+        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false)
+}
+
+fn ui_preview_env_enabled() -> bool {
+    let value = std::env::var("MERIDIAN_UI_PREVIEW").ok();
+    parse_ui_preview_env(value.as_deref())
 }
 
 fn insert_tick_timer(
@@ -161,7 +173,7 @@ fn insert_network_poll_timer(
 
 #[cfg(test)]
 mod tests {
-    use super::{default_pinned_apps, parse_ui_preview_flag};
+    use super::{default_pinned_apps, parse_ui_preview_env, parse_ui_preview_flag};
 
     #[test]
     fn default_pinned_apps_contains_expected_entries() {
@@ -198,5 +210,25 @@ mod tests {
             "--ui-preview".to_string(),
         ];
         assert!(parse_ui_preview_flag(args));
+    }
+
+    #[test]
+    fn parse_ui_preview_env_truthy_values() {
+        assert!(parse_ui_preview_env(Some("1")));
+        assert!(parse_ui_preview_env(Some("true")));
+        assert!(parse_ui_preview_env(Some("YES")));
+        assert!(parse_ui_preview_env(Some("on")));
+        assert!(parse_ui_preview_env(Some("  1  ")));
+    }
+
+    #[test]
+    fn parse_ui_preview_env_falsy_values() {
+        assert!(!parse_ui_preview_env(None));
+        assert!(!parse_ui_preview_env(Some("")));
+        assert!(!parse_ui_preview_env(Some("0")));
+        assert!(!parse_ui_preview_env(Some("no")));
+        assert!(!parse_ui_preview_env(Some("false")));
+        assert!(!parse_ui_preview_env(Some("off")));
+        assert!(!parse_ui_preview_env(Some("random")));
     }
 }
