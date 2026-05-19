@@ -5,7 +5,7 @@
 //! in the render path and is an accepted step-5 trade-off until path caching
 //! is introduced.
 
-use taffy::prelude::{length, Size, Style};
+use taffy::prelude::{length, span, Size, Style};
 use tiny_skia::PixmapMut;
 
 use crate::{
@@ -44,6 +44,15 @@ impl TileSize {
             TileSize::Large => (TILE_LARGE_WIDTH, TILE_LARGE_HEIGHT),
         }
     }
+
+    pub fn cell_span(self) -> (i32, i32) {
+        match self {
+            TileSize::Small => (1, 1),
+            TileSize::Medium => (2, 2),
+            TileSize::Wide => (4, 2),
+            TileSize::Large => (4, 4),
+        }
+    }
 }
 
 pub struct Tile {
@@ -77,11 +86,14 @@ impl Tile {
 impl Widget for Tile {
     fn style(&self) -> Style {
         let (width, height) = self.size.dimensions();
+        let (col_span, row_span) = self.size.cell_span();
         Style {
             size: Size {
                 width: length(width as f32),
                 height: length(height as f32),
             },
+            grid_column: span(col_span as u16),
+            grid_row: span(row_span as u16),
             ..Default::default()
         }
     }
@@ -136,6 +148,14 @@ mod tests {
             TileSize::Large.dimensions(),
             (TILE_LARGE_WIDTH, TILE_LARGE_HEIGHT)
         );
+    }
+
+    #[test]
+    fn tile_size_cell_span_matches_win10_scale() {
+        assert_eq!(TileSize::Small.cell_span(), (1, 1));
+        assert_eq!(TileSize::Medium.cell_span(), (2, 2));
+        assert_eq!(TileSize::Wide.cell_span(), (4, 2));
+        assert_eq!(TileSize::Large.cell_span(), (4, 4));
     }
 
     #[test]
@@ -198,6 +218,14 @@ mod tests {
             large_style.size.height,
             taffy::prelude::length(TILE_LARGE_HEIGHT as f32)
         );
+        assert_eq!(small_style.grid_column, taffy::prelude::span(1));
+        assert_eq!(small_style.grid_row, taffy::prelude::span(1));
+        assert_eq!(medium_style.grid_column, taffy::prelude::span(2));
+        assert_eq!(medium_style.grid_row, taffy::prelude::span(2));
+        assert_eq!(wide_style.grid_column, taffy::prelude::span(4));
+        assert_eq!(wide_style.grid_row, taffy::prelude::span(2));
+        assert_eq!(large_style.grid_column, taffy::prelude::span(4));
+        assert_eq!(large_style.grid_row, taffy::prelude::span(4));
     }
 
     #[test]

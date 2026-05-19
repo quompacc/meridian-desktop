@@ -1,5 +1,5 @@
 use taffy::prelude::{
-    length, AlignContent, AlignItems, FlexDirection, FlexWrap, JustifyContent, Size, Style,
+    length, AlignContent, AlignItems, Display, FlexDirection, FlexWrap, JustifyContent, Size, Style,
 };
 use tiny_skia::PixmapMut;
 
@@ -80,6 +80,39 @@ impl Container {
             children,
         )
     }
+
+    pub fn grid(
+        cell_size_px: i32,
+        columns: u32,
+        gap_px: i32,
+        viewport_width: u32,
+        viewport_height: u32,
+        children: Vec<Box<dyn Widget>>,
+    ) -> Self {
+        let cell_size = cell_size_px.max(0) as f32;
+        let gap = gap_px.max(0) as f32;
+        let template_columns = vec![length(cell_size); columns as usize];
+
+        Self::new(
+            Style {
+                display: Display::Grid,
+                justify_content: Some(JustifyContent::Center),
+                align_content: Some(AlignContent::Center),
+                size: Size {
+                    width: length(viewport_width as f32),
+                    height: length(viewport_height as f32),
+                },
+                grid_template_columns: template_columns,
+                grid_auto_rows: vec![length(cell_size)],
+                gap: Size {
+                    width: length(gap),
+                    height: length(gap),
+                },
+                ..Default::default()
+            },
+            children,
+        )
+    }
 }
 
 impl Widget for Container {
@@ -100,6 +133,8 @@ mod tests {
 
     use super::{Container, Widget};
     use crate::paint::{compute_layout, PixelSize};
+    use crate::style::Palette;
+    use crate::widget::{Tile, TileSize};
 
     #[test]
     fn container_leaf_has_no_children() {
@@ -183,5 +218,79 @@ mod tests {
 
         assert_eq!(first.y, second.y);
         assert!(third.y > second.y);
+    }
+
+    #[test]
+    fn grid_places_tiles_on_cell_boundaries() {
+        let cell_size = 96;
+        let gap = 8;
+        let pitch = cell_size + gap;
+        let children: Vec<Box<dyn Widget>> = vec![
+            Box::new(Tile::new(
+                "large",
+                Palette::TOKYO_NIGHT_METRO.accent_alt,
+                TileSize::Large,
+            )),
+            Box::new(Tile::new(
+                "wide",
+                Palette::TOKYO_NIGHT_METRO.accent,
+                TileSize::Wide,
+            )),
+            Box::new(Tile::new(
+                "medium-a",
+                Palette::TOKYO_NIGHT_METRO.success,
+                TileSize::Medium,
+            )),
+            Box::new(Tile::new(
+                "medium-b",
+                Palette::TOKYO_NIGHT_METRO.warning,
+                TileSize::Medium,
+            )),
+            Box::new(Tile::new(
+                "small-a",
+                Palette::TOKYO_NIGHT_METRO.error,
+                TileSize::Small,
+            )),
+            Box::new(Tile::new(
+                "small-b",
+                Palette::TOKYO_NIGHT_METRO.accent,
+                TileSize::Small,
+            )),
+        ];
+
+        let root = Container::grid(cell_size, 8, gap, 1200, 900, children);
+        let layout = compute_layout(
+            &root,
+            PixelSize {
+                width: 1200,
+                height: 900,
+            },
+        )
+        .expect("layout computes");
+
+        assert_eq!(layout.root.children.len(), 6);
+        let rects = &layout.root.children;
+        let origin_x = rects
+            .iter()
+            .map(|node| node.rect.x)
+            .min()
+            .expect("has children");
+        let origin_y = rects
+            .iter()
+            .map(|node| node.rect.y)
+            .min()
+            .expect("has children");
+
+        let relative = |index: usize| {
+            let rect = rects[index].rect;
+            (rect.x - origin_x, rect.y - origin_y)
+        };
+
+        assert_eq!(relative(0), (0, 0));
+        assert_eq!(relative(1), (pitch * 4, 0));
+        assert_eq!(relative(2), (pitch * 4, pitch * 2));
+        assert_eq!(relative(3), (pitch * 6, pitch * 2));
+        assert_eq!(relative(4), (0, pitch * 4));
+        assert_eq!(relative(5), (pitch, pitch * 4));
     }
 }

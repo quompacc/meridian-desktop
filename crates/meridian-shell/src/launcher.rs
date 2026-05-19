@@ -2177,8 +2177,7 @@ fn draw_tile_start_view(
         }
         content_h += SECTION_HEADER_H + SECTION_HEADER_TO_TILES_GAP;
         if section.rows > 0 {
-            content_h +=
-                section.rows as i32 * geo.slot_h + (section.rows as i32 - 1) * geo.gap;
+            content_h += section.rows as i32 * geo.slot_h + (section.rows as i32 - 1) * geo.gap;
         }
     }
     launcher_state.tile_content_h_cache = content_h;
@@ -2205,8 +2204,7 @@ fn draw_tile_start_view(
         };
 
         // Render header only if any part of it is on-screen inside tile_area.
-        if header_rect.y + header_rect.h > tile_area.y
-            && header_rect.y < tile_area.y + tile_area.h
+        if header_rect.y + header_rect.h > tile_area.y && header_rect.y < tile_area.y + tile_area.h
         {
             let mut letter_buf = [0u8; 4];
             let letter_str = section.letter.encode_utf8(&mut letter_buf);
@@ -2235,8 +2233,7 @@ fn draw_tile_start_view(
                 if tile.col >= geo.cols {
                     continue;
                 }
-                let tile_x =
-                    geo.origin_x + tile.col as i32 * (geo.slot_w + geo.gap);
+                let tile_x = geo.origin_x + tile.col as i32 * (geo.slot_w + geo.gap);
                 let tile_y = body_top + tile.row as i32 * (geo.slot_h + geo.gap);
                 let (cw, rh) = tile.size.grid_units();
                 let tile_w = geo.slot_w * cw as i32 + geo.gap * (cw as i32 - 1);
@@ -2538,8 +2535,7 @@ mod tests {
         section_letter_for, AppSection, AppTile, ClickAction, ClickZone, DesktopApp,
         LauncherAction, LauncherActionActivationResult, LauncherInputResult, LauncherState,
         LauncherView, Rect, SidebarCategory, TileSize, FOOTER_ACTION_BUTTON_H,
-        FOOTER_BAR_V_PADDING, MAX_RESULTS, TILE_GRID_COLS, TILE_SLOT_MIN_PX,
-        XDG_DATA_DIRS_DEFAULT,
+        FOOTER_BAR_V_PADDING, MAX_RESULTS, TILE_GRID_COLS, TILE_SLOT_MIN_PX, XDG_DATA_DIRS_DEFAULT,
     };
     use crate::{icons::IconCache, Painter};
 
@@ -3035,7 +3031,11 @@ Exec=foot
             leftover,
             geo.slot_w
         );
-        assert!(geo.slot_w >= 100, "slot_w should be >= 100 at this width, got {}", geo.slot_w);
+        assert!(
+            geo.slot_w >= 100,
+            "slot_w should be >= 100 at this width, got {}",
+            geo.slot_w
+        );
     }
 
     #[test]

@@ -7,7 +7,7 @@
 use meridian_ui::{
     compute_layout, render,
     style::Palette,
-    widget::{Container, Widget},
+    widget::{tile::TILE_BASE_SIZE, Container, Widget},
     PixelSize, Theme, Tile, TileSize,
 };
 use tiny_skia::Pixmap;
@@ -40,13 +40,13 @@ pub(crate) fn draw_ui_preview_sandbox(canvas: &mut [u8], width: u32, height: u32
             TileSize::Wide,
         )),
         Box::new(Tile::new(
-            "medium-success",
-            Palette::TOKYO_NIGHT_METRO.success,
-            TileSize::Medium,
+            "wide-bottom",
+            Palette::TOKYO_NIGHT_METRO.warning,
+            TileSize::Wide,
         )),
         Box::new(Tile::new(
-            "medium-warning",
-            Palette::TOKYO_NIGHT_METRO.warning,
+            "medium-success",
+            Palette::TOKYO_NIGHT_METRO.success,
             TileSize::Medium,
         )),
         Box::new(Tile::new(
@@ -60,11 +60,7 @@ pub(crate) fn draw_ui_preview_sandbox(canvas: &mut [u8], width: u32, height: u32
             TileSize::Small,
         )),
     ];
-    let mosaic_width = width.saturating_mul(9) / 10;
-    let mosaic_height = height.saturating_mul(9) / 10;
-    let mosaic = Container::flow(mosaic_width, mosaic_height, gap, tiles);
-    let root =
-        Container::centered_viewport(width, height, vec![Box::new(mosaic) as Box<dyn Widget>]);
+    let root = Container::grid(TILE_BASE_SIZE, 8, gap, width, height, tiles);
 
     if let Ok(layout) = compute_layout(&root, PixelSize { width, height }) {
         let mut pixmap_canvas = pixmap.as_mut();
