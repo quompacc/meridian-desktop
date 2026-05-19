@@ -22,7 +22,7 @@ use super::{state::ResizeSurfaceState, ResizeEdge};
 
 enum ResizeSurfaceTarget {
     Xdg(smithay::wayland::shell::xdg::ToplevelSurface),
-    X11(X11Surface),
+    X11(Box<X11Surface>),
 }
 
 pub struct ResizeSurfaceGrab {
@@ -49,7 +49,7 @@ impl ResizeSurfaceGrab {
             });
             ResizeSurfaceTarget::Xdg(toplevel.clone())
         } else if let Some(x11) = window.x11_surface() {
-            ResizeSurfaceTarget::X11(x11.clone())
+            ResizeSurfaceTarget::X11(Box::new(x11.clone()))
         } else {
             unreachable!("resize grab requires xdg or x11 window target")
         };

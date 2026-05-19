@@ -25,6 +25,12 @@ pub const BUTTON_ICON_PX: u32 = 14;
 pub const BUTTON_STROKE_WIDTH: f32 = 1.25;
 pub const BUTTON_MARGIN: i32 = 8;
 
+// CLAUDE.md-Regel 4 verbietet Heap-Alloc im Render-Loop. `render_elements()`
+// baut pro Frame eine SmallVec<DecorationRenderElement; 32> auf - Box um die
+// Icon-Variante würde 3-6 Heap-Allokationen pro Frame verursachen. Wir
+// nehmen den Größenunterschied stattdessen bewusst in Kauf (Stack/SmallVec
+// dimensioniert großzügig).
+#[allow(clippy::large_enum_variant)]
 pub enum DecorationRenderElement {
     Solid(SolidColorRenderElement),
     Icon(MemoryRenderBufferRenderElement<GlesRenderer>),
