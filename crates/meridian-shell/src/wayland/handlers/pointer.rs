@@ -75,6 +75,11 @@ impl PointerHandler for MeridianShell {
                                 y: event.position.1 as i32,
                             };
                             let path = meridian_ui::hit_test(&layout, pos);
+                            let clicked_path = super::pointer_state::detect_click(
+                                self.ui_preview_widget_state.as_ref(),
+                                &ev,
+                                path.as_ref(),
+                            );
                             let new_state = super::pointer_state::apply_pointer_event(
                                 self.ui_preview_widget_state.clone(),
                                 &ev,
@@ -83,6 +88,17 @@ impl PointerHandler for MeridianShell {
                             if new_state != self.ui_preview_widget_state {
                                 self.ui_preview_widget_state = new_state;
                                 self.draw_launcher(qh, RepaintReason::Pointer);
+                            }
+                            if let Some(clicked_path) = clicked_path {
+                                let action = crate::widget_traversal::find_widget_at_path(
+                                    &*tree,
+                                    &clicked_path,
+                                )
+                                .and_then(|w| w.id())
+                                .and_then(crate::widget_action::action_for_id);
+                                if let Some(action) = action {
+                                    self.dispatch_widget_action(qh, action);
+                                }
                             }
                         }
                         Err(e) => {

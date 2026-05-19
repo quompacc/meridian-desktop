@@ -18,6 +18,7 @@ mod pointer_state;
 mod pointer_translate;
 mod seat;
 mod shm;
+mod widget_dispatch;
 
 delegate_compositor!(MeridianShell);
 delegate_output!(MeridianShell);

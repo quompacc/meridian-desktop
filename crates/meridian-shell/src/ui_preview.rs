@@ -44,38 +44,44 @@ pub(crate) fn build_ui_preview_widget_tree(width: u32, height: u32) -> Box<dyn W
         vec![Box::new(mosaic_grid) as Box<dyn Widget>],
     );
 
-    let footer_left = vec![Box::new(Button::new(
+    let footer_left = vec![Box::new(Button::with_id(
+        "apps-switch",
         "Apps",
         pal.accent,
         FOOTER_SWITCH_WIDTH,
         FOOTER_SWITCH_HEIGHT,
     )) as Box<dyn Widget>];
     let footer_right = vec![
-        Box::new(Button::new(
+        Box::new(Button::with_id(
+            "power-off",
             "Off",
             pal.error,
             FOOTER_POWER_BUTTON_SIZE,
             FOOTER_POWER_BUTTON_SIZE,
         )) as Box<dyn Widget>,
-        Box::new(Button::new(
+        Box::new(Button::with_id(
+            "power-restart",
             "Rst",
             pal.warning,
             FOOTER_POWER_BUTTON_SIZE,
             FOOTER_POWER_BUTTON_SIZE,
         )) as Box<dyn Widget>,
-        Box::new(Button::new(
+        Box::new(Button::with_id(
+            "power-sleep",
             "Zzz",
             pal.accent,
             FOOTER_POWER_BUTTON_SIZE,
             FOOTER_POWER_BUTTON_SIZE,
         )) as Box<dyn Widget>,
-        Box::new(Button::new(
+        Box::new(Button::with_id(
+            "power-lock",
             "Lock",
             pal.accent_alt,
             FOOTER_POWER_BUTTON_SIZE,
             FOOTER_POWER_BUTTON_SIZE,
         )) as Box<dyn Widget>,
-        Box::new(Button::new(
+        Box::new(Button::with_id(
+            "power-logout",
             "Out",
             pal.success,
             FOOTER_POWER_BUTTON_SIZE,

@@ -18,6 +18,13 @@ pub trait Widget {
     /// Contract: must be allocation-free and side-effect free.
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState);
 
+    /// Optional stable identifier used for action dispatch.
+    ///
+    /// This field is ignored by all render paths.
+    fn id(&self) -> Option<&'static str> {
+        None
+    }
+
     /// Child widgets in tree order.
     fn children(&self) -> &[Box<dyn Widget>] {
         &[]

@@ -28,11 +28,31 @@ pub(super) fn apply_pointer_event(
     }
 }
 
+pub(super) fn detect_click(
+    prev: Option<&(WidgetPath, WidgetState)>,
+    event: &Event,
+    hit_path: Option<&WidgetPath>,
+) -> Option<WidgetPath> {
+    match event {
+        Event::PointerRelease {
+            button: PointerButton::Left,
+            ..
+        } => match prev {
+            Some((p, WidgetState::Pressed)) => match hit_path {
+                Some(q) if q == p => Some(p.clone()),
+                _ => None,
+            },
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use meridian_ui::{Event, PointerButton, PointerPosition, WidgetPath, WidgetState};
 
-    use super::apply_pointer_event;
+    use super::{apply_pointer_event, detect_click};
 
     fn path(v: &[usize]) -> WidgetPath {
         WidgetPath::from_vec(v.to_vec())
@@ -169,5 +189,51 @@ mod tests {
         };
         let result = apply_pointer_event(None, &ev, Some(root_path()));
         assert_eq!(result, Some((root_path(), WidgetState::Hovered)));
+    }
+
+    #[test]
+    fn click_on_same_widget_detected() {
+        let prev = Some((path_a(), WidgetState::Pressed));
+        let release = Event::PointerRelease {
+            position: pos(10, 10),
+            button: PointerButton::Left,
+        };
+        let hit = Some(path_a());
+        let result = detect_click(prev.as_ref(), &release, hit.as_ref());
+        assert_eq!(result, Some(path_a()));
+    }
+
+    #[test]
+    fn click_on_different_widget_not_detected() {
+        let prev = Some((path_a(), WidgetState::Pressed));
+        let release = Event::PointerRelease {
+            position: pos(10, 10),
+            button: PointerButton::Left,
+        };
+        let hit = Some(path_b());
+        let result = detect_click(prev.as_ref(), &release, hit.as_ref());
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn release_without_prior_press_not_click() {
+        let release = Event::PointerRelease {
+            position: pos(10, 10),
+            button: PointerButton::Left,
+        };
+        let hit = Some(path_a());
+        let result = detect_click(None, &release, hit.as_ref());
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn non_release_event_not_click() {
+        let prev = Some((path_a(), WidgetState::Pressed));
+        let move_ev = Event::PointerMove {
+            position: pos(10, 10),
+        };
+        let hit = Some(path_a());
+        let result = detect_click(prev.as_ref(), &move_ev, hit.as_ref());
+        assert_eq!(result, None);
     }
 }

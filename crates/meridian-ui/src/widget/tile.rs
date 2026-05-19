@@ -65,6 +65,7 @@ pub struct Tile {
     label: &'static str,
     accent: Color,
     size: TileSize,
+    id: Option<&'static str>,
 }
 
 impl Tile {
@@ -73,6 +74,16 @@ impl Tile {
             label,
             accent,
             size,
+            id: None,
+        }
+    }
+
+    pub fn with_id(id: &'static str, label: &'static str, accent: Color, size: TileSize) -> Self {
+        Self {
+            label,
+            accent,
+            size,
+            id: Some(id),
         }
     }
 
@@ -90,6 +101,10 @@ impl Tile {
 }
 
 impl Widget for Tile {
+    fn id(&self) -> Option<&'static str> {
+        self.id
+    }
+
     fn style(&self) -> Style {
         let (col_span, row_span) = self.size.cell_span();
         Style {

@@ -23,6 +23,7 @@ pub struct Button {
     accent: Color,
     width: i32,
     height: i32,
+    id: Option<&'static str>,
 }
 
 impl Button {
@@ -32,6 +33,23 @@ impl Button {
             accent,
             width,
             height,
+            id: None,
+        }
+    }
+
+    pub fn with_id(
+        id: &'static str,
+        label: &'static str,
+        accent: Color,
+        width: i32,
+        height: i32,
+    ) -> Self {
+        Self {
+            label,
+            accent,
+            width,
+            height,
+            id: Some(id),
         }
     }
 
@@ -53,6 +71,10 @@ impl Button {
 }
 
 impl Widget for Button {
+    fn id(&self) -> Option<&'static str> {
+        self.id
+    }
+
     fn style(&self) -> Style {
         Style {
             size: Size {

@@ -17,6 +17,8 @@ mod panel;
 mod ui;
 mod ui_preview;
 mod wayland;
+mod widget_action;
+mod widget_traversal;
 mod workspaces;
 
 use panel::PinnedApp;
