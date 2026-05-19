@@ -51,9 +51,9 @@ It is not yet ready as a daily driver for most users.
 
 ## Screenshots
 
-Coming soon.
+![Meridian Desktop](assets/screenshot.png)
 
-Real screenshots will be added once current shell UX and visual baselines are finalized.
+Panel at the bottom, launcher with app grid open, XWayland window in the upper left — running on real DRM/KMS hardware.
 
 ## Build & Run
 
