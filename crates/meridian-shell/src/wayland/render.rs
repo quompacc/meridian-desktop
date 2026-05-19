@@ -5,9 +5,10 @@ use tracing::{debug, info, warn};
 use wayland_client::QueueHandle;
 
 use crate::{
-    buffer, launcher, network_popup, panel, workspaces, Painter, Rect, CALENDAR_POPUP_HEIGHT,
-    CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT,
-    NETWORK_POPUP_WIDTH, PANEL_HEIGHT, WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
+    buffer, launcher, network_popup, panel, ui_preview, workspaces, Painter, Rect,
+    CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
+    NETWORK_POPUP_HEIGHT, NETWORK_POPUP_WIDTH, PANEL_HEIGHT, WORKSPACE_POPUP_HEIGHT,
+    WORKSPACE_POPUP_WIDTH,
 };
 
 use super::{
@@ -371,34 +372,38 @@ impl MeridianShell {
             LAUNCHER_WIDTH,
             LAUNCHER_HEIGHT
         );
-        let visible_apps = self.launcher_state.filtered_apps();
-        let signature = self.launcher_render_signature(width, height, &visible_apps);
-        if self.launcher_last_signature.as_ref() == Some(&signature) {
-            self.render_stats.launcher.skips += 1;
-            debug!(
-                "draw_launcher skipped: reason={:?} commit=no signature_unchanged=true",
-                reason
-            );
-            if self.render_stats_enabled {
-                debug!("shell render skip: surface=launcher reason=signature-unchanged");
+        let mut signature = None;
+        if !self.ui_preview_enabled {
+            let visible_apps = self.launcher_state.filtered_apps();
+            let next_signature = self.launcher_render_signature(width, height, &visible_apps);
+            if self.launcher_last_signature.as_ref() == Some(&next_signature) {
+                self.render_stats.launcher.skips += 1;
+                debug!(
+                    "draw_launcher skipped: reason={:?} commit=no signature_unchanged=true",
+                    reason
+                );
+                if self.render_stats_enabled {
+                    debug!("shell render skip: surface=launcher reason=signature-unchanged");
+                }
+                self.launcher_dirty = false;
+                tracing::trace!("draw_launcher skipped: unchanged render signature");
+                return;
             }
-            self.launcher_dirty = false;
-            tracing::trace!("draw_launcher skipped: unchanged render signature");
-            return;
+            if self.render_stats_enabled {
+                let old_sig = self
+                    .launcher_last_signature
+                    .as_ref()
+                    .map(Self::signature_hash)
+                    .unwrap_or(0);
+                let new_sig = Self::signature_hash(&next_signature);
+                debug!(
+                    "shell render commit: surface=launcher reason={:?} old_sig={} new_sig={}",
+                    reason, old_sig, new_sig
+                );
+            }
+            signature = Some(next_signature);
         }
         self.render_stats.launcher.renders += 1;
-        if self.render_stats_enabled {
-            let old_sig = self
-                .launcher_last_signature
-                .as_ref()
-                .map(Self::signature_hash)
-                .unwrap_or(0);
-            let new_sig = Self::signature_hash(&signature);
-            debug!(
-                "shell render commit: surface=launcher reason={:?} old_sig={} new_sig={}",
-                reason, old_sig, new_sig
-            );
-        }
 
         let stride = buffer::shm_buffer_stride(width);
         for attempt in 0..CANVAS_RETRY_ATTEMPTS {
@@ -428,16 +433,20 @@ impl MeridianShell {
                 return;
             };
 
-            let mut painter = Painter::new(canvas, width as i32, height as i32);
-            launcher::draw_launcher(
-                &mut self.launcher_state,
-                &mut painter,
-                &self.font,
-                &self.theme,
-                &self.icon_cache,
-                width,
-                height,
-            );
+            if self.ui_preview_enabled {
+                ui_preview::draw_ui_preview_sandbox(canvas, width, height);
+            } else {
+                let mut painter = Painter::new(canvas, width as i32, height as i32);
+                launcher::draw_launcher(
+                    &mut self.launcher_state,
+                    &mut painter,
+                    &self.font,
+                    &self.theme,
+                    &self.icon_cache,
+                    width,
+                    height,
+                );
+            }
 
             self.launcher_layer
                 .wl_surface()
@@ -457,7 +466,7 @@ impl MeridianShell {
                 "draw_launcher committed: reason={:?} width={} height={}",
                 reason, width, height
             );
-            self.launcher_last_signature = Some(signature);
+            self.launcher_last_signature = signature;
             self.launcher_dirty = false;
             return;
         }

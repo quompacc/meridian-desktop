@@ -1,4 +1,4 @@
-use taffy::prelude::Style;
+use taffy::prelude::{length, AlignItems, JustifyContent, Size, Style};
 use tiny_skia::PixmapMut;
 
 use crate::{paint::Rect, style::Theme};
@@ -35,6 +35,21 @@ impl Container {
 
     pub fn leaf(style: Style) -> Self {
         Self::new(style, Vec::new())
+    }
+
+    pub fn centered_viewport(width: u32, height: u32, children: Vec<Box<dyn Widget>>) -> Self {
+        Self::new(
+            Style {
+                justify_content: Some(JustifyContent::Center),
+                align_items: Some(AlignItems::Center),
+                size: Size {
+                    width: length(width as f32),
+                    height: length(height as f32),
+                },
+                ..Default::default()
+            },
+            children,
+        )
     }
 }
 
@@ -74,5 +89,18 @@ mod tests {
         let style = widget.style();
         assert_eq!(style.size.width, length(42.0));
         assert_eq!(style.size.height, length(24.0));
+    }
+
+    #[test]
+    fn centered_viewport_sets_center_alignment_and_size() {
+        let container = Container::centered_viewport(880, 620, Vec::new());
+        let style = container.style();
+        assert_eq!(
+            style.justify_content,
+            Some(taffy::prelude::JustifyContent::Center)
+        );
+        assert_eq!(style.align_items, Some(taffy::prelude::AlignItems::Center));
+        assert_eq!(style.size.width, length(880.0));
+        assert_eq!(style.size.height, length(620.0));
     }
 }

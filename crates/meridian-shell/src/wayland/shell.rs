@@ -295,6 +295,7 @@ pub(crate) struct MeridianShell {
     pub(crate) occupied_unavailable_logged: bool,
     pub(crate) panel_dirty: bool,
     pub(crate) launcher_dirty: bool,
+    pub(crate) ui_preview_enabled: bool,
     pub(crate) calendar_dirty: bool,
     pub(crate) workspace_dirty: bool,
     pub(crate) network_dirty: bool,
