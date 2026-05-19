@@ -56,6 +56,18 @@ impl Default for WallpaperConfig {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct PinnedAppConfig {
+    pub label: String,
+    pub program: String,
+    pub icon: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PanelConfig {
+    pub pinned: Vec<PinnedAppConfig>,
+}
+
 #[derive(Default)]
 pub struct MeridianConfig {
     pub keybinds: KeybindConfig,
@@ -63,6 +75,7 @@ pub struct MeridianConfig {
     pub cursor: Option<CursorConfig>,
     pub wallpaper: Option<WallpaperConfig>,
     pub outputs: Vec<OutputEntry>,
+    pub panel: PanelConfig,
 }
 
 impl MeridianConfig {
@@ -117,6 +130,18 @@ impl MeridianConfig {
                 .into_iter()
                 .map(|(name, raw)| raw.into_entry(name))
                 .collect::<Result<Vec<_>, String>>()?,
+            panel: PanelConfig {
+                pinned: toml
+                    .panel
+                    .pinned
+                    .into_iter()
+                    .map(|app| PinnedAppConfig {
+                        label: app.label,
+                        program: app.program,
+                        icon: app.icon,
+                    })
+                    .collect(),
+            },
         })
     }
 
@@ -155,6 +180,21 @@ fn config_directory() -> PathBuf {
     PathBuf::from(home).join(".config").join("meridian")
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PinnedAppToml {
+    label: String,
+    program: String,
+    #[serde(default)]
+    icon: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct PanelToml {
+    pinned: Vec<PinnedAppToml>,
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 struct MeridianToml {
@@ -163,6 +203,7 @@ struct MeridianToml {
     cursor: Option<CursorToml>,
     wallpaper: Option<WallpaperToml>,
     outputs: BTreeMap<String, OutputToml>,
+    panel: PanelToml,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -217,6 +258,50 @@ mod tests {
 
     use super::{MeridianConfig, WallpaperMode};
     use crate::{OutputModeConfig, OutputPositionConfig};
+
+    #[test]
+    fn panel_pinned_apps_parse_from_toml() {
+        let path = unique_test_path("panel-pinned.toml");
+        write(
+            &path,
+            r#"
+[panel]
+pinned = [
+  { label = "Term", program = "kitty", icon = "utilities-terminal" },
+  { label = "Web", program = "firefox" },
+]
+"#,
+        );
+        let config = MeridianConfig::load_from(&path).expect("valid config");
+        assert_eq!(config.panel.pinned.len(), 2);
+        assert_eq!(config.panel.pinned[0].label, "Term");
+        assert_eq!(config.panel.pinned[0].program, "kitty");
+        assert_eq!(
+            config.panel.pinned[0].icon.as_deref(),
+            Some("utilities-terminal")
+        );
+        assert_eq!(config.panel.pinned[1].label, "Web");
+        assert_eq!(config.panel.pinned[1].program, "firefox");
+        assert!(config.panel.pinned[1].icon.is_none());
+    }
+
+    #[test]
+    fn panel_section_missing_gives_empty_pinned() {
+        let path = unique_test_path("panel-missing.toml");
+        write(&path, "[general]\ntheme = \"default\"\n");
+        let config = MeridianConfig::load_from(&path).expect("valid config");
+        assert!(config.panel.pinned.is_empty());
+    }
+
+    #[test]
+    fn panel_pinned_unknown_field_returns_error() {
+        let path = unique_test_path("panel-unknown.toml");
+        write(
+            &path,
+            "[panel]\npinned = [{ label = \"X\", program = \"x\", bogus = true }]\n",
+        );
+        assert!(MeridianConfig::load_from(&path).is_err());
+    }
 
     #[test]
     fn missing_file_uses_defaults() {

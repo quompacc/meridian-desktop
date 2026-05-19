@@ -70,6 +70,11 @@ impl KeyboardHandler for MeridianShell {
         event: KeyEvent,
     ) {
         let is_escape = event.keysym == Keysym::Escape;
+        if is_escape && self.context_menu.is_some() {
+            self.context_menu = None;
+            self.draw_launcher(qh, RepaintReason::Keyboard);
+            return;
+        }
         if self.network_popup_open && is_escape {
             self.close_network_popup(CommitReason::Input);
             self.draw_panel(qh, RepaintReason::Keyboard);

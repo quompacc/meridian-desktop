@@ -393,6 +393,12 @@ impl MeridianShell {
                 );
             }
 
+            if let Some(ref cm) = self.context_menu {
+                let items =
+                    crate::context_menu::item_list(cm.is_terminal, cm.is_pinned);
+                crate::context_menu::draw_overlay(canvas, width, height, cm, &items);
+            }
+
             self.launcher_layer
                 .wl_surface()
                 .damage_buffer(0, 0, width as i32, height as i32);

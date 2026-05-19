@@ -11,7 +11,7 @@ use meridian_ui::{
     PixelSize, Theme, TileSize, WidgetState,
 };
 use meridian_ui::{
-    effect::{paint_fill, paint_metro_surface, paint_text, rounded_rect_path},
+    effect::{dominant_color, paint_fill, paint_metro_surface, paint_text, rounded_rect_path},
     paint::Rect,
     style::Color,
 };
@@ -150,19 +150,6 @@ pub(crate) fn build_ui_preview_widget_tree(
     let theme = Theme::TOKYO_NIGHT_METRO;
     let gap = theme.spacing.md;
     let pal = Palette::TOKYO_NIGHT_METRO;
-    let accent_cycle = [
-        pal.accent_alt,
-        pal.accent,
-        pal.warning,
-        pal.accent,
-        pal.accent_alt,
-        pal.success,
-        pal.warning,
-        pal.error,
-        pal.accent,
-        pal.accent_alt,
-        pal.success,
-    ];
     let size_cycle = [
         TileSize::Large,
         TileSize::Wide,
@@ -192,7 +179,6 @@ pub(crate) fn build_ui_preview_widget_tree(
         .iter()
         .enumerate()
         .map(|(i, app)| {
-            let accent = accent_cycle[i];
             let size = size_cycle[i];
             let icon_name = app.icon_name.as_deref().unwrap_or("");
             let icon_lookup_size = match size {
@@ -202,6 +188,10 @@ pub(crate) fn build_ui_preview_widget_tree(
             let maybe_pixmap = icon_cache
                 .lookup(icon_name, icon_lookup_size)
                 .and_then(icon_image_to_pixmap);
+            let accent = maybe_pixmap
+                .as_ref()
+                .map(|pm| dominant_color(pm, pal.accent))
+                .unwrap_or(pal.accent);
             Box::new(DynTile {
                 label: app.name.clone().into_boxed_str(),
                 exec: app.program.clone().into_boxed_str(),

@@ -22,6 +22,7 @@ use wayland_client::{globals::registry_queue_init, Connection, QueueHandle};
 
 use crate::{
     default_pinned_apps, icons::IconCache, launcher, network::NetworkController, panel,
+    panel::PinnedApp,
     TextRenderer, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
     NETWORK_POPUP_HEIGHT, NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, PANEL_HEIGHT,
     SHELL_POPUP_BOTTOM_MARGIN, WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
@@ -297,7 +298,22 @@ pub(crate) fn initialize(
         network_controller,
         ipc: IpcClient::connect(),
         panel_state: panel::PanelState::new(),
-        pinned_apps: default_pinned_apps(),
+        pinned_apps: if meridian_config.panel.pinned.is_empty() {
+            default_pinned_apps()
+        } else {
+            meridian_config
+                .panel
+                .pinned
+                .iter()
+                .map(|app| PinnedApp {
+                    label: app.label.clone(),
+                    program: app.program.clone(),
+                    args: vec![],
+                    terminal: false,
+                    icon_name: app.icon.clone(),
+                })
+                .collect()
+        },
         launcher_state: launcher::LauncherState::new_with_apps(launcher_apps),
         workspace_state: crate::workspaces::WorkspacePopupState::new(),
         focused_window_id: None,
@@ -320,6 +336,7 @@ pub(crate) fn initialize(
         panel_widget_state: None,
         app_view_open: false,
         app_view_category: Default::default(),
+        context_menu: None,
         search_query: String::new(),
         calendar_dirty: true,
         workspace_dirty: true,

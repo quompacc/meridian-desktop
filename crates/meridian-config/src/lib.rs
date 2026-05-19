@@ -3,7 +3,7 @@ pub mod keybind;
 pub mod output;
 pub mod theme;
 
-pub use config::{CursorConfig, GeneralConfig, MeridianConfig, WallpaperConfig};
+pub use config::{CursorConfig, GeneralConfig, MeridianConfig, PanelConfig, PinnedAppConfig, WallpaperConfig};
 pub use keybind::{Action, Keybind, KeybindConfig, Modifiers, SplitDir};
 pub use output::{OutputEntry, OutputModeConfig, OutputPositionConfig};
 pub use theme::{

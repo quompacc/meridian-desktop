@@ -1,7 +1,11 @@
 use wayland_client::QueueHandle;
 
 use super::MeridianShell;
-use crate::wayland::CommitReason;
+use crate::{
+    context_menu::{ContextMenuAction, ContextMenuState},
+    panel::PinnedApp,
+    wayland::CommitReason,
+};
 
 impl MeridianShell {
     #[allow(dead_code)]
@@ -74,6 +78,46 @@ impl MeridianShell {
             | WidgetAction::PowerLock
             | WidgetAction::PowerLogout => {
                 tracing::info!("power action requested: {:?}", action);
+            }
+        }
+    }
+
+    pub(crate) fn handle_context_menu_action(
+        &mut self,
+        qh: &QueueHandle<MeridianShell>,
+        action: ContextMenuAction,
+        cm: &ContextMenuState,
+    ) {
+        match action {
+            ContextMenuAction::Launch => {
+                let _ = std::process::Command::new(cm.exec.as_ref()).spawn();
+            }
+            ContextMenuAction::LaunchInTerminal => {
+                let _ = std::process::Command::new("kitty")
+                    .args(["-e", cm.exec.as_ref()])
+                    .spawn();
+            }
+            ContextMenuAction::PinToPanel => {
+                if !self.pinned_apps.iter().any(|p| p.program == cm.exec.as_ref()) {
+                    let icon_name = self
+                        .launcher_state
+                        .apps
+                        .iter()
+                        .find(|a| a.program == cm.exec.as_ref())
+                        .and_then(|a| a.icon_name.clone());
+                    self.pinned_apps.push(PinnedApp {
+                        label: cm.app_name.to_string(),
+                        program: cm.exec.to_string(),
+                        args: vec![],
+                        terminal: false,
+                        icon_name,
+                    });
+                    self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
+                }
+            }
+            ContextMenuAction::UnpinFromPanel => {
+                self.pinned_apps.retain(|p| p.program != cm.exec.as_ref());
+                self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
             }
         }
     }

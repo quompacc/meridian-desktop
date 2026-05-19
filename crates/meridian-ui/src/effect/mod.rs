@@ -7,12 +7,14 @@
 //! trade-off, see text.rs.
 
 mod border;
+mod dominant_color;
 mod fill;
 mod metro_surface;
 mod radius;
 mod text;
 
 pub use border::paint_border;
+pub use dominant_color::dominant_color;
 pub use fill::paint_fill;
 pub use metro_surface::paint_metro_surface;
 pub use radius::rounded_rect_path;

@@ -9,6 +9,7 @@ use tracing_subscriber::EnvFilter;
 
 mod app_view;
 mod buffer;
+mod context_menu;
 mod draw;
 mod icons;
 mod launcher;

@@ -5,6 +5,7 @@ use smithay_client_toolkit::{
 use wayland_client::{protocol::wl_pointer, Connection, QueueHandle};
 
 use crate::{
+    context_menu,
     network_popup::popup_hit_test,
     wayland::{RepaintReason, SurfaceKind},
 };
@@ -199,6 +200,99 @@ impl PointerHandler for MeridianShell {
                 self.draw_workspace_popup(qh, RepaintReason::Pointer);
             }
 
+            // Context menu: hover tracking and right-click opening
+            if self.pointer_surface == SurfaceKind::Launcher {
+                if let PointerEventKind::Motion { .. } = event.kind {
+                    if let Some(ref mut cm) = self.context_menu {
+                        let items = context_menu::item_list(cm.is_terminal, cm.is_pinned);
+                        let n = items.len();
+                        let new_hover =
+                            context_menu::hit_item(cm, n, event.position.0, event.position.1);
+                        if new_hover != cm.hover_idx {
+                            cm.hover_idx = new_hover;
+                            self.draw_launcher(qh, RepaintReason::Pointer);
+                        }
+                    }
+                }
+
+                if let PointerEventKind::Press { button: 0x111, .. } = event.kind {
+                    // Right-click: open or replace context menu for the hovered app.
+                    self.context_menu = None;
+                    let tree = if self.app_view_open {
+                        crate::app_view::build_app_view_widget_tree(
+                            crate::LAUNCHER_WIDTH,
+                            crate::LAUNCHER_HEIGHT,
+                            &self.launcher_state.apps,
+                            self.app_view_category,
+                            &self.icon_cache,
+                            &self.search_query,
+                        )
+                    } else {
+                        crate::ui_preview::build_ui_preview_widget_tree(
+                            crate::LAUNCHER_WIDTH,
+                            crate::LAUNCHER_HEIGHT,
+                            &self.launcher_state.apps,
+                            &self.icon_cache,
+                        )
+                    };
+                    let pixel_size = meridian_ui::PixelSize {
+                        width: crate::LAUNCHER_WIDTH,
+                        height: crate::LAUNCHER_HEIGHT,
+                    };
+                    if let Ok(layout) = meridian_ui::compute_layout(&*tree, pixel_size) {
+                        let pos = meridian_ui::PointerPosition {
+                            x: event.position.0 as i32,
+                            y: event.position.1 as i32,
+                        };
+                        let path = meridian_ui::hit_test(&layout, pos);
+                        if let Some(path) = path {
+                            if let Some(widget) =
+                                crate::widget_traversal::find_widget_at_path(&*tree, &path)
+                            {
+                                if let Some(exec) = widget.launch_exec() {
+                                    let app = self
+                                        .launcher_state
+                                        .apps
+                                        .iter()
+                                        .find(|a| a.program == exec);
+                                    let app_name: Box<str> = app
+                                        .map(|a| a.name.as_str())
+                                        .unwrap_or(exec)
+                                        .into();
+                                    let is_terminal =
+                                        app.map(|a| a.terminal).unwrap_or(false);
+                                    let exec_str: Box<str> = exec.into();
+                                    let is_pinned = self
+                                        .pinned_apps
+                                        .iter()
+                                        .any(|p| p.program == exec_str.as_ref());
+                                    let items = context_menu::item_list(is_terminal, is_pinned);
+                                    let (mx, my) = context_menu::clamp_position(
+                                        event.position.0 as i32,
+                                        event.position.1 as i32,
+                                        items.len(),
+                                        crate::LAUNCHER_WIDTH as i32,
+                                        crate::LAUNCHER_HEIGHT as i32,
+                                    );
+                                    self.context_menu =
+                                        Some(context_menu::ContextMenuState {
+                                            x: mx,
+                                            y: my,
+                                            app_name,
+                                            exec: exec_str,
+                                            is_terminal,
+                                            is_pinned,
+                                            hover_idx: None,
+                                        });
+                                    self.draw_launcher(qh, RepaintReason::Pointer);
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                }
+            }
+
             if let PointerEventKind::Axis { vertical, .. } = event.kind {
                 if self.pointer_surface == SurfaceKind::Launcher
                     && self.launcher_state.view() == crate::launcher::LauncherView::TileStart
@@ -216,6 +310,26 @@ impl PointerHandler for MeridianShell {
                             self.launcher_state.tile_content_h_cache,
                         )
                     {
+                        self.draw_launcher(qh, RepaintReason::Pointer);
+                    }
+                }
+            }
+
+            // Context menu: left-click — execute item or dismiss
+            if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
+                if self.pointer_surface == SurfaceKind::Launcher {
+                    if let Some(cm) = self.context_menu.take() {
+                        let items = context_menu::item_list(cm.is_terminal, cm.is_pinned);
+                        let n = items.len();
+                        if let Some(idx) =
+                            context_menu::hit_item(&cm, n, event.position.0, event.position.1)
+                        {
+                            let action = items[idx].1;
+                            self.handle_context_menu_action(qh, action, &cm);
+                            self.draw_launcher(qh, RepaintReason::Pointer);
+                            continue;
+                        }
+                        // Click outside menu: dismiss and let the event fall through.
                         self.draw_launcher(qh, RepaintReason::Pointer);
                     }
                 }
