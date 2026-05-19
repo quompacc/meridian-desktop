@@ -7,10 +7,17 @@
 use meridian_ui::{
     compute_layout, render,
     style::Palette,
-    widget::{tile::TILE_BASE_SIZE, Container, Widget},
+    widget::{tile::TILE_BASE_SIZE, Button, Container, Widget},
     PixelSize, Theme, Tile, TileSize,
 };
 use tiny_skia::Pixmap;
+
+const FOOTER_HEIGHT: i32 = 56;
+const FOOTER_PADDING_X: i32 = 28;
+const FOOTER_CLUSTER_GAP: i32 = 8;
+const FOOTER_SWITCH_WIDTH: i32 = 144;
+const FOOTER_SWITCH_HEIGHT: i32 = 48;
+const FOOTER_POWER_BUTTON_SIZE: i32 = 48;
 
 pub(crate) fn draw_ui_preview_sandbox(canvas: &mut [u8], width: u32, height: u32) {
     let expected_len = (width as usize)
@@ -42,7 +49,68 @@ pub(crate) fn draw_ui_preview_sandbox(canvas: &mut [u8], width: u32, height: u32
         Box::new(Tile::new("s7", pal.accent_alt, TileSize::Small)),
         Box::new(Tile::new("s8", pal.success, TileSize::Small)),
     ];
-    let root = Container::grid(TILE_BASE_SIZE, 8, gap, width, height, tiles);
+    let mosaic_height = height.saturating_sub(FOOTER_HEIGHT.max(0) as u32);
+    let mosaic_grid = Container::grid(TILE_BASE_SIZE, 8, gap, width, mosaic_height, tiles);
+    let mosaic_section = Container::centered_viewport(
+        width,
+        mosaic_height,
+        vec![Box::new(mosaic_grid) as Box<dyn Widget>],
+    );
+
+    let footer_left = vec![Box::new(Button::new(
+        "classic-mode",
+        pal.accent,
+        FOOTER_SWITCH_WIDTH,
+        FOOTER_SWITCH_HEIGHT,
+    )) as Box<dyn Widget>];
+    let footer_right = vec![
+        Box::new(Button::new(
+            "shutdown",
+            pal.error,
+            FOOTER_POWER_BUTTON_SIZE,
+            FOOTER_POWER_BUTTON_SIZE,
+        )) as Box<dyn Widget>,
+        Box::new(Button::new(
+            "restart",
+            pal.warning,
+            FOOTER_POWER_BUTTON_SIZE,
+            FOOTER_POWER_BUTTON_SIZE,
+        )) as Box<dyn Widget>,
+        Box::new(Button::new(
+            "sleep",
+            pal.accent,
+            FOOTER_POWER_BUTTON_SIZE,
+            FOOTER_POWER_BUTTON_SIZE,
+        )) as Box<dyn Widget>,
+        Box::new(Button::new(
+            "lock",
+            pal.accent_alt,
+            FOOTER_POWER_BUTTON_SIZE,
+            FOOTER_POWER_BUTTON_SIZE,
+        )) as Box<dyn Widget>,
+        Box::new(Button::new(
+            "logout",
+            pal.success,
+            FOOTER_POWER_BUTTON_SIZE,
+            FOOTER_POWER_BUTTON_SIZE,
+        )) as Box<dyn Widget>,
+    ];
+    let footer = Container::footer_row(
+        width,
+        FOOTER_HEIGHT,
+        FOOTER_PADDING_X,
+        FOOTER_CLUSTER_GAP,
+        footer_left,
+        footer_right,
+    );
+
+    let root = Container::column(
+        0,
+        vec![
+            Box::new(mosaic_section) as Box<dyn Widget>,
+            Box::new(footer) as Box<dyn Widget>,
+        ],
+    );
 
     if let Ok(layout) = compute_layout(&root, PixelSize { width, height }) {
         let mut pixmap_canvas = pixmap.as_mut();
