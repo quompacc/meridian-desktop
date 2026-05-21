@@ -8,6 +8,7 @@ members = [
     "crates/meridian-config",
     "crates/meridian-portal",
     "crates/meridian-ui",
+    "crates/meridian-login",
 ]
 
 [workspace.dependencies]
