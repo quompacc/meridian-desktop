@@ -1433,6 +1433,7 @@ dependencies = [
  "drm 0.15.0",
  "evdev",
  "meridian-compass-render",
+ "nix",
  "pam",
  "tiny-skia",
  "tracing",

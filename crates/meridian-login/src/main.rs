@@ -1,4 +1,4 @@
-// meridian-login — Phase 6: PAM-authenticated login card.
+// meridian-login — Phase 7: spawn the user-side compositor after PAM ok.
 //
 // Animation timeline:
 //   0.00..0.20s  hold the settle frame (handover-friendly)
@@ -14,6 +14,7 @@
 
 mod auth;
 mod input;
+mod session;
 
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
@@ -217,7 +218,7 @@ impl LoginUiState {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
-    info!("meridian-login starting (Phase 6)");
+    info!("meridian-login starting (Phase 7)");
 
     match bootsplash_handover() {
         Ok(()) => {
@@ -296,18 +297,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut keyboard,
     )?;
 
-    match exit {
-        ControlFlow::Submit => info!(
-            user = %ui_state.username,
-            "auth ok (Phase 7 will start the user session)"
-        ),
-        ControlFlow::Cancel => info!("login cancelled"),
-        ControlFlow::Continue => info!("inactivity timeout reached"),
-    }
+    // On successful auth, spawn the compositor as the authenticated user
+    // BEFORE releasing master so the new process is already running by the
+    // time we let go of the display. Phase 8 will add an IPC handshake to
+    // hold the buffer until the compositor's first frame is committed.
+    let spawned_pid = match exit {
+        ControlFlow::Submit => {
+            info!(user = %ui_state.username, "auth ok — launching compositor");
+            match session::launch_compositor_for(&ui_state.username) {
+                Ok(pid) => {
+                    info!(pid = pid, "compositor spawned");
+                    Some(pid)
+                }
+                Err(e) => {
+                    warn!(error = %e, "compositor spawn failed");
+                    None
+                }
+            }
+        }
+        ControlFlow::Cancel => {
+            info!("login cancelled");
+            None
+        }
+        ControlFlow::Continue => {
+            info!("inactivity timeout reached");
+            None
+        }
+    };
 
     match card.release_master_lock() {
         Ok(()) => info!("drm: released master"),
         Err(e) => warn!(error = %e, "drm: release_master failed"),
+    }
+
+    // Hold briefly to give the compositor a window to take master before we
+    // close our fd. Phase 8 will replace this with a wait on /run/meridian-login.sock.
+    if spawned_pid.is_some() {
+        info!("holding for compositor takeover (3s)");
+        std::thread::sleep(Duration::from_secs(3));
     }
 
     info!("meridian-login exiting");
@@ -474,7 +501,14 @@ fn run_animation(
             }
 
             if af.card_alpha > 0.0 {
-                draw_card(&mut pm, w as f32, h as f32, af.card_alpha, painter, shake_dx);
+                draw_card(
+                    &mut pm,
+                    w as f32,
+                    h as f32,
+                    af.card_alpha,
+                    painter,
+                    shake_dx,
+                );
             }
 
             if af.ui_alpha > 0.0 {
@@ -532,13 +566,7 @@ fn draw_card(
         width: 2.0,
         ..Default::default()
     };
-    pm.stroke_path(
-        &path,
-        &stroke_paint,
-        &stroke,
-        Transform::identity(),
-        None,
-    );
+    pm.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -594,7 +622,15 @@ fn draw_login_ui(
         label_color,
     );
     let user_box_top = inner_top + 96.0;
-    draw_input_box(pm, inner_left, user_box_top, inner_w, box_h, box_fill, box_outline);
+    draw_input_box(
+        pm,
+        inner_left,
+        user_box_top,
+        inner_w,
+        box_h,
+        box_fill,
+        box_outline,
+    );
     let user_text_x = inner_left + 12.0;
     let user_baseline = user_box_top + box_h - 12.0;
     let after_user = painter.render_text_left(
@@ -620,7 +656,15 @@ fn draw_login_ui(
         label_color,
     );
     let pwd_box_top = inner_top + 168.0;
-    draw_input_box(pm, inner_left, pwd_box_top, inner_w, box_h, box_fill, box_outline);
+    draw_input_box(
+        pm,
+        inner_left,
+        pwd_box_top,
+        inner_w,
+        box_h,
+        box_fill,
+        box_outline,
+    );
     let pwd_text_x = inner_left + 12.0;
     let pwd_baseline = pwd_box_top + box_h - 12.0;
     let dots = "•".repeat(ui.password.chars().count());
@@ -653,20 +697,18 @@ fn draw_login_ui(
     );
 }
 
-fn draw_input_box(
-    pm: &mut PixmapMut,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
-    fill: Color,
-    outline: Color,
-) {
+fn draw_input_box(pm: &mut PixmapMut, x: f32, y: f32, w: f32, h: f32, fill: Color, outline: Color) {
     let path = rounded_rect_path(x, y, w, h, 6.0);
     let mut fill_paint = Paint::default();
     fill_paint.set_color(fill);
     fill_paint.anti_alias = true;
-    pm.fill_path(&path, &fill_paint, FillRule::Winding, Transform::identity(), None);
+    pm.fill_path(
+        &path,
+        &fill_paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 
     let mut stroke_paint = Paint::default();
     stroke_paint.set_color(outline);
@@ -675,13 +717,7 @@ fn draw_input_box(
         width: 1.0,
         ..Default::default()
     };
-    pm.stroke_path(
-        &path,
-        &stroke_paint,
-        &stroke,
-        Transform::identity(),
-        None,
-    );
+    pm.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
 }
 
 fn draw_caret(pm: &mut PixmapMut, x: f32, baseline_y: f32, font_size: f32, color: Color) {
@@ -829,8 +865,14 @@ mod tests {
     fn insert_appends_to_focused_field() {
         let mut s = LoginUiState::default();
         assert_eq!(s.focus, Field::Username);
-        assert_eq!(s.apply(KeyAction::Insert("a".into())), ControlFlow::Continue);
-        assert_eq!(s.apply(KeyAction::Insert("b".into())), ControlFlow::Continue);
+        assert_eq!(
+            s.apply(KeyAction::Insert("a".into())),
+            ControlFlow::Continue
+        );
+        assert_eq!(
+            s.apply(KeyAction::Insert("b".into())),
+            ControlFlow::Continue
+        );
         assert_eq!(s.username, "ab");
         assert!(s.password.is_empty());
 
@@ -901,7 +943,10 @@ mod tests {
                 break;
             }
         }
-        assert!(saw_nonzero, "shake_offset stayed at 0 across 200ms of Failed");
+        assert!(
+            saw_nonzero,
+            "shake_offset stayed at 0 across 200ms of Failed"
+        );
     }
 
     #[test]
