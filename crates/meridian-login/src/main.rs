@@ -1,4 +1,4 @@
-// meridian-login — Phase 5b: card content + keyboard input.
+// meridian-login — Phase 6: PAM-authenticated login card.
 //
 // Animation timeline:
 //   0.00..0.20s  hold the settle frame (handover-friendly)
@@ -12,12 +12,15 @@
 // Phase 5b does not actually authenticate; Submit just logs the username
 // and password length and exits. Phase 6 will wire PAM.
 
+mod auth;
 mod input;
 
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::net::UnixStream;
+use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, Instant};
 
 use drm::buffer::DrmFourcc;
@@ -29,6 +32,7 @@ use tiny_skia::{Color, FillRule, Paint, PathBuilder, PixmapMut, Stroke, Transfor
 use tracing::{info, warn};
 use zeroize::Zeroizing;
 
+use auth::{try_authenticate, AuthResult};
 use input::{open_keyboards, poll_keyboards, KeyAction, Keyboard};
 
 const BOOTSPLASH_SOCKET: &str = "/run/bootsplash.sock";
@@ -49,6 +53,11 @@ const GLOW_FINAL_SCALE: f32 = 4.0;
 const MAX_INACTIVITY_MS: u64 = 60_000;
 const MAX_FIELD_LEN: usize = 128;
 
+// Card shake animation on auth failure (classic "wrong password" feedback)
+const FAILED_DURATION_MS: u64 = 600;
+const FAILED_SHAKE_FREQ_HZ: f32 = 14.0;
+const FAILED_SHAKE_AMPLITUDE: f32 = 14.0;
+
 struct Card(File);
 
 impl AsFd for Card {
@@ -66,6 +75,24 @@ struct LoginUiState {
     /// persist this value.
     password: Zeroizing<String>,
     focus: Field,
+    phase: InputPhase,
+    /// Set while [`InputPhase::Authenticating`] — a background thread holds
+    /// a copy of the credentials and posts its result here. Polling this
+    /// every frame keeps the render loop responsive even while PAM blocks.
+    auth_rx: Option<mpsc::Receiver<AuthResult>>,
+}
+
+#[derive(Default, Clone, Copy, Debug)]
+enum InputPhase {
+    /// Normal editing — typing fills the focused field.
+    #[default]
+    Editing,
+    /// PAM is running in a background thread. Input is ignored, hint shows
+    /// "Anmelden …" so the user has immediate feedback after Enter.
+    Authenticating,
+    /// Auth just rejected the last submit. Card shakes, fields are cleared,
+    /// hint changes briefly. After FAILED_DURATION_MS we go back to Editing.
+    Failed(Instant),
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Debug)]
@@ -90,8 +117,6 @@ impl LoginUiState {
                     Field::Username => &mut self.username,
                     Field::Password => &mut self.password,
                 };
-                // Bound the buffer so a stuck repeat or paste does not grow
-                // it without limit.
                 if target.chars().count() + s.chars().count() <= MAX_FIELD_LEN {
                     target.push_str(&s);
                 }
@@ -116,11 +141,83 @@ impl LoginUiState {
             KeyAction::Cancel => ControlFlow::Cancel,
         }
     }
+
+    /// Spawn a thread to run PAM authentication so the render loop stays
+    /// responsive. The credentials are cloned (the originals stay on screen
+    /// during auth); the thread's copy is wrapped in Zeroizing so it wipes
+    /// on drop.
+    fn start_auth(&mut self) {
+        let (tx, rx) = mpsc::channel();
+        let username = self.username.clone();
+        let password = Zeroizing::new(self.password.to_string());
+        thread::spawn(move || {
+            let result = try_authenticate(&username, &password);
+            let _ = tx.send(result);
+            // `password` (Zeroizing) drops here and the secret bytes wipe.
+        });
+        self.auth_rx = Some(rx);
+        self.phase = InputPhase::Authenticating;
+    }
+
+    fn poll_auth(&mut self) -> Option<AuthResult> {
+        let rx = self.auth_rx.as_ref()?;
+        match rx.try_recv() {
+            Ok(result) => {
+                self.auth_rx = None;
+                Some(result)
+            }
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.auth_rx = None;
+                Some(AuthResult::Error("auth thread vanished".into()))
+            }
+        }
+    }
+
+    /// After a Failed shake completes, drop back to Editing.
+    fn tick(&mut self) {
+        if let InputPhase::Failed(since) = self.phase {
+            if since.elapsed() >= Duration::from_millis(FAILED_DURATION_MS) {
+                self.phase = InputPhase::Editing;
+            }
+        }
+    }
+
+    fn reject(&mut self) {
+        // Wipe the fields and reset focus so the next try starts clean.
+        self.username.clear();
+        self.password.clear();
+        self.focus = Field::Username;
+        self.phase = InputPhase::Failed(Instant::now());
+    }
+
+    fn shake_offset(&self) -> f32 {
+        let InputPhase::Failed(since) = self.phase else {
+            return 0.0;
+        };
+        let t = since.elapsed().as_secs_f32();
+        let dur = FAILED_DURATION_MS as f32 / 1000.0;
+        if t >= dur {
+            return 0.0;
+        }
+        let damping = 1.0 - t / dur;
+        FAILED_SHAKE_AMPLITUDE
+            * damping
+            * (t * FAILED_SHAKE_FREQ_HZ * 2.0 * std::f32::consts::PI).sin()
+    }
+
+    fn hint(&self) -> &'static str {
+        match self.phase {
+            InputPhase::Editing => "Enter zum Anmelden",
+            InputPhase::Authenticating => "Anmelden …",
+            InputPhase::Failed(_) => "Falsche Anmeldedaten",
+        }
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
-    info!("meridian-login starting (Phase 5b)");
+    info!("meridian-login starting (Phase 6)");
 
     match bootsplash_handover() {
         Ok(()) => {
@@ -202,8 +299,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match exit {
         ControlFlow::Submit => info!(
             user = %ui_state.username,
-            pw_len = ui_state.password.chars().count(),
-            "submit pressed (Phase 6 will invoke PAM)"
+            "auth ok (Phase 7 will start the user session)"
         ),
         ControlFlow::Cancel => info!("login cancelled"),
         ControlFlow::Continue => info!("inactivity timeout reached"),
@@ -311,18 +407,49 @@ fn run_animation(
         // Read keyboard once the UI is fully faded in. Polling earlier would
         // queue keystrokes the user typed against the still-animating splash.
         if af.ui_alpha >= 1.0 {
+            // Failed-state shake decays back to Editing in tick()
+            ui_state.tick();
+
+            // Ignore key events during Authenticating or Failed — they would
+            // queue up against the next Editing window otherwise.
+            let accept_input = matches!(ui_state.phase, InputPhase::Editing);
             for action in poll_keyboards(keyboards, keyboard) {
+                if !accept_input {
+                    continue;
+                }
                 match ui_state.apply(action) {
                     ControlFlow::Continue => {}
-                    other => {
-                        exit = other;
+                    ControlFlow::Cancel => {
+                        exit = ControlFlow::Cancel;
                         break;
+                    }
+                    ControlFlow::Submit => {
+                        // Hand PAM off to a background thread so the render
+                        // loop keeps drawing and the "Anmelden …" hint
+                        // appears immediately.
+                        ui_state.start_auth();
+                        break;
+                    }
+                }
+            }
+
+            // Check if the auth thread reported back this frame.
+            if let Some(result) = ui_state.poll_auth() {
+                match result {
+                    AuthResult::Ok => exit = ControlFlow::Submit,
+                    AuthResult::Failed => ui_state.reject(),
+                    AuthResult::Error(e) => {
+                        warn!(error = %e, "PAM error — treating as failure");
+                        ui_state.reject();
                     }
                 }
             }
         }
 
-        let caret_on = af.ui_alpha >= 1.0 && ((t_secs * 2.0) as i64) % 2 == 0;
+        let caret_on = matches!(ui_state.phase, InputPhase::Editing)
+            && af.ui_alpha >= 1.0
+            && ((t_secs * 2.0) as i64) % 2 == 0;
+        let shake_dx = ui_state.shake_offset();
 
         {
             let mut mapping = card.map_dumb_buffer(db)?;
@@ -347,7 +474,7 @@ fn run_animation(
             }
 
             if af.card_alpha > 0.0 {
-                draw_card(&mut pm, w as f32, h as f32, af.card_alpha, painter);
+                draw_card(&mut pm, w as f32, h as f32, af.card_alpha, painter, shake_dx);
             }
 
             if af.ui_alpha > 0.0 {
@@ -359,6 +486,7 @@ fn run_animation(
                     ui_state,
                     af.ui_alpha,
                     caret_on,
+                    shake_dx,
                 );
             }
 
@@ -379,9 +507,16 @@ fn run_animation(
     Ok(exit)
 }
 
-fn draw_card(pm: &mut PixmapMut, w: f32, h: f32, alpha: f32, painter: &CompassPainter) {
+fn draw_card(
+    pm: &mut PixmapMut,
+    w: f32,
+    h: f32,
+    alpha: f32,
+    painter: &CompassPainter,
+    shake_dx: f32,
+) {
     let (left, top, cw, ch) = card_rect(w, h);
-    let path = rounded_rect_path(left, top, cw, ch, 20.0);
+    let path = rounded_rect_path(left + shake_dx, top, cw, ch, 20.0);
 
     let mut fill = Paint::default();
     fill.set_color(Color::from_rgba8(32, 42, 76, (alpha * 235.0) as u8));
@@ -397,9 +532,16 @@ fn draw_card(pm: &mut PixmapMut, w: f32, h: f32, alpha: f32, painter: &CompassPa
         width: 2.0,
         ..Default::default()
     };
-    pm.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
+    pm.stroke_path(
+        &path,
+        &stroke_paint,
+        &stroke,
+        Transform::identity(),
+        None,
+    );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_login_ui(
     pm: &mut PixmapMut,
     w: f32,
@@ -408,8 +550,10 @@ fn draw_login_ui(
     ui: &LoginUiState,
     alpha: f32,
     caret_on: bool,
+    shake_dx: f32,
 ) {
-    let (card_left, card_top, cw, ch) = card_rect(w, h);
+    let (card_left_raw, card_top, cw, ch) = card_rect(w, h);
+    let card_left = card_left_raw + shake_dx;
     let pad = 32.0;
     let inner_left = card_left + pad;
     let inner_top = card_top + pad;
@@ -450,15 +594,7 @@ fn draw_login_ui(
         label_color,
     );
     let user_box_top = inner_top + 96.0;
-    draw_input_box(
-        pm,
-        inner_left,
-        user_box_top,
-        inner_w,
-        box_h,
-        box_fill,
-        box_outline,
-    );
+    draw_input_box(pm, inner_left, user_box_top, inner_w, box_h, box_fill, box_outline);
     let user_text_x = inner_left + 12.0;
     let user_baseline = user_box_top + box_h - 12.0;
     let after_user = painter.render_text_left(
@@ -484,15 +620,7 @@ fn draw_login_ui(
         label_color,
     );
     let pwd_box_top = inner_top + 168.0;
-    draw_input_box(
-        pm,
-        inner_left,
-        pwd_box_top,
-        inner_w,
-        box_h,
-        box_fill,
-        box_outline,
-    );
+    draw_input_box(pm, inner_left, pwd_box_top, inner_w, box_h, box_fill, box_outline);
     let pwd_text_x = inner_left + 12.0;
     let pwd_baseline = pwd_box_top + box_h - 12.0;
     let dots = "•".repeat(ui.password.chars().count());
@@ -508,30 +636,37 @@ fn draw_login_ui(
         draw_caret(pm, after_pwd, pwd_baseline, text_size, caret_color);
     }
 
-    // Bottom hint
+    // Bottom hint — text depends on phase (Editing vs Failed)
     let hint_y = card_top + ch - pad + 4.0;
+    let hint_text = ui.hint();
+    let hint_color_phase = match ui.phase {
+        InputPhase::Failed(_) => rgba_with_alpha(painter.style().south, (alpha * 220.0) as u8),
+        InputPhase::Editing | InputPhase::Authenticating => hint_color,
+    };
     painter.render_text_centered(
         pm,
         TextStyle::SansBold(13.0),
-        "Enter zum Anmelden",
+        hint_text,
         cx,
         hint_y,
-        hint_color,
+        hint_color_phase,
     );
 }
 
-fn draw_input_box(pm: &mut PixmapMut, x: f32, y: f32, w: f32, h: f32, fill: Color, outline: Color) {
+fn draw_input_box(
+    pm: &mut PixmapMut,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    fill: Color,
+    outline: Color,
+) {
     let path = rounded_rect_path(x, y, w, h, 6.0);
     let mut fill_paint = Paint::default();
     fill_paint.set_color(fill);
     fill_paint.anti_alias = true;
-    pm.fill_path(
-        &path,
-        &fill_paint,
-        FillRule::Winding,
-        Transform::identity(),
-        None,
-    );
+    pm.fill_path(&path, &fill_paint, FillRule::Winding, Transform::identity(), None);
 
     let mut stroke_paint = Paint::default();
     stroke_paint.set_color(outline);
@@ -540,7 +675,13 @@ fn draw_input_box(pm: &mut PixmapMut, x: f32, y: f32, w: f32, h: f32, fill: Colo
         width: 1.0,
         ..Default::default()
     };
-    pm.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
+    pm.stroke_path(
+        &path,
+        &stroke_paint,
+        &stroke,
+        Transform::identity(),
+        None,
+    );
 }
 
 fn draw_caret(pm: &mut PixmapMut, x: f32, baseline_y: f32, font_size: f32, color: Color) {
@@ -688,14 +829,8 @@ mod tests {
     fn insert_appends_to_focused_field() {
         let mut s = LoginUiState::default();
         assert_eq!(s.focus, Field::Username);
-        assert_eq!(
-            s.apply(KeyAction::Insert("a".into())),
-            ControlFlow::Continue
-        );
-        assert_eq!(
-            s.apply(KeyAction::Insert("b".into())),
-            ControlFlow::Continue
-        );
+        assert_eq!(s.apply(KeyAction::Insert("a".into())), ControlFlow::Continue);
+        assert_eq!(s.apply(KeyAction::Insert("b".into())), ControlFlow::Continue);
         assert_eq!(s.username, "ab");
         assert!(s.password.is_empty());
 
@@ -731,6 +866,79 @@ mod tests {
         let mut s = LoginUiState::default();
         assert_eq!(s.apply(KeyAction::Submit), ControlFlow::Submit);
         assert_eq!(s.apply(KeyAction::Cancel), ControlFlow::Cancel);
+    }
+
+    #[test]
+    fn reject_clears_fields_and_resets_focus() {
+        let mut s = LoginUiState::default();
+        s.username = "eduard".into();
+        s.password = Zeroizing::new("badpassword".into());
+        s.focus = Field::Password;
+        s.reject();
+        assert!(s.username.is_empty());
+        assert!(s.password.is_empty());
+        assert_eq!(s.focus, Field::Username);
+        assert!(matches!(s.phase, InputPhase::Failed(_)));
+    }
+
+    #[test]
+    fn shake_offset_is_zero_outside_failed_state() {
+        let s = LoginUiState::default();
+        assert_eq!(s.shake_offset(), 0.0);
+    }
+
+    #[test]
+    fn shake_offset_nonzero_inside_failed_window() {
+        let mut s = LoginUiState::default();
+        s.phase = InputPhase::Failed(Instant::now());
+        // Sample several t-values within the window — at least one must
+        // produce a nonzero offset (sine isn't always at a zero crossing).
+        let mut saw_nonzero = false;
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(10));
+            if s.shake_offset().abs() > 0.01 {
+                saw_nonzero = true;
+                break;
+            }
+        }
+        assert!(saw_nonzero, "shake_offset stayed at 0 across 200ms of Failed");
+    }
+
+    #[test]
+    fn hint_changes_with_phase() {
+        let mut s = LoginUiState::default();
+        assert_eq!(s.hint(), "Enter zum Anmelden");
+        s.phase = InputPhase::Authenticating;
+        assert_eq!(s.hint(), "Anmelden …");
+        s.phase = InputPhase::Failed(Instant::now());
+        assert_eq!(s.hint(), "Falsche Anmeldedaten");
+    }
+
+    #[test]
+    fn poll_auth_returns_none_when_no_thread_running() {
+        let mut s = LoginUiState::default();
+        assert!(s.poll_auth().is_none());
+    }
+
+    #[test]
+    fn start_auth_with_empty_username_returns_failed_quickly() {
+        // start_auth spawns a thread; with empty username try_authenticate
+        // short-circuits to Failed and the channel delivers within a few ms.
+        let mut s = LoginUiState::default();
+        s.start_auth();
+        assert!(matches!(s.phase, InputPhase::Authenticating));
+        // Spin for up to 200ms waiting for the result.
+        let deadline = Instant::now() + Duration::from_millis(200);
+        let result = loop {
+            if let Some(r) = s.poll_auth() {
+                break r;
+            }
+            if Instant::now() > deadline {
+                panic!("auth thread didn't post within 200ms");
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        assert_eq!(result, AuthResult::Failed);
     }
 
     #[test]

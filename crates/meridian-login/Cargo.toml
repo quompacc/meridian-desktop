@@ -7,6 +7,7 @@ edition = "2021"
 drm = "0.15"
 evdev = "0.13"
 meridian-compass-render = { path = "../meridian-compass-render" }
+pam = { version = "0.8", features = ["client"] }
 tiny-skia = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

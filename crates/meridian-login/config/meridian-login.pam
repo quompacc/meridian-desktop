@@ -1,0 +1,9 @@
+#%PAM-1.0
+# /etc/pam.d/meridian-login
+#
+# Minimal PAM stack for the meridian-login display manager. Phase 6 only
+# uses `auth` and `account` — Phase 7 will add `session` entries (and
+# pam_systemd) for libseat-style session start.
+
+auth      required   pam_unix.so
+account   required   pam_unix.so
