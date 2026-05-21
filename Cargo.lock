@@ -1292,6 +1292,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "meridian-login"
+version = "0.1.0"
+dependencies = [
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "meridian-portal"
 version = "0.1.0"
 dependencies = [
