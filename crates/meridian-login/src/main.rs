@@ -5,15 +5,10 @@
 //      master and stay alive holding its buffer. If the socket isn't there
 //      (dev runs without bootsplash), proceed anyway.
 //   2. Open /dev/dri/card0, configure CRTC + dumb buffer + framebuffer.
-//   3. Render the compass settle frame.
+//   3. Render the compass settle frame via meridian-compass-render.
 //   4. Tell bootsplash to exit (it can now release its buffer).
 //   5. Hold the frame for a short window (Phase 2 has no further animation).
 //   6. Release DRM master, exit.
-//
-// Phase 3 will extract the renderer into a shared crate so this binary and
-// the bootsplash binary link the same code.
-
-mod render;
 
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
@@ -25,6 +20,7 @@ use drm::buffer::DrmFourcc;
 use drm::control::{connector, ClipRect, Device as ControlDevice};
 use drm::Device as DrmDevice;
 
+use meridian_compass_render::{CompassPainter, Fonts, FrameOpts, SETTLE_T};
 use tiny_skia::PixmapMut;
 use tracing::{info, warn};
 
@@ -88,11 +84,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fb = card.add_framebuffer(&db, 24, 32)?;
     card.set_crtc(crtc, Some(fb), (0, 0), &[conn_info.handle()], Some(mode))?;
 
+    let painter = CompassPainter::new(Fonts::quompacc())?;
     {
         let mut mapping = card.map_dumb_buffer(&mut db)?;
         let buf = mapping.as_mut();
         let mut pm = PixmapMut::from_bytes(buf, w, h).ok_or("pixmap bind failed")?;
-        render::render_settle_frame(&mut pm, w as f32, h as f32);
+        painter.render(&mut pm, w as f32, h as f32, SETTLE_T, &FrameOpts::default());
         // tiny-skia writes RGBA; DRM XRGB8888 on LE wants BGRX → swap R<->B
         for px in buf.chunks_exact_mut(4) {
             px.swap(0, 2);

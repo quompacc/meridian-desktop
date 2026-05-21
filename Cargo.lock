@@ -1286,6 +1286,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "meridian-compass-render"
+version = "0.1.0"
+dependencies = [
+ "ab_glyph",
+ "tiny-skia",
+]
+
+[[package]]
 name = "meridian-compositor"
 version = "0.1.0"
 dependencies = [
@@ -1326,8 +1334,8 @@ dependencies = [
 name = "meridian-login"
 version = "0.1.0"
 dependencies = [
- "ab_glyph",
  "drm 0.15.0",
+ "meridian-compass-render",
  "tiny-skia",
  "tracing",
  "tracing-subscriber",
