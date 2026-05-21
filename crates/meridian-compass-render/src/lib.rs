@@ -63,6 +63,16 @@ impl std::fmt::Display for BuildError {
 
 impl std::error::Error for BuildError {}
 
+/// Which of the embedded QuompaCC fonts to use for a public text-rendering
+/// call on [`CompassPainter`]. Includes the desired pixel size.
+#[derive(Clone, Copy, Debug)]
+pub enum TextStyle {
+    /// DejaVu Sans Bold — functional labels (cardinals N/O/S/W, UI labels).
+    SansBold(f32),
+    /// Italianno Regular — calligraphic accents (the QuompaCC wordmark).
+    Script(f32),
+}
+
 /// Per-frame rendering knobs.
 #[derive(Clone, Debug)]
 pub struct FrameOpts {
@@ -246,6 +256,51 @@ impl<'a> CompassPainter<'a> {
         self.compass_radius(w, h) * 0.78
     }
 
+    /// Renders `text` using one of the embedded QuompaCC fonts. The text is
+    /// horizontally centered at `cx` and vertically centered around `cy`.
+    pub fn render_text_centered(
+        &self,
+        pm: &mut PixmapMut,
+        style: TextStyle,
+        text: &str,
+        cx: f32,
+        cy: f32,
+        color: Color,
+    ) {
+        let (font, size) = self.text_font_and_size(style);
+        draw_text_centered(pm, font, size, cx, cy, text, color);
+    }
+
+    /// Renders `text` left-aligned starting at `x` with the given baseline
+    /// (in pixels from the top). Returns the pen-x just past the last glyph,
+    /// useful for placing carets / appending more text on the same line.
+    pub fn render_text_left(
+        &self,
+        pm: &mut PixmapMut,
+        style: TextStyle,
+        text: &str,
+        x: f32,
+        baseline_y: f32,
+        color: Color,
+    ) -> f32 {
+        let (font, size) = self.text_font_and_size(style);
+        draw_text_at_baseline(pm, font, size, x, baseline_y, text, color)
+    }
+
+    /// Returns the advance width of `text` in the requested font + size, so
+    /// callers can lay out lines without committing pixels.
+    pub fn measure_text_width(&self, style: TextStyle, text: &str) -> f32 {
+        let (font, size) = self.text_font_and_size(style);
+        measure_text(font, size, text).total_advance
+    }
+
+    fn text_font_and_size(&self, style: TextStyle) -> (&FontRef<'a>, f32) {
+        match style {
+            TextStyle::SansBold(size) => (&self.sans_bold, size),
+            TextStyle::Script(size) => (&self.script, size),
+        }
+    }
+
     /// Renders just the cyan north glow at an arbitrary screen position with
     /// a given base radius. Phase 4 animates `(x, y, base_radius)` to make
     /// the glow detach from the needle tip and fall toward screen center.
@@ -266,7 +321,13 @@ impl<'a> CompassPainter<'a> {
             paint.set_color(Color::from_rgba8(nr, ng, nb, alpha));
             paint.anti_alias = true;
             paint.blend_mode = BlendMode::Screen;
-            pm.fill_path(&circle, &paint, FillRule::Winding, Transform::identity(), None);
+            pm.fill_path(
+                &circle,
+                &paint,
+                FillRule::Winding,
+                Transform::identity(),
+                None,
+            );
         }
     }
 }
@@ -444,7 +505,13 @@ fn draw_rose(pm: &mut PixmapMut, cx: f32, cy: f32, len_main: f32, style: &Style)
         let mut paint1 = Paint::default();
         paint1.set_color(light);
         paint1.anti_alias = true;
-        pm.fill_path(&path1, &paint1, FillRule::Winding, Transform::identity(), None);
+        pm.fill_path(
+            &path1,
+            &paint1,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
 
         let mut pb2 = PathBuilder::new();
         pb2.move_to(cx, cy);
@@ -455,7 +522,13 @@ fn draw_rose(pm: &mut PixmapMut, cx: f32, cy: f32, len_main: f32, style: &Style)
         let mut paint2 = Paint::default();
         paint2.set_color(dark);
         paint2.anti_alias = true;
-        pm.fill_path(&path2, &paint2, FillRule::Winding, Transform::identity(), None);
+        pm.fill_path(
+            &path2,
+            &paint2,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 }
 
@@ -481,7 +554,13 @@ fn draw_needle(pm: &mut PixmapMut, cx: f32, cy: f32, length: f32, compass_deg: f
     let mut paint_n = Paint::default();
     paint_n.set_color(style.north);
     paint_n.anti_alias = true;
-    pm.fill_path(&path_n, &paint_n, FillRule::Winding, Transform::identity(), None);
+    pm.fill_path(
+        &path_n,
+        &paint_n,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 
     let mut pb_s = PathBuilder::new();
     pb_s.move_to(b1.0, b1.1);
@@ -492,7 +571,13 @@ fn draw_needle(pm: &mut PixmapMut, cx: f32, cy: f32, length: f32, compass_deg: f
     let mut paint_s = Paint::default();
     paint_s.set_color(style.south);
     paint_s.anti_alias = true;
-    pm.fill_path(&path_s, &paint_s, FillRule::Winding, Transform::identity(), None);
+    pm.fill_path(
+        &path_s,
+        &paint_s,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 }
 
 fn draw_needle_glow(
@@ -522,7 +607,13 @@ fn draw_needle_glow(
         ));
         paint.anti_alias = true;
         paint.blend_mode = BlendMode::Screen;
-        pm.fill_path(&circle, &paint, FillRule::Winding, Transform::identity(), None);
+        pm.fill_path(
+            &circle,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 }
 
@@ -531,13 +622,25 @@ fn draw_pivot(pm: &mut PixmapMut, cx: f32, cy: f32, style: &Style) {
     let mut p_outer = Paint::default();
     p_outer.set_color(style.pivot_outer);
     p_outer.anti_alias = true;
-    pm.fill_path(&outer, &p_outer, FillRule::Winding, Transform::identity(), None);
+    pm.fill_path(
+        &outer,
+        &p_outer,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 
     let inner = PathBuilder::from_circle(cx, cy, 4.0).unwrap();
     let mut p_inner = Paint::default();
     p_inner.set_color(style.pivot_inner);
     p_inner.anti_alias = true;
-    pm.fill_path(&inner, &p_inner, FillRule::Winding, Transform::identity(), None);
+    pm.fill_path(
+        &inner,
+        &p_inner,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 }
 
 fn draw_signature(pm: &mut PixmapMut, font: &FontRef<'_>, w: f32, h: f32, style: &Style) {
@@ -546,14 +649,7 @@ fn draw_signature(pm: &mut PixmapMut, font: &FontRef<'_>, w: f32, h: f32, style:
     draw_text_centered(pm, font, size, w / 2.0, y, "QuompaCC", style.signature);
 }
 
-fn draw_cardinals(
-    pm: &mut PixmapMut,
-    font: &FontRef<'_>,
-    cx: f32,
-    cy: f32,
-    r: f32,
-    style: &Style,
-) {
+fn draw_cardinals(pm: &mut PixmapMut, font: &FontRef<'_>, cx: f32, cy: f32, r: f32, style: &Style) {
     let size = (r * 0.10).max(14.0);
     let label_radius = r * 0.76;
 
@@ -585,20 +681,24 @@ fn draw_heading_mark(pm: &mut PixmapMut, cx: f32, cy: f32, r: f32, style: &Style
     let mut paint = Paint::default();
     paint.set_color(style.north);
     paint.anti_alias = true;
-    pm.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    pm.fill_path(
+        &path,
+        &paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 }
 
-fn draw_text_centered(
-    pm: &mut PixmapMut,
-    font: &FontRef<'_>,
-    size: f32,
-    cx: f32,
-    cy: f32,
-    text: &str,
-    color: Color,
-) {
-    let scaled = font.as_scaled(PxScale::from(size));
+/// Measurements for a piece of text laid out in a given font + size.
+struct TextMetrics {
+    total_advance: f32,
+    text_h: f32,
+    max_y: f32,
+}
 
+fn measure_text(font: &FontRef<'_>, size: f32, text: &str) -> TextMetrics {
+    let scaled = font.as_scaled(PxScale::from(size));
     let mut total_advance = 0.0_f32;
     let mut min_y = f32::INFINITY;
     let mut max_y = f32::NEG_INFINITY;
@@ -616,15 +716,31 @@ fn draw_text_centered(
     } else {
         size
     };
+    TextMetrics {
+        total_advance,
+        text_h,
+        max_y,
+    }
+}
 
-    let mut pen_x = cx - total_advance / 2.0;
-    let baseline_y = cy + text_h / 2.0 - max_y.max(0.0);
-
+/// Rasterizes `text` starting at left edge `pen_x` and given baseline,
+/// returning the pen_x just past the last glyph (useful for caret placement).
+fn draw_text_at_baseline(
+    pm: &mut PixmapMut,
+    font: &FontRef<'_>,
+    size: f32,
+    mut pen_x: f32,
+    baseline_y: f32,
+    text: &str,
+    color: Color,
+) -> f32 {
+    let scaled = font.as_scaled(PxScale::from(size));
     let pm_w = pm.width() as i32;
     let pm_h = pm.height() as i32;
     let cr = (color.red() * 255.0) as u8;
     let cg = (color.green() * 255.0) as u8;
     let cb = (color.blue() * 255.0) as u8;
+    let opacity = color.alpha();
 
     for ch in text.chars() {
         let id = scaled.glyph_id(ch);
@@ -641,7 +757,7 @@ fn draw_text_centered(
                 }
                 let idx = (py as usize * pm_w as usize + px as usize) * 4;
                 let data = pm.data_mut();
-                let a = (alpha * 255.0).clamp(0.0, 255.0) as u32;
+                let a = (alpha * opacity * 255.0).clamp(0.0, 255.0) as u32;
                 for (i, &c) in [cr, cg, cb].iter().enumerate() {
                     let dst = data[idx + i] as u32;
                     data[idx + i] = ((c as u32 * a + dst * (255 - a)) / 255) as u8;
@@ -650,6 +766,22 @@ fn draw_text_centered(
         }
         pen_x += advance;
     }
+    pen_x
+}
+
+fn draw_text_centered(
+    pm: &mut PixmapMut,
+    font: &FontRef<'_>,
+    size: f32,
+    cx: f32,
+    cy: f32,
+    text: &str,
+    color: Color,
+) {
+    let m = measure_text(font, size, text);
+    let pen_x = cx - m.total_advance / 2.0;
+    let baseline_y = cy + m.text_h / 2.0 - m.max_y.max(0.0);
+    draw_text_at_baseline(pm, font, size, pen_x, baseline_y, text, color);
 }
 
 #[cfg(test)]
@@ -791,6 +923,33 @@ mod tests {
         // some pixel must have a nonzero blue channel (cyan glow has high B)
         let any_blue = pm.data().chunks_exact(4).any(|p| p[2] > 0);
         assert!(any_blue, "glow contributed no blue pixels");
+    }
+
+    #[test]
+    fn measure_text_width_is_positive_for_non_empty() {
+        let painter = CompassPainter::new(Fonts::quompacc()).unwrap();
+        let w = painter.measure_text_width(TextStyle::SansBold(24.0), "Test");
+        assert!(w > 0.0);
+        assert_eq!(
+            painter.measure_text_width(TextStyle::SansBold(24.0), ""),
+            0.0
+        );
+    }
+
+    #[test]
+    fn render_text_left_returns_pen_past_last_glyph() {
+        let painter = CompassPainter::new(Fonts::quompacc()).unwrap();
+        let mut pm = Pixmap::new(800, 200).unwrap();
+        let end = painter.render_text_left(
+            &mut pm.as_mut(),
+            TextStyle::SansBold(24.0),
+            "Hi",
+            100.0,
+            100.0,
+            Color::from_rgba8(255, 255, 255, 255),
+        );
+        let width = painter.measure_text_width(TextStyle::SansBold(24.0), "Hi");
+        assert!((end - (100.0 + width)).abs() < 1e-3);
     }
 
     #[test]
