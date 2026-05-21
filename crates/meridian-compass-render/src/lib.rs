@@ -63,13 +63,18 @@ impl std::fmt::Display for BuildError {
 
 impl std::error::Error for BuildError {}
 
-/// Per-frame rendering knobs. Phase 4 will grow this with overlay options for
-/// the detached-glow effect.
+/// Per-frame rendering knobs.
 #[derive(Clone, Debug)]
 pub struct FrameOpts {
     /// Whether to draw the cyan glow at the needle tip. Phase 4 turns this off
-    /// once the glow has detached and is rendered separately by the caller.
+    /// once the glow has detached and is rendered separately by the caller via
+    /// [`CompassPainter::render_glow_at`].
     pub include_north_glow: bool,
+    /// Semi-transparent overlay using the background-mid color, drawn after
+    /// the compass and before `veil_alpha`. Used to fade the compass to a
+    /// watermark intensity while staying in-palette. 0 = compass at full
+    /// intensity, 255 = compass fully merged into the background.
+    pub watermark_alpha: u8,
     /// Black overlay alpha (0..=255) applied last, for fade-in / fade-out.
     pub veil_alpha: u8,
 }
@@ -78,6 +83,7 @@ impl Default for FrameOpts {
     fn default() -> Self {
         Self {
             include_north_glow: true,
+            watermark_alpha: 0,
             veil_alpha: 0,
         }
     }
@@ -193,6 +199,19 @@ impl<'a> CompassPainter<'a> {
         draw_cardinals(pm, &self.sans_bold, cx, cy, r, &self.style);
         draw_signature(pm, &self.script, w, h, &self.style);
 
+        if opts.watermark_alpha > 0 {
+            let bg = self.style.bg_stops[1];
+            let mut overlay = Paint::default();
+            overlay.set_color(Color::from_rgba8(
+                (bg.red() * 255.0) as u8,
+                (bg.green() * 255.0) as u8,
+                (bg.blue() * 255.0) as u8,
+                opts.watermark_alpha,
+            ));
+            let rect = Rect::from_xywh(0.0, 0.0, w, h).unwrap();
+            pm.fill_rect(rect, &overlay, Transform::identity(), None);
+        }
+
         if opts.veil_alpha > 0 {
             let mut veil = Paint::default();
             veil.set_color(Color::from_rgba8(0, 0, 0, opts.veil_alpha));
@@ -212,6 +231,43 @@ impl<'a> CompassPainter<'a> {
         let angle = needle_angle_deg(t);
         let rad = (angle - 90.0).to_radians();
         (cx + length * rad.cos(), cy + length * rad.sin())
+    }
+
+    /// Compass-radius for a canvas of (w, h). Useful when sizing auxiliary
+    /// elements that should match the compass scale.
+    pub fn compass_radius(&self, w: f32, h: f32) -> f32 {
+        (w.min(h) * self.style.radius_factor).round()
+    }
+
+    /// Default base radius for the north glow (same value used internally
+    /// when [`FrameOpts::include_north_glow`] is true). Phase 4 multiplies
+    /// this by a scale factor as the glow detaches and grows.
+    pub fn glow_base_radius(&self, w: f32, h: f32) -> f32 {
+        self.compass_radius(w, h) * 0.78
+    }
+
+    /// Renders just the cyan north glow at an arbitrary screen position with
+    /// a given base radius. Phase 4 animates `(x, y, base_radius)` to make
+    /// the glow detach from the needle tip and fall toward screen center.
+    pub fn render_glow_at(&self, pm: &mut PixmapMut, x: f32, y: f32, base_radius: f32) {
+        let (nr, ng, nb) = (
+            (self.style.north.red() * 255.0) as u8,
+            (self.style.north.green() * 255.0) as u8,
+            (self.style.north.blue() * 255.0) as u8,
+        );
+
+        for (radius_mult, alpha) in [(0.18_f32, 24u8), (0.12, 50), (0.08, 110)] {
+            let r = base_radius * radius_mult;
+            if r < 0.5 {
+                continue;
+            }
+            let circle = PathBuilder::from_circle(x, y, r).unwrap();
+            let mut paint = Paint::default();
+            paint.set_color(Color::from_rgba8(nr, ng, nb, alpha));
+            paint.anti_alias = true;
+            paint.blend_mode = BlendMode::Screen;
+            pm.fill_path(&circle, &paint, FillRule::Winding, Transform::identity(), None);
+        }
     }
 }
 
@@ -679,8 +735,8 @@ mod tests {
             480.0,
             SETTLE_T,
             &FrameOpts {
-                include_north_glow: true,
                 veil_alpha: 255,
+                ..Default::default()
             },
         );
         for chunk in pm.data().chunks_exact(4) {
@@ -713,6 +769,63 @@ mod tests {
     }
 
     #[test]
+    fn glow_base_radius_matches_internal_geometry() {
+        let painter = CompassPainter::new(Fonts::quompacc()).unwrap();
+        let (w, h) = (1920.0_f32, 1080.0_f32);
+        let expected = (w.min(h) * painter.style.radius_factor).round() * 0.78;
+        assert!((painter.glow_base_radius(w, h) - expected).abs() < 1e-3);
+    }
+
+    #[test]
+    fn render_glow_at_alone_lights_up_pixels() {
+        let painter = CompassPainter::new(Fonts::quompacc()).unwrap();
+        let (w, h) = (640u32, 480u32);
+        let mut pm = Pixmap::new(w, h).unwrap();
+        // start from a known dark frame so the glow is the only thing adding light
+        painter.render_glow_at(
+            &mut pm.as_mut(),
+            w as f32 / 2.0,
+            h as f32 / 2.0,
+            painter.glow_base_radius(w as f32, h as f32),
+        );
+        // some pixel must have a nonzero blue channel (cyan glow has high B)
+        let any_blue = pm.data().chunks_exact(4).any(|p| p[2] > 0);
+        assert!(any_blue, "glow contributed no blue pixels");
+    }
+
+    #[test]
+    fn watermark_alpha_dims_compass_toward_background() {
+        let painter = CompassPainter::new(Fonts::quompacc()).unwrap();
+        let (w, h) = (1280u32, 720u32);
+        let mut plain = Pixmap::new(w, h).unwrap();
+        let mut dimmed = Pixmap::new(w, h).unwrap();
+        painter.render(
+            &mut plain.as_mut(),
+            w as f32,
+            h as f32,
+            SETTLE_T,
+            &FrameOpts::default(),
+        );
+        painter.render(
+            &mut dimmed.as_mut(),
+            w as f32,
+            h as f32,
+            SETTLE_T,
+            &FrameOpts {
+                include_north_glow: true,
+                watermark_alpha: 200,
+                veil_alpha: 0,
+            },
+        );
+        let differ = plain
+            .data()
+            .iter()
+            .zip(dimmed.data().iter())
+            .any(|(a, b)| a != b);
+        assert!(differ, "watermark_alpha=200 left the frame unchanged");
+    }
+
+    #[test]
     fn north_glow_disabled_changes_some_pixels() {
         // At the needle tip itself, the solid needle paint overpaints the glow
         // so they look identical there — but the glow halo extends past the
@@ -727,10 +840,7 @@ mod tests {
             w as f32,
             h as f32,
             SETTLE_T,
-            &FrameOpts {
-                include_north_glow: true,
-                veil_alpha: 0,
-            },
+            &FrameOpts::default(),
         );
         painter.render(
             &mut without_glow.as_mut(),
@@ -739,7 +849,7 @@ mod tests {
             SETTLE_T,
             &FrameOpts {
                 include_north_glow: false,
-                veil_alpha: 0,
+                ..Default::default()
             },
         );
 
