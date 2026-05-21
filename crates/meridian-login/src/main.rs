@@ -1,15 +1,18 @@
-// meridian-login — Phase 5a: card content (title, labels, input boxes, caret).
+// meridian-login — Phase 5b: card content + keyboard input.
 //
-// Animation timeline (t_anim relative to handover finish):
+// Animation timeline:
 //   0.00..0.20s  hold the settle frame (handover-friendly)
 //   0.20..1.40s  compass dims toward watermark; glow falls + grows
 //   1.40..1.70s  card outline fades in over the glow
 //   1.70..2.00s  card content (title, labels, boxes) fades in
-//   2.00..12.00s caret blinks (Phase 5a temporary 10s hold; Phase 5b replaces
-//                with actual keyboard input loop)
-//   12.00s       release DRM master, exit
+//   2.00s..      keyboard input loop — typed chars appear in the focused
+//                field, Tab cycles focus, Enter submits, Esc cancels.
+//                A 60s inactivity safety also exits the loop.
 //
-// Phase 5a is rendering-only. No input, no PAM.
+// Phase 5b does not actually authenticate; Submit just logs the username
+// and password length and exits. Phase 6 will wire PAM.
+
+mod input;
 
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
@@ -24,6 +27,9 @@ use drm::Device as DrmDevice;
 use meridian_compass_render::{CompassPainter, Fonts, FrameOpts, TextStyle, SETTLE_T};
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, PixmapMut, Stroke, Transform};
 use tracing::{info, warn};
+use zeroize::Zeroizing;
+
+use input::{open_keyboards, poll_keyboards, KeyAction, Keyboard};
 
 const BOOTSPLASH_SOCKET: &str = "/run/bootsplash.sock";
 const HANDOVER_SETTLE_MS: u64 = 200;
@@ -39,8 +45,9 @@ const UI_FADE_START_MS: u64 = 1700;
 const UI_FADE_END_MS: u64 = 2000;
 const GLOW_HIDE_MS: u64 = 1700;
 const GLOW_FINAL_SCALE: f32 = 4.0;
-// Phase 5a temporary — Phase 5b replaces with input-driven exit
-const LOGIN_HOLD_MS: u64 = 10_000;
+// Safety: even if user walks away, exit after this. Submit / Cancel exit sooner.
+const MAX_INACTIVITY_MS: u64 = 60_000;
+const MAX_FIELD_LEN: usize = 128;
 
 struct Card(File);
 
@@ -52,23 +59,68 @@ impl AsFd for Card {
 impl DrmDevice for Card {}
 impl ControlDevice for Card {}
 
-#[derive(Default, Clone)]
+#[derive(Default)]
 struct LoginUiState {
     username: String,
-    password_len: usize,
+    /// Wrapped in Zeroizing so the bytes are wiped on drop. We never log or
+    /// persist this value.
+    password: Zeroizing<String>,
     focus: Field,
 }
 
-#[derive(Default, Clone, Copy, PartialEq)]
+#[derive(Default, Clone, Copy, PartialEq, Debug)]
 enum Field {
     #[default]
     Username,
     Password,
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum ControlFlow {
+    Continue,
+    Submit,
+    Cancel,
+}
+
+impl LoginUiState {
+    fn apply(&mut self, action: KeyAction) -> ControlFlow {
+        match action {
+            KeyAction::Insert(s) => {
+                let target: &mut String = match self.focus {
+                    Field::Username => &mut self.username,
+                    Field::Password => &mut self.password,
+                };
+                // Bound the buffer so a stuck repeat or paste does not grow
+                // it without limit.
+                if target.chars().count() + s.chars().count() <= MAX_FIELD_LEN {
+                    target.push_str(&s);
+                }
+                ControlFlow::Continue
+            }
+            KeyAction::Backspace => {
+                let target: &mut String = match self.focus {
+                    Field::Username => &mut self.username,
+                    Field::Password => &mut self.password,
+                };
+                target.pop();
+                ControlFlow::Continue
+            }
+            KeyAction::CycleFocus => {
+                self.focus = match self.focus {
+                    Field::Username => Field::Password,
+                    Field::Password => Field::Username,
+                };
+                ControlFlow::Continue
+            }
+            KeyAction::Submit => ControlFlow::Submit,
+            KeyAction::Cancel => ControlFlow::Cancel,
+        }
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
-    info!("meridian-login starting (Phase 5a)");
+    info!("meridian-login starting (Phase 5b)");
 
     match bootsplash_handover() {
         Ok(()) => {
@@ -130,8 +182,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => warn!(error = %e, "bootsplash exit signal failed"),
     }
 
-    let ui_state = LoginUiState::default();
-    run_animation(
+    let mut ui_state = LoginUiState::default();
+    let mut keyboards = open_keyboards()?;
+    let mut keyboard = Keyboard::new().map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+
+    let exit = run_animation(
         &card,
         &mut db,
         fb,
@@ -139,8 +194,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         w,
         h,
         mode.vrefresh().max(60),
-        &ui_state,
+        &mut ui_state,
+        &mut keyboards,
+        &mut keyboard,
     )?;
+
+    match exit {
+        ControlFlow::Submit => info!(
+            user = %ui_state.username,
+            pw_len = ui_state.password.chars().count(),
+            "submit pressed (Phase 6 will invoke PAM)"
+        ),
+        ControlFlow::Cancel => info!("login cancelled"),
+        ControlFlow::Continue => info!("inactivity timeout reached"),
+    }
 
     match card.release_master_lock() {
         Ok(()) => info!("drm: released master"),
@@ -226,19 +293,35 @@ fn run_animation(
     w: u32,
     h: u32,
     refresh_hz: u32,
-    ui_state: &LoginUiState,
-) -> Result<(), Box<dyn std::error::Error>> {
+    ui_state: &mut LoginUiState,
+    keyboards: &mut [evdev::Device],
+    keyboard: &mut Keyboard,
+) -> Result<ControlFlow, Box<dyn std::error::Error>> {
     let anim_start = Instant::now();
     let frame_dur = Duration::from_micros(1_000_000 / refresh_hz as u64);
-    let total = Duration::from_millis(UI_FADE_END_MS + LOGIN_HOLD_MS);
+    let safety_timeout = Duration::from_millis(UI_FADE_END_MS + MAX_INACTIVITY_MS);
     let mut frame_idx: u64 = 0;
+    let mut exit = ControlFlow::Continue;
 
-    while anim_start.elapsed() < total {
+    while exit == ControlFlow::Continue && anim_start.elapsed() < safety_timeout {
         let t = anim_start.elapsed();
         let t_secs = t.as_secs_f32();
         let af = compute_anim_frame(t_secs, painter, w as f32, h as f32);
 
-        // caret only blinks once the UI has fully faded in
+        // Read keyboard once the UI is fully faded in. Polling earlier would
+        // queue keystrokes the user typed against the still-animating splash.
+        if af.ui_alpha >= 1.0 {
+            for action in poll_keyboards(keyboards, keyboard) {
+                match ui_state.apply(action) {
+                    ControlFlow::Continue => {}
+                    other => {
+                        exit = other;
+                        break;
+                    }
+                }
+            }
+        }
+
         let caret_on = af.ui_alpha >= 1.0 && ((t_secs * 2.0) as i64) % 2 == 0;
 
         {
@@ -268,7 +351,15 @@ fn run_animation(
             }
 
             if af.ui_alpha > 0.0 {
-                draw_login_ui(&mut pm, w as f32, h as f32, painter, ui_state, af.ui_alpha, caret_on);
+                draw_login_ui(
+                    &mut pm,
+                    w as f32,
+                    h as f32,
+                    painter,
+                    ui_state,
+                    af.ui_alpha,
+                    caret_on,
+                );
             }
 
             for px in buf.chunks_exact_mut(4) {
@@ -285,7 +376,7 @@ fn run_animation(
             std::thread::sleep(wait);
         }
     }
-    Ok(())
+    Ok(exit)
 }
 
 fn draw_card(pm: &mut PixmapMut, w: f32, h: f32, alpha: f32, painter: &CompassPainter) {
@@ -306,13 +397,7 @@ fn draw_card(pm: &mut PixmapMut, w: f32, h: f32, alpha: f32, painter: &CompassPa
         width: 2.0,
         ..Default::default()
     };
-    pm.stroke_path(
-        &path,
-        &stroke_paint,
-        &stroke,
-        Transform::identity(),
-        None,
-    );
+    pm.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
 }
 
 fn draw_login_ui(
@@ -365,7 +450,15 @@ fn draw_login_ui(
         label_color,
     );
     let user_box_top = inner_top + 96.0;
-    draw_input_box(pm, inner_left, user_box_top, inner_w, box_h, box_fill, box_outline);
+    draw_input_box(
+        pm,
+        inner_left,
+        user_box_top,
+        inner_w,
+        box_h,
+        box_fill,
+        box_outline,
+    );
     let user_text_x = inner_left + 12.0;
     let user_baseline = user_box_top + box_h - 12.0;
     let after_user = painter.render_text_left(
@@ -391,10 +484,18 @@ fn draw_login_ui(
         label_color,
     );
     let pwd_box_top = inner_top + 168.0;
-    draw_input_box(pm, inner_left, pwd_box_top, inner_w, box_h, box_fill, box_outline);
+    draw_input_box(
+        pm,
+        inner_left,
+        pwd_box_top,
+        inner_w,
+        box_h,
+        box_fill,
+        box_outline,
+    );
     let pwd_text_x = inner_left + 12.0;
     let pwd_baseline = pwd_box_top + box_h - 12.0;
-    let dots = "•".repeat(ui.password_len);
+    let dots = "•".repeat(ui.password.chars().count());
     let after_pwd = painter.render_text_left(
         pm,
         TextStyle::SansBold(text_size),
@@ -419,20 +520,18 @@ fn draw_login_ui(
     );
 }
 
-fn draw_input_box(
-    pm: &mut PixmapMut,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
-    fill: Color,
-    outline: Color,
-) {
+fn draw_input_box(pm: &mut PixmapMut, x: f32, y: f32, w: f32, h: f32, fill: Color, outline: Color) {
     let path = rounded_rect_path(x, y, w, h, 6.0);
     let mut fill_paint = Paint::default();
     fill_paint.set_color(fill);
     fill_paint.anti_alias = true;
-    pm.fill_path(&path, &fill_paint, FillRule::Winding, Transform::identity(), None);
+    pm.fill_path(
+        &path,
+        &fill_paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 
     let mut stroke_paint = Paint::default();
     stroke_paint.set_color(outline);
@@ -441,13 +540,7 @@ fn draw_input_box(
         width: 1.0,
         ..Default::default()
     };
-    pm.stroke_path(
-        &path,
-        &stroke_paint,
-        &stroke,
-        Transform::identity(),
-        None,
-    );
+    pm.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
 }
 
 fn draw_caret(pm: &mut PixmapMut, x: f32, baseline_y: f32, font_size: f32, color: Color) {
@@ -589,5 +682,63 @@ mod tests {
     #[test]
     fn rounded_rect_path_does_not_panic_on_small_inputs() {
         let _ = rounded_rect_path(0.0, 0.0, 4.0, 4.0, 10.0);
+    }
+
+    #[test]
+    fn insert_appends_to_focused_field() {
+        let mut s = LoginUiState::default();
+        assert_eq!(s.focus, Field::Username);
+        assert_eq!(
+            s.apply(KeyAction::Insert("a".into())),
+            ControlFlow::Continue
+        );
+        assert_eq!(
+            s.apply(KeyAction::Insert("b".into())),
+            ControlFlow::Continue
+        );
+        assert_eq!(s.username, "ab");
+        assert!(s.password.is_empty());
+
+        s.focus = Field::Password;
+        s.apply(KeyAction::Insert("x".into()));
+        assert_eq!(s.username, "ab");
+        assert_eq!(s.password.as_str(), "x");
+    }
+
+    #[test]
+    fn backspace_removes_last_char_from_focused_field() {
+        let mut s = LoginUiState::default();
+        s.apply(KeyAction::Insert("abc".into()));
+        s.apply(KeyAction::Backspace);
+        assert_eq!(s.username, "ab");
+        s.apply(KeyAction::Backspace);
+        s.apply(KeyAction::Backspace);
+        s.apply(KeyAction::Backspace); // no-op on empty
+        assert_eq!(s.username, "");
+    }
+
+    #[test]
+    fn cycle_focus_toggles_between_username_and_password() {
+        let mut s = LoginUiState::default();
+        s.apply(KeyAction::CycleFocus);
+        assert_eq!(s.focus, Field::Password);
+        s.apply(KeyAction::CycleFocus);
+        assert_eq!(s.focus, Field::Username);
+    }
+
+    #[test]
+    fn submit_and_cancel_return_their_control_flow() {
+        let mut s = LoginUiState::default();
+        assert_eq!(s.apply(KeyAction::Submit), ControlFlow::Submit);
+        assert_eq!(s.apply(KeyAction::Cancel), ControlFlow::Cancel);
+    }
+
+    #[test]
+    fn insert_respects_max_field_len() {
+        let mut s = LoginUiState::default();
+        for _ in 0..MAX_FIELD_LEN + 16 {
+            s.apply(KeyAction::Insert("a".into()));
+        }
+        assert_eq!(s.username.chars().count(), MAX_FIELD_LEN);
     }
 }
