@@ -1,0 +1,753 @@
+//! Compass renderer for the QuompaCC / Meridian visual identity.
+//!
+//! This crate is the single source of truth for the compass mark used by the
+//! bootsplash (animated, full duration) and meridian-login (static settle
+//! frame today, Phase 4 fall-and-morph animation later). It performs no I/O
+//! and no DRM work — callers pass in a [`tiny_skia::PixmapMut`] to draw into.
+//!
+//! ```no_run
+//! use meridian_compass_render::{CompassPainter, Fonts, FrameOpts, SETTLE_T};
+//! use tiny_skia::Pixmap;
+//!
+//! let painter = CompassPainter::new(Fonts::quompacc()).unwrap();
+//! let mut pm = Pixmap::new(1920, 1080).unwrap();
+//! painter.render(&mut pm.as_mut(), 1920.0, 1080.0, SETTLE_T, &FrameOpts::default());
+//! ```
+
+#![forbid(unsafe_code)]
+
+use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
+use tiny_skia::{
+    BlendMode, Color, FillRule, Paint, PathBuilder, PixmapMut, Rect, Shader, Stroke, Transform,
+};
+
+mod assets;
+
+/// `t` value (seconds) chosen so the bootsplash spin-and-settle animation has
+/// fully decayed. Useful as a default for static "settle-state" renders.
+pub const SETTLE_T: f32 = 10.0;
+
+/// Font byte slices passed into [`CompassPainter::new`]. Use [`Fonts::quompacc`]
+/// for the default QuompaCC type pairing (DejaVu Sans Bold + Italianno Regular).
+#[derive(Clone, Copy)]
+pub struct Fonts<'a> {
+    pub sans_bold: &'a [u8],
+    pub script: &'a [u8],
+}
+
+impl Fonts<'static> {
+    /// The embedded QuompaCC default fonts.
+    pub fn quompacc() -> Self {
+        Self {
+            sans_bold: assets::DEJAVU_SANS_BOLD,
+            script: assets::ITALIANNO_REGULAR,
+        }
+    }
+}
+
+/// Errors while constructing a [`CompassPainter`].
+#[derive(Debug)]
+pub enum BuildError {
+    SansFontInvalid,
+    ScriptFontInvalid,
+}
+
+impl std::fmt::Display for BuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::SansFontInvalid => write!(f, "sans_bold font failed to parse"),
+            Self::ScriptFontInvalid => write!(f, "script font failed to parse"),
+        }
+    }
+}
+
+impl std::error::Error for BuildError {}
+
+/// Per-frame rendering knobs. Phase 4 will grow this with overlay options for
+/// the detached-glow effect.
+#[derive(Clone, Debug)]
+pub struct FrameOpts {
+    /// Whether to draw the cyan glow at the needle tip. Phase 4 turns this off
+    /// once the glow has detached and is rendered separately by the caller.
+    pub include_north_glow: bool,
+    /// Black overlay alpha (0..=255) applied last, for fade-in / fade-out.
+    pub veil_alpha: u8,
+}
+
+impl Default for FrameOpts {
+    fn default() -> Self {
+        Self {
+            include_north_glow: true,
+            veil_alpha: 0,
+        }
+    }
+}
+
+/// Color and proportion overrides for the compass. The default carries the
+/// QuompaCC palette: dark blue gradient, cyan accent, muted-red counterpoint.
+#[derive(Clone, Debug)]
+pub struct Style {
+    /// Compass radius as fraction of `min(width, height)`. Default 0.32.
+    pub radius_factor: f32,
+    /// Cyan accent — needle north, north cardinal label, heading mark.
+    pub north: Color,
+    /// Muted red — needle south.
+    pub south: Color,
+    /// Background radial gradient stops (inner, middle, outer).
+    pub bg_stops: [Color; 3],
+    /// Radial meridian lines around the compass.
+    pub meridian: Color,
+    /// Outer + inner scale ring.
+    pub ring: Color,
+    /// Minor tick marks (every 5°).
+    pub tick_minor: Color,
+    /// Major tick marks (every 30°).
+    pub tick_major: Color,
+    pub rose_main_light: Color,
+    pub rose_main_dark: Color,
+    pub rose_filler_light: Color,
+    pub rose_filler_dark: Color,
+    pub pivot_outer: Color,
+    pub pivot_inner: Color,
+    /// QuompaCC wordmark color.
+    pub signature: Color,
+    /// O/S/W labels (N uses `north`).
+    pub cardinal_other: Color,
+}
+
+impl Default for Style {
+    fn default() -> Self {
+        Self {
+            radius_factor: 0.32,
+            north: Color::from_rgba8(120, 210, 255, 255),
+            south: Color::from_rgba8(214, 92, 76, 255),
+            bg_stops: [
+                Color::from_rgba8(22, 30, 56, 255),
+                Color::from_rgba8(10, 14, 28, 255),
+                Color::from_rgba8(4, 6, 14, 255),
+            ],
+            meridian: Color::from_rgba8(70, 100, 160, 36),
+            ring: Color::from_rgba8(210, 222, 240, 190),
+            tick_minor: Color::from_rgba8(180, 200, 230, 120),
+            tick_major: Color::from_rgba8(220, 232, 250, 220),
+            rose_main_light: Color::from_rgba8(235, 240, 250, 235),
+            rose_main_dark: Color::from_rgba8(95, 110, 140, 235),
+            rose_filler_light: Color::from_rgba8(155, 170, 200, 200),
+            rose_filler_dark: Color::from_rgba8(70, 80, 100, 200),
+            pivot_outer: Color::from_rgba8(40, 50, 70, 240),
+            pivot_inner: Color::from_rgba8(220, 230, 245, 255),
+            signature: Color::from_rgba8(230, 236, 248, 140),
+            cardinal_other: Color::from_rgba8(225, 230, 240, 240),
+        }
+    }
+}
+
+/// Stateless renderer of the compass mark. Holds parsed fonts and a style;
+/// can be reused across frames at any resolution.
+pub struct CompassPainter<'a> {
+    sans_bold: FontRef<'a>,
+    script: FontRef<'a>,
+    style: Style,
+}
+
+impl<'a> CompassPainter<'a> {
+    pub fn new(fonts: Fonts<'a>) -> Result<Self, BuildError> {
+        Ok(Self {
+            sans_bold: FontRef::try_from_slice(fonts.sans_bold)
+                .map_err(|_| BuildError::SansFontInvalid)?,
+            script: FontRef::try_from_slice(fonts.script)
+                .map_err(|_| BuildError::ScriptFontInvalid)?,
+            style: Style::default(),
+        })
+    }
+
+    pub fn with_style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+
+    pub fn style(&self) -> &Style {
+        &self.style
+    }
+
+    /// Draw one frame of the compass into `pm`. `t` is the animation time in
+    /// seconds (relative to the start of the bootsplash spin); use [`SETTLE_T`]
+    /// for a static settled frame.
+    pub fn render(&self, pm: &mut PixmapMut, w: f32, h: f32, t: f32, opts: &FrameOpts) {
+        let cx = w / 2.0;
+        let cy = h / 2.0;
+        let r = (w.min(h) * self.style.radius_factor).round();
+        let needle_length = r * 0.78;
+        let angle = needle_angle_deg(t);
+
+        draw_background(pm, w, h, cx, cy, &self.style);
+        draw_meridian_lines(pm, cx, cy, r, &self.style);
+        draw_scale_ring(pm, cx, cy, r, &self.style);
+        draw_rose(pm, cx, cy, r * 0.72, &self.style);
+        if opts.include_north_glow {
+            draw_needle_glow(pm, cx, cy, needle_length, angle, &self.style);
+        }
+        draw_needle(pm, cx, cy, needle_length, angle, &self.style);
+        draw_pivot(pm, cx, cy, &self.style);
+        draw_heading_mark(pm, cx, cy, r, &self.style);
+        draw_cardinals(pm, &self.sans_bold, cx, cy, r, &self.style);
+        draw_signature(pm, &self.script, w, h, &self.style);
+
+        if opts.veil_alpha > 0 {
+            let mut veil = Paint::default();
+            veil.set_color(Color::from_rgba8(0, 0, 0, opts.veil_alpha));
+            let rect = Rect::from_xywh(0.0, 0.0, w, h).unwrap();
+            pm.fill_rect(rect, &veil, Transform::identity(), None);
+        }
+    }
+
+    /// Screen-space position of the cyan north glow at animation time `t`.
+    /// Phase 4 uses this to pin the falling-bobble animation to a continuous
+    /// starting point.
+    pub fn north_glow_position(&self, w: f32, h: f32, t: f32) -> (f32, f32) {
+        let cx = w / 2.0;
+        let cy = h / 2.0;
+        let r = (w.min(h) * self.style.radius_factor).round();
+        let length = r * 0.78;
+        let angle = needle_angle_deg(t);
+        let rad = (angle - 90.0).to_radians();
+        (cx + length * rad.cos(), cy + length * rad.sin())
+    }
+}
+
+/// Compass needle angle in degrees as a function of animation time.
+///
+/// 0..1.6s: ease-out cubic spin ending at 1080° (= 0° mod 360, i.e. North).
+/// 1.6s..:  damped oscillation around 1080° plus a gentle breathing term.
+pub fn needle_angle_deg(t: f32) -> f32 {
+    let spin = 1.6_f32;
+    let breath = 1.4 * (t * 1.1).sin();
+    if t < spin {
+        let p = t / spin;
+        let eased = 1.0 - (1.0 - p).powi(3);
+        eased * 1080.0
+    } else {
+        let tt = t - spin;
+        1080.0 + 70.0 * (-tt * 1.9).exp() * (tt * 6.2).cos() + breath
+    }
+}
+
+// ---- internal layers ----
+
+fn draw_background(pm: &mut PixmapMut, w: f32, h: f32, cx: f32, cy: f32, style: &Style) {
+    let shader = tiny_skia::RadialGradient::new(
+        tiny_skia::Point::from_xy(cx, cy),
+        tiny_skia::Point::from_xy(cx, cy),
+        (w.max(h)) * 0.75,
+        vec![
+            tiny_skia::GradientStop::new(0.0, style.bg_stops[0]),
+            tiny_skia::GradientStop::new(0.55, style.bg_stops[1]),
+            tiny_skia::GradientStop::new(1.0, style.bg_stops[2]),
+        ],
+        tiny_skia::SpreadMode::Pad,
+        Transform::identity(),
+    )
+    .unwrap_or(Shader::SolidColor(style.bg_stops[2]));
+
+    let paint = Paint {
+        shader,
+        ..Default::default()
+    };
+    let rect = Rect::from_xywh(0.0, 0.0, w, h).unwrap();
+    pm.fill_rect(rect, &paint, Transform::identity(), None);
+}
+
+fn draw_meridian_lines(pm: &mut PixmapMut, cx: f32, cy: f32, r: f32, style: &Style) {
+    let mut paint = Paint::default();
+    paint.set_color(style.meridian);
+    paint.anti_alias = true;
+    let stroke = Stroke {
+        width: 1.0,
+        ..Default::default()
+    };
+
+    for i in 0..12 {
+        let deg = i as f32 * 30.0;
+        let rad = (deg - 90.0).to_radians();
+        let (sx, sy) = (cx + r * 0.18 * rad.cos(), cy + r * 0.18 * rad.sin());
+        let (ex, ey) = (cx + r * 1.85 * rad.cos(), cy + r * 1.85 * rad.sin());
+        let mut pb = PathBuilder::new();
+        pb.move_to(sx, sy);
+        pb.line_to(ex, ey);
+        let path = pb.finish().unwrap();
+        pm.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+    }
+}
+
+fn draw_scale_ring(pm: &mut PixmapMut, cx: f32, cy: f32, r: f32, style: &Style) {
+    let mut ring_paint = Paint::default();
+    ring_paint.set_color(style.ring);
+    ring_paint.anti_alias = true;
+    let ring_stroke = Stroke {
+        width: 1.6,
+        ..Default::default()
+    };
+    let outer = PathBuilder::from_circle(cx, cy, r).unwrap();
+    pm.stroke_path(
+        &outer,
+        &ring_paint,
+        &ring_stroke,
+        Transform::identity(),
+        None,
+    );
+    let inner = PathBuilder::from_circle(cx, cy, r * 0.92).unwrap();
+    pm.stroke_path(
+        &inner,
+        &ring_paint,
+        &ring_stroke,
+        Transform::identity(),
+        None,
+    );
+
+    let tick_paint_minor = {
+        let mut p = Paint::default();
+        p.set_color(style.tick_minor);
+        p.anti_alias = true;
+        p
+    };
+    let tick_paint_major = {
+        let mut p = Paint::default();
+        p.set_color(style.tick_major);
+        p.anti_alias = true;
+        p
+    };
+    let stroke_minor = Stroke {
+        width: 1.0,
+        ..Default::default()
+    };
+    let stroke_major = Stroke {
+        width: 2.0,
+        ..Default::default()
+    };
+
+    for i in 0..72 {
+        let deg = i as f32 * 5.0;
+        let rad = (deg - 90.0).to_radians();
+        let is_major = i % 6 == 0;
+        let r_inner = if is_major { r * 0.84 } else { r * 0.89 };
+        let mut pb = PathBuilder::new();
+        pb.move_to(cx + r_inner * rad.cos(), cy + r_inner * rad.sin());
+        pb.line_to(cx + r * 0.92 * rad.cos(), cy + r * 0.92 * rad.sin());
+        let path = pb.finish().unwrap();
+        if is_major {
+            pm.stroke_path(
+                &path,
+                &tick_paint_major,
+                &stroke_major,
+                Transform::identity(),
+                None,
+            );
+        } else {
+            pm.stroke_path(
+                &path,
+                &tick_paint_minor,
+                &stroke_minor,
+                Transform::identity(),
+                None,
+            );
+        }
+    }
+}
+
+fn draw_rose(pm: &mut PixmapMut, cx: f32, cy: f32, len_main: f32, style: &Style) {
+    let len_filler = len_main * 0.55;
+    for i in 0..8 {
+        let deg = i as f32 * 45.0;
+        let rad = (deg - 90.0).to_radians();
+        let is_main = i % 2 == 0;
+        let length = if is_main { len_main } else { len_filler };
+        let base_half = length * 0.13;
+
+        let tip = (cx + length * rad.cos(), cy + length * rad.sin());
+        let perp = rad + std::f32::consts::FRAC_PI_2;
+        let b1 = (cx + base_half * perp.cos(), cy + base_half * perp.sin());
+        let b2 = (cx - base_half * perp.cos(), cy - base_half * perp.sin());
+
+        let light = if is_main {
+            style.rose_main_light
+        } else {
+            style.rose_filler_light
+        };
+        let dark = if is_main {
+            style.rose_main_dark
+        } else {
+            style.rose_filler_dark
+        };
+
+        let mut pb1 = PathBuilder::new();
+        pb1.move_to(cx, cy);
+        pb1.line_to(b1.0, b1.1);
+        pb1.line_to(tip.0, tip.1);
+        pb1.close();
+        let path1 = pb1.finish().unwrap();
+        let mut paint1 = Paint::default();
+        paint1.set_color(light);
+        paint1.anti_alias = true;
+        pm.fill_path(&path1, &paint1, FillRule::Winding, Transform::identity(), None);
+
+        let mut pb2 = PathBuilder::new();
+        pb2.move_to(cx, cy);
+        pb2.line_to(tip.0, tip.1);
+        pb2.line_to(b2.0, b2.1);
+        pb2.close();
+        let path2 = pb2.finish().unwrap();
+        let mut paint2 = Paint::default();
+        paint2.set_color(dark);
+        paint2.anti_alias = true;
+        pm.fill_path(&path2, &paint2, FillRule::Winding, Transform::identity(), None);
+    }
+}
+
+fn draw_needle(pm: &mut PixmapMut, cx: f32, cy: f32, length: f32, compass_deg: f32, style: &Style) {
+    let rad = (compass_deg - 90.0).to_radians();
+    let perp = rad + std::f32::consts::FRAC_PI_2;
+    let base_half = length * 0.045;
+
+    let tip_n = (cx + length * rad.cos(), cy + length * rad.sin());
+    let tip_s = (
+        cx - length * 0.85 * rad.cos(),
+        cy - length * 0.85 * rad.sin(),
+    );
+    let b1 = (cx + base_half * perp.cos(), cy + base_half * perp.sin());
+    let b2 = (cx - base_half * perp.cos(), cy - base_half * perp.sin());
+
+    let mut pb_n = PathBuilder::new();
+    pb_n.move_to(b1.0, b1.1);
+    pb_n.line_to(tip_n.0, tip_n.1);
+    pb_n.line_to(b2.0, b2.1);
+    pb_n.close();
+    let path_n = pb_n.finish().unwrap();
+    let mut paint_n = Paint::default();
+    paint_n.set_color(style.north);
+    paint_n.anti_alias = true;
+    pm.fill_path(&path_n, &paint_n, FillRule::Winding, Transform::identity(), None);
+
+    let mut pb_s = PathBuilder::new();
+    pb_s.move_to(b1.0, b1.1);
+    pb_s.line_to(tip_s.0, tip_s.1);
+    pb_s.line_to(b2.0, b2.1);
+    pb_s.close();
+    let path_s = pb_s.finish().unwrap();
+    let mut paint_s = Paint::default();
+    paint_s.set_color(style.south);
+    paint_s.anti_alias = true;
+    pm.fill_path(&path_s, &paint_s, FillRule::Winding, Transform::identity(), None);
+}
+
+fn draw_needle_glow(
+    pm: &mut PixmapMut,
+    cx: f32,
+    cy: f32,
+    length: f32,
+    compass_deg: f32,
+    style: &Style,
+) {
+    let rad = (compass_deg - 90.0).to_radians();
+    let tip = (cx + length * rad.cos(), cy + length * rad.sin());
+    let north_rgba8 = (
+        (style.north.red() * 255.0) as u8,
+        (style.north.green() * 255.0) as u8,
+        (style.north.blue() * 255.0) as u8,
+    );
+
+    for (radius_mult, alpha) in [(0.18_f32, 24u8), (0.12, 50), (0.08, 110)] {
+        let circle = PathBuilder::from_circle(tip.0, tip.1, length * radius_mult).unwrap();
+        let mut paint = Paint::default();
+        paint.set_color(Color::from_rgba8(
+            north_rgba8.0,
+            north_rgba8.1,
+            north_rgba8.2,
+            alpha,
+        ));
+        paint.anti_alias = true;
+        paint.blend_mode = BlendMode::Screen;
+        pm.fill_path(&circle, &paint, FillRule::Winding, Transform::identity(), None);
+    }
+}
+
+fn draw_pivot(pm: &mut PixmapMut, cx: f32, cy: f32, style: &Style) {
+    let outer = PathBuilder::from_circle(cx, cy, 8.0).unwrap();
+    let mut p_outer = Paint::default();
+    p_outer.set_color(style.pivot_outer);
+    p_outer.anti_alias = true;
+    pm.fill_path(&outer, &p_outer, FillRule::Winding, Transform::identity(), None);
+
+    let inner = PathBuilder::from_circle(cx, cy, 4.0).unwrap();
+    let mut p_inner = Paint::default();
+    p_inner.set_color(style.pivot_inner);
+    p_inner.anti_alias = true;
+    pm.fill_path(&inner, &p_inner, FillRule::Winding, Transform::identity(), None);
+}
+
+fn draw_signature(pm: &mut PixmapMut, font: &FontRef<'_>, w: f32, h: f32, style: &Style) {
+    let size = (h * 0.042).clamp(28.0, 56.0);
+    let y = h * 0.93;
+    draw_text_centered(pm, font, size, w / 2.0, y, "QuompaCC", style.signature);
+}
+
+fn draw_cardinals(
+    pm: &mut PixmapMut,
+    font: &FontRef<'_>,
+    cx: f32,
+    cy: f32,
+    r: f32,
+    style: &Style,
+) {
+    let size = (r * 0.10).max(14.0);
+    let label_radius = r * 0.76;
+
+    let labels = [
+        (0.0_f32, "N", style.north),
+        (90.0, "O", style.cardinal_other),
+        (180.0, "S", style.cardinal_other),
+        (270.0, "W", style.cardinal_other),
+    ];
+
+    for (deg, text, color) in labels {
+        let rad = (deg - 90.0).to_radians();
+        let tx = cx + label_radius * rad.cos();
+        let ty = cy + label_radius * rad.sin();
+        draw_text_centered(pm, font, size, tx, ty, text, color);
+    }
+}
+
+fn draw_heading_mark(pm: &mut PixmapMut, cx: f32, cy: f32, r: f32, style: &Style) {
+    let tip = (cx, cy - r * 0.97);
+    let b1 = (cx - 7.0, cy - r * 1.06);
+    let b2 = (cx + 7.0, cy - r * 1.06);
+    let mut pb = PathBuilder::new();
+    pb.move_to(tip.0, tip.1);
+    pb.line_to(b1.0, b1.1);
+    pb.line_to(b2.0, b2.1);
+    pb.close();
+    let path = pb.finish().unwrap();
+    let mut paint = Paint::default();
+    paint.set_color(style.north);
+    paint.anti_alias = true;
+    pm.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+}
+
+fn draw_text_centered(
+    pm: &mut PixmapMut,
+    font: &FontRef<'_>,
+    size: f32,
+    cx: f32,
+    cy: f32,
+    text: &str,
+    color: Color,
+) {
+    let scaled = font.as_scaled(PxScale::from(size));
+
+    let mut total_advance = 0.0_f32;
+    let mut min_y = f32::INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+    for ch in text.chars() {
+        let id = scaled.glyph_id(ch);
+        total_advance += scaled.h_advance(id);
+        if let Some(outline) = scaled.outline_glyph(id.with_scale(PxScale::from(size))) {
+            let b = outline.px_bounds();
+            min_y = min_y.min(b.min.y);
+            max_y = max_y.max(b.max.y);
+        }
+    }
+    let text_h = if max_y.is_finite() {
+        max_y - min_y
+    } else {
+        size
+    };
+
+    let mut pen_x = cx - total_advance / 2.0;
+    let baseline_y = cy + text_h / 2.0 - max_y.max(0.0);
+
+    let pm_w = pm.width() as i32;
+    let pm_h = pm.height() as i32;
+    let cr = (color.red() * 255.0) as u8;
+    let cg = (color.green() * 255.0) as u8;
+    let cb = (color.blue() * 255.0) as u8;
+
+    for ch in text.chars() {
+        let id = scaled.glyph_id(ch);
+        let advance = scaled.h_advance(id);
+        let glyph =
+            id.with_scale_and_position(PxScale::from(size), ab_glyph::point(pen_x, baseline_y));
+        if let Some(outline) = font.outline_glyph(glyph) {
+            let b = outline.px_bounds();
+            outline.draw(|gx, gy, alpha| {
+                let px = b.min.x as i32 + gx as i32;
+                let py = b.min.y as i32 + gy as i32;
+                if px < 0 || py < 0 || px >= pm_w || py >= pm_h {
+                    return;
+                }
+                let idx = (py as usize * pm_w as usize + px as usize) * 4;
+                let data = pm.data_mut();
+                let a = (alpha * 255.0).clamp(0.0, 255.0) as u32;
+                for (i, &c) in [cr, cg, cb].iter().enumerate() {
+                    let dst = data[idx + i] as u32;
+                    data[idx + i] = ((c as u32 * a + dst * (255 - a)) / 255) as u8;
+                }
+            });
+        }
+        pen_x += advance;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tiny_skia::Pixmap;
+
+    #[test]
+    fn quompacc_fonts_construct_a_painter() {
+        let painter = CompassPainter::new(Fonts::quompacc());
+        assert!(painter.is_ok());
+    }
+
+    #[test]
+    fn garbage_sans_font_yields_build_error() {
+        let bad = Fonts {
+            sans_bold: b"not a font",
+            script: Fonts::quompacc().script,
+        };
+        assert!(matches!(
+            CompassPainter::new(bad),
+            Err(BuildError::SansFontInvalid)
+        ));
+    }
+
+    #[test]
+    fn garbage_script_font_yields_build_error() {
+        let bad = Fonts {
+            sans_bold: Fonts::quompacc().sans_bold,
+            script: b"not a font",
+        };
+        assert!(matches!(
+            CompassPainter::new(bad),
+            Err(BuildError::ScriptFontInvalid)
+        ));
+    }
+
+    #[test]
+    fn needle_angle_finite_for_relevant_t_range() {
+        for t in [0.0_f32, 0.5, 1.5, 1.6, 2.0, 5.0, SETTLE_T, 60.0] {
+            let a = needle_angle_deg(t);
+            assert!(a.is_finite(), "needle_angle_deg({}) = {} not finite", t, a);
+        }
+    }
+
+    #[test]
+    fn needle_angle_at_settle_is_near_north() {
+        let a = needle_angle_deg(SETTLE_T);
+        let off = (a - 1080.0).abs();
+        assert!(off < 5.0, "settle angle {} too far from 1080°", a);
+    }
+
+    #[test]
+    fn renders_without_panic_at_typical_resolutions() {
+        let painter = CompassPainter::new(Fonts::quompacc()).unwrap();
+        for (w, h) in [(1280u32, 720u32), (1920, 1080), (1920, 1440), (2560, 1440)] {
+            let mut pm = Pixmap::new(w, h).expect("pixmap");
+            painter.render(
+                &mut pm.as_mut(),
+                w as f32,
+                h as f32,
+                SETTLE_T,
+                &FrameOpts::default(),
+            );
+            let idx = ((h / 2) as usize * w as usize + (w / 2) as usize) * 4;
+            let data = pm.data();
+            assert!(
+                data[idx] != 0 || data[idx + 1] != 0 || data[idx + 2] != 0,
+                "center pixel fully black at {}x{}",
+                w,
+                h
+            );
+        }
+    }
+
+    #[test]
+    fn veil_alpha_255_yields_black_frame() {
+        let painter = CompassPainter::new(Fonts::quompacc()).unwrap();
+        let mut pm = Pixmap::new(640, 480).unwrap();
+        painter.render(
+            &mut pm.as_mut(),
+            640.0,
+            480.0,
+            SETTLE_T,
+            &FrameOpts {
+                include_north_glow: true,
+                veil_alpha: 255,
+            },
+        );
+        for chunk in pm.data().chunks_exact(4) {
+            assert_eq!(
+                (chunk[0], chunk[1], chunk[2]),
+                (0, 0, 0),
+                "veil 255 should leave RGB all zero"
+            );
+        }
+    }
+
+    #[test]
+    fn north_glow_position_consistent_with_needle_angle() {
+        let painter = CompassPainter::new(Fonts::quompacc()).unwrap();
+        let (w, h) = (1920.0_f32, 1080.0_f32);
+        let t = SETTLE_T;
+        let (x, y) = painter.north_glow_position(w, h, t);
+
+        let cx = w / 2.0;
+        let cy = h / 2.0;
+        let r = (w.min(h) * painter.style.radius_factor).round();
+        let length = r * 0.78;
+        let angle = needle_angle_deg(t);
+        let rad = (angle - 90.0).to_radians();
+        let expected_x = cx + length * rad.cos();
+        let expected_y = cy + length * rad.sin();
+
+        assert!((x - expected_x).abs() < 1e-3);
+        assert!((y - expected_y).abs() < 1e-3);
+    }
+
+    #[test]
+    fn north_glow_disabled_changes_some_pixels() {
+        // At the needle tip itself, the solid needle paint overpaints the glow
+        // so they look identical there — but the glow halo extends past the
+        // needle and must therefore differ somewhere in the buffer.
+        let painter = CompassPainter::new(Fonts::quompacc()).unwrap();
+        let (w, h) = (1920u32, 1080u32);
+        let mut with_glow = Pixmap::new(w, h).unwrap();
+        let mut without_glow = Pixmap::new(w, h).unwrap();
+
+        painter.render(
+            &mut with_glow.as_mut(),
+            w as f32,
+            h as f32,
+            SETTLE_T,
+            &FrameOpts {
+                include_north_glow: true,
+                veil_alpha: 0,
+            },
+        );
+        painter.render(
+            &mut without_glow.as_mut(),
+            w as f32,
+            h as f32,
+            SETTLE_T,
+            &FrameOpts {
+                include_north_glow: false,
+                veil_alpha: 0,
+            },
+        );
+
+        let differ = with_glow
+            .data()
+            .iter()
+            .zip(without_glow.data().iter())
+            .any(|(a, b)| a != b);
+        assert!(differ, "frames identical with and without north glow");
+    }
+}

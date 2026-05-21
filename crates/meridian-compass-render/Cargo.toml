@@ -1,0 +1,9 @@
+[package]
+name = "meridian-compass-render"
+version = "0.1.0"
+edition = "2021"
+description = "QuompaCC compass renderer shared between bootsplash and meridian-login"
+
+[dependencies]
+ab_glyph = { workspace = true }
+tiny-skia = { workspace = true }
