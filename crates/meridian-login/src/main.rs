@@ -16,11 +16,14 @@ mod auth;
 mod input;
 mod session;
 
-use std::fs::{File, OpenOptions};
-use std::io::{Read, Write};
+use std::fs::{File, OpenOptions, Permissions};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::os::fd::{AsFd, BorrowedFd};
-use std::os::unix::net::UnixStream;
+use std::os::unix::fs::PermissionsExt;
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::PathBuf;
 use std::sync::mpsc;
+use std::thread;
 use std::time::{Duration, Instant};
 
 use drm::buffer::DrmFourcc;
@@ -37,6 +40,16 @@ use input::{open_keyboards, poll_keyboards, KeyAction, Keyboard};
 
 const BOOTSPLASH_SOCKET: &str = "/run/bootsplash.sock";
 const HANDOVER_SETTLE_MS: u64 = 200;
+
+// Phase 8: IPC server that the spawned compositor uses to hand the screen
+// over and announce its first committed frame. Mirror of the bootsplash IPC
+// model — see `bootsplash_handover` / `bootsplash_exit` in this file.
+const LOGIN_SOCKET: &str = "/run/meridian-login.sock";
+/// Maximum time we wait for the compositor to send `handover` before we
+/// give up and release DRM anyway. Without this fallback a buggy or
+/// pre-Phase-8 compositor would leave the user staring at the frozen
+/// login frame indefinitely.
+const HANDOVER_DEADLINE: Duration = Duration::from_secs(5);
 
 // Animation parameters
 const WATERMARK_START_MS: u64 = 200;
@@ -346,29 +359,138 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    match card.release_master_lock() {
-        Ok(()) => info!("drm: released master"),
-        Err(e) => warn!(error = %e, "drm: release_master failed"),
-    }
-    // Close /dev/dri/card0 entirely. release_master is not enough — while
-    // our fd stays open, libseat's TakeDevice for the compositor returns
-    // EAGAIN on virtio_gpu (and likely other drivers): the device still
-    // has another opener that is not the new master-to-be. Phase 8's IPC
-    // handover will let us close this earlier without a black-screen gap;
-    // for now we accept a brief blank while the compositor's first frame
-    // lands.
-    drop(card);
-    info!("drm: closed card0 fd");
+    // Phase 8: keep the DRM master + framebuffer alive until the compositor
+    // signals it is ready to take the screen (via `handover` on the login
+    // IPC socket). When that signal arrives we release master + close the
+    // fd, which lets the compositor's libseat acquire cleanly. If the
+    // compositor crashes early or never signals, the HANDOVER_DEADLINE
+    // fallback releases anyway so we don't strand the user on a frozen
+    // login frame.
+    let (ipc_tx, ipc_rx) = mpsc::channel::<IpcEvent>();
+    let ipc_socket_path = match compositor_child.as_ref() {
+        Some(_) => match spawn_login_ipc_server(ipc_tx) {
+            Ok(p) => Some(p),
+            Err(e) => {
+                warn!(error = %e, "login ipc server bind failed; releasing drm immediately");
+                None
+            }
+        },
+        // No compositor to hand over to — skip the IPC server, fall through
+        // to immediate release below.
+        None => None,
+    };
 
+    let mut card_opt: Option<Card> = Some(card);
+    let mut master_released = false;
+    let mut first_frame_seen = false;
+    let handover_at = Instant::now();
+
+    // Two-stage release mirroring the bootsplash → login pattern:
+    //   1. on `handover`: drop DRM master but keep the fd open so the
+    //      scanout buffer stays referenced by the kernel — the visible
+    //      pixels do not change yet.
+    //   2. on `exit`: close the fd. By now the compositor's first frame
+    //      is on screen and owns the scanout, so closing our fb is safe.
+    // Without (1), the compositor's first commit fights us for master.
+    // Without (2)-being-deferred-to-exit, the kernel may drop our fb
+    // before the compositor's first commit lands → black flash.
     if let Some(mut child) = compositor_child {
-        info!(pid = child.id(), "waiting for compositor to exit");
-        match child.wait() {
-            Ok(status) => info!(pid = child.id(), status = ?status, "compositor exited"),
-            Err(e) => warn!(error = %e, "wait on compositor failed"),
+        info!(pid = child.id(), "waiting for compositor handover + exit");
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    info!(pid = child.id(), status = ?status, "compositor exited");
+                    if let Some(card) = card_opt.take() {
+                        if !master_released {
+                            warn!("compositor exited without handover; releasing drm now");
+                            let _ = card.release_master_lock();
+                        }
+                        drop(card);
+                    }
+                    break;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    warn!(error = %e, "try_wait on compositor failed");
+                    break;
+                }
+            }
+
+            match ipc_rx.recv_timeout(Duration::from_millis(50)) {
+                Ok(IpcEvent::Handover) => {
+                    if !master_released {
+                        if let Some(card) = card_opt.as_ref() {
+                            match card.release_master_lock() {
+                                Ok(()) => info!(
+                                    "ipc handover: released drm master (fd kept alive)"
+                                ),
+                                Err(e) => warn!(error = %e, "release_master failed"),
+                            }
+                        }
+                        master_released = true;
+                    }
+                }
+                Ok(IpcEvent::Exit) => {
+                    if !first_frame_seen {
+                        info!(
+                            handover_to_first_frame_ms = handover_at.elapsed().as_millis() as u64,
+                            "ipc exit: compositor first frame on screen; closing card0 fd"
+                        );
+                        first_frame_seen = true;
+                    }
+                    if let Some(card) = card_opt.take() {
+                        drop(card);
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if handover_at.elapsed() >= HANDOVER_DEADLINE {
+                        if !master_released {
+                            if let Some(card) = card_opt.as_ref() {
+                                warn!(
+                                    deadline_s = HANDOVER_DEADLINE.as_secs(),
+                                    "handover deadline missed; releasing drm master"
+                                );
+                                let _ = card.release_master_lock();
+                            }
+                            master_released = true;
+                        }
+                        if !first_frame_seen {
+                            if let Some(card) = card_opt.take() {
+                                warn!("handover deadline missed; closing card0 fd");
+                                drop(card);
+                            }
+                            first_frame_seen = true;
+                        }
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    warn!("login ipc thread vanished; falling back to immediate release");
+                    if let Some(card) = card_opt.take() {
+                        let _ = card.release_master_lock();
+                        drop(card);
+                    }
+                    master_released = true;
+                    first_frame_seen = true;
+                }
+            }
         }
     } else if exit == ControlFlow::Submit {
         // Auth ok but spawn failed — don't leave the session dangling.
         warn!("auth ok but compositor not spawned; tearing session down immediately");
+        if let Some(card) = card_opt.take() {
+            let _ = card.release_master_lock();
+            drop(card);
+        }
+    } else {
+        // Cancel / inactivity — release master and exit cleanly.
+        if let Some(card) = card_opt.take() {
+            let _ = card.release_master_lock();
+            drop(card);
+        }
+    }
+
+    if let Some(path) = ipc_socket_path {
+        let _ = std::fs::remove_file(&path);
     }
 
     if let Some(driver) = auth_driver {
@@ -835,6 +957,78 @@ fn send_command(path: &str, cmd: &[u8]) -> std::io::Result<String> {
             "peer refused: {}",
             resp.trim()
         )))
+    }
+}
+
+// ---- Phase 8 IPC: login as handover server ----
+
+/// Events the compositor (or any client) can signal over the login IPC
+/// socket. The login main loop reacts to these by dropping its DRM master /
+/// fd (Handover) or by logging that the new compositor is fully visible
+/// (Exit).
+enum IpcEvent {
+    /// Compositor is ready to take the screen. Login must release DRM
+    /// master and close its card fd so the compositor's libseat acquire
+    /// succeeds. This is the moment that gates the visible handover.
+    Handover,
+    /// Compositor's first frame is on screen. Informational; lets us log
+    /// the handover latency and could later be used to suppress the
+    /// fallback timeout.
+    Exit,
+}
+
+/// Bind the login IPC socket and spawn an accept thread that forwards
+/// each parsed command as an [`IpcEvent`] into `tx`. Returns the socket
+/// path so the caller can unlink it on shutdown.
+fn spawn_login_ipc_server(tx: mpsc::Sender<IpcEvent>) -> std::io::Result<PathBuf> {
+    let path = PathBuf::from(LOGIN_SOCKET);
+    let _ = std::fs::remove_file(&path);
+    let listener = UnixListener::bind(&path)?;
+    // Single-user, single-seat assumption: the compositor running as the
+    // authenticated user must be able to connect. For a multi-user setup
+    // this should be chmod 0660 + chown root:<user>'s primary group.
+    std::fs::set_permissions(&path, Permissions::from_mode(0o666))?;
+    info!(path = %path.display(), "login ipc: listening");
+
+    thread::spawn(move || {
+        for conn in listener.incoming() {
+            match conn {
+                Ok(stream) => {
+                    let tx2 = tx.clone();
+                    thread::spawn(move || handle_login_ipc_client(stream, tx2));
+                }
+                Err(e) => {
+                    warn!(error = %e, "login ipc: accept failed");
+                    break;
+                }
+            }
+        }
+    });
+    Ok(path)
+}
+
+fn handle_login_ipc_client(mut stream: UnixStream, tx: mpsc::Sender<IpcEvent>) {
+    let read_clone = match stream.try_clone() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let reader = BufReader::new(read_clone);
+    for line in reader.lines() {
+        let Ok(cmd) = line else { return };
+        match cmd.trim() {
+            "" => continue,
+            "handover" => {
+                let _ = tx.send(IpcEvent::Handover);
+                let _ = writeln!(stream, "ok handover");
+            }
+            "exit" => {
+                let _ = tx.send(IpcEvent::Exit);
+                let _ = writeln!(stream, "ok exit");
+            }
+            other => {
+                let _ = writeln!(stream, "err unknown command: {}", other);
+            }
+        }
     }
 }
 

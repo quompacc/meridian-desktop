@@ -13,6 +13,10 @@ ExecStart=/home/eduard/meridian-desktop/target/release/meridian-login
 # Default compositor path; auth.rs spawns this as the authenticated user
 # after PAM open_session(). Override at unit level for testing.
 Environment=MERIDIAN_LOGIN_COMPOSITOR=/home/eduard/meridian-desktop/target/release/meridian
+# tracing_subscriber::fmt::init() defaults to filtering everything below
+# ERROR when RUST_LOG is unset. INFO keeps the boot trail visible in the
+# journal without exploding the volume.
+Environment=RUST_LOG=info
 
 # Bind to /dev/tty1 so getty stays away and the program owns the VT.
 # pam_set_item(PAM_TTY, "tty1") in auth.rs is what makes pam_systemd

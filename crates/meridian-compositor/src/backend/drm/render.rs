@@ -524,6 +524,9 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                                 kms_node_path
                             );
                         }
+                        // Phase 8: tell meridian-login the screen is ours
+                        // now, so it can close its login framebuffer fd.
+                        super::login_ipc::send_first_frame();
                     }
                 }
                 metrics.queue_duration += queue_started.elapsed();

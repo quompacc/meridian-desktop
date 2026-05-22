@@ -920,6 +920,11 @@ pub fn init_drm(
     event_loop: &mut EventLoop<MeridianState>,
     state: &mut MeridianState,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // Phase 8: ask meridian-login to release DRM master before we start the
+    // libseat acquire chain. Best-effort: if we were not launched by
+    // meridian-login the socket simply doesn't exist and we proceed.
+    super::login_ipc::send_handover();
+
     let (mut session, session_notifier) = LibSeatSession::new()?;
     let seat_name = session.seat();
     log_drm_startup_diagnostics(&seat_name);
