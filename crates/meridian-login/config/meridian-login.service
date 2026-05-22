@@ -1,0 +1,44 @@
+[Unit]
+Description=Meridian login (DRM-direct display manager)
+# tty1 is the user-facing login terminal; getty must not be there.
+Conflicts=getty@tty1.service
+After=systemd-user-sessions.service getty@tty1.service systemd-udev-trigger.service local-fs.target
+# Run before the generic graphical login targets so this is the first
+# thing the user sees after the bootsplash hand-off.
+Before=getty.target multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/home/eduard/meridian-desktop/target/release/meridian-login
+# Default compositor path; auth.rs spawns this as the authenticated user
+# after PAM open_session(). Override at unit level for testing.
+Environment=MERIDIAN_LOGIN_COMPOSITOR=/home/eduard/meridian-desktop/target/release/meridian
+
+# Bind to /dev/tty1 so getty stays away and the program owns the VT.
+# pam_set_item(PAM_TTY, "tty1") in auth.rs is what makes pam_systemd
+# derive seat=seat0 vtnr=1; the TTYPath here keeps the VT real so that
+# derivation matches the actual situation (and so any kernel messages
+# don't fight with our DRM framebuffer).
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+
+# We need root to open /dev/dri/card0 with DRM master, run pam_authenticate
+# against /etc/shadow, and call setuid/setgid into the user before spawning
+# the compositor.
+User=root
+
+# Graceful shutdown: SIGTERM lets the render loop release master and exit.
+KillSignal=SIGTERM
+TimeoutStopSec=5
+Restart=no
+
+[Install]
+# Replaces the getty on tty1; pulled in by multi-user.target via the
+# WantedBy alias below.
+WantedBy=multi-user.target
+Alias=display-manager.service

@@ -10,17 +10,15 @@
 #             /dev/dri/card0 and input devices via libseat. pam_unix
 #             handles utmp/wtmp bookkeeping and other per-user setup.
 #
-# meridian-login itself calls Client::open_session() after a successful
-# authenticate(), and keeps the PAM handle alive for the duration of the
+# meridian-login itself calls pam_open_session() after a successful
+# pam_authenticate(), and keeps the PAM handle alive for the duration of the
 # spawned compositor. On compositor exit the handle is dropped, which
-# triggers close_session and pam_end.
+# triggers pam_close_session and pam_end.
 #
-# Known TODO (Phase 7c): pam_systemd has no `seat=` argument; the seat
-# is derived from PAM_TTY ("tty1" → seat0+vtnr=1) or PAM env XDG_SEAT.
-# With neither set, logind creates a session with seat="" which libseat's
-# logind backend will not accept for DRM acquire. Once meridian-login.service
-# runs on /dev/tty1, auth.rs will additionally pam_set_item(PAM_TTY, "tty1")
-# before open_session().
+# Seat-binding (Phase 7c): auth.rs runs pam_set_item(PAM_TTY, "tty1")
+# before pam_open_session so pam_systemd derives seat=seat0, vtnr=1 for
+# the new logind session. Without that the seat would be empty and
+# libseat-logind would refuse the compositor's DRM acquire.
 
 auth      required   pam_unix.so
 account   required   pam_unix.so
