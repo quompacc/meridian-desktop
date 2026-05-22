@@ -55,6 +55,14 @@ impl LayerShellHandler for MeridianShell {
             return;
         }
 
+        if self.notification_layer == *layer {
+            warn!("Notification layer surface closed by compositor; clearing queue");
+            self.notifications.clear();
+            self.notification_configured = false;
+            self.notification_dirty = false;
+            return;
+        }
+
         warn!("Unknown layer surface closed by compositor");
     }
 
@@ -226,6 +234,33 @@ impl LayerShellHandler for MeridianShell {
             self.network_height = NETWORK_POPUP_HEIGHT;
             if self.network_popup_open {
                 self.draw_network_popup(qh, RepaintReason::LayerConfigure);
+            }
+        } else if self.notification_layer == *layer {
+            tracing::debug!(
+                "notification configure: requested={}x{} desired={}x{}",
+                configure.new_size.0,
+                configure.new_size.1,
+                crate::NOTIFICATION_WIDTH,
+                crate::NOTIFICATION_HEIGHT
+            );
+            self.notification_layer
+                .set_anchor(Anchor::TOP | Anchor::RIGHT);
+            self.notification_layer.set_margin(
+                crate::NOTIFICATION_TOP_MARGIN,
+                crate::NOTIFICATION_RIGHT_MARGIN,
+                0,
+                0,
+            );
+            self.notification_layer.set_exclusive_zone(0);
+            self.notification_layer
+                .set_size(crate::NOTIFICATION_WIDTH, crate::NOTIFICATION_HEIGHT);
+            self.notification_configured = true;
+            self.notification_width = crate::NOTIFICATION_WIDTH;
+            self.notification_height = crate::NOTIFICATION_HEIGHT;
+            if !self.notifications.is_empty() {
+                self.draw_notification_popup(qh, RepaintReason::LayerConfigure);
+            } else {
+                self.unmap_notification_popup(crate::wayland::CommitReason::UnknownOther);
             }
         }
     }

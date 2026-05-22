@@ -5,9 +5,10 @@ use tracing::{debug, info, warn};
 use wayland_client::QueueHandle;
 
 use crate::{
-    buffer, network_popup, panel, ui_preview, workspaces, Painter, Rect, CALENDAR_POPUP_HEIGHT,
-    CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT,
-    NETWORK_POPUP_WIDTH, PANEL_HEIGHT, WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
+    buffer, network_popup, notification_popup, panel, ui_preview, workspaces, Painter, Rect,
+    CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
+    NETWORK_POPUP_HEIGHT, NETWORK_POPUP_WIDTH, NOTIFICATION_HEIGHT, NOTIFICATION_WIDTH,
+    PANEL_HEIGHT, WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
 };
 
 use super::{
@@ -820,5 +821,91 @@ impl MeridianShell {
         self.network_layer.wl_surface().attach(None, 0, 0);
         self.network_layer.commit();
         self.network_dirty = false;
+    }
+
+    /// Phase A1.3: paint the front notification onto the dedicated
+    /// top-right layer-surface. If the queue is empty the caller should
+    /// invoke [`Self::unmap_notification_popup`] instead.
+    pub(crate) fn draw_notification_popup(
+        &mut self,
+        _qh: &QueueHandle<Self>,
+        reason: RepaintReason,
+    ) {
+        // Newest notification gets the spotlight; older ones stay queued
+        // and become visible again when newer entries expire or are
+        // closed. Stacking multiple at once is A1.3+ polish.
+        let Some(notif) = self.notifications.back().cloned() else {
+            self.unmap_notification_popup(CommitReason::UnknownOther);
+            return;
+        };
+        if !self.notification_configured {
+            debug!(
+                "draw_notification_popup deferred: reason={:?} configured=false",
+                reason
+            );
+            return;
+        }
+
+        let width = self.notification_width.min(NOTIFICATION_WIDTH);
+        let height = self.notification_height.min(NOTIFICATION_HEIGHT);
+        let stride = buffer::shm_buffer_stride(width);
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.notification_buffer,
+                width,
+                height,
+                stride,
+            );
+            let Some(buf) = buf else {
+                warn!(
+                    "notification buffer unavailable: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
+            };
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.notification_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
+                warn!(
+                    "notification canvas unavailable after retry: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
+            };
+
+            let mut painter = Painter::new(canvas, width as i32, height as i32);
+            notification_popup::draw_notification(&mut painter, &self.font, &self.theme, &notif);
+
+            if let Err(err) = buf.attach_to(self.notification_layer.wl_surface()) {
+                warn!(
+                    "notification buffer attach failed: reason={:?} width={} height={} error={}",
+                    reason, width, height, err
+                );
+                return;
+            }
+            self.notification_layer
+                .wl_surface()
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.notification_layer.commit();
+            debug!(
+                "draw_notification_popup committed: reason={:?} id={} width={} height={}",
+                reason, notif.id, width, height
+            );
+            self.notification_dirty = false;
+            return;
+        }
+    }
+
+    pub(crate) fn unmap_notification_popup(&mut self, reason: CommitReason) {
+        debug!(
+            "unmap_notification_popup: reason={:?} configured={} surface=notification attach_none=true commit=true",
+            reason, self.notification_configured
+        );
+        self.notification_layer.wl_surface().attach(None, 0, 0);
+        self.notification_layer.commit();
+        self.notification_dirty = false;
     }
 }

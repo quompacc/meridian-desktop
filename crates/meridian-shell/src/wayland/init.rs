@@ -151,6 +151,35 @@ pub(crate) fn initialize(
         NETWORK_POPUP_RIGHT_MARGIN
     );
 
+    // Phase A1.3: notification popup, anchored top-right, no keyboard
+    // input (purely informational). Stays unmapped (1x1 commit) when
+    // the notification queue is empty.
+    let notification_surface = compositor.create_surface(&qh);
+    let notification_layer = layer_shell.create_layer_surface(
+        &qh,
+        notification_surface,
+        Layer::Overlay,
+        Some("meridian-notification"),
+        None,
+    );
+    notification_layer.set_anchor(Anchor::TOP | Anchor::RIGHT);
+    notification_layer.set_margin(
+        crate::NOTIFICATION_TOP_MARGIN,
+        crate::NOTIFICATION_RIGHT_MARGIN,
+        0,
+        0,
+    );
+    notification_layer.set_size(crate::NOTIFICATION_WIDTH, crate::NOTIFICATION_HEIGHT);
+    notification_layer.set_exclusive_zone(0);
+    notification_layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+    debug!(
+        "Notification surface created: namespace=meridian-notification layer=Overlay anchor=Top|Right size={}x{} margin_top={} margin_right={} exclusive_zone=0 keyboard_interactivity=None",
+        crate::NOTIFICATION_WIDTH,
+        crate::NOTIFICATION_HEIGHT,
+        crate::NOTIFICATION_TOP_MARGIN,
+        crate::NOTIFICATION_RIGHT_MARGIN
+    );
+
     let meridian_config = MeridianConfig::load();
     let mut theme_manager = ThemeManager::new();
     if !meridian_config.general.theme.trim().is_empty()
@@ -266,16 +295,19 @@ pub(crate) fn initialize(
         calendar_layer,
         workspace_layer,
         network_layer,
+        notification_layer,
         panel_configured: false,
         launcher_configured: false,
         calendar_configured: false,
         workspace_configured: false,
         network_configured: false,
+        notification_configured: false,
         panel_buffer: None,
         launcher_buffer: None,
         calendar_buffer: None,
         workspace_buffer: None,
         network_buffer: None,
+        notification_buffer: None,
         pool,
         width: 1024,
         launcher_width: LAUNCHER_WIDTH,
@@ -286,6 +318,10 @@ pub(crate) fn initialize(
         workspace_height: WORKSPACE_POPUP_HEIGHT,
         network_width: NETWORK_POPUP_WIDTH,
         network_height: NETWORK_POPUP_HEIGHT,
+        notification_width: crate::NOTIFICATION_WIDTH,
+        notification_height: crate::NOTIFICATION_HEIGHT,
+        notifications: std::collections::VecDeque::new(),
+        notification_dirty: false,
         keyboard: None,
         keyboard_focus: SurfaceKind::None,
         pointer: None,
@@ -386,6 +422,8 @@ pub(crate) fn initialize(
     info!("Workspace popup surface created and committed");
     shell.network_layer.commit();
     info!("Network popup surface created and committed");
+    shell.notification_layer.commit();
+    info!("Notification surface created and committed");
 
     Ok((shell, qh))
 }

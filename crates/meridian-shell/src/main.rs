@@ -15,6 +15,7 @@ mod icons;
 mod launcher;
 mod network;
 mod network_popup;
+mod notification_popup;
 mod notifications;
 mod panel;
 mod panel_view;
@@ -42,6 +43,10 @@ pub const NETWORK_POPUP_WIDTH: u32 = 280;
 pub const NETWORK_POPUP_HEIGHT: u32 = 150;
 pub const SHELL_POPUP_BOTTOM_MARGIN: i32 = 2;
 pub const NETWORK_POPUP_RIGHT_MARGIN: i32 = 220;
+pub const NOTIFICATION_WIDTH: u32 = 360;
+pub const NOTIFICATION_HEIGHT: u32 = 90;
+pub const NOTIFICATION_TOP_MARGIN: i32 = 20;
+pub const NOTIFICATION_RIGHT_MARGIN: i32 = 12;
 
 pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
     vec![
@@ -79,14 +84,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (mut shell, qh) = wayland::initialize(&mut event_loop)?;
 
     insert_tick_timer(&mut event_loop, qh.clone())?;
-    insert_network_poll_timer(&mut event_loop, qh)?;
+    insert_network_poll_timer(&mut event_loop, qh.clone())?;
     insert_commit_stats_timer(&mut event_loop)?;
-    insert_notifications_source(&mut event_loop)?;
+    insert_notifications_source(&mut event_loop, qh.clone())?;
+    insert_notification_expiry_timer(&mut event_loop, qh)?;
 
     while !shell.exit {
         event_loop.dispatch(Duration::from_millis(500), &mut shell)?;
     }
 
+    Ok(())
+}
+
+/// Periodic timer that prunes expired notifications from the queue and
+/// re-renders the popup. Default expire is 5s per the freedesktop spec;
+/// callers can pass `expire_timeout = 0` to opt out of auto-expiry.
+/// Polling at 250ms is a deliberate-simple compromise — a future
+/// optimisation could schedule the next wake at the soonest expiry.
+fn insert_notification_expiry_timer(
+    event_loop: &mut EventLoop<'_, wayland::MeridianShell>,
+    qh: wayland_client::QueueHandle<wayland::MeridianShell>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let interval = Duration::from_millis(250);
+    event_loop
+        .handle()
+        .insert_source(Timer::from_duration(interval), move |_, _, shell| {
+            let now = std::time::Instant::now();
+            let before = shell.notifications.len();
+            shell.notifications.retain(|n| !n.is_expired(now));
+            if shell.notifications.len() != before {
+                if shell.notifications.is_empty() {
+                    shell.unmap_notification_popup(wayland::CommitReason::UnknownOther);
+                } else {
+                    shell.draw_notification_popup(&qh, wayland::RepaintReason::Clock);
+                }
+            }
+            TimeoutAction::ToDuration(interval)
+        })?;
     Ok(())
 }
 
@@ -96,6 +130,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// still work without notifications.
 fn insert_notifications_source(
     event_loop: &mut EventLoop<'_, wayland::MeridianShell>,
+    qh: wayland_client::QueueHandle<wayland::MeridianShell>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let rx = match notifications::spawn() {
         Ok(rx) => rx,
@@ -104,13 +139,10 @@ fn insert_notifications_source(
             return Ok(());
         }
     };
-    event_loop.handle().insert_source(rx, |event, _, _shell| {
+    event_loop.handle().insert_source(rx, move |event, _, shell| {
         use smithay_client_toolkit::reexports::calloop::channel::Event as ChEvent;
         match event {
             ChEvent::Msg(notifications::DbusEvent::Notify(n)) => {
-                // A1.3 will wire this into a popup surface stack on the
-                // shell side. Until then we log the arrival so we can
-                // verify the dbus pipe end-to-end with `notify-send`.
                 tracing::info!(
                     id = n.id,
                     app = %n.app,
@@ -119,9 +151,18 @@ fn insert_notifications_source(
                     urgency = ?n.urgency,
                     "notifications: incoming"
                 );
+                shell.notifications.push_back(n);
+                shell.notification_dirty = true;
+                shell.draw_notification_popup(&qh, wayland::RepaintReason::Ipc);
             }
             ChEvent::Msg(notifications::DbusEvent::Close(id)) => {
                 tracing::info!(id, "notifications: close request");
+                shell.notifications.retain(|n| n.id != id);
+                if shell.notifications.is_empty() {
+                    shell.unmap_notification_popup(wayland::CommitReason::UnknownOther);
+                } else {
+                    shell.draw_notification_popup(&qh, wayland::RepaintReason::Ipc);
+                }
             }
             ChEvent::Closed => {
                 tracing::warn!("notifications: dbus channel closed");
