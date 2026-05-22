@@ -350,6 +350,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(()) => info!("drm: released master"),
         Err(e) => warn!(error = %e, "drm: release_master failed"),
     }
+    // Close /dev/dri/card0 entirely. release_master is not enough — while
+    // our fd stays open, libseat's TakeDevice for the compositor returns
+    // EAGAIN on virtio_gpu (and likely other drivers): the device still
+    // has another opener that is not the new master-to-be. Phase 8's IPC
+    // handover will let us close this earlier without a black-screen gap;
+    // for now we accept a brief blank while the compositor's first frame
+    // lands.
+    drop(card);
+    info!("drm: closed card0 fd");
 
     if let Some(mut child) = compositor_child {
         info!(pid = child.id(), "waiting for compositor to exit");
