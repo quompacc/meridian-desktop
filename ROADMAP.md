@@ -32,7 +32,7 @@ people can use it".
 
 | # | Item | Effort | Why |
 |---|------|--------|-----|
-| A1 | **Notification daemon** — `org.freedesktop.Notifications` dbus interface + popup rendering in `meridian-shell` (reuse the `context_menu` engine for the popup surface) | 1-2 weeks | Browsers, messengers, build tools all expect this. Without it, notifications silently disappear. |
+| A1 | ~~**Notification daemon**~~ — landed 2026-05-22 (`1ed8765` + `685591a`). v1 scope: Notify/CloseNotification/GetCapabilities/GetServerInformation on dbus; top-right popup with title+app+body; auto-expiry timer; "newest gets the spotlight" rule. Polish deferred: click-to-dismiss, multi-line wrap, app icons, stacking display, NotificationClosed signal. | done | |
 | A2 | **xdg-desktop-portal v1** — file picker, screenshot, screen-share via `meridian-portal` | 2-3 weeks | Flatpaks, browser screen-share, "open file" dialogs all route through portals. |
 | A3 | **Settings UI v1** — display + keyboard + audio + theme | 1-2 weeks | Without it every adjustment is a TOML edit + restart. |
 | A4 | **Multi-monitor hotplug stable** (README flagged in-progress) | ongoing | First thing that breaks when you plug into a beamer or dock. |
