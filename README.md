@@ -49,6 +49,35 @@ It is not yet ready as a daily driver for most users.
 - Focus on correctness in render/input paths and explicit testing discipline
 - Practical diagnostics for DRM/runtime issues during development
 
+## Boot & login experience
+
+Meridian aims for a cohesive boot — bootloader to desktop without a single
+glitch frame or hard cut to black. The chain is three cooperating processes
+that hand DRM master to each other on a Unix socket; they all share the same
+[`meridian-compass-render`](crates/meridian-compass-render) crate so the
+compass is pixel-identical from the splash through the login screen.
+
+| Stage                                                                            | What you see                                                                          |
+|----------------------------------------------------------------------------------|---------------------------------------------------------------------------------------|
+| [**bootsplash**](https://github.com/quompacc/bootsplash) (separate repo)         | full QuompaCC compass, north needle glowing — runs from `basic.target` as DRM master  |
+| **meridian-login** (this repo, [`crates/meridian-login`](crates/meridian-login)) | compass dims to a watermark, the north-glow falls into a cyan login card              |
+| **meridian** (this repo, the workspace's main `meridian` binary)                 | compositor takes over the framebuffer once PAM has opened a logind session            |
+
+![meridian-login](assets/login.png)
+
+*meridian-login: the compass dims to a watermark and the cyan card with `Willkommen` slides in. Keyboard input goes through evdev + xkbcommon with `EVIOCGRAB` so the password never leaks to the kernel TTY.*
+
+![bootsplash](assets/bootsplash.png)
+
+*bootsplash: rendered before any user-space services are up, lives until meridian-login is ready to take master.*
+
+The login flow ([`docs/MERIDIAN_LOGIN.md`](docs/MERIDIAN_LOGIN.md)) authenticates
+the user against PAM (`pam_unix`), opens a logind session via `pam_systemd`
+(class=user, type=wayland), then spawns the compositor as that user with
+the full supplementary-group set (`video`, `render`, `input`, ...) and a
+clean Wayland environment. The PAM handle is held for the lifetime of the
+compositor; on exit it is dropped, which closes the logind session.
+
 ## Screenshots
 
 ![Meridian Desktop](assets/screenshot.png)
