@@ -14,7 +14,6 @@ use smithay::{
         connector::{self, State as ConnState},
         crtc, Device as _, ResourceHandles,
     },
-    utils::DeviceFd,
 };
 use tracing::{info, warn};
 
@@ -58,20 +57,37 @@ fn probe_gpu_connectors(
 ) -> Result<bool, Box<dyn std::error::Error>> {
     use smithay::reexports::rustix::fs::OFlags;
 
-    struct ProbeDrmDevice(DeviceFd);
-    impl AsFd for ProbeDrmDevice {
-        fn as_fd(&self) -> BorrowedFd<'_> {
-            self.0.as_fd()
-        }
-    }
-    impl smithay::reexports::drm::Device for ProbeDrmDevice {}
-    impl smithay::reexports::drm::control::Device for ProbeDrmDevice {}
-
     let fd: OwnedFd = session.open(
         path,
         OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOCTTY | OFlags::NONBLOCK,
     )?;
-    let probe = ProbeDrmDevice(DeviceFd::from(fd));
+
+    // Run the probe on a borrowed fd so we can hand `fd` back to
+    // session.close() afterwards. Without that explicit close, libseat
+    // keeps the device registered in its internal map and the next
+    // session.open(same path) in init.rs returns FailedToOpenDevice
+    // (EAGAIN) — dropping the OwnedFd only closes the kernel fd, not
+    // the libseat-side tracking entry.
+    let result = probe_connected(fd.as_fd());
+
+    if let Err(e) = session.close(fd) {
+        warn!("session.close after probe failed: {:?}", e);
+    }
+
+    result
+}
+
+fn probe_connected(fd: BorrowedFd<'_>) -> Result<bool, Box<dyn std::error::Error>> {
+    struct ProbeDrmDevice<'a>(BorrowedFd<'a>);
+    impl AsFd for ProbeDrmDevice<'_> {
+        fn as_fd(&self) -> BorrowedFd<'_> {
+            self.0
+        }
+    }
+    impl smithay::reexports::drm::Device for ProbeDrmDevice<'_> {}
+    impl smithay::reexports::drm::control::Device for ProbeDrmDevice<'_> {}
+
+    let probe = ProbeDrmDevice(fd);
     let resources = probe.resource_handles()?;
     for conn in resources.connectors() {
         if let Ok(info) = probe.get_connector(*conn, false) {
