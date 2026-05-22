@@ -70,8 +70,14 @@ pub(crate) fn parse_state(general: &str, device: &str) -> NetworkState {
         return NetworkState::Offline;
     }
 
+    // nmcli emits multi-word states like "connected (local only)" or
+    // "connected (site only)" when there's a working LAN connection but
+    // limited or no internet. The device loop below already does the
+    // same lenient check on per-device STATE; accept any "connected*"
+    // here too so a local-only LAN still shows in the tray instead of
+    // being misreported as Disconnected.
     let state = general_fields[0].to_ascii_lowercase();
-    if state != "connected" {
+    if !state.starts_with("connected") {
         return NetworkState::Disconnected;
     }
 
