@@ -87,6 +87,12 @@ pub struct FrameOpts {
     pub watermark_alpha: u8,
     /// Black overlay alpha (0..=255) applied last, for fade-in / fade-out.
     pub veil_alpha: u8,
+    /// Force the needle to point exactly north (1080° = 360°×3, the
+    /// settled angle), ignoring `t` and any post-spin oscillation. Used
+    /// for the bootsplash→login handover frame and the login settle
+    /// frame so the needle position matches pixel-perfectly across the
+    /// process boundary.
+    pub force_needle_north: bool,
 }
 
 impl Default for FrameOpts {
@@ -95,6 +101,7 @@ impl Default for FrameOpts {
             include_north_glow: true,
             watermark_alpha: 0,
             veil_alpha: 0,
+            force_needle_north: false,
         }
     }
 }
@@ -194,7 +201,11 @@ impl<'a> CompassPainter<'a> {
         let cy = h / 2.0;
         let r = (w.min(h) * self.style.radius_factor).round();
         let needle_length = r * 0.78;
-        let angle = needle_angle_deg(t);
+        let angle = if opts.force_needle_north {
+            1080.0
+        } else {
+            needle_angle_deg(t)
+        };
 
         draw_background(pm, w, h, cx, cy, &self.style);
         draw_meridian_lines(pm, cx, cy, r, &self.style);

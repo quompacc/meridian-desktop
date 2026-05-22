@@ -39,7 +39,13 @@ use auth::{start_auth_session, AuthDriver, AuthResult};
 use input::{open_keyboards, poll_keyboards, KeyAction, Keyboard};
 
 const BOOTSPLASH_SOCKET: &str = "/run/bootsplash.sock";
-const HANDOVER_SETTLE_MS: u64 = 200;
+// No client-side sleep needed: bootsplash's `handover` ack is now
+// synchronous — it only writes "ok handover" after drmDropMaster has
+// completed, so our set_crtc is race-free immediately after the call
+// returns. Kept the constant for backward-compat documentation but it
+// is unused.
+#[allow(dead_code)]
+const HANDOVER_SETTLE_MS: u64 = 0;
 
 // Phase 8: IPC server that the spawned compositor uses to hand the screen
 // over and announce its first committed frame. Mirror of the bootsplash IPC
@@ -242,10 +248,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("meridian-login starting (Phase 7)");
 
     match bootsplash_handover() {
-        Ok(()) => {
-            info!("bootsplash handover acked");
-            std::thread::sleep(Duration::from_millis(HANDOVER_SETTLE_MS));
-        }
+        Ok(()) => info!("bootsplash handover acked (master released)"),
         Err(e) => warn!(error = %e, "bootsplash handover failed (not running?); proceeding"),
     }
 
@@ -277,24 +280,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut db = card.create_dumb_buffer((w, h), DrmFourcc::Xrgb8888, 32)?;
     let fb = card.add_framebuffer(&db, 24, 32)?;
-    card.set_crtc(crtc, Some(fb), (0, 0), &[conn_info.handle()], Some(mode))?;
 
     let painter = CompassPainter::new(Fonts::quompacc())?;
 
-    // Render the settle frame first so the bootsplash → login handover is
-    // pixel-continuous before we start animating.
+    // Pre-fill the dumb buffer with the settle frame BEFORE set_crtc so
+    // the kernel never scans out a zeroed (black) buffer. Without this,
+    // the modeset would briefly show black between "bootsplash fb
+    // unmapped" and "first dirty_framebuffer push" → visible flash.
     {
         let mut mapping = card.map_dumb_buffer(&mut db)?;
         let buf = mapping.as_mut();
         let mut pm = PixmapMut::from_bytes(buf, w, h).ok_or("pixmap bind failed")?;
-        painter.render(&mut pm, w as f32, h as f32, SETTLE_T, &FrameOpts::default());
+        // force_needle_north matches bootsplash's final handover frame
+        // (also rendered with force_needle_north=true), so the visual
+        // transition has the needle at exactly the same angle across the
+        // process boundary.
+        painter.render(
+            &mut pm,
+            w as f32,
+            h as f32,
+            SETTLE_T,
+            &FrameOpts {
+                force_needle_north: true,
+                ..Default::default()
+            },
+        );
         for px in buf.chunks_exact_mut(4) {
             px.swap(0, 2);
         }
     }
+
+    card.set_crtc(crtc, Some(fb), (0, 0), &[conn_info.handle()], Some(mode))?;
     let clip = ClipRect::new(0, 0, w as u16, h as u16);
     let _ = card.dirty_framebuffer(fb, &[clip]);
-    info!("settle frame rendered");
+    info!("settle frame committed");
 
     match bootsplash_exit() {
         Ok(()) => info!("bootsplash exit signalled"),
@@ -655,6 +674,7 @@ fn run_animation(
                 &FrameOpts {
                     include_north_glow: false,
                     watermark_alpha: af.watermark_alpha,
+                    force_needle_north: true,
                     ..Default::default()
                 },
             );
@@ -944,7 +964,12 @@ fn bootsplash_exit() -> std::io::Result<()> {
 
 fn send_command(path: &str, cmd: &[u8]) -> std::io::Result<String> {
     let mut s = UnixStream::connect(path)?;
-    s.set_read_timeout(Some(Duration::from_millis(500)))?;
+    // 10s read timeout: covers the synchronous bootsplash handover which
+    // only acks after release_master_lock, and that itself waits until
+    // bootsplash's render loop reaches HANDOVER_MIN_T (~3s from boot).
+    // 500ms was correct for the old fire-and-forget protocol but too
+    // short for the new synchronous one.
+    s.set_read_timeout(Some(Duration::from_secs(10)))?;
     s.set_write_timeout(Some(Duration::from_millis(500)))?;
     s.write_all(cmd)?;
     let mut buf = [0u8; 256];
