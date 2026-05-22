@@ -1,16 +1,16 @@
 // Spawn the user-side compositor after a successful PAM authenticate.
 //
-// Phase 7a: minimal launch — fork+exec via std::process::Command, drop
-// privileges via .uid/.gid, set up a Wayland-friendly environment, and
-// ensure /run/user/<uid> exists (XDG_RUNTIME_DIR). We do not open a PAM
-// session here; that comes in Phase 7b once we know what meridian-compositor
-// actually expects from logind.
+// Phase 7a: minimal fork+exec — drop privileges via pre_exec (initgroups +
+// setgid + setuid in order) and set up a Wayland-friendly environment.
+// Phase 7b: meridian-login now keeps the PAM handle alive for the duration
+// of the compositor, so we return the Child so main can wait on it before
+// tearing down the logind session.
 
 use std::ffi::CString;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Child, Command};
 
 use tracing::info;
 
@@ -45,9 +45,10 @@ impl std::fmt::Display for SessionError {
 impl std::error::Error for SessionError {}
 
 /// Spawn the compositor binary as `username`, with a fresh Wayland-flavored
-/// environment. Returns the child PID. The child inherits stdio from the
-/// parent (so its logs flow to the same journal/terminal).
-pub fn launch_compositor_for(username: &str) -> Result<u32, SessionError> {
+/// environment. Returns the Child so the caller can wait on it (Phase 7b:
+/// the PAM session must stay open until the compositor has exited). The
+/// child inherits stdio from the parent so its logs flow to the same journal.
+pub fn launch_compositor_for(username: &str) -> Result<Child, SessionError> {
     let user = nix::unistd::User::from_name(username)
         .map_err(SessionError::Nix)?
         .ok_or_else(|| SessionError::UserNotFound(username.to_string()))?;
@@ -116,12 +117,13 @@ pub fn launch_compositor_for(username: &str) -> Result<u32, SessionError> {
     }
 
     let child = cmd.spawn().map_err(SessionError::Spawn)?;
-    Ok(child.id())
+    Ok(child)
 }
 
-/// XDG_RUNTIME_DIR for a user is /run/user/<uid>. Normally pam_systemd
-/// creates it; without that, we create it ourselves with the right owner
-/// and 0700 permissions.
+/// XDG_RUNTIME_DIR for a user is /run/user/<uid>. With Phase 7b's
+/// pam_systemd in the session stack this is normally created for us;
+/// we still fall back to creating it ourselves so the compositor has a
+/// working XDG_RUNTIME_DIR even if pam_systemd is missing or unhappy.
 fn ensure_runtime_dir(uid: u32, gid: u32) -> Result<PathBuf, SessionError> {
     let path = PathBuf::from(format!("/run/user/{}", uid));
     if !path.exists() {

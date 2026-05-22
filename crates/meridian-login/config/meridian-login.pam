@@ -1,9 +1,28 @@
 #%PAM-1.0
 # /etc/pam.d/meridian-login
 #
-# Minimal PAM stack for the meridian-login display manager. Phase 6 only
-# uses `auth` and `account` — Phase 7 will add `session` entries (and
-# pam_systemd) for libseat-style session start.
+# PAM stack for the meridian-login display manager.
+#
+# auth      — verify the password against /etc/shadow (pam_unix).
+# account   — check account validity (not locked, not expired).
+# session   — pam_systemd registers a logind session (class=user,
+#             type=wayland) so the spawned compositor can acquire
+#             /dev/dri/card0 and input devices via libseat. pam_unix
+#             handles utmp/wtmp bookkeeping and other per-user setup.
+#
+# meridian-login itself calls Client::open_session() after a successful
+# authenticate(), and keeps the PAM handle alive for the duration of the
+# spawned compositor. On compositor exit the handle is dropped, which
+# triggers close_session and pam_end.
+#
+# Known TODO (Phase 7c): pam_systemd has no `seat=` argument; the seat
+# is derived from PAM_TTY ("tty1" → seat0+vtnr=1) or PAM env XDG_SEAT.
+# With neither set, logind creates a session with seat="" which libseat's
+# logind backend will not accept for DRM acquire. Once meridian-login.service
+# runs on /dev/tty1, auth.rs will additionally pam_set_item(PAM_TTY, "tty1")
+# before open_session().
 
 auth      required   pam_unix.so
 account   required   pam_unix.so
+session   required   pam_systemd.so   class=user type=wayland
+session   required   pam_unix.so

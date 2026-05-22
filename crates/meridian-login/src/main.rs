@@ -21,7 +21,6 @@ use std::io::{Read, Write};
 use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::net::UnixStream;
 use std::sync::mpsc;
-use std::thread;
 use std::time::{Duration, Instant};
 
 use drm::buffer::DrmFourcc;
@@ -33,7 +32,7 @@ use tiny_skia::{Color, FillRule, Paint, PathBuilder, PixmapMut, Stroke, Transfor
 use tracing::{info, warn};
 use zeroize::Zeroizing;
 
-use auth::{try_authenticate, AuthResult};
+use auth::{start_auth_session, AuthDriver, AuthResult};
 use input::{open_keyboards, poll_keyboards, KeyAction, Keyboard};
 
 const BOOTSPLASH_SOCKET: &str = "/run/bootsplash.sock";
@@ -81,6 +80,11 @@ struct LoginUiState {
     /// a copy of the credentials and posts its result here. Polling this
     /// every frame keeps the render loop responsive even while PAM blocks.
     auth_rx: Option<mpsc::Receiver<AuthResult>>,
+    /// Phase 7b: alive for the duration of a successful login. Owns the PAM
+    /// handle in a worker thread; closing it (or dropping it) calls
+    /// close_session + pam_end on the worker side. main pulls this out
+    /// after `AuthResult::Ok` and keeps it until the compositor exits.
+    auth_driver: Option<AuthDriver>,
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -143,20 +147,16 @@ impl LoginUiState {
         }
     }
 
-    /// Spawn a thread to run PAM authentication so the render loop stays
-    /// responsive. The credentials are cloned (the originals stay on screen
-    /// during auth); the thread's copy is wrapped in Zeroizing so it wipes
-    /// on drop.
+    /// Spawn a worker that runs the full PAM lifecycle (authenticate →
+    /// open_session → wait → close on signal) so the render loop stays
+    /// responsive. The worker owns the credentials (Zeroizing) and the
+    /// pam::Client; we just hold the result channel + AuthDriver here.
     fn start_auth(&mut self) {
-        let (tx, rx) = mpsc::channel();
         let username = self.username.clone();
         let password = Zeroizing::new(self.password.to_string());
-        thread::spawn(move || {
-            let result = try_authenticate(&username, &password);
-            let _ = tx.send(result);
-            // `password` (Zeroizing) drops here and the secret bytes wipe.
-        });
+        let (rx, driver) = start_auth_session(username, password);
         self.auth_rx = Some(rx);
+        self.auth_driver = Some(driver);
         self.phase = InputPhase::Authenticating;
     }
 
@@ -190,6 +190,10 @@ impl LoginUiState {
         self.password.clear();
         self.focus = Field::Username;
         self.phase = InputPhase::Failed(Instant::now());
+        // The worker thread already exited (Failed/Error path doesn't
+        // open_session); dropping the driver here joins it cleanly so we
+        // don't leave a zombie thread per failed attempt.
+        self.auth_driver = None;
     }
 
     fn shake_offset(&self) -> f32 {
@@ -301,13 +305,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // BEFORE releasing master so the new process is already running by the
     // time we let go of the display. Phase 8 will add an IPC handshake to
     // hold the buffer until the compositor's first frame is committed.
-    let spawned_pid = match exit {
+    //
+    // Phase 7b: the PAM session (held by ui_state.auth_driver) must stay
+    // alive for as long as the compositor runs — pam_systemd's logind
+    // session is what backs libseat. So after spawning we wait() on the
+    // compositor, and only then drop the AuthDriver to close the session.
+    let username = ui_state.username.clone();
+    let auth_driver = ui_state.auth_driver.take();
+
+    let compositor_child = match exit {
         ControlFlow::Submit => {
-            info!(user = %ui_state.username, "auth ok — launching compositor");
-            match session::launch_compositor_for(&ui_state.username) {
-                Ok(pid) => {
-                    info!(pid = pid, "compositor spawned");
-                    Some(pid)
+            info!(user = %username, "auth ok — launching compositor");
+            match session::launch_compositor_for(&username) {
+                Ok(child) => {
+                    info!(pid = child.id(), "compositor spawned");
+                    Some(child)
                 }
                 Err(e) => {
                     warn!(error = %e, "compositor spawn failed");
@@ -330,11 +342,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => warn!(error = %e, "drm: release_master failed"),
     }
 
-    // Hold briefly to give the compositor a window to take master before we
-    // close our fd. Phase 8 will replace this with a wait on /run/meridian-login.sock.
-    if spawned_pid.is_some() {
-        info!("holding for compositor takeover (3s)");
-        std::thread::sleep(Duration::from_secs(3));
+    if let Some(mut child) = compositor_child {
+        info!(pid = child.id(), "waiting for compositor to exit");
+        match child.wait() {
+            Ok(status) => info!(pid = child.id(), status = ?status, "compositor exited"),
+            Err(e) => warn!(error = %e, "wait on compositor failed"),
+        }
+    } else if exit == ControlFlow::Submit {
+        // Auth ok but spawn failed — don't leave the session dangling.
+        warn!("auth ok but compositor not spawned; tearing session down immediately");
+    }
+
+    if let Some(driver) = auth_driver {
+        info!(user = %username, "closing PAM session");
+        driver.close();
     }
 
     info!("meridian-login exiting");
@@ -852,8 +873,8 @@ mod tests {
     #[test]
     fn card_rect_clamped_dimensions() {
         let (_, _, cw, ch) = card_rect(1920.0, 1440.0);
-        assert!(cw >= 360.0 && cw <= 720.0);
-        assert!(ch >= 220.0 && ch <= 380.0);
+        assert!((360.0..=720.0).contains(&cw));
+        assert!((220.0..=380.0).contains(&ch));
     }
 
     #[test]
@@ -912,10 +933,12 @@ mod tests {
 
     #[test]
     fn reject_clears_fields_and_resets_focus() {
-        let mut s = LoginUiState::default();
-        s.username = "eduard".into();
-        s.password = Zeroizing::new("badpassword".into());
-        s.focus = Field::Password;
+        let mut s = LoginUiState {
+            username: "eduard".into(),
+            password: Zeroizing::new("badpassword".into()),
+            focus: Field::Password,
+            ..Default::default()
+        };
         s.reject();
         assert!(s.username.is_empty());
         assert!(s.password.is_empty());
@@ -931,8 +954,10 @@ mod tests {
 
     #[test]
     fn shake_offset_nonzero_inside_failed_window() {
-        let mut s = LoginUiState::default();
-        s.phase = InputPhase::Failed(Instant::now());
+        let s = LoginUiState {
+            phase: InputPhase::Failed(Instant::now()),
+            ..Default::default()
+        };
         // Sample several t-values within the window — at least one must
         // produce a nonzero offset (sine isn't always at a zero crossing).
         let mut saw_nonzero = false;
@@ -967,11 +992,12 @@ mod tests {
 
     #[test]
     fn start_auth_with_empty_username_returns_failed_quickly() {
-        // start_auth spawns a thread; with empty username try_authenticate
+        // start_auth spawns a worker; with empty username the worker
         // short-circuits to Failed and the channel delivers within a few ms.
         let mut s = LoginUiState::default();
         s.start_auth();
         assert!(matches!(s.phase, InputPhase::Authenticating));
+        assert!(s.auth_driver.is_some());
         // Spin for up to 200ms waiting for the result.
         let deadline = Instant::now() + Duration::from_millis(200);
         let result = loop {
@@ -984,6 +1010,10 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         };
         assert_eq!(result, AuthResult::Failed);
+        // Driver still holds the worker join handle; reject() drops it which
+        // joins the (already-exited) worker.
+        s.reject();
+        assert!(s.auth_driver.is_none());
     }
 
     #[test]
