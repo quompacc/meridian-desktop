@@ -985,6 +985,7 @@ mod tests {
                 include_north_glow: true,
                 watermark_alpha: 200,
                 veil_alpha: 0,
+                ..Default::default()
             },
         );
         let differ = plain

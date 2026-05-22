@@ -35,7 +35,13 @@ pub struct CursorConfig {
 impl Default for CursorConfig {
     fn default() -> Self {
         Self {
-            theme: "Vanilla-DMZ".to_string(),
+            // "default" exists on every distro (it's a meta-theme that
+            // points at whatever the system picked) so the out-of-box
+            // experience always works. Users wanting the classic DMZ
+            // arrow set should install dmz-cursor-theme (Debian/Ubuntu)
+            // and either set theme = "DMZ-White" in their config or
+            // symlink Vanilla-DMZ -> DMZ-White. See INSTALL.md.
+            theme: "default".to_string(),
             size: 24,
         }
     }
