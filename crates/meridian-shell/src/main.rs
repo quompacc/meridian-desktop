@@ -55,17 +55,17 @@ pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
     vec![
         PinnedApp {
             label: "Term".to_string(),
-            program: "kitty".to_string(),
+            program: "konsole".to_string(),
             args: vec![],
             terminal: false,
             icon_name: Some("utilities-terminal".to_string()),
         },
         PinnedApp {
             label: "Web".to_string(),
-            program: "firefox".to_string(),
+            program: "chromium".to_string(),
             args: vec![],
             terminal: false,
-            icon_name: Some("firefox".to_string()),
+            icon_name: Some("chromium".to_string()),
         },
         PinnedApp {
             label: "Files".to_string(),
@@ -254,11 +254,11 @@ mod tests {
         let pinned = default_pinned_apps();
         assert_eq!(pinned.len(), 3);
         assert_eq!(pinned[0].label, "Term");
-        assert_eq!(pinned[0].program, "kitty");
+        assert_eq!(pinned[0].program, "konsole");
         assert_eq!(pinned[0].icon_name.as_deref(), Some("utilities-terminal"));
         assert_eq!(pinned[1].label, "Web");
-        assert_eq!(pinned[1].program, "firefox");
-        assert_eq!(pinned[1].icon_name.as_deref(), Some("firefox"));
+        assert_eq!(pinned[1].program, "chromium");
+        assert_eq!(pinned[1].icon_name.as_deref(), Some("chromium"));
         assert_eq!(pinned[2].label, "Files");
         assert_eq!(pinned[2].program, "dolphin");
         assert_eq!(pinned[2].icon_name.as_deref(), Some("org.kde.dolphin"));

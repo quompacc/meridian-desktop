@@ -80,9 +80,17 @@ compositor; on exit it is dropped, which closes the logind session.
 
 ## Screenshots
 
-![Meridian Desktop](assets/screenshot.png)
+![Meridian Desktop](assets/desktop.png)
 
-Panel at the bottom, launcher with app grid open, XWayland window in the upper left — running on real DRM/KMS hardware.
+*Desktop after login: panel at the bottom with the compass-rose launcher
+on the left, pinned tiles (term · web · files), and the right-side
+cluster (workspaces · network · screenshot · clock). Live on DRM/KMS —
+no nested compositor.*
+
+![Meridian Desktop — launcher open](assets/launcher.png)
+
+*App grid open, KDE apps detected from `*.desktop` files, pinned row at
+the bottom of the sidebar, power actions on the right.*
 
 ## Build & Run
 

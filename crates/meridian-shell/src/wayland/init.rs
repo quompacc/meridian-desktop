@@ -233,7 +233,19 @@ pub(crate) fn initialize(
     let font = TextRenderer::new(&theme.fonts.ui, 13);
     let pool = SlotPool::new(1024 * 1024 * 4, &shm)?;
     let mut icon_cache = IconCache::new();
-    icon_cache.warm(&["utilities-terminal", "firefox", "org.kde.dolphin"], 22);
+    // Panel pinned-app icons at 22px. Includes both chromium (the new
+    // default Web entry) and firefox so users with the older custom
+    // config still get an icon. Without warming, IconCache::lookup
+    // returns None even if the file exists on disk.
+    icon_cache.warm(
+        &[
+            "utilities-terminal",
+            "chromium",
+            "firefox",
+            "org.kde.dolphin",
+        ],
+        22,
+    );
     icon_cache.warm(
         &[
             "network-wired-symbolic",

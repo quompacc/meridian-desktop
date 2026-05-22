@@ -19,10 +19,17 @@ use crate::{
 };
 
 const CHIP_H: i32 = 28;
-const LAUNCHER_W: i32 = 58;
-const PINNED_W: i32 = 44;
-const TRAY_W: i32 = 60;
-const SCREENSHOT_W: i32 = 36;
+// Chip widths sized to comfortably hold a single 22px icon (ICON_SIZE)
+// with breathing room — earlier values left a tray that fit the network
+// icon three times.
+const LAUNCHER_W: i32 = 40;
+const PINNED_W: i32 = 30;
+const TRAY_W: i32 = 30;
+const SCREENSHOT_W: i32 = 30;
+// Launcher gets its own larger compass-rose icon that sits visually
+// raised above the chip outline (no bg fill, no accent strip) so it
+// reads as the entry point rather than just another tile.
+const LAUNCHER_ICON_SIZE: u32 = 36;
 const WS_W: i32 = 56;
 const CLOCK_PAD: i32 = 8;
 const ICON_SIZE: u32 = 22;
@@ -53,6 +60,128 @@ pub(crate) fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
         data[out_idx + 3] = a;
     }
     Some(pixmap)
+}
+
+/// Compass-rose launcher badge. A filled accent circle (the "medallion")
+/// with a light-coloured 4-point rose on top — visually unmistakably
+/// round, and contrasts strongly enough against the panel surface to
+/// read as the entry point. Genuine "lifts above the panel line" would
+/// need the panel layer-surface to be taller than its exclusive zone
+/// (panel chrome painted only in the bottom band, top transparent so
+/// the icon overflows visually); see TODO at the call site.
+fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
+    use tiny_skia::{FillRule, Paint, PathBuilder, Stroke, Transform};
+    let size = LAUNCHER_ICON_SIZE;
+    let cx = (size as f32) / 2.0;
+    let cy = (size as f32) / 2.0;
+    let mut pm = Pixmap::new(size, size)?;
+    let palette = &theme.palette;
+    let outer_r = (size as f32) / 2.0 - 1.0;
+    let tip_inset = 5.5_f32;
+    let tip = tip_inset;
+    let edge = (size as f32) - tip_inset;
+    let waist: f32 = 3.2;
+
+    let paint_for = |color: Color| {
+        let mut p = Paint::default();
+        p.anti_alias = true;
+        p.set_color_rgba8(color.r, color.g, color.b, color.a);
+        p
+    };
+
+    // 1) Filled medallion — accent-blue disc, full radius. This is what
+    //    makes the icon read as round at a glance.
+    let medallion = {
+        let mut pb = PathBuilder::new();
+        pb.push_circle(cx, cy, outer_r);
+        pb.finish()
+    };
+    if let Some(ref path) = medallion {
+        pm.as_mut().fill_path(
+            path,
+            &paint_for(palette.accent),
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+
+    // 2) Inner highlight ring — 1px stroke in a lighter accent variant
+    //    for a touch of depth (no full bevel, just a hint of dimension).
+    let inner_ring = {
+        let mut pb = PathBuilder::new();
+        pb.push_circle(cx, cy, outer_r - 1.5);
+        pb.finish()
+    };
+    if let Some(ref path) = inner_ring {
+        let mut stroke = Stroke::default();
+        stroke.width = 1.0;
+        pm.as_mut().stroke_path(
+            path,
+            &paint_for(palette.accent_alt),
+            &stroke,
+            Transform::identity(),
+            None,
+        );
+    }
+
+    // 3) 4-point rose. N arm uses palette.surface so it pops clean
+    //    against the accent medallion; S/E/W in text_dim give a subtle
+    //    directional hint without competing.
+    let arm = |x0: f32, y0: f32, ax: f32, ay: f32, bx: f32, by: f32| {
+        let mut pb = PathBuilder::new();
+        pb.move_to(x0, y0);
+        pb.line_to(ax, ay);
+        pb.line_to(bx, by);
+        pb.close();
+        pb.finish()
+    };
+
+    if let Some(ref path) = arm(cx, tip, cx - waist, cy, cx + waist, cy) {
+        pm.as_mut().fill_path(
+            path,
+            &paint_for(palette.surface),
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+    let muted = palette.text_dim;
+    for path in [
+        arm(cx, edge, cx - waist, cy, cx + waist, cy),
+        arm(edge, cy, cx, cy - waist, cx, cy + waist),
+        arm(tip, cy, cx, cy - waist, cx, cy + waist),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        pm.as_mut().fill_path(
+            &path,
+            &paint_for(muted),
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+
+    // 4) Central pivot — bright dot in surface, ties the arms together
+    //    and reads as the hinge of a real compass needle.
+    let pivot = {
+        let mut pb = PathBuilder::new();
+        pb.push_circle(cx, cy, 2.0);
+        pb.finish()
+    };
+    if let Some(ref path) = pivot {
+        pm.as_mut().fill_path(
+            path,
+            &paint_for(palette.surface),
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+
+    Some(pm)
 }
 
 fn action_for_id_as_click(id: &str) -> Option<ClickAction> {
@@ -110,28 +239,44 @@ impl Widget for PanelChip {
     }
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
-        let bg = if self.active {
-            theme.palette.border
-        } else {
-            match state {
-                WidgetState::Idle => theme.palette.surface,
-                WidgetState::Hovered => theme
-                    .palette
-                    .surface
-                    .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12),
-                WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.15),
-            }
-        };
+        // The launcher chip is special: no rectangular chip chrome,
+        // just the compass rose centred in the panel so the icon
+        // visually sits proud of the panel line (Win8-style start-button
+        // pivot). Skip the bg fill + accent strip and let the icon
+        // speak for itself.
+        let is_launcher = self.id == "panel-launcher";
 
-        if let Some(ref path) = rounded_rect_path(area, CHIP_RADIUS) {
-            paint_fill(canvas, path, bg);
+        if !is_launcher {
+            let bg = if self.active {
+                theme.palette.border
+            } else {
+                match state {
+                    WidgetState::Idle => theme.palette.surface,
+                    WidgetState::Hovered => theme
+                        .palette
+                        .surface
+                        .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12),
+                    WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.15),
+                }
+            };
+
+            if let Some(ref path) = rounded_rect_path(area, CHIP_RADIUS) {
+                paint_fill(canvas, path, bg);
+            }
         }
 
         if let Some(ref icon) = self.icon {
             let iw = icon.width() as i32;
             let ih = icon.height() as i32;
             let x = area.x + (area.width - iw) / 2;
-            let y = area.y + (area.height - ACCENT_LINE_H - ih) / 2;
+            // Launcher: vertical-centre against the whole panel so an
+            // oversized rose extends slightly above/below the chip's
+            // own rectangle, not just within it.
+            let y = if is_launcher {
+                (PANEL_H - ih) / 2
+            } else {
+                area.y + (area.height - ACCENT_LINE_H - ih) / 2
+            };
             canvas.draw_pixmap(
                 x,
                 y,
@@ -147,15 +292,17 @@ impl Widget for PanelChip {
             paint_text(canvas, &self.label, tx, ty, FONT_SIZE, theme.palette.text);
         }
 
-        // accent line bottom
-        let line = Rect {
-            x: area.x,
-            y: area.y + area.height - ACCENT_LINE_H,
-            width: area.width,
-            height: ACCENT_LINE_H,
-        };
-        if let Some(ref path) = rounded_rect_path(line, 0) {
-            paint_fill(canvas, path, theme.palette.accent);
+        if !is_launcher {
+            // accent line bottom
+            let line = Rect {
+                x: area.x,
+                y: area.y + area.height - ACCENT_LINE_H,
+                width: area.width,
+                height: ACCENT_LINE_H,
+            };
+            if let Some(ref path) = rounded_rect_path(line, 0) {
+                paint_fill(canvas, path, theme.palette.accent);
+            }
         }
     }
 }
@@ -343,10 +490,14 @@ pub(crate) fn build_panel_widget_tree(
 
     // Left cluster
     let mut left_children: Vec<Box<dyn Widget>> = Vec::new();
+    // Compass-needle launcher icon, rendered in-house to match the
+    // bootsplash visual language. Uses the same hardcoded theme
+    // constant as `draw_panel_ui` below (TOKYO_NIGHT_METRO).
+    let launcher_icon = build_launcher_icon(&Theme::TOKYO_NIGHT_METRO);
     left_children.push(Box::new(PanelChip::new(
         "panel-launcher",
         "Apps".into(),
-        None,
+        launcher_icon,
         LAUNCHER_W,
         false,
     )));
