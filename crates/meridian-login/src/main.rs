@@ -387,10 +387,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // login frame.
     let (ipc_tx, ipc_rx) = mpsc::channel::<IpcEvent>();
     let ipc_socket_path = match compositor_child.as_ref() {
-        Some(_) => match spawn_login_ipc_server(ipc_tx) {
-            Ok(p) => Some(p),
+        Some(_) => match nix::unistd::User::from_name(&username) {
+            Ok(Some(user)) => {
+                match spawn_login_ipc_server(
+                    ipc_tx,
+                    user.uid.as_raw(),
+                    user.gid.as_raw(),
+                ) {
+                    Ok(p) => Some(p),
+                    Err(e) => {
+                        warn!(error = %e, "login ipc server bind failed; releasing drm immediately");
+                        None
+                    }
+                }
+            }
+            Ok(None) => {
+                warn!(user = %username, "user lookup returned None; skipping ipc server");
+                None
+            }
             Err(e) => {
-                warn!(error = %e, "login ipc server bind failed; releasing drm immediately");
+                warn!(error = %e, user = %username, "user lookup failed; skipping ipc server");
                 None
             }
         },
@@ -1005,15 +1021,35 @@ enum IpcEvent {
 /// Bind the login IPC socket and spawn an accept thread that forwards
 /// each parsed command as an [`IpcEvent`] into `tx`. Returns the socket
 /// path so the caller can unlink it on shutdown.
-fn spawn_login_ipc_server(tx: mpsc::Sender<IpcEvent>) -> std::io::Result<PathBuf> {
+///
+/// `owner_uid`/`owner_gid` are the authenticated user — we chown the
+/// socket to them and clamp to mode 0600 so only the spawned compositor
+/// (running as that user) can connect. Without this clamp the socket
+/// would be world-connectable and any local non-root account could send
+/// `handover` to make us drop DRM master prematurely.
+fn spawn_login_ipc_server(
+    tx: mpsc::Sender<IpcEvent>,
+    owner_uid: u32,
+    owner_gid: u32,
+) -> std::io::Result<PathBuf> {
     let path = PathBuf::from(LOGIN_SOCKET);
     let _ = std::fs::remove_file(&path);
     let listener = UnixListener::bind(&path)?;
-    // Single-user, single-seat assumption: the compositor running as the
-    // authenticated user must be able to connect. For a multi-user setup
-    // this should be chmod 0660 + chown root:<user>'s primary group.
-    std::fs::set_permissions(&path, Permissions::from_mode(0o666))?;
-    info!(path = %path.display(), "login ipc: listening");
+    // chown FIRST, then chmod: shrinking the access window during the
+    // tiny gap between bind and lockdown.
+    nix::unistd::chown(
+        &path,
+        Some(nix::unistd::Uid::from_raw(owner_uid)),
+        Some(nix::unistd::Gid::from_raw(owner_gid)),
+    )
+    .map_err(|e| std::io::Error::other(format!("chown ipc socket: {}", e)))?;
+    std::fs::set_permissions(&path, Permissions::from_mode(0o600))?;
+    info!(
+        path = %path.display(),
+        owner_uid,
+        owner_gid,
+        "login ipc: listening (chown'd to owner, mode 0600)"
+    );
 
     thread::spawn(move || {
         for conn in listener.incoming() {

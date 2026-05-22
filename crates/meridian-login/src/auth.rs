@@ -114,6 +114,36 @@ struct ConvData {
     pass: CString,
 }
 
+impl Drop for ConvData {
+    fn drop(&mut self) {
+        // Zeroize the password bytes before CString's free returns the
+        // allocation to the heap. Without this the plaintext lingers in
+        // the freed slab until a later allocation overwrites it — and
+        // since ConvData lives for the full compositor session (often
+        // hours), that window is far larger than necessary.
+        //
+        // Note: this only zeroes OUR copy. libpam's conv_cb response
+        // (strdup'd inside the conversation callback) is freed by libpam
+        // without zeroization shortly after pam_authenticate returns —
+        // that brief window is the unavoidable cost of using libpam.
+        let pass = std::mem::replace(&mut self.pass, CString::default());
+        let raw = pass.into_raw();
+        // SAFETY: raw was just produced by CString::into_raw and points
+        // to a NUL-terminated C-string we still uniquely own; strlen is
+        // bounded by the original allocation.
+        let len = unsafe { libc::strlen(raw) } + 1;
+        for i in 0..len {
+            // write_volatile prevents the optimiser from eliding the
+            // zeroization on the about-to-be-freed memory.
+            unsafe {
+                std::ptr::write_volatile(raw.add(i) as *mut u8, 0);
+            }
+        }
+        // Reconstruct + drop frees the (now-zeroed) allocation.
+        unsafe { drop(CString::from_raw(raw)) };
+    }
+}
+
 unsafe extern "C" fn conv_cb(
     num_msg: c_int,
     msg: *mut *const pam_message,
