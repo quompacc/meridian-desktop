@@ -180,6 +180,34 @@ pub(crate) fn initialize(
         crate::NOTIFICATION_RIGHT_MARGIN
     );
 
+    // Phase A3.1: settings overlay. All 4 anchors + explicit size lets
+    // the compositor center the surface at our requested size on the
+    // active output. KeyboardInteractivity::OnDemand so the user can
+    // type into form fields once they're added (A3.3+).
+    let settings_surface = compositor.create_surface(&qh);
+    let settings_layer = layer_shell.create_layer_surface(
+        &qh,
+        settings_surface,
+        Layer::Overlay,
+        Some("meridian-settings"),
+        None,
+    );
+    // No anchor = floating; compositor picks the position (typically
+    // top-left or center). All-4-anchors + explicit size is invalid per
+    // the layer-shell spec (opposite anchors → stretch, size hint
+    // ignored), and the meridian compositor never sends configure for
+    // that combination — verified by the missing "settings configure"
+    // line in shell journal.
+    settings_layer.set_anchor(Anchor::empty());
+    settings_layer.set_size(crate::SETTINGS_POPUP_WIDTH, crate::SETTINGS_POPUP_HEIGHT);
+    settings_layer.set_exclusive_zone(0);
+    settings_layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+    debug!(
+        "Settings surface created: namespace=meridian-settings layer=Overlay anchor=None size={}x{} keyboard_interactivity=OnDemand",
+        crate::SETTINGS_POPUP_WIDTH,
+        crate::SETTINGS_POPUP_HEIGHT
+    );
+
     let meridian_config = MeridianConfig::load();
     let mut theme_manager = ThemeManager::new();
     if !meridian_config.general.theme.trim().is_empty()
@@ -296,18 +324,21 @@ pub(crate) fn initialize(
         workspace_layer,
         network_layer,
         notification_layer,
+        settings_layer,
         panel_configured: false,
         launcher_configured: false,
         calendar_configured: false,
         workspace_configured: false,
         network_configured: false,
         notification_configured: false,
+        settings_configured: false,
         panel_buffer: None,
         launcher_buffer: None,
         calendar_buffer: None,
         workspace_buffer: None,
         network_buffer: None,
         notification_buffer: None,
+        settings_buffer: None,
         pool,
         width: 1024,
         launcher_width: LAUNCHER_WIDTH,
@@ -322,6 +353,16 @@ pub(crate) fn initialize(
         notification_height: crate::NOTIFICATION_HEIGHT,
         notifications: std::collections::VecDeque::new(),
         notification_dirty: false,
+        settings_width: crate::SETTINGS_POPUP_WIDTH,
+        settings_height: crate::SETTINGS_POPUP_HEIGHT,
+        // Dev-only env hook so I can see the settings overlay during
+        // A3.1 work without wiring a panel button yet. Real trigger
+        // lands in A3.4.
+        settings_open: std::env::var("MERIDIAN_SHELL_AUTO_SETTINGS")
+            .map(|v| matches!(v.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+            .unwrap_or(false),
+        settings_dirty: false,
+        settings_category: crate::settings_view::SettingsCategory::default(),
         keyboard: None,
         keyboard_focus: SurfaceKind::None,
         pointer: None,
@@ -424,6 +465,8 @@ pub(crate) fn initialize(
     info!("Network popup surface created and committed");
     shell.notification_layer.commit();
     info!("Notification surface created and committed");
+    shell.settings_layer.commit();
+    info!("Settings surface created and committed");
 
     Ok((shell, qh))
 }

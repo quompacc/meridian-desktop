@@ -19,6 +19,7 @@ mod notification_popup;
 mod notifications;
 mod panel;
 mod panel_view;
+mod settings_view;
 mod ui;
 mod ui_preview;
 mod wayland;
@@ -47,6 +48,8 @@ pub const NOTIFICATION_WIDTH: u32 = 360;
 pub const NOTIFICATION_HEIGHT: u32 = 90;
 pub const NOTIFICATION_TOP_MARGIN: i32 = 20;
 pub const NOTIFICATION_RIGHT_MARGIN: i32 = 12;
+pub const SETTINGS_POPUP_WIDTH: u32 = 720;
+pub const SETTINGS_POPUP_HEIGHT: u32 = 540;
 
 pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
     vec![

@@ -102,7 +102,20 @@ pub fn launch_compositor_for(
     cmd.env("XDG_RUNTIME_DIR", runtime_dir);
     cmd.env("XDG_SESSION_TYPE", "wayland");
     cmd.env("XDG_CURRENT_DESKTOP", "Meridian");
-    cmd.env("RUST_LOG", "info");
+    // Forward inherited RUST_LOG if set (so dev/debug filter from the
+    // unit drop-in propagates into the compositor + shell chain), else
+    // fall back to info.
+    let rust_log = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    cmd.env("RUST_LOG", rust_log);
+    // Forward MERIDIAN_* env vars (dev/debug knobs like
+    // MERIDIAN_SHELL_AUTO_SETTINGS, MERIDIAN_DRM_TIMING, etc.). These
+    // are intentionally additive — the explicit envs above already won
+    // for any name collisions because cmd.env overwrites.
+    for (k, v) in std::env::vars() {
+        if k.starts_with("MERIDIAN_") {
+            cmd.env(k, v);
+        }
+    }
     cmd.current_dir(&home);
 
     // Use pre_exec to do initgroups + setgid + setuid IN ORDER. Using just
