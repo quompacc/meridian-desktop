@@ -31,6 +31,8 @@ impl PointerHandler for MeridianShell {
                 SurfaceKind::WorkspacePopup
             } else if &event.surface == self.network_layer.wl_surface() {
                 SurfaceKind::NetworkPopup
+            } else if &event.surface == self.settings_layer.wl_surface() {
+                SurfaceKind::Settings
             } else {
                 SurfaceKind::None
             };
@@ -57,7 +59,7 @@ impl PointerHandler for MeridianShell {
                     SurfaceKind::NetworkPopup => {
                         self.draw_network_popup(qh, RepaintReason::Pointer)
                     }
-                    SurfaceKind::Calendar | SurfaceKind::None => {}
+                    SurfaceKind::Settings | SurfaceKind::Calendar | SurfaceKind::None => {}
                 }
                 self.pointer_surface = SurfaceKind::None;
                 continue;
@@ -367,6 +369,21 @@ impl PointerHandler for MeridianShell {
                             Some(crate::wayland::ClickAction::ToggleNetworkPopup)
                         }
                     }
+                    SurfaceKind::Settings => {
+                        // Sidebar click: switch category + redraw. Handled
+                        // inline because the state change is purely
+                        // intra-surface (no cross-surface ClickAction needed).
+                        if let Some(cat) = crate::settings_view::sidebar_hit_test(
+                            event.position.0,
+                            event.position.1,
+                        ) {
+                            if cat != self.settings_category {
+                                self.settings_category = cat;
+                                self.draw_settings_popup(qh, RepaintReason::Pointer);
+                            }
+                        }
+                        None
+                    }
                     SurfaceKind::Calendar => None,
                     SurfaceKind::None => None,
                 };
@@ -399,6 +416,7 @@ impl PointerHandler for MeridianShell {
                         SurfaceKind::WorkspacePopup => self.handle_workspace_click(qh, action),
                         SurfaceKind::NetworkPopup => {}
                         SurfaceKind::Calendar => {}
+                        SurfaceKind::Settings => {}
                         SurfaceKind::None => {}
                     }
                 }

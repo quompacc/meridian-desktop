@@ -31,6 +31,8 @@ impl KeyboardHandler for MeridianShell {
             SurfaceKind::WorkspacePopup
         } else if self.network_layer.wl_surface() == surface {
             SurfaceKind::NetworkPopup
+        } else if self.settings_layer.wl_surface() == surface {
+            SurfaceKind::Settings
         } else if self.panel.wl_surface() == surface {
             SurfaceKind::Panel
         } else {
