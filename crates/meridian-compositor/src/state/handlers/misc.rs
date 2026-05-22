@@ -211,16 +211,30 @@ impl DndGrabHandler for MeridianState {}
 
 impl XdgDecorationHandler for MeridianState {
     fn new_decoration(&mut self, toplevel: ToplevelSurface) {
+        tracing::info!(
+            "xdg-decoration new_decoration: surface={:?} defaulting to ServerSide",
+            toplevel.wl_surface().id()
+        );
+        // Default to server-side decorations so KDE/Qt and other
+        // SSD-friendly clients get the meridian frame out of the box.
+        // GTK clients that always want CSD will follow up with
+        // request_mode(ClientSide) and we honor that in request_mode
+        // below — that's what keeps GTK from rendering a double frame.
         toplevel.with_pending_state(|state| {
-            state.decoration_mode = None;
+            state.decoration_mode = Some(DecorationMode::ServerSide);
         });
         self.decoration_manager
-            .set_ssd(toplevel.wl_surface(), false);
+            .set_ssd(toplevel.wl_surface(), true);
         reposition_xdg_window_for_visible_frame(self, &toplevel);
         toplevel.send_configure();
     }
 
     fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
+        tracing::info!(
+            "xdg-decoration request_mode: surface={:?} mode={:?}",
+            toplevel.wl_surface().id(),
+            mode
+        );
         let ssd = mode == DecorationMode::ServerSide;
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(mode);
@@ -231,11 +245,21 @@ impl XdgDecorationHandler for MeridianState {
     }
 
     fn unset_mode(&mut self, toplevel: ToplevelSurface) {
+        // The client wants us to revert to our compositor default. Per
+        // the policy in new_decoration that default is ServerSide (so
+        // Qt apps that send unset_mode right after creating the
+        // decoration object still get the meridian frame). GTK clients
+        // explicitly request ClientSide via request_mode and that path
+        // remains honored.
+        tracing::info!(
+            "xdg-decoration unset_mode: surface={:?} reverting to compositor default ServerSide",
+            toplevel.wl_surface().id()
+        );
         toplevel.with_pending_state(|state| {
-            state.decoration_mode = None;
+            state.decoration_mode = Some(DecorationMode::ServerSide);
         });
         self.decoration_manager
-            .set_ssd(toplevel.wl_surface(), false);
+            .set_ssd(toplevel.wl_surface(), true);
         reposition_xdg_window_for_visible_frame(self, &toplevel);
         toplevel.send_configure();
     }
@@ -305,6 +329,11 @@ impl MeridianState {
         };
 
         let old_focus = keyboard.current_focus();
+        tracing::debug!(
+            "set_keyboard_focus_with_decorations: old_has={} new_has={}",
+            old_focus.is_some(),
+            new_focus.is_some()
+        );
         if old_focus != new_focus {
             self.update_focus_decoration(old_focus.as_ref(), new_focus.as_ref());
             self.mark_all_outputs_dirty("keyboard-focus-change");

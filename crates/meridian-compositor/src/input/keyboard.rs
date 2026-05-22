@@ -49,6 +49,18 @@ pub fn handle_keyboard<I: InputBackend>(
         debug!("keyboard event ignored: seat has no keyboard");
         return;
     };
+    {
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let i = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if i < 20 {
+            tracing::info!(
+                "handle_keyboard: key={:?} state={:?} has_focus={}",
+                event.key_code(),
+                key_state,
+                keyboard.current_focus().is_some()
+            );
+        }
+    }
 
     let match_result = keyboard.input::<KeyMatch, _>(
         state,

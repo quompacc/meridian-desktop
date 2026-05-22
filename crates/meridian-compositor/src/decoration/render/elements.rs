@@ -36,12 +36,36 @@ impl DecorationManager {
         colors: &ThemeColors,
         scale: Scale<f64>,
     ) -> SmallVec<[DecorationRenderElement; 32]> {
-        let deco = match self.decorations.get_mut(&Self::key(surface)) {
+        let key = Self::key(surface);
+        let deco = match self.decorations.get_mut(&key) {
             Some(d) => d,
-            None => return SmallVec::new(),
+            None => {
+                static MISS_LOGGED: std::sync::atomic::AtomicUsize =
+                    std::sync::atomic::AtomicUsize::new(0);
+                let n = MISS_LOGGED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if n < 5 {
+                    tracing::warn!(
+                        "decoration render: no entry for surface={:?} (known keys: {:?})",
+                        key,
+                        self.decorations.keys().collect::<Vec<_>>()
+                    );
+                }
+                return SmallVec::new();
+            }
         };
 
         if !deco.should_draw() {
+            static SKIP_LOGGED: std::sync::atomic::AtomicUsize =
+                std::sync::atomic::AtomicUsize::new(0);
+            let n = SKIP_LOGGED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if n < 5 {
+                tracing::warn!(
+                    "decoration render: skip surface={:?} has_ssd={} is_fullscreen={}",
+                    key,
+                    deco.has_ssd,
+                    deco.is_fullscreen
+                );
+            }
             return SmallVec::new();
         }
 

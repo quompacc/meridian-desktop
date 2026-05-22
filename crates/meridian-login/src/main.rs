@@ -337,6 +337,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut keyboard,
     )?;
 
+    // Release the keyboards BEFORE we spawn the compositor and enter the
+    // handover wait. input.rs grabs every keyboard device with
+    // EVIOCGRAB so the password never leaks to the kernel TTY; if we
+    // keep the fds open while the compositor runs, libinput in the
+    // compositor sees the devices but receives zero key events (the
+    // grab is per-fd and only releases on close). Dropping here lets
+    // the user type into apps immediately after auth.
+    drop(keyboards);
+    drop(keyboard);
+    info!("released keyboards (EVIOCGRAB cleared)");
+
     // On successful auth, spawn the compositor as the authenticated user
     // BEFORE releasing master so the new process is already running by the
     // time we let go of the display. Phase 8 will add an IPC handshake to

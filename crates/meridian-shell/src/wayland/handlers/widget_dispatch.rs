@@ -40,13 +40,21 @@ impl MeridianShell {
                         tracing::warn!("launch failed: {:?}", e);
                     }
                 }
+                // Mirror handle_launcher_click's behavior: any launch via
+                // a widget click should dismiss the launcher so the new
+                // window is not occluded. No-op when launcher is closed
+                // (close_launcher_after_launch checks).
+                self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
             }
-            WidgetAction::LaunchExec(exec) => match std::process::Command::new(&exec).spawn() {
-                Ok(_) => {}
-                Err(e) => {
-                    tracing::warn!("launch failed: {:?}", e);
+            WidgetAction::LaunchExec(exec) => {
+                match std::process::Command::new(&exec).spawn() {
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!("launch failed: {:?}", e);
+                    }
                 }
-            },
+                self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
+            }
             WidgetAction::FocusWindow(id) => {
                 self.ipc
                     .send(&meridian_ipc::ShellCommand::FocusWindow { id });
