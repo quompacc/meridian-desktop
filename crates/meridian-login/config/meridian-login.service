@@ -6,6 +6,11 @@ After=systemd-user-sessions.service getty@tty1.service systemd-udev-trigger.serv
 # Run before the generic graphical login targets so this is the first
 # thing the user sees after the bootsplash hand-off.
 Before=getty.target multi-user.target
+# Crash-loop guard: if the unit fails 3 times within 30s, systemd stops
+# trying. Without this a bad meridian binary would respawn forever and
+# burn cycles. tty1 ends up blank in that case — recovery via Ctrl+Alt+F2.
+StartLimitIntervalSec=30
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -39,7 +44,12 @@ User=root
 # Graceful shutdown: SIGTERM lets the render loop release master and exit.
 KillSignal=SIGTERM
 TimeoutStopSec=5
-Restart=no
+# Respawn on any exit: a clean compositor exit (= user logged out) should
+# bring the login card back; a crash should also retry, gated by the
+# burst limit above. The bootsplash handover only runs at first boot;
+# subsequent restarts just see no bootsplash socket and proceed.
+Restart=always
+RestartSec=1
 
 [Install]
 # Replaces the getty on tty1; pulled in by multi-user.target via the
