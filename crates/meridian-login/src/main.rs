@@ -85,6 +85,10 @@ struct LoginUiState {
     /// close_session + pam_end on the worker side. main pulls this out
     /// after `AuthResult::Ok` and keeps it until the compositor exits.
     auth_driver: Option<AuthDriver>,
+    /// Snapshot of pam_getenvlist captured by the auth worker right after
+    /// pam_open_session. Forwarded into the compositor environment so it
+    /// inherits XDG_SESSION_ID / XDG_SEAT / XDG_VTNR from pam_systemd.
+    pam_env: Vec<(String, String)>,
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -312,11 +316,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // compositor, and only then drop the AuthDriver to close the session.
     let username = ui_state.username.clone();
     let auth_driver = ui_state.auth_driver.take();
+    let pam_env = std::mem::take(&mut ui_state.pam_env);
 
     let compositor_child = match exit {
         ControlFlow::Submit => {
-            info!(user = %username, "auth ok — launching compositor");
-            match session::launch_compositor_for(&username) {
+            info!(
+                user = %username,
+                pam_env_count = pam_env.len(),
+                "auth ok — launching compositor"
+            );
+            match session::launch_compositor_for(&username, &pam_env) {
                 Ok(child) => {
                     info!(pid = child.id(), "compositor spawned");
                     Some(child)
@@ -484,7 +493,10 @@ fn run_animation(
             // Check if the auth thread reported back this frame.
             if let Some(result) = ui_state.poll_auth() {
                 match result {
-                    AuthResult::Ok => exit = ControlFlow::Submit,
+                    AuthResult::Ok(env) => {
+                        ui_state.pam_env = env;
+                        exit = ControlFlow::Submit;
+                    }
                     AuthResult::Failed => ui_state.reject(),
                     AuthResult::Error(e) => {
                         warn!(error = %e, "PAM error — treating as failure");

@@ -21,7 +21,7 @@
 //                          "Ok / Failed / Error"   close()/Drop
 //                          (poll from render loop)  joins worker
 
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 use std::sync::mpsc;
@@ -29,10 +29,10 @@ use std::thread;
 
 use libc::{calloc, free, size_t, strdup};
 use pam_sys::{
-    pam_acct_mgmt, pam_authenticate, pam_close_session, pam_conv, pam_end, pam_handle_t,
-    pam_message, pam_open_session, pam_response, pam_set_item, pam_start, PAM_BUF_ERR,
-    PAM_CONV_ERR, PAM_ERROR_MSG, PAM_PROMPT_ECHO_OFF, PAM_PROMPT_ECHO_ON, PAM_SUCCESS,
-    PAM_TEXT_INFO, PAM_TTY,
+    pam_acct_mgmt, pam_authenticate, pam_close_session, pam_conv, pam_end, pam_getenvlist,
+    pam_handle_t, pam_message, pam_open_session, pam_response, pam_set_item, pam_start,
+    PAM_BUF_ERR, PAM_CONV_ERR, PAM_ERROR_MSG, PAM_PROMPT_ECHO_OFF, PAM_PROMPT_ECHO_ON,
+    PAM_SUCCESS, PAM_TEXT_INFO, PAM_TTY,
 };
 use tracing::{debug, warn};
 use zeroize::Zeroizing;
@@ -45,10 +45,12 @@ const PAM_TTY_VALUE: &str = "tty1";
 
 #[derive(Debug, PartialEq)]
 pub enum AuthResult {
-    /// Credentials accepted AND open_session() succeeded. The compositor
-    /// can now be spawned. The matching [`AuthDriver`] must be kept alive
-    /// until the compositor exits, then [`AuthDriver::close`]ed.
-    Ok,
+    /// Credentials accepted AND open_session() succeeded. Carries the
+    /// snapshot of the PAM environment as exposed by pam_getenvlist —
+    /// typically XDG_SESSION_ID, XDG_SEAT, XDG_VTNR set by pam_systemd.
+    /// The matching [`AuthDriver`] must be kept alive until the compositor
+    /// exits, then [`AuthDriver::close`]ed.
+    Ok(Vec<(String, String)>),
     /// Credentials rejected (wrong password, unknown user, account locked, ...).
     Failed,
     /// PAM itself failed (missing config, library not loadable, session
@@ -153,6 +155,36 @@ unsafe extern "C" fn conv_cb(
     }
     *out_resp = resp;
     PAM_SUCCESS
+}
+
+/// Drain pam_getenvlist into a Rust-owned Vec, freeing every entry and
+/// the array itself per the Linux-PAM contract.
+fn drain_pam_env(pamh: *mut pam_handle_t) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    // SAFETY: pamh comes from pam_start and is still live (open_session ok).
+    let list = unsafe { pam_getenvlist(pamh) };
+    if list.is_null() {
+        return out;
+    }
+    let mut i = 0isize;
+    loop {
+        // SAFETY: NULL-terminated array, we stop at the first null entry.
+        let entry = unsafe { *list.offset(i) };
+        if entry.is_null() {
+            break;
+        }
+        // SAFETY: entry is a NUL-terminated KEY=VALUE C-string owned by libpam.
+        if let Ok(s) = unsafe { CStr::from_ptr(entry) }.to_str() {
+            if let Some((k, v)) = s.split_once('=') {
+                out.push((k.to_string(), v.to_string()));
+            }
+        }
+        // Linux-PAM hands us ownership of each entry; we must free them.
+        unsafe { free(entry as *mut c_void) };
+        i += 1;
+    }
+    unsafe { free(list as *mut c_void) };
+    out
 }
 
 /// Owns the raw pam handle so pam_end always runs even on early returns.
@@ -290,7 +322,10 @@ fn run_pam_session(
     }
     debug!(user = %username, "PAM session opened");
 
-    let _ = result_tx.send(AuthResult::Ok);
+    let pam_env = drain_pam_env(guard.pamh);
+    debug!(user = %username, count = pam_env.len(), "captured PAM env snapshot");
+
+    let _ = result_tx.send(AuthResult::Ok(pam_env));
 
     // Block until main signals teardown. RecvError == sender dropped, same
     // outcome: tear the session down.
@@ -328,5 +363,13 @@ mod tests {
         };
         assert_eq!(result, AuthResult::Failed);
         driver.close();
+    }
+
+    #[test]
+    fn drain_pam_env_on_null_handle_is_empty() {
+        // pam_getenvlist on a null handle returns null per the Linux-PAM
+        // contract; drain_pam_env must yield an empty Vec without panic.
+        let env = drain_pam_env(std::ptr::null_mut());
+        assert!(env.is_empty());
     }
 }

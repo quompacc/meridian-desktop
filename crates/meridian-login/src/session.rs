@@ -48,7 +48,15 @@ impl std::error::Error for SessionError {}
 /// environment. Returns the Child so the caller can wait on it (Phase 7b:
 /// the PAM session must stay open until the compositor has exited). The
 /// child inherits stdio from the parent so its logs flow to the same journal.
-pub fn launch_compositor_for(username: &str) -> Result<Child, SessionError> {
+///
+/// `pam_env` is the snapshot from pam_getenvlist (typically XDG_SESSION_ID,
+/// XDG_SEAT, XDG_VTNR set by pam_systemd). It is applied BEFORE the fixed
+/// XDG_RUNTIME_DIR / XDG_SESSION_TYPE / XDG_CURRENT_DESKTOP so the explicit
+/// settings always win on conflict.
+pub fn launch_compositor_for(
+    username: &str,
+    pam_env: &[(String, String)],
+) -> Result<Child, SessionError> {
     let user = nix::unistd::User::from_name(username)
         .map_err(SessionError::Nix)?
         .ok_or_else(|| SessionError::UserNotFound(username.to_string()))?;
@@ -77,6 +85,12 @@ pub fn launch_compositor_for(username: &str) -> Result<Child, SessionError> {
 
     let mut cmd = Command::new(&compositor_path);
     cmd.env_clear();
+    // PAM env first: pam_systemd populates XDG_SESSION_ID/XDG_SEAT/XDG_VTNR
+    // here. The explicit env below overrides any collisions so our base
+    // (HOME/USER/PATH/...) is always sane.
+    for (k, v) in pam_env {
+        cmd.env(k, v);
+    }
     cmd.env("HOME", &home);
     cmd.env("USER", username);
     cmd.env("LOGNAME", username);
@@ -146,7 +160,7 @@ mod tests {
 
     #[test]
     fn unknown_user_yields_user_not_found() {
-        let r = launch_compositor_for("definitely_no_such_user_xyzzy_123");
+        let r = launch_compositor_for("definitely_no_such_user_xyzzy_123", &[]);
         assert!(matches!(r, Err(SessionError::UserNotFound(_))));
     }
 
