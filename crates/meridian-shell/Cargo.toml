@@ -22,3 +22,9 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+# Phase A1 — notification daemon (org.freedesktop.Notifications dbus).
+# Tokio is the smallest async runtime that zbus v5 ships an executor
+# binding for; we only use it on the dbus thread, the shell's main
+# event loop stays calloop-based.
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros"] }

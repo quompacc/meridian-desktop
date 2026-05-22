@@ -15,6 +15,7 @@ mod icons;
 mod launcher;
 mod network;
 mod network_popup;
+mod notifications;
 mod panel;
 mod panel_view;
 mod ui;
@@ -80,11 +81,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     insert_tick_timer(&mut event_loop, qh.clone())?;
     insert_network_poll_timer(&mut event_loop, qh)?;
     insert_commit_stats_timer(&mut event_loop)?;
+    insert_notifications_source(&mut event_loop)?;
 
     while !shell.exit {
         event_loop.dispatch(Duration::from_millis(500), &mut shell)?;
     }
 
+    Ok(())
+}
+
+/// Spawn the freedesktop notification daemon dbus thread and register
+/// its calloop channel with the shell event loop. Best-effort: if the
+/// daemon fails to start we log and continue — the panel + launcher
+/// still work without notifications.
+fn insert_notifications_source(
+    event_loop: &mut EventLoop<'_, wayland::MeridianShell>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let rx = match notifications::spawn() {
+        Ok(rx) => rx,
+        Err(e) => {
+            tracing::warn!(error = %e, "notifications: failed to spawn dbus thread");
+            return Ok(());
+        }
+    };
+    event_loop.handle().insert_source(rx, |event, _, _shell| {
+        use smithay_client_toolkit::reexports::calloop::channel::Event as ChEvent;
+        match event {
+            ChEvent::Msg(notifications::DbusEvent::Notify(n)) => {
+                // A1.3 will wire this into a popup surface stack on the
+                // shell side. Until then we log the arrival so we can
+                // verify the dbus pipe end-to-end with `notify-send`.
+                tracing::info!(
+                    id = n.id,
+                    app = %n.app,
+                    title = %n.title,
+                    body = %n.body,
+                    urgency = ?n.urgency,
+                    "notifications: incoming"
+                );
+            }
+            ChEvent::Msg(notifications::DbusEvent::Close(id)) => {
+                tracing::info!(id, "notifications: close request");
+            }
+            ChEvent::Closed => {
+                tracing::warn!("notifications: dbus channel closed");
+            }
+        }
+    })?;
     Ok(())
 }
 
