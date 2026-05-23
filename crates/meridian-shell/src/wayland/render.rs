@@ -374,16 +374,15 @@ impl MeridianShell {
                 }
             };
             if self.launcher_settings_open {
-                let mut painter = Painter::new(canvas, width as i32, height as i32);
                 crate::settings_view::draw_settings_launcher(
-                    &mut painter,
-                    &self.font,
-                    &self.theme,
+                    canvas,
                     width,
                     height,
                     self.settings_category,
                     &self.available_themes,
                     &self.theme_name,
+                    &self.icon_cache,
+                    &state_fn,
                 );
             } else if self.app_view_open {
                 crate::app_view::draw_app_view(

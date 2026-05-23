@@ -67,7 +67,16 @@ impl PointerHandler for MeridianShell {
 
             if self.pointer_surface == SurfaceKind::Launcher {
                 if let Some(ev) = translate_pointer_event(&event.kind, event.position) {
-                    let tree = if self.app_view_open {
+                    let tree = if self.launcher_settings_open {
+                        crate::settings_view::build_settings_widget_tree(
+                            crate::LAUNCHER_WIDTH,
+                            crate::LAUNCHER_HEIGHT,
+                            self.settings_category,
+                            &self.available_themes,
+                            &self.theme_name,
+                            &self.icon_cache,
+                        )
+                    } else if self.app_view_open {
                         crate::app_view::build_app_view_widget_tree(
                             crate::LAUNCHER_WIDTH,
                             crate::LAUNCHER_HEIGHT,
@@ -345,35 +354,12 @@ impl PointerHandler for MeridianShell {
                         .iter()
                         .find(|zone| zone.rect.contains(event.position.0, event.position.1))
                         .map(|zone| zone.action.clone()),
-                    SurfaceKind::Launcher => {
-                        if self.launcher_settings_open {
-                            let (x, y) = event.position;
-                            if crate::settings_view::back_button_hit_test(x, y, crate::LAUNCHER_HEIGHT) {
-                                self.launcher_settings_open = false;
-                                self.app_view_open = false;
-                                self.draw_launcher(qh, RepaintReason::Pointer);
-                            } else if let Some(cat) = crate::settings_view::sidebar_hit_test(x, y) {
-                                if cat != self.settings_category {
-                                    self.settings_category = cat;
-                                    self.draw_launcher(qh, RepaintReason::Pointer);
-                                }
-                            } else if self.settings_category == crate::settings_view::SettingsCategory::Theme {
-                                if let Some(idx) = crate::settings_view::theme_content_hit_test(x, y, &self.available_themes) {
-                                    if idx < self.available_themes.len() {
-                                        let name = self.available_themes[idx].clone();
-                                        self.apply_theme(qh, name);
-                                    }
-                                }
-                            }
-                            None
-                        } else {
-                            self.launcher_state
-                                .clicks
-                                .iter()
-                                .find(|zone| zone.rect.contains(event.position.0, event.position.1))
-                                .map(|zone| zone.action.clone())
-                        }
-                    }
+                    SurfaceKind::Launcher => self
+                        .launcher_state
+                        .clicks
+                        .iter()
+                        .find(|zone| zone.rect.contains(event.position.0, event.position.1))
+                        .map(|zone| zone.action.clone()),
                     SurfaceKind::WorkspacePopup => self
                         .workspace_state
                         .clicks
@@ -392,29 +378,7 @@ impl PointerHandler for MeridianShell {
                             Some(crate::wayland::ClickAction::ToggleNetworkPopup)
                         }
                     }
-                    SurfaceKind::Settings => {
-                        if let Some(cat) = crate::settings_view::sidebar_hit_test(
-                            event.position.0,
-                            event.position.1,
-                        ) {
-                            if cat != self.settings_category {
-                                self.settings_category = cat;
-                                self.draw_settings_popup(qh, RepaintReason::Pointer);
-                            }
-                        } else if self.settings_category == crate::settings_view::SettingsCategory::Theme {
-                            if let Some(idx) = crate::settings_view::theme_content_hit_test(
-                                event.position.0,
-                                event.position.1,
-                                &self.available_themes,
-                            ) {
-                                if idx < self.available_themes.len() {
-                                    let name = self.available_themes[idx].clone();
-                                    self.apply_theme(qh, name);
-                                }
-                            }
-                        }
-                        None
-                    }
+                    SurfaceKind::Settings => None,
                     SurfaceKind::Calendar => None,
                     SurfaceKind::None => None,
                 };

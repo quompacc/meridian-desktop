@@ -18,6 +18,8 @@ pub(crate) enum WidgetAction {
     PowerLock,
     PowerLogout,
     ToggleSettings,
+    SetSettingsCategory(crate::settings_view::SettingsCategory),
+    ApplyThemeByIndex(usize),
 }
 
 #[allow(dead_code)]
@@ -42,6 +44,13 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
         "power-lock" => Some(WidgetAction::PowerLock),
         "power-logout" => Some(WidgetAction::PowerLogout),
         "launcher-settings" => Some(WidgetAction::ToggleSettings),
+        "settings-cat-theme" => Some(WidgetAction::SetSettingsCategory(crate::settings_view::SettingsCategory::Theme)),
+        "settings-cat-cursor" => Some(WidgetAction::SetSettingsCategory(crate::settings_view::SettingsCategory::Cursor)),
+        "settings-cat-wallpaper" => Some(WidgetAction::SetSettingsCategory(crate::settings_view::SettingsCategory::Wallpaper)),
+        "settings-cat-pinned" => Some(WidgetAction::SetSettingsCategory(crate::settings_view::SettingsCategory::PinnedApps)),
+        id if id.starts_with("settings-theme-") => {
+            id["settings-theme-".len()..].parse::<usize>().ok().map(WidgetAction::ApplyThemeByIndex)
+        }
         _ => None,
     }
 }

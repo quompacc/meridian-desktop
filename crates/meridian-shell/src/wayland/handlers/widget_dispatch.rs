@@ -87,6 +87,15 @@ impl MeridianShell {
                 self.app_view_open = false;
                 self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
             }
+            WidgetAction::SetSettingsCategory(cat) => {
+                self.settings_category = cat;
+                self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
+            }
+            WidgetAction::ApplyThemeByIndex(idx) => {
+                if let Some(name) = self.available_themes.get(idx).cloned() {
+                    self.apply_theme(qh, name);
+                }
+            }
             WidgetAction::PowerOff
             | WidgetAction::PowerRestart
             | WidgetAction::PowerSleep
