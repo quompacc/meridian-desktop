@@ -1,15 +1,4 @@
-// settings_view.rs
-//
-// Two co-existing parts:
-//   1. draw_settings (Painter-based) — used by the dormant overlay.
-//   2. build_settings_widget_tree / draw_settings_launcher — widget-based
-//      launcher sub-page (the active path).
-
-use std::cell::RefCell;
-
-use meridian_config::ThemeConfig;
-// PainterRect = crate::Rect {x,y,w,h} used by draw_settings.
-use crate::{Painter, Rect as PainterRect, TextRenderer};
+// settings_view.rs — widget-based settings sub-page for the launcher.
 
 use meridian_ui::{
     effect::{paint_fill, paint_text, rounded_rect_path},
@@ -70,78 +59,6 @@ impl SettingsCategory {
 impl Default for SettingsCategory {
     fn default() -> Self {
         SettingsCategory::Theme
-    }
-}
-
-// ─── Dormant overlay drawing (used by draw_settings_popup) ───────────────────
-
-const SIDEBAR_WIDTH: i32 = 180;
-const SIDEBAR_ITEM_HEIGHT: i32 = 44;
-const SIDEBAR_PAD_X: i32 = 16;
-const SIDEBAR_TOP_PAD: i32 = 20;
-const CONTENT_PAD_X: i32 = 32;
-const CONTENT_TOP_PAD: i32 = 28;
-const TITLE_HEIGHT: i32 = 28;
-const ACCENT_STRIP_H: i32 = 2;
-const OVERLAY_THEME_ROW_H: i32 = 36;
-
-pub fn draw_settings(
-    painter: &mut Painter<'_>,
-    font: &RefCell<Option<TextRenderer>>,
-    theme: &ThemeConfig,
-    width: u32,
-    height: u32,
-    selected: SettingsCategory,
-    available_themes: &[String],
-    current_theme: &str,
-) {
-    let colors = &theme.colors;
-    let width = width as i32;
-    let height = height as i32;
-
-    painter.clear(colors.surface_alt);
-    painter.stroke_rect(PainterRect { x: 0, y: 0, w: width, h: height }, colors.border);
-    painter.rect(PainterRect { x: 0, y: 0, w: SIDEBAR_WIDTH, h: height }, colors.surface);
-    painter.rect(PainterRect { x: SIDEBAR_WIDTH, y: 0, w: 1, h: height }, colors.border);
-
-    for (i, cat) in SettingsCategory::ALL.iter().enumerate() {
-        let y = SIDEBAR_TOP_PAD + (i as i32) * SIDEBAR_ITEM_HEIGHT;
-        if *cat == selected {
-            painter.rect(PainterRect { x: 0, y, w: 3, h: SIDEBAR_ITEM_HEIGHT }, colors.accent);
-        }
-        let label_color = if *cat == selected { colors.accent } else { colors.text };
-        painter.text_clipped(font, cat.label(), SIDEBAR_PAD_X, y + SIDEBAR_ITEM_HEIGHT / 2 + 6,
-            SIDEBAR_WIDTH - 2 * SIDEBAR_PAD_X, label_color);
-    }
-
-    let content_x = SIDEBAR_WIDTH + CONTENT_PAD_X;
-    let content_w = width - SIDEBAR_WIDTH - 2 * CONTENT_PAD_X;
-    painter.text_clipped(font, selected.label(), content_x, CONTENT_TOP_PAD + 18, content_w, colors.accent);
-    painter.rect(PainterRect { x: content_x, y: CONTENT_TOP_PAD + TITLE_HEIGHT, w: content_w, h: ACCENT_STRIP_H }, colors.accent);
-
-    let body_y = CONTENT_TOP_PAD + TITLE_HEIGHT + ACCENT_STRIP_H + 30;
-    match selected {
-        SettingsCategory::Theme => {
-            for (i, name) in available_themes.iter().enumerate() {
-                let row_y = body_y + (i as i32) * OVERLAY_THEME_ROW_H;
-                let is_selected = name.as_str() == current_theme;
-                if is_selected {
-                    painter.rect(PainterRect { x: content_x, y: row_y, w: 3, h: OVERLAY_THEME_ROW_H }, colors.accent);
-                }
-                let text_color = if is_selected { colors.accent } else { colors.text };
-                painter.text_clipped(font, name, content_x + 10, row_y + OVERLAY_THEME_ROW_H / 2 + 6,
-                    content_w - 10, text_color);
-            }
-        }
-        SettingsCategory::Cursor => {
-            painter.text_clipped(font, "Cursor theme + size — A3.4", content_x, body_y, content_w, colors.text_dim);
-        }
-        SettingsCategory::Wallpaper => {
-            painter.text_clipped(font, "Wallpaper path + mode — A3.5", content_x, body_y, content_w, colors.text_dim);
-        }
-        SettingsCategory::PinnedApps => {
-            painter.text_clipped(font, "Reorder / add / remove pinned apps — A3.6", content_x, body_y, content_w, colors.text_dim);
-        }
     }
 }
 

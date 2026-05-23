@@ -789,11 +789,7 @@ impl MeridianShell {
         meridian_config::MeridianConfig::save_theme(&name);
         tracing::info!("Theme applied: {}", name);
         self.panel_dirty = true;
-        self.settings_dirty = true;
         self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
-        if self.settings_open {
-            self.draw_settings_popup(qh, crate::wayland::RepaintReason::Pointer);
-        }
         if self.launcher_settings_open {
             self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
         }
@@ -935,14 +931,9 @@ impl MeridianShell {
                     });
             }
             ClickAction::ToggleSettings => {
-                if self.settings_open {
-                    self.settings_open = false;
-                    self.unmap_settings_popup(CommitReason::Input);
-                } else {
-                    self.settings_open = true;
-                    self.draw_settings_popup(qh, RepaintReason::Pointer);
-                }
-                self.draw_panel(qh, RepaintReason::Pointer);
+                self.launcher_settings_open = true;
+                self.app_view_open = false;
+                self.toggle_launcher();
             }
         }
     }

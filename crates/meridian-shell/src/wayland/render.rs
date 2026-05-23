@@ -5,10 +5,10 @@ use tracing::{debug, info, warn};
 use wayland_client::QueueHandle;
 
 use crate::{
-    buffer, network_popup, notification_popup, panel, settings_view, ui_preview, workspaces,
+    buffer, network_popup, notification_popup, panel, ui_preview, workspaces,
     Painter, Rect, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
     NETWORK_POPUP_HEIGHT, NETWORK_POPUP_WIDTH, NOTIFICATION_HEIGHT, NOTIFICATION_WIDTH,
-    PANEL_HEIGHT, SETTINGS_POPUP_HEIGHT, SETTINGS_POPUP_WIDTH, WORKSPACE_POPUP_HEIGHT,
+    PANEL_HEIGHT, WORKSPACE_POPUP_HEIGHT,
     WORKSPACE_POPUP_WIDTH,
 };
 
@@ -921,92 +921,4 @@ impl MeridianShell {
         self.notification_dirty = false;
     }
 
-    /// Phase A3.1+A3.2: paint the settings overlay (sidebar + content
-    /// frame). Caller should set `settings_open=true` before invoking;
-    /// otherwise this is a no-op and the surface stays unmapped.
-    pub(crate) fn draw_settings_popup(
-        &mut self,
-        _qh: &QueueHandle<Self>,
-        reason: RepaintReason,
-    ) {
-        if !self.settings_open || !self.settings_configured {
-            debug!(
-                "draw_settings_popup skipped: reason={:?} open={} configured={}",
-                reason, self.settings_open, self.settings_configured
-            );
-            return;
-        }
-
-        let width = self.settings_width.min(SETTINGS_POPUP_WIDTH);
-        let height = self.settings_height.min(SETTINGS_POPUP_HEIGHT);
-        let stride = buffer::shm_buffer_stride(width);
-        let selected = self.settings_category;
-        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
-            let buf = buffer::buffer_for(
-                &mut self.pool,
-                &mut self.settings_buffer,
-                width,
-                height,
-                stride,
-            );
-            let Some(buf) = buf else {
-                warn!(
-                    "settings buffer unavailable: reason={:?} width={} height={}",
-                    reason, width, height
-                );
-                return;
-            };
-            let Some(canvas) = buf.canvas(&mut self.pool) else {
-                self.settings_buffer = None;
-                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
-                    continue;
-                }
-                warn!(
-                    "settings canvas unavailable after retry: reason={:?} width={} height={}",
-                    reason, width, height
-                );
-                return;
-            };
-
-            let mut painter = Painter::new(canvas, width as i32, height as i32);
-            settings_view::draw_settings(
-                &mut painter,
-                &self.font,
-                &self.theme,
-                width,
-                height,
-                selected,
-                &self.available_themes,
-                &self.theme_name,
-            );
-
-            if let Err(err) = buf.attach_to(self.settings_layer.wl_surface()) {
-                warn!(
-                    "settings buffer attach failed: reason={:?} width={} height={} error={}",
-                    reason, width, height, err
-                );
-                return;
-            }
-            self.settings_layer
-                .wl_surface()
-                .damage_buffer(0, 0, width as i32, height as i32);
-            self.settings_layer.commit();
-            debug!(
-                "draw_settings_popup committed: reason={:?} category={:?} width={} height={}",
-                reason, selected, width, height
-            );
-            self.settings_dirty = false;
-            return;
-        }
-    }
-
-    pub(crate) fn unmap_settings_popup(&mut self, reason: CommitReason) {
-        debug!(
-            "unmap_settings_popup: reason={:?} open={} configured={} surface=settings attach_none=true commit=true",
-            reason, self.settings_open, self.settings_configured
-        );
-        self.settings_layer.wl_surface().attach(None, 0, 0);
-        self.settings_layer.commit();
-        self.settings_dirty = false;
-    }
 }

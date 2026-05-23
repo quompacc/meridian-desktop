@@ -63,13 +63,6 @@ impl LayerShellHandler for MeridianShell {
             return;
         }
 
-        if self.settings_layer == *layer {
-            warn!("Settings layer surface closed by compositor; closing settings");
-            self.settings_open = false;
-            self.settings_configured = false;
-            self.settings_dirty = false;
-            return;
-        }
 
         warn!("Unknown layer surface closed by compositor");
     }
@@ -269,26 +262,6 @@ impl LayerShellHandler for MeridianShell {
                 self.draw_notification_popup(qh, RepaintReason::LayerConfigure);
             } else {
                 self.unmap_notification_popup(crate::wayland::CommitReason::UnknownOther);
-            }
-        } else if self.settings_layer == *layer {
-            tracing::info!(
-                "settings configure: requested={}x{} desired={}x{}",
-                configure.new_size.0,
-                configure.new_size.1,
-                crate::SETTINGS_POPUP_WIDTH,
-                crate::SETTINGS_POPUP_HEIGHT
-            );
-            self.settings_layer.set_anchor(Anchor::empty());
-            self.settings_layer.set_exclusive_zone(0);
-            self.settings_layer
-                .set_size(crate::SETTINGS_POPUP_WIDTH, crate::SETTINGS_POPUP_HEIGHT);
-            self.settings_configured = true;
-            self.settings_width = crate::SETTINGS_POPUP_WIDTH;
-            self.settings_height = crate::SETTINGS_POPUP_HEIGHT;
-            if self.settings_open {
-                self.draw_settings_popup(qh, RepaintReason::LayerConfigure);
-            } else {
-                self.unmap_settings_popup(crate::wayland::CommitReason::UnknownOther);
             }
         }
     }

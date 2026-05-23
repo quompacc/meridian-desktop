@@ -31,8 +31,6 @@ impl PointerHandler for MeridianShell {
                 SurfaceKind::WorkspacePopup
             } else if &event.surface == self.network_layer.wl_surface() {
                 SurfaceKind::NetworkPopup
-            } else if &event.surface == self.settings_layer.wl_surface() {
-                SurfaceKind::Settings
             } else {
                 SurfaceKind::None
             };
@@ -59,7 +57,7 @@ impl PointerHandler for MeridianShell {
                     SurfaceKind::NetworkPopup => {
                         self.draw_network_popup(qh, RepaintReason::Pointer)
                     }
-                    SurfaceKind::Settings | SurfaceKind::Calendar | SurfaceKind::None => {}
+                    SurfaceKind::Calendar | SurfaceKind::None => {}
                 }
                 self.pointer_surface = SurfaceKind::None;
                 continue;
@@ -378,7 +376,6 @@ impl PointerHandler for MeridianShell {
                             Some(crate::wayland::ClickAction::ToggleNetworkPopup)
                         }
                     }
-                    SurfaceKind::Settings => None,
                     SurfaceKind::Calendar => None,
                     SurfaceKind::None => None,
                 };
@@ -422,7 +419,6 @@ impl PointerHandler for MeridianShell {
                         SurfaceKind::WorkspacePopup => self.handle_workspace_click(qh, action),
                         SurfaceKind::NetworkPopup => {}
                         SurfaceKind::Calendar => {}
-                        SurfaceKind::Settings => {}
                         SurfaceKind::None => {}
                     }
                 }
