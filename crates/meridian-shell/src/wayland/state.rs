@@ -776,6 +776,24 @@ impl MeridianShell {
         self.draw_panel(qh, reason);
     }
 
+    pub(crate) fn apply_theme(&mut self, qh: &QueueHandle<Self>, name: String) {
+        let mut theme_manager = meridian_config::ThemeManager::new();
+        if let Err(e) = theme_manager.set_theme(&name) {
+            tracing::warn!("apply_theme: failed to load {:?}: {}", name, e);
+            return;
+        }
+        self.theme = theme_manager.current().config.clone();
+        self.theme_name = name.clone();
+        meridian_config::MeridianConfig::save_theme(&name);
+        tracing::info!("Theme applied: {}", name);
+        self.panel_dirty = true;
+        self.settings_dirty = true;
+        self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
+        if self.settings_open {
+            self.draw_settings_popup(qh, crate::wayland::RepaintReason::Pointer);
+        }
+    }
+
     pub(crate) fn handle_panel_click(&mut self, qh: &QueueHandle<Self>, action: ClickAction) {
         if self.calendar_popup_open && !matches!(action, ClickAction::Clock) {
             self.close_calendar_popup(CommitReason::Input);
@@ -911,6 +929,16 @@ impl MeridianShell {
                         mapped_len: 0,
                     });
             }
+            ClickAction::ToggleSettings => {
+                if self.settings_open {
+                    self.settings_open = false;
+                    self.unmap_settings_popup(CommitReason::Input);
+                } else {
+                    self.settings_open = true;
+                    self.draw_settings_popup(qh, RepaintReason::Pointer);
+                }
+                self.draw_panel(qh, RepaintReason::Pointer);
+            }
         }
     }
 
@@ -975,6 +1003,7 @@ impl MeridianShell {
             ClickAction::ToggleNetworkPopup => {}
             ClickAction::Clock => {}
             ClickAction::TakeScreenshot => {}
+            ClickAction::ToggleSettings => {}
         }
     }
 

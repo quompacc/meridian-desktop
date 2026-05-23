@@ -159,6 +159,7 @@ impl PointerHandler for MeridianShell {
                         &self.last_clock,
                         &self.icon_cache,
                         None, // screenshot_icon — nur für Hover-Layout, Icon irrelevant
+                        self.settings_open,
                     );
                     let pixel_size = meridian_ui::PixelSize {
                         width: self.width,
@@ -370,9 +371,6 @@ impl PointerHandler for MeridianShell {
                         }
                     }
                     SurfaceKind::Settings => {
-                        // Sidebar click: switch category + redraw. Handled
-                        // inline because the state change is purely
-                        // intra-surface (no cross-surface ClickAction needed).
                         if let Some(cat) = crate::settings_view::sidebar_hit_test(
                             event.position.0,
                             event.position.1,
@@ -380,6 +378,17 @@ impl PointerHandler for MeridianShell {
                             if cat != self.settings_category {
                                 self.settings_category = cat;
                                 self.draw_settings_popup(qh, RepaintReason::Pointer);
+                            }
+                        } else if self.settings_category == crate::settings_view::SettingsCategory::Theme {
+                            if let Some(idx) = crate::settings_view::theme_content_hit_test(
+                                event.position.0,
+                                event.position.1,
+                                &self.available_themes,
+                            ) {
+                                if idx < self.available_themes.len() {
+                                    let name = self.available_themes[idx].clone();
+                                    self.apply_theme(qh, name);
+                                }
                             }
                         }
                         None

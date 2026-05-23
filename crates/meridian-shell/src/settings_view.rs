@@ -2,9 +2,8 @@
 // (category list), content area on the right (renders the selected
 // category's view).
 //
-// v1 categories: Theme, Cursor, Wallpaper, Pinned Apps. Only the layout
-// + sidebar selection is implemented here; the per-category content
-// rendering (theme picker etc.) is A3.3 and follow-up sessions.
+// A3.3: Theme picker — shows available_themes as clickable rows;
+// selected theme row gets accent colour + left-edge strip.
 
 use std::cell::RefCell;
 
@@ -20,6 +19,7 @@ const CONTENT_PAD_X: i32 = 32;
 const CONTENT_TOP_PAD: i32 = 28;
 const TITLE_HEIGHT: i32 = 28;
 const ACCENT_STRIP_H: i32 = 2;
+const THEME_ROW_H: i32 = 36;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsCategory {
@@ -72,6 +72,30 @@ pub fn sidebar_hit_test(x: f64, y: f64) -> Option<SettingsCategory> {
     }
 }
 
+/// Hit-test the theme content area. Returns the index into
+/// `available_themes` if the click lands on a valid theme row,
+/// or `None` otherwise.
+pub fn theme_content_hit_test(
+    x: f64,
+    y: f64,
+    available_themes: &[String],
+) -> Option<usize> {
+    if x <= (SIDEBAR_WIDTH + 1) as f64 {
+        return None;
+    }
+    let body_y = CONTENT_TOP_PAD + TITLE_HEIGHT + ACCENT_STRIP_H + 30;
+    let y_rel = y as i32 - body_y;
+    if y_rel < 0 {
+        return None;
+    }
+    let row = (y_rel / THEME_ROW_H) as usize;
+    if row < available_themes.len() {
+        Some(row)
+    } else {
+        None
+    }
+}
+
 pub fn draw_settings(
     painter: &mut Painter<'_>,
     font: &RefCell<Option<TextRenderer>>,
@@ -79,6 +103,8 @@ pub fn draw_settings(
     width: u32,
     height: u32,
     selected: SettingsCategory,
+    available_themes: &[String],
+    current_theme: &str,
 ) {
     let colors = &theme.colors;
     let width = width as i32;
@@ -170,15 +196,72 @@ pub fn draw_settings(
         colors.accent,
     );
 
-    // Placeholder content per category. Real content (theme picker,
-    // cursor size slider, wallpaper file path, pinned-app list) lands
-    // in A3.3 and follow-up sessions.
+    // Content body area.
     let body_y = CONTENT_TOP_PAD + TITLE_HEIGHT + ACCENT_STRIP_H + 30;
-    let placeholder = match selected {
-        SettingsCategory::Theme => "Theme picker — coming next (A3.3)",
-        SettingsCategory::Cursor => "Cursor theme + size — A3.4",
-        SettingsCategory::Wallpaper => "Wallpaper path + mode — A3.5",
-        SettingsCategory::PinnedApps => "Reorder / add / remove pinned apps — A3.6",
-    };
-    painter.text_clipped(font, placeholder, content_x, body_y, content_w, colors.text_dim);
+
+    match selected {
+        SettingsCategory::Theme => {
+            // Theme picker: one clickable row per available theme.
+            for (i, name) in available_themes.iter().enumerate() {
+                let row_y = body_y + (i as i32) * THEME_ROW_H;
+                let is_selected = name.as_str() == current_theme;
+
+                if is_selected {
+                    // 3px accent left-edge strip for the active theme.
+                    painter.rect(
+                        Rect {
+                            x: content_x,
+                            y: row_y,
+                            w: 3,
+                            h: THEME_ROW_H,
+                        },
+                        colors.accent,
+                    );
+                }
+                let text_color = if is_selected {
+                    colors.accent
+                } else {
+                    colors.text
+                };
+                painter.text_clipped(
+                    font,
+                    name,
+                    content_x + 10,
+                    row_y + THEME_ROW_H / 2 + 6,
+                    content_w - 10,
+                    text_color,
+                );
+            }
+        }
+        SettingsCategory::Cursor => {
+            painter.text_clipped(
+                font,
+                "Cursor theme + size — A3.4",
+                content_x,
+                body_y,
+                content_w,
+                colors.text_dim,
+            );
+        }
+        SettingsCategory::Wallpaper => {
+            painter.text_clipped(
+                font,
+                "Wallpaper path + mode — A3.5",
+                content_x,
+                body_y,
+                content_w,
+                colors.text_dim,
+            );
+        }
+        SettingsCategory::PinnedApps => {
+            painter.text_clipped(
+                font,
+                "Reorder / add / remove pinned apps — A3.6",
+                content_x,
+                body_y,
+                content_w,
+                colors.text_dim,
+            );
+        }
+    }
 }

@@ -1183,6 +1183,7 @@ impl LauncherState {
                     ClickAction::ToggleWorkspacePopup => None,
                     ClickAction::ToggleNetworkPopup => None,
                     ClickAction::TakeScreenshot => None,
+                    ClickAction::ToggleSettings => None,
                 });
 
             match hovered_index {

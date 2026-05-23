@@ -908,3 +908,90 @@ mode = { width = 1920, height = 1080 }
         fs::write(path, content).expect("write test file");
     }
 }
+
+impl MeridianConfig {
+    /// Write (or update) only the theme key in the config file without
+    /// touching any other settings the user may have made.
+    pub fn save_theme(name: &str) {
+        let config_path = config_directory().join("config.toml");
+        let raw = if config_path.exists() {
+            fs::read_to_string(&config_path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let new_line = format!("theme = \"{}\"", name);
+        let nl = '\n';
+
+        // If the file already contains a `theme = ...` line inside
+        // `[general]`, replace it in-place; otherwise append a
+        // `[general]` section.
+        let updated = if let Some(pos) = find_theme_line(&raw) {
+            // Reconstruct with the theme line replaced.
+            let mut out = String::new();
+            for (i, l) in raw.lines().enumerate() {
+                if i == pos {
+                    out.push_str(&new_line);
+                } else {
+                    out.push_str(l);
+                }
+                out.push(nl);
+            }
+            out
+        } else if has_general_section(&raw) {
+            // Section exists but no theme key yet — insert after [general].
+            let mut out = String::new();
+            let mut inserted = false;
+            for line in raw.lines() {
+                out.push_str(line);
+                out.push(nl);
+                if !inserted && line.trim() == "[general]" {
+                    out.push_str(&new_line);
+                    out.push(nl);
+                    inserted = true;
+                }
+            }
+            out
+        } else {
+            // No [general] section at all — append it.
+            let mut out = raw.clone();
+            if !out.ends_with(nl) && !out.is_empty() {
+                out.push(nl);
+            }
+            out.push_str("\n[general]\n");
+            out.push_str(&new_line);
+            out.push(nl);
+            out
+        };
+
+        if let Some(parent) = config_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Err(e) = fs::write(&config_path, updated.as_bytes()) {
+            warn!("Failed to write theme to config: {}", e);
+        } else {
+            info!("Saved theme {:?} to {:?}", name, config_path);
+        }
+    }
+}
+
+fn has_general_section(raw: &str) -> bool {
+    raw.lines().any(|l| l.trim() == "[general]")
+}
+
+/// Returns the line index of the first `theme = ...` key that appears
+/// after a `[general]` section header.
+fn find_theme_line(raw: &str) -> Option<usize> {
+    let mut in_general = false;
+    for (i, line) in raw.lines().enumerate() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            in_general = t == "[general]";
+            continue;
+        }
+        if in_general && t.starts_with("theme") && t.contains('=') {
+            return Some(i);
+        }
+    }
+    None
+}

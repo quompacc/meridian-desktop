@@ -271,6 +271,7 @@ impl MeridianShell {
                 &clock,
                 &self.icon_cache,
                 screenshot_icon,
+                self.settings_open,
                 &state_fn,
                 &mut self.panel_state.clicks,
             );
@@ -965,6 +966,8 @@ impl MeridianShell {
                 width,
                 height,
                 selected,
+                &self.available_themes,
+                &self.theme_name,
             );
 
             if let Err(err) = buf.attach_to(self.settings_layer.wl_surface()) {

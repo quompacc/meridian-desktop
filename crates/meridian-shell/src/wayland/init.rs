@@ -222,6 +222,7 @@ pub(crate) fn initialize(
             );
         }
     }
+    let available_themes = theme_manager.available_themes();
     let theme = theme_manager.current().config.clone();
     info!("Theme loaded");
 
@@ -380,6 +381,7 @@ pub(crate) fn initialize(
         pointer: None,
         pointer_position: (0.0, 0.0),
         pointer_surface: SurfaceKind::None,
+        available_themes,
         theme_name: theme_manager.current().name.clone(),
         theme,
         font: RefCell::new(font),

@@ -272,6 +272,7 @@ pub(crate) struct MeridianShell {
     pub(crate) pointer: Option<wl_pointer::WlPointer>,
     pub(crate) pointer_position: (f64, f64),
     pub(crate) pointer_surface: SurfaceKind,
+    pub(crate) available_themes: Vec<String>,
     pub(crate) theme_name: String,
     pub(crate) theme: ThemeConfig,
     pub(crate) font: RefCell<Option<TextRenderer>>,
