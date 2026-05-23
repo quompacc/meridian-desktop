@@ -391,13 +391,27 @@ pub(crate) fn build_app_view_widget_tree(
         vec![Box::new(Container::column(8, row_widgets)) as Box<dyn Widget>],
     );
 
-    let footer_left = vec![Box::new(Button::with_id(
-        "show-tile-view",
-        "← Apps",
-        pal.accent,
-        FOOTER_SWITCH_WIDTH,
-        FOOTER_SWITCH_HEIGHT,
-    )) as Box<dyn Widget>];
+    let settings_icon = icon_cache
+        .lookup("preferences-system-symbolic", POWER_ICON_SIZE)
+        .and_then(icon_image_to_pixmap);
+
+    let footer_left = vec![
+        Box::new(Button::with_id(
+            "show-tile-view",
+            "← Apps",
+            pal.accent,
+            FOOTER_SWITCH_WIDTH,
+            FOOTER_SWITCH_HEIGHT,
+        )) as Box<dyn Widget>,
+        Box::new(Button::with_id_and_icon(
+            "launcher-settings",
+            "Settings",
+            pal.accent_alt,
+            FOOTER_SWITCH_WIDTH,
+            FOOTER_SWITCH_HEIGHT,
+            settings_icon,
+        )) as Box<dyn Widget>,
+    ];
 
     let power_off_icon = icon_cache
         .lookup("system-shutdown", POWER_ICON_SIZE)
