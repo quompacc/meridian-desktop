@@ -2124,7 +2124,6 @@ fn draw_tile_start_view(
 ) {
     let colors = &theme.colors;
     painter.clear(colors.surface_alt);
-
     let results_total = launcher_state.apps.len() + 1;
 
     let card = Rect {
@@ -2416,7 +2415,6 @@ fn draw_tile_start_view(
         search.w - tokens::launcher::INNER_PADDING * 2,
         query_color,
     );
-
     fill_surface_with_radius(
         painter,
         footer,

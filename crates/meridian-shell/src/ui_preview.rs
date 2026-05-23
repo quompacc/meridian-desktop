@@ -209,7 +209,19 @@ pub(crate) fn build_ui_preview_widget_tree(
         vec![Box::new(mosaic_grid) as Box<dyn Widget>],
     );
 
-    let footer_left = vec![Box::new(Button::with_id(
+    let settings_icon = icon_cache
+        .lookup("preferences-system-symbolic", POWER_ICON_SIZE)
+        .and_then(icon_image_to_pixmap);
+    let footer_left = vec![
+        Box::new(Button::with_id_and_icon(
+            "launcher-settings",
+            "Settings",
+            pal.accent_alt,
+            FOOTER_SWITCH_WIDTH,
+            FOOTER_SWITCH_HEIGHT,
+            settings_icon,
+        )) as Box<dyn Widget>,
+        Box::new(Button::with_id(
         "apps-switch",
         "Apps",
         pal.accent,

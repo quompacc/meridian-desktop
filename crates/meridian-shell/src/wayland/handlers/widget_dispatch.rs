@@ -80,6 +80,12 @@ impl MeridianShell {
                     self.draw_workspace_popup(qh, crate::wayland::RepaintReason::Pointer);
                 }
             }
+            WidgetAction::ToggleSettings => {
+                self.unmap_launcher(CommitReason::Input);
+                self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
+                self.settings_open = true;
+                self.draw_settings_popup(qh, crate::wayland::RepaintReason::Pointer);
+            }
             WidgetAction::PowerOff
             | WidgetAction::PowerRestart
             | WidgetAction::PowerSleep

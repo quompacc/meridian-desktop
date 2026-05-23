@@ -17,6 +17,7 @@ pub(crate) enum WidgetAction {
     PowerSleep,
     PowerLock,
     PowerLogout,
+    ToggleSettings,
 }
 
 #[allow(dead_code)]
@@ -40,6 +41,7 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
         "power-sleep" => Some(WidgetAction::PowerSleep),
         "power-lock" => Some(WidgetAction::PowerLock),
         "power-logout" => Some(WidgetAction::PowerLogout),
+        "launcher-settings" => Some(WidgetAction::ToggleSettings),
         _ => None,
     }
 }
