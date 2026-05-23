@@ -426,6 +426,7 @@ pub(crate) fn initialize(
         ui_preview_widget_state: None,
         panel_widget_state: None,
         app_view_open: false,
+        launcher_settings_open: false,
         app_view_category: Default::default(),
         context_menu: None,
         search_query: String::new(),

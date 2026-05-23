@@ -345,12 +345,35 @@ impl PointerHandler for MeridianShell {
                         .iter()
                         .find(|zone| zone.rect.contains(event.position.0, event.position.1))
                         .map(|zone| zone.action.clone()),
-                    SurfaceKind::Launcher => self
-                        .launcher_state
-                        .clicks
-                        .iter()
-                        .find(|zone| zone.rect.contains(event.position.0, event.position.1))
-                        .map(|zone| zone.action.clone()),
+                    SurfaceKind::Launcher => {
+                        if self.launcher_settings_open {
+                            let (x, y) = event.position;
+                            if crate::settings_view::back_button_hit_test(x, y, crate::LAUNCHER_HEIGHT) {
+                                self.launcher_settings_open = false;
+                                self.app_view_open = false;
+                                self.draw_launcher(qh, RepaintReason::Pointer);
+                            } else if let Some(cat) = crate::settings_view::sidebar_hit_test(x, y) {
+                                if cat != self.settings_category {
+                                    self.settings_category = cat;
+                                    self.draw_launcher(qh, RepaintReason::Pointer);
+                                }
+                            } else if self.settings_category == crate::settings_view::SettingsCategory::Theme {
+                                if let Some(idx) = crate::settings_view::theme_content_hit_test(x, y, &self.available_themes) {
+                                    if idx < self.available_themes.len() {
+                                        let name = self.available_themes[idx].clone();
+                                        self.apply_theme(qh, name);
+                                    }
+                                }
+                            }
+                            None
+                        } else {
+                            self.launcher_state
+                                .clicks
+                                .iter()
+                                .find(|zone| zone.rect.contains(event.position.0, event.position.1))
+                                .map(|zone| zone.action.clone())
+                        }
+                    }
                     SurfaceKind::WorkspacePopup => self
                         .workspace_state
                         .clicks

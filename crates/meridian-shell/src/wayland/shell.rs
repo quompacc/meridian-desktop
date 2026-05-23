@@ -302,6 +302,7 @@ pub(crate) struct MeridianShell {
     pub(crate) ui_preview_widget_state: Option<(meridian_ui::WidgetPath, meridian_ui::WidgetState)>,
     pub(crate) panel_widget_state: Option<(meridian_ui::WidgetPath, meridian_ui::WidgetState)>,
     pub(crate) app_view_open: bool,
+    pub(crate) launcher_settings_open: bool,
     pub(crate) app_view_category: crate::app_view::AppCategory,
     pub(crate) context_menu: Option<crate::context_menu::ContextMenuState>,
     pub(crate) search_query: String,

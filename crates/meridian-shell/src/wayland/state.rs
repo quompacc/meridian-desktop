@@ -770,6 +770,8 @@ impl MeridianShell {
             return;
         }
         self.launcher_state.close();
+        self.launcher_settings_open = false;
+        self.app_view_open = false;
         self.launcher_layer
             .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
         self.unmap_launcher(CommitReason::Input);
@@ -791,6 +793,9 @@ impl MeridianShell {
         self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
         if self.settings_open {
             self.draw_settings_popup(qh, crate::wayland::RepaintReason::Pointer);
+        }
+        if self.launcher_settings_open {
+            self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
         }
     }
 
@@ -1004,12 +1009,9 @@ impl MeridianShell {
             ClickAction::Clock => {}
             ClickAction::TakeScreenshot => {}
             ClickAction::ToggleSettings => {
-                // Close launcher, open settings overlay.
-                self.toggle_launcher();
-                self.unmap_launcher(CommitReason::Input);
-                self.draw_panel(qh, RepaintReason::Pointer);
-                self.settings_open = true;
-                self.draw_settings_popup(qh, RepaintReason::Pointer);
+                self.launcher_settings_open = true;
+                self.app_view_open = false;
+                self.draw_launcher(qh, RepaintReason::Pointer);
             }
         }
     }

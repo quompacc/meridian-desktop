@@ -18,11 +18,13 @@ impl MeridianShell {
         match action {
             WidgetAction::ToggleUiPreview => {
                 self.app_view_open = true;
+                self.launcher_settings_open = false;
                 self.ui_preview_widget_state = None;
                 self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
             }
             WidgetAction::ShowTileView => {
                 self.app_view_open = false;
+                self.launcher_settings_open = false;
                 self.search_query.clear();
                 self.ui_preview_widget_state = None;
                 self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
@@ -81,9 +83,9 @@ impl MeridianShell {
                 }
             }
             WidgetAction::ToggleSettings => {
-                self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
-                self.settings_open = true;
-                self.draw_settings_popup(qh, crate::wayland::RepaintReason::Pointer);
+                self.launcher_settings_open = true;
+                self.app_view_open = false;
+                self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
             }
             WidgetAction::PowerOff
             | WidgetAction::PowerRestart

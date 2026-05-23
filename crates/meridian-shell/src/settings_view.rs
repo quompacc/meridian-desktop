@@ -265,3 +265,56 @@ pub fn draw_settings(
         }
     }
 }
+
+
+const LAUNCHER_FOOTER_H: i32 = 56;
+const FOOTER_PAD_X: i32 = 28;
+const FOOTER_BTN_W: i32 = 144;
+const FOOTER_BTN_H: i32 = 48;
+
+/// Returns true if the click lands inside the ← Back button in the
+/// launcher settings footer.
+pub fn back_button_hit_test(x: f64, y: f64, launcher_height: u32) -> bool {
+    let footer_y = launcher_height as i32 - LAUNCHER_FOOTER_H;
+    y >= footer_y as f64
+        && y < (footer_y + LAUNCHER_FOOTER_H) as f64
+        && x >= FOOTER_PAD_X as f64
+        && x < (FOOTER_PAD_X + FOOTER_BTN_W) as f64
+}
+
+/// Draws the settings view sized to fit inside the launcher — content
+/// in the upper portion, a footer strip with Back button at the bottom.
+pub fn draw_settings_launcher(
+    painter: &mut Painter<'_>,
+    font: &RefCell<Option<TextRenderer>>,
+    theme: &ThemeConfig,
+    width: u32,
+    height: u32,
+    selected: SettingsCategory,
+    available_themes: &[String],
+    current_theme: &str,
+) {
+    let content_h = (height as i32 - LAUNCHER_FOOTER_H).max(0) as u32;
+    draw_settings(painter, font, theme, width, content_h, selected, available_themes, current_theme);
+
+    let colors = &theme.colors;
+    let footer_y = content_h as i32;
+    let w = width as i32;
+
+    painter.rect(Rect { x: 0, y: footer_y, w, h: 1 }, colors.border);
+    painter.rect(Rect { x: 0, y: footer_y + 1, w, h: LAUNCHER_FOOTER_H - 1 }, colors.surface);
+
+    let btn_y = footer_y + (LAUNCHER_FOOTER_H - FOOTER_BTN_H) / 2;
+    painter.roundish_rect(
+        Rect { x: FOOTER_PAD_X, y: btn_y, w: FOOTER_BTN_W, h: FOOTER_BTN_H },
+        colors.accent_alt,
+    );
+    painter.text_clipped(
+        font,
+        "← Back",
+        FOOTER_PAD_X + 12,
+        btn_y + FOOTER_BTN_H / 2 + 6,
+        FOOTER_BTN_W - 24,
+        colors.surface,
+    );
+}
