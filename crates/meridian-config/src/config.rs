@@ -973,6 +973,96 @@ impl MeridianConfig {
             info!("Saved theme {:?} to {:?}", name, config_path);
         }
     }
+    /// Write (or update) the [wallpaper] section in config.toml.
+    /// Pass an empty `path` to remove the wallpaper section entirely.
+    pub fn save_wallpaper(path: &str, mode: WallpaperMode) {
+        let config_path = config_directory().join("config.toml");
+        let raw = if config_path.exists() {
+            fs::read_to_string(&config_path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let stripped = strip_toml_section(&raw, "wallpaper");
+        let updated = if path.is_empty() {
+            stripped
+        } else {
+            let mut out = stripped;
+            if !out.ends_with('\n') && !out.is_empty() {
+                out.push('\n');
+            }
+            out.push_str("\n[wallpaper]\n");
+            out.push_str(&format!("path = \"{}\"\n", path));
+            out.push_str(&format!("mode = \"{}\"\n", mode));
+            out
+        };
+
+        if let Some(parent) = config_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Err(e) = fs::write(&config_path, updated.as_bytes()) {
+            warn!("Failed to write wallpaper to config: {}", e);
+        } else {
+            info!("Saved wallpaper {:?} mode={} to {:?}", path, mode, config_path);
+        }
+    }
+
+    /// Scan standard wallpaper directories and return sorted image paths.
+    pub fn scan_wallpaper_dirs() -> Vec<String> {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+        let dirs: &[std::path::PathBuf] = &[
+            std::path::PathBuf::from("/usr/share/wallpapers"),
+            std::path::PathBuf::from("/usr/share/backgrounds"),
+            std::path::PathBuf::from(format!("{}/Pictures", home)),
+        ];
+        let mut results = Vec::new();
+        for dir in dirs {
+            if dir.exists() {
+                collect_images(dir, &mut results, 4);
+            }
+        }
+        results.sort();
+        results.dedup();
+        results
+    }
+}
+
+fn strip_toml_section(raw: &str, section: &str) -> String {
+    let header = format!("[{}]", section);
+    let mut out = String::new();
+    let mut in_target = false;
+    for line in raw.lines() {
+        let t = line.trim();
+        if t.starts_with('[') && !t.starts_with("[[") {
+            in_target = t == header;
+        }
+        if !in_target {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    let trimmed = out.trim_end_matches('\n').to_string();
+    if trimmed.is_empty() { trimmed } else { trimmed + "\n" }
+}
+
+fn collect_images(dir: &std::path::Path, out: &mut Vec<String>, depth: usize) {
+    if depth == 0 { return; }
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_images(&path, out, depth - 1);
+        } else {
+            let ext = path.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_ascii_lowercase());
+            if matches!(ext.as_deref(), Some("png" | "jpg" | "jpeg" | "webp")) {
+                if let Some(s) = path.to_str() {
+                    out.push(s.to_string());
+                }
+            }
+        }
+    }
 }
 
 fn has_general_section(raw: &str) -> bool {

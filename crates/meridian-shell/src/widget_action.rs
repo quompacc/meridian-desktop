@@ -20,6 +20,8 @@ pub(crate) enum WidgetAction {
     ToggleSettings,
     SetSettingsCategory(crate::settings_view::SettingsCategory),
     ApplyThemeByIndex(usize),
+    ApplyWallpaperByIndex(usize),
+    SetWallpaperMode(meridian_config::WallpaperMode),
 }
 
 #[allow(dead_code)]
@@ -50,6 +52,13 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
         "settings-cat-pinned" => Some(WidgetAction::SetSettingsCategory(crate::settings_view::SettingsCategory::PinnedApps)),
         id if id.starts_with("settings-theme-") => {
             id["settings-theme-".len()..].parse::<usize>().ok().map(WidgetAction::ApplyThemeByIndex)
+        }
+        "wallpaper-mode-fill"   => Some(WidgetAction::SetWallpaperMode(meridian_config::WallpaperMode::Fill)),
+        "wallpaper-mode-fit"    => Some(WidgetAction::SetWallpaperMode(meridian_config::WallpaperMode::Fit)),
+        "wallpaper-mode-center" => Some(WidgetAction::SetWallpaperMode(meridian_config::WallpaperMode::Center)),
+        "wallpaper-mode-tile"   => Some(WidgetAction::SetWallpaperMode(meridian_config::WallpaperMode::Tile)),
+        id if id.starts_with("settings-wallpaper-") => {
+            id["settings-wallpaper-".len()..].parse::<usize>().ok().map(WidgetAction::ApplyWallpaperByIndex)
         }
         _ => None,
     }

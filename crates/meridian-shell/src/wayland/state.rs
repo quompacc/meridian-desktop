@@ -778,6 +778,22 @@ impl MeridianShell {
         self.draw_panel(qh, reason);
     }
 
+    pub(crate) fn apply_wallpaper(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        path: String,
+        mode: meridian_config::WallpaperMode,
+    ) {
+        meridian_config::MeridianConfig::save_wallpaper(&path, mode);
+        self.wallpaper_path = Some(path);
+        self.wallpaper_mode = mode;
+        self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
+        tracing::info!("Wallpaper applied: path={:?} mode={:?}", self.wallpaper_path, mode);
+        if self.launcher_settings_open {
+            self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
+        }
+    }
+
     pub(crate) fn apply_theme(&mut self, qh: &QueueHandle<Self>, name: String) {
         let mut theme_manager = meridian_config::ThemeManager::new();
         if let Err(e) = theme_manager.set_theme(&name) {

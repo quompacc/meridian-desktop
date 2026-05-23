@@ -381,6 +381,9 @@ impl MeridianShell {
                     self.settings_category,
                     &self.available_themes,
                     &self.theme_name,
+                    &self.available_wallpapers,
+                    self.wallpaper_path.as_deref(),
+                    self.wallpaper_mode,
                     &self.icon_cache,
                     &state_fn,
                 );

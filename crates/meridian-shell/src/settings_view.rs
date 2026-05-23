@@ -9,6 +9,7 @@ use meridian_ui::{
 use tiny_skia::{Pixmap, PixmapMut};
 
 use crate::icons::{IconCache, IconImage};
+use meridian_config::WallpaperMode;
 
 // ─── SettingsCategory ────────────────────────────────────────────────────────
 
@@ -87,6 +88,17 @@ pub(crate) const THEME_WIDGET_IDS: &[&'static str] = &[
     "settings-theme-16", "settings-theme-17", "settings-theme-18", "settings-theme-19",
 ];
 
+pub(crate) const WALLPAPER_WIDGET_IDS: &[&'static str] = &[
+    "settings-wallpaper-0",  "settings-wallpaper-1",  "settings-wallpaper-2",  "settings-wallpaper-3",  "settings-wallpaper-4",
+    "settings-wallpaper-5",  "settings-wallpaper-6",  "settings-wallpaper-7",  "settings-wallpaper-8",  "settings-wallpaper-9",
+    "settings-wallpaper-10", "settings-wallpaper-11", "settings-wallpaper-12", "settings-wallpaper-13", "settings-wallpaper-14",
+    "settings-wallpaper-15", "settings-wallpaper-16", "settings-wallpaper-17", "settings-wallpaper-18", "settings-wallpaper-19",
+    "settings-wallpaper-20", "settings-wallpaper-21", "settings-wallpaper-22", "settings-wallpaper-23", "settings-wallpaper-24",
+    "settings-wallpaper-25", "settings-wallpaper-26", "settings-wallpaper-27", "settings-wallpaper-28", "settings-wallpaper-29",
+    "settings-wallpaper-30", "settings-wallpaper-31", "settings-wallpaper-32", "settings-wallpaper-33", "settings-wallpaper-34",
+    "settings-wallpaper-35", "settings-wallpaper-36", "settings-wallpaper-37", "settings-wallpaper-38", "settings-wallpaper-39",
+];
+
 struct SettingsHeader {
     width: i32,
 }
@@ -158,6 +170,56 @@ impl Widget for ThemeRow {
     }
 }
 
+const WALLPAPER_MODE_BAR_H: u32 = 52;
+const WALLPAPER_ROW_H: i32 = 40;
+
+struct WallpaperRow {
+    index: usize,
+    display_name: Box<str>,
+    is_selected: bool,
+    accent: Color,
+    row_width: i32,
+}
+
+impl Widget for WallpaperRow {
+    fn id(&self) -> Option<&'static str> {
+        WALLPAPER_WIDGET_IDS.get(self.index).copied()
+    }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize { width: ui_length(self.row_width as f32), height: ui_length(WALLPAPER_ROW_H as f32) },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let bg = match state {
+            WidgetState::Idle => {
+                if self.is_selected {
+                    theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.08)
+                } else {
+                    theme.palette.surface
+                }
+            }
+            WidgetState::Hovered => theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12),
+            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
+        };
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, bg);
+        }
+        if self.is_selected {
+            let strip = Rect { x: area.x + 4, y: area.y + 6, width: 3, height: area.height - 12 };
+            if let Some(path) = rounded_rect_path(strip, 1) {
+                paint_fill(canvas, &path, self.accent);
+            }
+        }
+        let text_color = if self.is_selected { self.accent } else { theme.palette.text };
+        paint_text(canvas, &self.display_name, area.x + 16, area.y + area.height - 12, 12.0, text_color);
+    }
+}
+
+
 struct SettingsPlaceholder {
     width: i32,
     text: &'static str,
@@ -219,6 +281,9 @@ pub(crate) fn build_settings_widget_tree(
     selected: SettingsCategory,
     available_themes: &[String],
     current_theme: &str,
+    available_wallpapers: &[String],
+    current_wallpaper: Option<&str>,
+    wallpaper_mode: WallpaperMode,
     icon_cache: &IconCache,
 ) -> Box<dyn Widget> {
     let pal = Palette::TOKYO_NIGHT_METRO;
@@ -266,6 +331,56 @@ pub(crate) fn build_settings_widget_tree(
                 width,
                 content_h,
                 vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
+            ))
+        }
+        SettingsCategory::Wallpaper => {
+            let mode_chips: Vec<Box<dyn Widget>> = [
+                ("wallpaper-mode-fill",   "Fill",   WallpaperMode::Fill),
+                ("wallpaper-mode-fit",    "Fit",    WallpaperMode::Fit),
+                ("wallpaper-mode-center", "Center", WallpaperMode::Center),
+                ("wallpaper-mode-tile",   "Tile",   WallpaperMode::Tile),
+            ].iter().map(|(id, label, mode)| {
+                let accent = if *mode == wallpaper_mode { pal.accent } else { pal.surface };
+                Box::new(Button::with_id(id, label, accent, CHIP_WIDTH, CHIP_HEIGHT)) as Box<dyn Widget>
+            }).collect();
+            let mode_bar = Container::centered_viewport(
+                width, WALLPAPER_MODE_BAR_H,
+                vec![Box::new(Container::row(8, mode_chips)) as Box<dyn Widget>],
+            );
+            let list_h = content_h.saturating_sub(WALLPAPER_MODE_BAR_H);
+            let row_w = width as i32;
+            let rows: Vec<Box<dyn Widget>> = if available_wallpapers.is_empty() {
+                vec![Box::new(SettingsPlaceholder {
+                    width: row_w,
+                    text: "No wallpapers found in /usr/share/wallpapers or ~/Pictures",
+                }) as Box<dyn Widget>]
+            } else {
+                available_wallpapers
+                    .iter()
+                    .take(WALLPAPER_WIDGET_IDS.len())
+                    .enumerate()
+                    .map(|(i, path)| {
+                        let display = path.rsplit('/').next().unwrap_or(path);
+                        Box::new(WallpaperRow {
+                            index: i,
+                            display_name: display.into(),
+                            is_selected: current_wallpaper.map_or(false, |c| c == path.as_str()),
+                            accent: pal.accent,
+                            row_width: row_w,
+                        }) as Box<dyn Widget>
+                    })
+                    .collect()
+            };
+            let wallpaper_list = Container::centered_viewport(
+                width, list_h,
+                vec![Box::new(Container::column(2, rows)) as Box<dyn Widget>],
+            );
+            Box::new(Container::column(
+                0,
+                vec![
+                    Box::new(mode_bar) as Box<dyn Widget>,
+                    Box::new(wallpaper_list) as Box<dyn Widget>,
+                ],
             ))
         }
         other => Box::new(Container::centered_viewport(
@@ -336,6 +451,9 @@ pub(crate) fn draw_settings_launcher(
     selected: SettingsCategory,
     available_themes: &[String],
     current_theme: &str,
+    available_wallpapers: &[String],
+    current_wallpaper: Option<&str>,
+    wallpaper_mode: WallpaperMode,
     icon_cache: &IconCache,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
 ) {
@@ -351,7 +469,7 @@ pub(crate) fn draw_settings_launcher(
         theme.palette.background.b,
         theme.palette.background.a,
     ));
-    let root = build_settings_widget_tree(width, height, selected, available_themes, current_theme, icon_cache);
+    let root = build_settings_widget_tree(width, height, selected, available_themes, current_theme, available_wallpapers, current_wallpaper, wallpaper_mode, icon_cache);
     if let Ok(layout) = meridian_ui::compute_layout(&*root, meridian_ui::PixelSize { width, height }) {
         let mut pm = pixmap.as_mut();
         let _ = meridian_ui::render(&*root, &layout, &mut pm, &theme, state_fn);

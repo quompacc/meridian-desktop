@@ -4,7 +4,7 @@ use super::MeridianShell;
 use crate::{
     context_menu::{ContextMenuAction, ContextMenuState},
     panel::PinnedApp,
-    wayland::CommitReason,
+    wayland::{CommitReason, RepaintReason},
 };
 
 impl MeridianShell {
@@ -94,6 +94,20 @@ impl MeridianShell {
             WidgetAction::ApplyThemeByIndex(idx) => {
                 if let Some(name) = self.available_themes.get(idx).cloned() {
                     self.apply_theme(qh, name);
+                }
+            }
+            WidgetAction::ApplyWallpaperByIndex(idx) => {
+                if let Some(path) = self.available_wallpapers.get(idx).cloned() {
+                    let mode = self.wallpaper_mode;
+                    self.apply_wallpaper(qh, path, mode);
+                }
+            }
+            WidgetAction::SetWallpaperMode(mode) => {
+                self.wallpaper_mode = mode;
+                if let Some(path) = self.wallpaper_path.clone() {
+                    self.apply_wallpaper(qh, path, mode);
+                } else {
+                    self.draw_launcher(qh, RepaintReason::Pointer);
                 }
             }
             WidgetAction::PowerOff
