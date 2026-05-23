@@ -271,7 +271,6 @@ impl MeridianShell {
                 &clock,
                 &self.icon_cache,
                 screenshot_icon,
-                self.settings_open,
                 &state_fn,
                 &mut self.panel_state.clicks,
             );

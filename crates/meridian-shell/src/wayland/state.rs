@@ -1003,7 +1003,14 @@ impl MeridianShell {
             ClickAction::ToggleNetworkPopup => {}
             ClickAction::Clock => {}
             ClickAction::TakeScreenshot => {}
-            ClickAction::ToggleSettings => {}
+            ClickAction::ToggleSettings => {
+                // Close launcher, open settings overlay.
+                self.toggle_launcher();
+                self.unmap_launcher(CommitReason::Input);
+                self.draw_panel(qh, RepaintReason::Pointer);
+                self.settings_open = true;
+                self.draw_settings_popup(qh, RepaintReason::Pointer);
+            }
         }
     }
 

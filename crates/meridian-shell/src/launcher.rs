@@ -1970,9 +1970,7 @@ fn draw_all_apps_view(
     }
 
     if !actions.is_empty() {
-        let current_mode = launcher_state.current_mode();
         let footer_y = layout.footer.y + FOOTER_BAR_V_PADDING;
-        let control_center_y = layout.footer.y + (layout.footer.h - FOOTER_MODE_PILL_H) / 2;
         fill_surface_with_radius(
             painter,
             layout.footer,
@@ -1990,30 +1988,35 @@ fn draw_all_apps_view(
             colors.border,
         );
 
-        let mode_pill_rect = Rect {
-            x: layout.footer_left.x + tokens::launcher::INNER_PADDING,
-            y: control_center_y,
-            w: FOOTER_MODE_PILL_W.min(
-                (layout.footer_left.w - tokens::launcher::INNER_PADDING * 2)
-                    .max(FOOTER_MODE_PILL_W / 2),
-            ),
-            h: FOOTER_MODE_PILL_H,
-        };
-        fill_surface_with_radius(
-            painter,
-            mode_pill_rect,
-            theme,
-            SurfaceKind::Accent,
-            tokens::launcher::LIST_ROW_RADIUS,
-        );
-        painter.text_clipped(
-            font,
-            current_mode.label(),
-            mode_pill_rect.x + 12,
-            mode_pill_rect.y + 18,
-            mode_pill_rect.w - 24,
-            crate::ui::primitives::active_accent_foreground(),
-        );
+        // Settings button fills footer_left
+        let settings_btn_w = (layout.footer_left.w - tokens::launcher::INNER_PADDING * 2).max(0);
+        if settings_btn_w > 0 {
+            let settings_btn_rect = Rect {
+                x: layout.footer_left.x + tokens::launcher::INNER_PADDING,
+                y: footer_y,
+                w: settings_btn_w,
+                h: FOOTER_ACTION_BUTTON_H,
+            };
+            let text_color = draw_panel_button(
+                painter,
+                settings_btn_rect,
+                theme,
+                InteractiveState::Default,
+                false,
+            );
+            painter.text_clipped(
+                font,
+                "Settings",
+                settings_btn_rect.x + tokens::launcher::INNER_PADDING,
+                settings_btn_rect.y + 18,
+                settings_btn_rect.w - tokens::launcher::INNER_PADDING * 2,
+                text_color,
+            );
+            launcher_state.clicks.push(ClickZone {
+                rect: settings_btn_rect,
+                action: ClickAction::ToggleSettings,
+            });
+        }
 
         let mut action_y = footer_y;
         let mut primary_action_rect = None;

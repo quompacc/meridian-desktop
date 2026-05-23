@@ -159,7 +159,6 @@ impl PointerHandler for MeridianShell {
                         &self.last_clock,
                         &self.icon_cache,
                         None, // screenshot_icon — nur für Hover-Layout, Icon irrelevant
-                        self.settings_open,
                     );
                     let pixel_size = meridian_ui::PixelSize {
                         width: self.width,

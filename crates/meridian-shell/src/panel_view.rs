@@ -26,7 +26,6 @@ const LAUNCHER_W: i32 = 40;
 const PINNED_W: i32 = 30;
 const TRAY_W: i32 = 30;
 const SCREENSHOT_W: i32 = 30;
-const SETTINGS_W: i32 = 30;
 // Launcher gets its own larger compass-rose icon that sits visually
 // raised above the chip outline (no bg fill, no accent strip) so it
 // reads as the entry point rather than just another tile.
@@ -191,7 +190,6 @@ fn action_for_id_as_click(id: &str) -> Option<ClickAction> {
         "panel-network" => Some(ClickAction::ToggleNetworkPopup),
         "panel-workspace" => Some(ClickAction::ToggleWorkspacePopup),
         "panel-screenshot" => Some(ClickAction::TakeScreenshot),
-        "panel-settings" => Some(ClickAction::ToggleSettings),
         "panel-clock" => Some(ClickAction::Clock),
         _ => None,
     }
@@ -485,7 +483,6 @@ pub(crate) fn build_panel_widget_tree(
     clock: &str,
     icon_cache: &IconCache,
     screenshot_icon: Option<Pixmap>,
-    settings_open: bool,
 ) -> Box<dyn Widget> {
     let network_icon = icon_cache
         .lookup(network_state.icon_name(), ICON_SIZE)
@@ -567,13 +564,6 @@ pub(crate) fn build_panel_widget_tree(
     let clock_w = (clock_text_w + 2 * CLOCK_PAD).max(40);
     let ws_text: Box<str> = format!("{}/{}", active_workspace, total_workspaces.max(1)).into();
     let right_children: Vec<Box<dyn Widget>> = vec![
-        Box::new(PanelChip::new(
-            "panel-settings",
-            "\u{2699}".into(),
-            None,
-            SETTINGS_W,
-            settings_open,
-        )),
         Box::new(PanelChip::new(
             "panel-screenshot",
             "📷".into(),
@@ -708,7 +698,6 @@ pub(crate) fn draw_panel_ui(
     clock: &str,
     icon_cache: &IconCache,
     screenshot_icon: Option<Pixmap>,
-    settings_open: bool,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
     clicks_out: &mut Vec<ClickZone>,
 ) {
@@ -735,7 +724,6 @@ pub(crate) fn draw_panel_ui(
         clock,
         icon_cache,
         screenshot_icon,
-        settings_open,
     );
 
     let Ok(layout) = compute_layout(&*root, PixelSize { width, height }) else {
@@ -829,7 +817,6 @@ mod tests {
             "12:34",
             &icon_cache,
             None,
-            false,
         );
         assert_eq!(tree.children().len(), 3);
     }
@@ -858,7 +845,6 @@ mod tests {
             "12:34",
             &icon_cache,
             None,
-            false,
             &state_fn,
             &mut clicks,
         );
