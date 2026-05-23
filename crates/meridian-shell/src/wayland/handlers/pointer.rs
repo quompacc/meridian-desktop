@@ -404,9 +404,14 @@ impl PointerHandler for MeridianShell {
                     self.close_network_popup(crate::wayland::CommitReason::Input);
                     self.draw_panel(qh, RepaintReason::Pointer);
                 }
-                // Close launcher on any click that is not on the launcher surface.
+                // Close launcher on any click outside the launcher surface,
+                // but only when the click itself is not a launcher-toggle action
+                // (ToggleLauncher lets toggle_launcher() handle the close cleanly).
+                let is_launcher_toggle =
+                    matches!(action, Some(crate::wayland::ClickAction::ToggleLauncher));
                 if self.launcher_state.open
                     && self.pointer_surface != SurfaceKind::Launcher
+                    && !is_launcher_toggle
                 {
                     self.close_launcher_after_launch(qh, RepaintReason::Pointer);
                 }
