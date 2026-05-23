@@ -2434,6 +2434,30 @@ fn draw_tile_start_view(
         colors.border,
     );
 
+    // Settings button — left side of footer
+    let settings_btn_w = TILE_START_SWITCH_BUTTON_W.min((footer.w - tokens::launcher::INNER_PADDING * 2).max(0));
+    if settings_btn_w > 0 {
+        let settings_rect = Rect {
+            x: footer.x + tokens::launcher::INNER_PADDING,
+            y: footer.y + FOOTER_BAR_V_PADDING,
+            w: settings_btn_w,
+            h: FOOTER_ACTION_BUTTON_H,
+        };
+        let tc = draw_panel_button(painter, settings_rect, theme, InteractiveState::Default, false);
+        painter.text_clipped(
+            font,
+            "Settings",
+            settings_rect.x + tokens::launcher::INNER_PADDING,
+            settings_rect.y + 18,
+            settings_rect.w - tokens::launcher::INNER_PADDING * 2,
+            tc,
+        );
+        launcher_state.clicks.push(ClickZone {
+            rect: settings_rect,
+            action: ClickAction::ToggleSettings,
+        });
+    }
+
     let button_available = (footer.w - tokens::launcher::INNER_PADDING * 2).max(0);
     let button_w = TILE_START_SWITCH_BUTTON_W.min(button_available);
     if button_w > 0 {
