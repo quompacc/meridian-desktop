@@ -12,7 +12,7 @@ use meridian_ui::{
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, Transform};
 
 use crate::{
-    icons::{IconCache, IconImage},
+    icons::{icon_image_to_pixmap, IconCache},
     network::NetworkState,
     panel::{PanelWindowEntry, PinnedApp},
     ClickAction, ClickZone, Rect as ShellRect, PANEL_HEIGHT,
@@ -42,25 +42,6 @@ const GAP: i32 = 4;
 
 const FONT_SIZE: f32 = 14.0;
 const ACCENT_LINE_H: i32 = 2;
-
-pub(crate) fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
-    let w = img.width;
-    let h = img.height;
-    let mut pixmap = Pixmap::new(w, h)?;
-    let data = pixmap.data_mut();
-    for (i, chunk) in img.bgra.chunks_exact(4).enumerate() {
-        let b = chunk[0];
-        let g = chunk[1];
-        let r = chunk[2];
-        let a = chunk[3];
-        let out_idx = i * 4;
-        data[out_idx] = ((r as u16 * a as u16) / 255) as u8;
-        data[out_idx + 1] = ((g as u16 * a as u16) / 255) as u8;
-        data[out_idx + 2] = ((b as u16 * a as u16) / 255) as u8;
-        data[out_idx + 3] = a;
-    }
-    Some(pixmap)
-}
 
 /// Faceted compass launcher badge. The icon is still rendered in-house so it
 /// matches the boot/login compass language, but it uses layered shadow,

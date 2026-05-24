@@ -19,6 +19,7 @@ mod notification_popup;
 mod notifications;
 mod panel;
 mod panel_view;
+mod power_footer;
 mod settings_view;
 mod thumbnail_popup;
 mod ui;

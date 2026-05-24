@@ -257,7 +257,7 @@ impl MeridianShell {
             let screenshot_icon = self
                 .icon_cache
                 .lookup("camera-photo-symbolic", 22)
-                .and_then(crate::panel_view::icon_image_to_pixmap);
+                .and_then(crate::icons::icon_image_to_pixmap);
 
             crate::panel_view::draw_panel_ui(
                 canvas,

@@ -21,8 +21,11 @@ use meridian_ui::{
 use tiny_skia::{Pixmap, PixmapMut};
 use tiny_skia::{PixmapPaint, Transform};
 
-use crate::icons::{IconCache, IconImage};
 use crate::launcher::DesktopApp;
+use crate::{
+    icons::{icon_image_to_pixmap, IconCache},
+    power_footer::build_power_footer_buttons,
+};
 
 use meridian_ui::widget::tile::{
     STRIPE_HEIGHT, TILE_LABEL_BASELINE_FROM_BOTTOM, TILE_LABEL_FONT_DEFAULT_PX,
@@ -60,25 +63,6 @@ impl Widget for Divider {
             paint_fill(canvas, &path, self.color);
         }
     }
-}
-
-fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
-    let w = img.width;
-    let h = img.height;
-    let mut pixmap = Pixmap::new(w, h)?;
-    let data = pixmap.data_mut();
-    for (i, chunk) in img.bgra.chunks_exact(4).enumerate() {
-        let b = chunk[0];
-        let g = chunk[1];
-        let r = chunk[2];
-        let a = chunk[3];
-        let out_idx = i * 4;
-        data[out_idx] = ((r as u16 * a as u16) / 255) as u8;
-        data[out_idx + 1] = ((g as u16 * a as u16) / 255) as u8;
-        data[out_idx + 2] = ((b as u16 * a as u16) / 255) as u8;
-        data[out_idx + 3] = a;
-    }
-    Some(pixmap)
 }
 
 pub(crate) struct DynTile {
@@ -236,85 +220,13 @@ pub(crate) fn build_ui_preview_widget_tree(
         )) as Box<dyn Widget>,
     ];
 
-    let power_off_icon = icon_cache
-        .lookup("system-shutdown", POWER_ICON_SIZE)
-        .and_then(icon_image_to_pixmap);
-    let power_restart_icon = icon_cache
-        .lookup("system-reboot", POWER_ICON_SIZE)
-        .and_then(icon_image_to_pixmap);
-    let power_sleep_icon = icon_cache
-        .lookup("system-suspend", POWER_ICON_SIZE)
-        .and_then(icon_image_to_pixmap);
-    let power_lock_icon = icon_cache
-        .lookup("system-lock-screen", POWER_ICON_SIZE)
-        .and_then(icon_image_to_pixmap);
-    let power_logout_icon = icon_cache
-        .lookup("system-log-out", POWER_ICON_SIZE)
-        .and_then(icon_image_to_pixmap);
-
-    let armed_for = |id: &str| armed_power.and_then(|(a, p)| if a == id { Some(p) } else { None });
-    let footer_right = vec![
-        Box::new(
-            Button::with_id_and_icon(
-                "power-off",
-                "Aus",
-                pal.error,
-                FOOTER_POWER_BUTTON_SIZE,
-                FOOTER_POWER_BUTTON_SIZE,
-                power_off_icon,
-            )
-            .with_armed_progress(armed_for("power-off"))
-            .with_armed_label("OK?"),
-        ) as Box<dyn Widget>,
-        Box::new(
-            Button::with_id_and_icon(
-                "power-restart",
-                "Neu",
-                pal.warning,
-                FOOTER_POWER_BUTTON_SIZE,
-                FOOTER_POWER_BUTTON_SIZE,
-                power_restart_icon,
-            )
-            .with_armed_progress(armed_for("power-restart"))
-            .with_armed_label("OK?"),
-        ) as Box<dyn Widget>,
-        Box::new(
-            Button::with_id_and_icon(
-                "power-sleep",
-                "Zzz",
-                pal.accent,
-                FOOTER_POWER_BUTTON_SIZE,
-                FOOTER_POWER_BUTTON_SIZE,
-                power_sleep_icon,
-            )
-            .with_armed_progress(armed_for("power-sleep"))
-            .with_armed_label("OK?"),
-        ) as Box<dyn Widget>,
-        Box::new(
-            Button::with_id_and_icon(
-                "power-lock",
-                "Lock",
-                pal.accent_alt,
-                FOOTER_POWER_BUTTON_SIZE,
-                FOOTER_POWER_BUTTON_SIZE,
-                power_lock_icon,
-            )
-            .with_armed_progress(armed_for("power-lock"))
-            .with_armed_label("OK?"),
-        ) as Box<dyn Widget>,
-        Box::new(
-            Button::with_id_and_icon(
-                "power-logout",
-                "Out",
-                pal.success,
-                FOOTER_POWER_BUTTON_SIZE,
-                FOOTER_POWER_BUTTON_SIZE,
-                power_logout_icon,
-            )
-            .with_armed_progress(armed_for("power-logout"))
-            .with_armed_label("OK?"),
-        ) as Box<dyn Widget>,
-    ];
+    let footer_right = build_power_footer_buttons(
+        icon_cache,
+        &pal,
+        FOOTER_POWER_BUTTON_SIZE,
+        POWER_ICON_SIZE,
+        armed_power,
+    );
     let footer = Container::footer_row(
         width,
         FOOTER_HEIGHT,

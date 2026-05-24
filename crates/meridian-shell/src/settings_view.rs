@@ -9,9 +9,10 @@ use meridian_ui::{
 };
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, PixmapRef, Transform};
 
-use crate::icons::{IconCache, IconImage};
+use crate::icons::{icon_image_to_pixmap, IconCache};
 use crate::launcher::DesktopApp;
 use crate::panel::PinnedApp;
+use crate::power_footer::build_power_footer_buttons;
 use meridian_config::{WallpaperEntry, WallpaperMode};
 
 // ─── SettingsCategory ────────────────────────────────────────────────────────
@@ -760,20 +761,6 @@ impl Widget for Divider {
     }
 }
 
-fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
-    let mut pixmap = Pixmap::new(img.width, img.height)?;
-    let data = pixmap.data_mut();
-    for (i, chunk) in img.bgra.chunks_exact(4).enumerate() {
-        let (b, g, r, a) = (chunk[0], chunk[1], chunk[2], chunk[3]);
-        let o = i * 4;
-        data[o] = ((r as u16 * a as u16) / 255) as u8;
-        data[o + 1] = ((g as u16 * a as u16) / 255) as u8;
-        data[o + 2] = ((b as u16 * a as u16) / 255) as u8;
-        data[o + 3] = a;
-    }
-    Some(pixmap)
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn build_settings_widget_tree(
     width: u32,
@@ -1062,22 +1049,6 @@ pub(crate) fn build_settings_widget_tree(
 
     let body = Box::new(Container::row(0, vec![sidebar, vsep, content])) as Box<dyn Widget>;
 
-    let power_off_icon = icon_cache
-        .lookup("system-shutdown", POWER_ICON_SIZE)
-        .and_then(icon_image_to_pixmap);
-    let power_restart_icon = icon_cache
-        .lookup("system-reboot", POWER_ICON_SIZE)
-        .and_then(icon_image_to_pixmap);
-    let power_sleep_icon = icon_cache
-        .lookup("system-suspend", POWER_ICON_SIZE)
-        .and_then(icon_image_to_pixmap);
-    let power_lock_icon = icon_cache
-        .lookup("system-lock-screen", POWER_ICON_SIZE)
-        .and_then(icon_image_to_pixmap);
-    let power_logout_icon = icon_cache
-        .lookup("system-log-out", POWER_ICON_SIZE)
-        .and_then(icon_image_to_pixmap);
-
     let footer_left = vec![Box::new(Button::with_id(
         "show-tile-view",
         "\u{2190} Home",
@@ -1086,69 +1057,13 @@ pub(crate) fn build_settings_widget_tree(
         FOOTER_SWITCH_HEIGHT,
     )) as Box<dyn Widget>];
 
-    let armed_for = |id: &str| armed_power.and_then(|(a, p)| if a == id { Some(p) } else { None });
-    let footer_right = vec![
-        Box::new(
-            Button::with_id_and_icon(
-                "power-off",
-                "Aus",
-                pal.error,
-                FOOTER_POWER_BUTTON_SIZE,
-                FOOTER_POWER_BUTTON_SIZE,
-                power_off_icon,
-            )
-            .with_armed_progress(armed_for("power-off"))
-            .with_armed_label("OK?"),
-        ) as Box<dyn Widget>,
-        Box::new(
-            Button::with_id_and_icon(
-                "power-restart",
-                "Neu",
-                pal.warning,
-                FOOTER_POWER_BUTTON_SIZE,
-                FOOTER_POWER_BUTTON_SIZE,
-                power_restart_icon,
-            )
-            .with_armed_progress(armed_for("power-restart"))
-            .with_armed_label("OK?"),
-        ) as Box<dyn Widget>,
-        Box::new(
-            Button::with_id_and_icon(
-                "power-sleep",
-                "Zzz",
-                pal.accent,
-                FOOTER_POWER_BUTTON_SIZE,
-                FOOTER_POWER_BUTTON_SIZE,
-                power_sleep_icon,
-            )
-            .with_armed_progress(armed_for("power-sleep"))
-            .with_armed_label("OK?"),
-        ) as Box<dyn Widget>,
-        Box::new(
-            Button::with_id_and_icon(
-                "power-lock",
-                "Lock",
-                pal.accent_alt,
-                FOOTER_POWER_BUTTON_SIZE,
-                FOOTER_POWER_BUTTON_SIZE,
-                power_lock_icon,
-            )
-            .with_armed_progress(armed_for("power-lock"))
-            .with_armed_label("OK?"),
-        ) as Box<dyn Widget>,
-        Box::new(
-            Button::with_id_and_icon(
-                "power-logout",
-                "Out",
-                pal.success,
-                FOOTER_POWER_BUTTON_SIZE,
-                FOOTER_POWER_BUTTON_SIZE,
-                power_logout_icon,
-            )
-            .with_armed_progress(armed_for("power-logout"))
-            .with_armed_label("OK?"),
-        ) as Box<dyn Widget>,
-    ];
+    let footer_right = build_power_footer_buttons(
+        icon_cache,
+        &pal,
+        FOOTER_POWER_BUTTON_SIZE,
+        POWER_ICON_SIZE,
+        armed_power,
+    );
 
     let footer = Container::footer_row(
         width,
