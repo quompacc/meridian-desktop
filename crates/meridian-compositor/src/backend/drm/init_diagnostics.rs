@@ -2,7 +2,7 @@ use std::{env, path::Path};
 
 use smithay::backend::drm::DrmDeviceFd;
 use smithay::reexports::drm::Device as _;
-use tracing::{info, warn};
+use tracing::info;
 
 use super::{
     init_env::env_value_or_unset,
@@ -114,7 +114,7 @@ pub(super) fn check_drm_master_lock(
                 .file_name()
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| name.starts_with("renderD"));
-            warn!(
+            info!(
                 "diagnostic drm master lock check failed: node={} seat={} xdg_session_id={} xdg_seat={} xdg_vtnr={} libseat_backend={} primary_node={} render_node={} err={}. \
 this check is diagnostic only; functional KMS gate (surface creation + first commit) decides startup success.",
                 gpu_path.display(),
