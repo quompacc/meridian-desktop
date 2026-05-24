@@ -6,10 +6,10 @@ use meridian_ui::{
     widget::{Button, Container, Widget},
     Rect, Theme, WidgetState, WidgetStyle, UiSize, ui_length,
 };
-use tiny_skia::{Pixmap, PixmapMut};
+use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, PixmapRef, Transform};
 
 use crate::icons::{IconCache, IconImage};
-use meridian_config::WallpaperMode;
+use meridian_config::{WallpaperEntry, WallpaperMode};
 
 // ─── SettingsCategory ────────────────────────────────────────────────────────
 
@@ -171,11 +171,14 @@ impl Widget for ThemeRow {
 }
 
 const WALLPAPER_MODE_BAR_H: u32 = 52;
-const WALLPAPER_ROW_H: i32 = 40;
+const WALLPAPER_ROW_H: i32 = 64;
+const WALLPAPER_THUMB_W: u32 = 96;
+const WALLPAPER_THUMB_H: u32 = 54;
 
 struct WallpaperRow {
     index: usize,
     display_name: Box<str>,
+    thumbnail: Option<(u32, u32, Vec<u8>)>,
     is_selected: bool,
     accent: Color,
     row_width: i32,
@@ -196,11 +199,8 @@ impl Widget for WallpaperRow {
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
         let bg = match state {
             WidgetState::Idle => {
-                if self.is_selected {
-                    theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.08)
-                } else {
-                    theme.palette.surface
-                }
+                if self.is_selected { theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.08) }
+                else { theme.palette.surface }
             }
             WidgetState::Hovered => theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12),
             WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
@@ -214,8 +214,59 @@ impl Widget for WallpaperRow {
                 paint_fill(canvas, &path, self.accent);
             }
         }
+        // Thumbnail on the left (96x54 inside 64px-tall row).
+        let thumb_left = area.x + 8;
+        if let Some((tw, th, ref data)) = self.thumbnail {
+            let thumb_y = area.y + (area.height - th as i32) / 2;
+            if let Some(pm_ref) = PixmapRef::from_bytes(data, tw, th) {
+                canvas.draw_pixmap(thumb_left, thumb_y, pm_ref, &PixmapPaint::default(), Transform::identity(), None);
+            }
+        } else {
+            // Placeholder rectangle when thumbnail not yet loaded.
+            let ph = Rect { x: thumb_left, y: area.y + 5, width: WALLPAPER_THUMB_W as i32, height: WALLPAPER_THUMB_H as i32 };
+            if let Some(path) = rounded_rect_path(ph, 2) {
+                paint_fill(canvas, &path, theme.palette.surface_alt);
+            }
+        }
+        let text_x = area.x + 8 + WALLPAPER_THUMB_W as i32 + 8;
         let text_color = if self.is_selected { self.accent } else { theme.palette.text };
-        paint_text(canvas, &self.display_name, area.x + 16, area.y + area.height - 12, 12.0, text_color);
+        paint_text(canvas, &self.display_name, text_x, area.y + area.height - 16, 12.0, text_color);
+    }
+}
+
+struct WallpaperBrowseRow {
+    row_width: i32,
+    accent: Color,
+}
+
+impl Widget for WallpaperBrowseRow {
+    fn id(&self) -> Option<&'static str> { Some("wallpaper-browse") }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize { width: ui_length(self.row_width as f32), height: ui_length(WALLPAPER_ROW_H as f32) },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let bg = match state {
+            WidgetState::Idle    => theme.palette.surface,
+            WidgetState::Hovered => theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12),
+            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
+        };
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, bg);
+        }
+        // Icon area — dim filled rectangle with "..." hint.
+        let icon = Rect { x: area.x + 8, y: area.y + (area.height - WALLPAPER_THUMB_H as i32) / 2,
+                          width: WALLPAPER_THUMB_W as i32, height: WALLPAPER_THUMB_H as i32 };
+        if let Some(path) = rounded_rect_path(icon, 4) {
+            paint_fill(canvas, &path, self.accent.lerp(Color::rgb(0, 0, 0), 0.55));
+        }
+        paint_text(canvas, "\u{2026}", icon.x + icon.width / 2 - 6, icon.y + icon.height - 8, 14.0, self.accent);
+        let text_x = area.x + 8 + WALLPAPER_THUMB_W as i32 + 8;
+        paint_text(canvas, "Browse for image\u{2026}", text_x, area.y + area.height - 16, 12.0, self.accent);
     }
 }
 
@@ -275,37 +326,14 @@ fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
     Some(pixmap)
 }
 
-
-fn wallpaper_display_name(path: &str) -> String {
-    const SKIP: &[&str] = &[
-        "usr", "share", "wallpapers", "backgrounds",
-        "contents", "images", "pictures",
-    ];
-    let meaningful: Vec<&str> = path
-        .split('/')
-        .filter(|s| !s.is_empty())
-        .filter(|p| {
-            let lo = p.to_ascii_lowercase();
-            !SKIP.iter().any(|s| *s == lo.as_str())
-        })
-        .collect();
-    let filename = *meaningful.last().unwrap_or(&path);
-    let stem = filename.rsplitn(2, '.').last().unwrap_or(filename);
-    if meaningful.len() >= 2 {
-        let pack = meaningful[meaningful.len() - 2];
-        format!("{} · {}", pack, stem)
-    } else {
-        stem.to_string()
-    }
-}
-
 pub(crate) fn build_settings_widget_tree(
     width: u32,
     height: u32,
     selected: SettingsCategory,
     available_themes: &[String],
     current_theme: &str,
-    available_wallpapers: &[String],
+    available_wallpapers: &[WallpaperEntry],
+    wallpaper_thumbnails: &[Option<(u32, u32, Vec<u8>)>],
     current_wallpaper: Option<&str>,
     wallpaper_mode: WallpaperMode,
     icon_cache: &IconCache,
@@ -377,27 +405,29 @@ pub(crate) fn build_settings_widget_tree(
             let max_visible = ((list_h + 2) / (WALLPAPER_ROW_H as u32 + 2))
                 .min(WALLPAPER_WIDGET_IDS.len() as u32) as usize;
             let row_w = width as i32;
-            let rows: Vec<Box<dyn Widget>> = if available_wallpapers.is_empty() {
-                vec![Box::new(SettingsPlaceholder {
+            // Row 0 is always the Browse button; remaining slots are wallpaper entries.
+            let mut rows: Vec<Box<dyn Widget>> = Vec::new();
+            rows.push(Box::new(WallpaperBrowseRow { row_width: row_w, accent: pal.accent }));
+            let entry_slots = max_visible.saturating_sub(1);
+            if available_wallpapers.is_empty() {
+                rows.push(Box::new(SettingsPlaceholder {
                     width: row_w,
                     text: "No wallpapers found in /usr/share/wallpapers or ~/Pictures",
-                }) as Box<dyn Widget>]
+                }));
             } else {
-                available_wallpapers
-                    .iter()
-                    .take(max_visible)
-                    .enumerate()
-                    .map(|(i, path)| {
-                        Box::new(WallpaperRow {
-                            index: i,
-                            display_name: wallpaper_display_name(path).into(),
-                            is_selected: current_wallpaper.map_or(false, |c| c == path.as_str()),
-                            accent: pal.accent,
-                            row_width: row_w,
-                        }) as Box<dyn Widget>
-                    })
-                    .collect()
-            };
+                for (i, entry) in available_wallpapers.iter().take(entry_slots).enumerate() {
+                    let thumbnail = wallpaper_thumbnails.get(i).and_then(|t| t.clone());
+                    rows.push(Box::new(WallpaperRow {
+                        index: i,
+                        display_name: entry.display_name.as_str().into(),
+                        thumbnail,
+                        is_selected: current_wallpaper.map_or(false, |c| c == entry.apply_path.as_str()),
+                        accent: pal.accent,
+                        row_width: row_w,
+                    }));
+                }
+            }
+            let rows: Vec<Box<dyn Widget>> = rows;
             let wallpaper_list = Container::centered_viewport(
                 width, list_h,
                 vec![Box::new(Container::column(2, rows)) as Box<dyn Widget>],
@@ -478,7 +508,8 @@ pub(crate) fn draw_settings_launcher(
     selected: SettingsCategory,
     available_themes: &[String],
     current_theme: &str,
-    available_wallpapers: &[String],
+    available_wallpapers: &[WallpaperEntry],
+    wallpaper_thumbnails: &[Option<(u32, u32, Vec<u8>)>],
     current_wallpaper: Option<&str>,
     wallpaper_mode: WallpaperMode,
     icon_cache: &IconCache,
@@ -496,7 +527,7 @@ pub(crate) fn draw_settings_launcher(
         theme.palette.background.b,
         theme.palette.background.a,
     ));
-    let root = build_settings_widget_tree(width, height, selected, available_themes, current_theme, available_wallpapers, current_wallpaper, wallpaper_mode, icon_cache);
+    let root = build_settings_widget_tree(width, height, selected, available_themes, current_theme, available_wallpapers, wallpaper_thumbnails, current_wallpaper, wallpaper_mode, icon_cache);
     if let Ok(layout) = meridian_ui::compute_layout(&*root, meridian_ui::PixelSize { width, height }) {
         let mut pm = pixmap.as_mut();
         let _ = meridian_ui::render(&*root, &layout, &mut pm, &theme, state_fn);

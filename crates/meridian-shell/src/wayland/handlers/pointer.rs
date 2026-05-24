@@ -73,6 +73,7 @@ impl PointerHandler for MeridianShell {
                             &self.available_themes,
                             &self.theme_name,
                             &self.available_wallpapers,
+                            &self.wallpaper_thumbnails,
                             self.wallpaper_path.as_deref(),
                             self.wallpaper_mode,
                             &self.icon_cache,

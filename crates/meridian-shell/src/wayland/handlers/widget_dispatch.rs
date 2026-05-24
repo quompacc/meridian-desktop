@@ -89,6 +89,11 @@ impl MeridianShell {
             }
             WidgetAction::SetSettingsCategory(cat) => {
                 self.settings_category = cat;
+                if cat == crate::settings_view::SettingsCategory::Wallpaper
+                    && self.wallpaper_thumbnails.is_empty()
+                {
+                    self.load_wallpaper_thumbnails();
+                }
                 self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
             }
             WidgetAction::ApplyThemeByIndex(idx) => {
@@ -97,7 +102,8 @@ impl MeridianShell {
                 }
             }
             WidgetAction::ApplyWallpaperByIndex(idx) => {
-                if let Some(path) = self.available_wallpapers.get(idx).cloned() {
+                if let Some(entry) = self.available_wallpapers.get(idx) {
+                    let path = entry.apply_path.clone();
                     let mode = self.wallpaper_mode;
                     self.apply_wallpaper(qh, path, mode);
                 }
@@ -109,6 +115,9 @@ impl MeridianShell {
                 } else {
                     self.draw_launcher(qh, RepaintReason::Pointer);
                 }
+            }
+            WidgetAction::BrowseWallpaper => {
+                self.spawn_file_picker();
             }
             WidgetAction::PowerOff
             | WidgetAction::PowerRestart

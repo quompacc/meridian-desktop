@@ -344,6 +344,8 @@ pub(crate) fn initialize(
         available_themes,
         theme_name: theme_manager.current().name.clone(),
         available_wallpapers: meridian_config::MeridianConfig::scan_wallpaper_dirs(),
+        wallpaper_thumbnails: Vec::new(),
+        wallpaper_picker_rx: None,
         wallpaper_path: meridian_config.wallpaper.as_ref().map(|w| w.path.clone()),
         wallpaper_mode: meridian_config.wallpaper.as_ref().map(|w| w.mode).unwrap_or_default(),
         theme,

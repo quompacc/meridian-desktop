@@ -119,6 +119,10 @@ fn insert_notification_expiry_timer(
                     shell.draw_notification_popup(&qh, wayland::RepaintReason::Clock);
                 }
             }
+            if let Some(path) = shell.poll_wallpaper_picker() {
+                let mode = shell.wallpaper_mode;
+                shell.apply_wallpaper(&qh, path, mode);
+            }
             TimeoutAction::ToDuration(interval)
         })?;
     Ok(())

@@ -794,6 +794,40 @@ impl MeridianShell {
         }
     }
 
+
+    pub(crate) fn load_wallpaper_thumbnails(&mut self) {
+        self.wallpaper_thumbnails = self.available_wallpapers.iter().map(|entry| {
+            load_wallpaper_thumbnail(&entry.thumbnail_path, 96, 54)
+        }).collect();
+        tracing::debug!("loaded {} wallpaper thumbnails", self.wallpaper_thumbnails.len());
+    }
+
+    pub(crate) fn spawn_file_picker(&mut self) {
+        if self.wallpaper_picker_rx.is_some() { return; }
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.wallpaper_picker_rx = Some(rx);
+        std::thread::spawn(move || {
+            let out = std::process::Command::new("zenity")
+                .args(["--file-selection", "--title=Choose Wallpaper",
+                       "--file-filter=Images | *.jpg *.jpeg *.png *.webp"])
+                .output();
+            if let Ok(o) = out {
+                if o.status.success() {
+                    let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    if !path.is_empty() { let _ = tx.send(path); }
+                }
+            }
+        });
+    }
+
+    pub(crate) fn poll_wallpaper_picker(&mut self) -> Option<String> {
+        let rx = self.wallpaper_picker_rx.as_ref()?;
+        match rx.try_recv() {
+            Ok(path) => { self.wallpaper_picker_rx = None; Some(path) }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => { self.wallpaper_picker_rx = None; None }
+            Err(std::sync::mpsc::TryRecvError::Empty) => None,
+        }
+    }
     pub(crate) fn apply_theme(&mut self, qh: &QueueHandle<Self>, name: String) {
         let mut theme_manager = meridian_config::ThemeManager::new();
         if let Err(e) = theme_manager.set_theme(&name) {
@@ -1714,4 +1748,20 @@ mod tests {
         );
         assert_eq!(active, 9);
     }
+}
+
+
+fn load_wallpaper_thumbnail(path: &str, max_w: u32, max_h: u32) -> Option<(u32, u32, Vec<u8>)> {
+    let img = image::open(path).ok()?;
+    let thumb = img.thumbnail(max_w, max_h);
+    let rgba = thumb.to_rgba8();
+    let (w, h) = (rgba.width(), rgba.height());
+    let premul: Vec<u8> = rgba.into_raw().chunks_exact(4).flat_map(|c| {
+        let a = c[3] as u16;
+        [((c[0] as u16 * a) / 255) as u8,
+         ((c[1] as u16 * a) / 255) as u8,
+         ((c[2] as u16 * a) / 255) as u8,
+         c[3]]
+    }).collect();
+    Some((w, h, premul))
 }

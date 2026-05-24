@@ -22,6 +22,7 @@ pub(crate) enum WidgetAction {
     ApplyThemeByIndex(usize),
     ApplyWallpaperByIndex(usize),
     SetWallpaperMode(meridian_config::WallpaperMode),
+    BrowseWallpaper,
 }
 
 #[allow(dead_code)]
@@ -57,6 +58,7 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
         "wallpaper-mode-fit"    => Some(WidgetAction::SetWallpaperMode(meridian_config::WallpaperMode::Fit)),
         "wallpaper-mode-center" => Some(WidgetAction::SetWallpaperMode(meridian_config::WallpaperMode::Center)),
         "wallpaper-mode-tile"   => Some(WidgetAction::SetWallpaperMode(meridian_config::WallpaperMode::Tile)),
+        "wallpaper-browse" => Some(WidgetAction::BrowseWallpaper),
         id if id.starts_with("settings-wallpaper-") => {
             id["settings-wallpaper-".len()..].parse::<usize>().ok().map(WidgetAction::ApplyWallpaperByIndex)
         }

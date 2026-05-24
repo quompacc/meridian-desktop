@@ -74,6 +74,17 @@ pub struct PanelConfig {
     pub pinned: Vec<PinnedAppConfig>,
 }
 
+/// A wallpaper entry returned by scan_wallpaper_dirs.
+/// Multiple resolution variants of the same pack are collapsed into one entry.
+#[derive(Debug, Clone)]
+pub struct WallpaperEntry {
+    pub display_name: String,
+    /// Best-quality image to apply (largest file in the group).
+    pub apply_path: String,
+    /// Smallest file — used for fast thumbnail decoding.
+    pub thumbnail_path: String,
+}
+
 #[derive(Default)]
 pub struct MeridianConfig {
     pub keybinds: KeybindConfig,
@@ -1007,23 +1018,36 @@ impl MeridianConfig {
         }
     }
 
-    /// Scan standard wallpaper directories and return sorted image paths.
-    pub fn scan_wallpaper_dirs() -> Vec<String> {
+    /// Scan standard wallpaper directories; group resolution variants into one entry per pack.
+    pub fn scan_wallpaper_dirs() -> Vec<WallpaperEntry> {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-        let dirs: &[std::path::PathBuf] = &[
+        let top_dirs: &[std::path::PathBuf] = &[
             std::path::PathBuf::from("/usr/share/wallpapers"),
             std::path::PathBuf::from("/usr/share/backgrounds"),
             std::path::PathBuf::from(format!("{}/Pictures", home)),
         ];
-        let mut results = Vec::new();
-        for dir in dirs {
+        let mut by_dir: std::collections::BTreeMap<std::path::PathBuf, Vec<(u64, String)>> =
+            std::collections::BTreeMap::new();
+        for dir in top_dirs {
             if dir.exists() {
-                collect_images(dir, &mut results, 4);
+                collect_images_by_dir(dir, &mut by_dir, 5);
             }
         }
-        results.sort();
-        results.dedup();
-        results
+        let mut entries: Vec<WallpaperEntry> = Vec::new();
+        for (dir, mut files) in by_dir {
+            if files.is_empty() { continue; }
+            files.sort_by_key(|(sz, _)| *sz);
+            let thumbnail_path = files[0].1.clone();
+            let apply_path = files.last().unwrap().1.clone();
+            let display_name = if files.len() == 1 {
+                wallpaper_entry_display_name(&apply_path)
+            } else {
+                wallpaper_dir_display_name(&dir)
+            };
+            entries.push(WallpaperEntry { display_name, apply_path, thumbnail_path });
+        }
+        entries.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+        entries
     }
 }
 
@@ -1045,24 +1069,55 @@ fn strip_toml_section(raw: &str, section: &str) -> String {
     if trimmed.is_empty() { trimmed } else { trimmed + "\n" }
 }
 
-fn collect_images(dir: &std::path::Path, out: &mut Vec<String>, depth: usize) {
+const WALLPAPER_SKIP: &[&str] = &[
+    "usr", "share", "wallpapers", "backgrounds",
+    "contents", "images", "pictures", "home",
+];
+
+fn collect_images_by_dir(
+    dir: &std::path::Path,
+    out: &mut std::collections::BTreeMap<std::path::PathBuf, Vec<(u64, String)>>,
+    depth: usize,
+) {
     if depth == 0 { return; }
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect_images(&path, out, depth - 1);
+            collect_images_by_dir(&path, out, depth - 1);
         } else {
-            let ext = path.extension()
-                .and_then(|e| e.to_str())
-                .map(|e| e.to_ascii_lowercase());
+            let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase());
             if matches!(ext.as_deref(), Some("png" | "jpg" | "jpeg" | "webp")) {
-                if let Some(s) = path.to_str() {
-                    out.push(s.to_string());
+                let sz = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+                if let (Some(s), Some(parent)) = (path.to_str(), path.parent()) {
+                    out.entry(parent.to_path_buf()).or_default().push((sz, s.to_string()));
                 }
             }
         }
     }
+}
+
+fn wallpaper_entry_display_name(path: &str) -> String {
+    let meaningful: Vec<&str> = path.split('/')
+        .filter(|s| !s.is_empty())
+        .filter(|p| { let lo = p.to_ascii_lowercase(); !WALLPAPER_SKIP.iter().any(|s| *s == lo.as_str()) })
+        .collect();
+    let filename = meaningful.last().copied().unwrap_or(path);
+    let stem = filename.rsplitn(2, '.').last().unwrap_or(filename);
+    if meaningful.len() >= 2 {
+        format!("{} \u{00b7} {}", meaningful[meaningful.len() - 2], stem)
+    } else {
+        stem.to_string()
+    }
+}
+
+fn wallpaper_dir_display_name(dir: &std::path::Path) -> String {
+    let s = dir.to_str().unwrap_or("");
+    let meaningful: Vec<&str> = s.split('/')
+        .filter(|c| !c.is_empty())
+        .filter(|p| { let lo = p.to_ascii_lowercase(); !WALLPAPER_SKIP.iter().any(|s| *s == lo.as_str()) })
+        .collect();
+    meaningful.last().copied().unwrap_or(s).to_string()
 }
 
 fn has_general_section(raw: &str) -> bool {
