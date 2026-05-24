@@ -1063,6 +1063,18 @@ impl MeridianShell {
     }
 
 
+    pub(crate) fn save_hidden_apps(&self) {
+        let dir = hidden_apps_path();
+        if let Some(parent) = std::path::Path::new(&dir).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let content: String = self.hidden_execs.iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let _ = std::fs::write(&dir, content);
+    }
+
     pub(crate) fn load_wallpaper_thumbnails(&mut self) {
         self.wallpaper_thumbnails = self.available_wallpapers.iter().map(|entry| {
             load_wallpaper_thumbnail(&entry.thumbnail_path, 96, 54)
@@ -1451,6 +1463,19 @@ impl MeridianShell {
         );
         self.render_stats.reset();
     }
+}
+
+pub(crate) fn load_hidden_apps() -> std::collections::HashSet<String> {
+    let path = hidden_apps_path();
+    match std::fs::read_to_string(&path) {
+        Ok(content) => content.lines().filter(|l| !l.trim().is_empty()).map(|l| l.trim().to_string()).collect(),
+        Err(_) => std::collections::HashSet::new(),
+    }
+}
+
+fn hidden_apps_path() -> String {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    format!("{home}/.config/meridian/hidden_apps.txt")
 }
 
 #[cfg(test)]

@@ -249,6 +249,13 @@ impl MeridianShell {
     ) {
         match action {
             ContextMenuAction::Launch => {
+                if let Some(ref wid) = cm.running_window_id {
+                    self.ipc.send(&meridian_ipc::ShellCommand::FocusWindow { id: wid.clone() });
+                } else {
+                    let _ = std::process::Command::new(cm.exec.as_ref()).spawn();
+                }
+            }
+            ContextMenuAction::NewWindow => {
                 let _ = std::process::Command::new(cm.exec.as_ref()).spawn();
             }
             ContextMenuAction::LaunchInTerminal => {
@@ -271,12 +278,19 @@ impl MeridianShell {
                         terminal: false,
                         icon_name,
                     });
+                    self.save_pinned_apps();
                     self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
                 }
             }
             ContextMenuAction::UnpinFromPanel => {
                 self.pinned_apps.retain(|p| p.program != cm.exec.as_ref());
+                self.save_pinned_apps();
                 self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
+            }
+            ContextMenuAction::RemoveFromLauncher => {
+                self.hidden_execs.insert(cm.exec.to_string());
+                self.save_hidden_apps();
+                self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
             }
         }
     }

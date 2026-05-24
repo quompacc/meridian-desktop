@@ -415,6 +415,7 @@ impl MeridianShell {
                     &self.search_query,
                     self.app_view_scroll_y,
                     armed_power,
+                    &self.hidden_execs,
                 );
             } else {
                 ui_preview::draw_ui_preview_sandbox(
@@ -429,7 +430,7 @@ impl MeridianShell {
             }
             if let Some(ref cm) = self.context_menu {
                 let items =
-                    crate::context_menu::item_list(cm.is_terminal, cm.is_pinned);
+                    crate::context_menu::item_list(cm.is_terminal, cm.is_pinned, cm.running_window_id.is_some());
                 crate::context_menu::draw_overlay(&mut content, LAUNCHER_WIDTH, LAUNCHER_HEIGHT, cm, &items);
             }
 

@@ -117,6 +117,7 @@ impl PointerHandler for MeridianShell {
                                         self.app_view_category,
                                         &self.search_query,
                                         &self.icon_cache,
+                                        &self.hidden_execs,
                                     );
                                     if let Some(app) = filtered.get(idx) {
                                         let exec = app.program.clone();
@@ -351,7 +352,7 @@ impl PointerHandler for MeridianShell {
             if self.pointer_surface == SurfaceKind::Launcher {
                 if let PointerEventKind::Motion { .. } = event.kind {
                     if let Some(ref mut cm) = self.context_menu {
-                        let items = context_menu::item_list(cm.is_terminal, cm.is_pinned);
+                        let items = context_menu::item_list(cm.is_terminal, cm.is_pinned, cm.running_window_id.is_some());
                         let n = items.len();
                         let new_hover =
                             context_menu::hit_item(cm, n, event.position.0, event.position.1);
@@ -393,17 +394,23 @@ impl PointerHandler for MeridianShell {
                                         self.app_view_category,
                                         &self.search_query,
                                         &self.icon_cache,
+                                        &self.hidden_execs,
                                     );
                                     if let Some(app) = filtered.get(idx) {
-                                        let exec: Box<str> = app.program.clone().into();
+                                        let exec_str: Box<str> = app.program.clone().into();
                                         let app_name: Box<str> = app.name.clone().into();
                                         let is_terminal = app.terminal;
                                         let is_pinned = self
                                             .pinned_apps
                                             .iter()
-                                            .any(|p| p.program == exec.as_ref());
-                                        let items =
-                                            context_menu::item_list(is_terminal, is_pinned);
+                                            .any(|p| p.program == exec_str.as_ref());
+                                    let running_window_id = self.windows.iter()
+                                        .find(|w| w.app_id.as_deref()
+                                            .map(|a| a.eq_ignore_ascii_case(&exec_str) || a.to_lowercase().contains(&exec_str.to_lowercase()))
+                                            .unwrap_or(false))
+                                        .map(|w| w.id.clone());
+                                    let is_running = running_window_id.is_some();
+                                        let items = context_menu::item_list(is_terminal, is_pinned, is_running);
                                         let (mx, my) = context_menu::clamp_position(
                                             event.position.0 as i32,
                                             event.position.1 as i32,
@@ -416,9 +423,10 @@ impl PointerHandler for MeridianShell {
                                                 x: mx,
                                                 y: my,
                                                 app_name,
-                                                exec,
+                                                exec: exec_str,
                                                 is_terminal,
                                                 is_pinned,
+                                                running_window_id,
                                                 hover_idx: None,
                                             });
                                         self.draw_launcher(qh, RepaintReason::Pointer);
@@ -480,7 +488,13 @@ impl PointerHandler for MeridianShell {
                                         .pinned_apps
                                         .iter()
                                         .any(|p| p.program == exec_str.as_ref());
-                                    let items = context_menu::item_list(is_terminal, is_pinned);
+                                    let running_window_id = self.windows.iter()
+                                        .find(|w| w.app_id.as_deref()
+                                            .map(|a| a.eq_ignore_ascii_case(&exec_str) || a.to_lowercase().contains(&exec_str.to_lowercase()))
+                                            .unwrap_or(false))
+                                        .map(|w| w.id.clone());
+                                    let is_running = running_window_id.is_some();
+                                    let items = context_menu::item_list(is_terminal, is_pinned, is_running);
                                     let (mx, my) = context_menu::clamp_position(
                                         event.position.0 as i32,
                                         event.position.1 as i32,
@@ -496,6 +510,7 @@ impl PointerHandler for MeridianShell {
                                             exec: exec_str,
                                             is_terminal,
                                             is_pinned,
+                                            running_window_id,
                                             hover_idx: None,
                                         });
                                     self.draw_launcher(qh, RepaintReason::Pointer);
@@ -539,6 +554,7 @@ impl PointerHandler for MeridianShell {
                             self.app_view_category,
                             &self.search_query,
                             &self.icon_cache,
+                            &self.hidden_execs,
                         );
                         let content_h = ((filtered.len() + crate::app_view::APP_GRID_COLS - 1)
                             / crate::app_view::APP_GRID_COLS) as i32
@@ -561,7 +577,7 @@ impl PointerHandler for MeridianShell {
             if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
                 if self.pointer_surface == SurfaceKind::Launcher {
                     if let Some(cm) = self.context_menu.take() {
-                        let items = context_menu::item_list(cm.is_terminal, cm.is_pinned);
+                        let items = context_menu::item_list(cm.is_terminal, cm.is_pinned, cm.running_window_id.is_some());
                         let n = items.len();
                         if let Some(idx) =
                             context_menu::hit_item(&cm, n, event.position.0, event.position.1)

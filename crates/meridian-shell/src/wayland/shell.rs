@@ -327,6 +327,7 @@ pub(crate) struct MeridianShell {
     pub(crate) launcher_settings_open: bool,
     pub(crate) app_view_category: crate::app_view::AppCategory,
     pub(crate) context_menu: Option<crate::context_menu::ContextMenuState>,
+    pub(crate) hidden_execs: std::collections::HashSet<String>,
     pub(crate) search_query: String,
     pub(crate) calendar_dirty: bool,
     pub(crate) workspace_dirty: bool,

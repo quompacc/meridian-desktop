@@ -152,10 +152,12 @@ pub(crate) fn collect_filtered_apps<'a>(
     category: AppCategory,
     search_query: &str,
     icon_cache: &IconCache,
+    hidden_execs: &std::collections::HashSet<String>,
 ) -> Vec<&'a DesktopApp> {
     apps.iter()
         .filter(|app| {
             !app.terminal
+                && !hidden_execs.contains(&app.program)
                 && app
                     .icon_name
                     .as_deref()
@@ -515,6 +517,7 @@ pub(crate) fn draw_app_view(
     search_query: &str,
     scroll_y: i32,
     armed_power: Option<(&str, f32)>,
+    hidden_execs: &std::collections::HashSet<String>,
 ) {
     let expected_len = (width as usize)
         .saturating_mul(height as usize)
@@ -546,7 +549,7 @@ pub(crate) fn draw_app_view(
         let grid_h = (grid_end_y - grid_start_y).max(0) as u32;
         let grid_x = app_grid_content_x(width);
 
-        let filtered = collect_filtered_apps(apps, category, search_query, icon_cache);
+        let filtered = collect_filtered_apps(apps, category, search_query, icon_cache, hidden_execs);
         let rows = (filtered.len() + APP_GRID_COLS - 1) / APP_GRID_COLS;
         let content_h = rows as i32 * APP_GRID_ROW_H;
 

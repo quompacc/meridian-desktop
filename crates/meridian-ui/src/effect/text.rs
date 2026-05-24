@@ -106,6 +106,37 @@ pub fn paint_text(
     }
 }
 
+pub fn truncate_to_fit(text: &str, max_w: i32, font_size: f32) -> String {
+    if max_w <= 0 {
+        return String::new();
+    }
+    let (w, _) = measure_text(text, font_size);
+    if w <= max_w {
+        return text.to_owned();
+    }
+    let ellipsis = "…";
+    let ew = measure_text(ellipsis, font_size).0;
+    let budget = max_w - ew;
+    if budget <= 0 {
+        return ellipsis.to_owned();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut lo = 0usize;
+    let mut hi = chars.len();
+    while lo < hi {
+        let mid = (lo + hi).div_ceil(2);
+        let s: String = chars[..mid].iter().collect();
+        if measure_text(&s, font_size).0 <= budget {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    let mut result: String = chars[..lo].iter().collect();
+    result.push_str(ellipsis);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

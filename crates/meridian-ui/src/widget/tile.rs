@@ -9,7 +9,7 @@ use taffy::prelude::{span, Style};
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, Transform};
 
 use crate::{
-    effect::{paint_metro_surface, paint_text},
+    effect::{paint_metro_surface, paint_text, truncate_to_fit},
     event::WidgetState,
     paint::Rect,
     style::{Color, Theme},
@@ -155,9 +155,11 @@ impl Widget for Tile {
             TileSize::Small => TILE_LABEL_FONT_SMALL_PX,
             _ => TILE_LABEL_FONT_DEFAULT_PX,
         };
+        let max_text_w = area.width - 2 * TILE_LABEL_PADDING_X;
+        let label_text = truncate_to_fit(self.label, max_text_w, font_size);
         paint_text(
             canvas,
-            self.label,
+            &label_text,
             area.x + TILE_LABEL_PADDING_X,
             area.y + area.height - TILE_LABEL_BASELINE_FROM_BOTTOM,
             font_size,

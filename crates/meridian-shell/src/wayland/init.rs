@@ -435,6 +435,7 @@ pub(crate) fn initialize(
         launcher_settings_open: false,
         app_view_category: Default::default(),
         context_menu: None,
+        hidden_execs: crate::wayland::state::load_hidden_apps(),
         search_query: String::new(),
         calendar_dirty: true,
         workspace_dirty: true,

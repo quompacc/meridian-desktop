@@ -15,9 +15,11 @@ const CORNER_R: i32 = 6;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ContextMenuAction {
     Launch,
+    NewWindow,
     LaunchInTerminal,
     PinToPanel,
     UnpinFromPanel,
+    RemoveFromLauncher,
 }
 
 pub(crate) struct ContextMenuState {
@@ -28,13 +30,16 @@ pub(crate) struct ContextMenuState {
     pub exec: Box<str>,
     pub is_terminal: bool,
     pub is_pinned: bool,
+    /// Window ID to focus when action=Launch and app is already running.
+    pub running_window_id: Option<String>,
     pub hover_idx: Option<usize>,
 }
 
 /// Build the item list from the current state flags.
-pub(crate) fn item_list(is_terminal: bool, is_pinned: bool) -> Vec<(&'static str, ContextMenuAction)> {
-    let mut items: Vec<(&str, ContextMenuAction)> =
-        vec![("Starten", ContextMenuAction::Launch)];
+pub(crate) fn item_list(is_terminal: bool, is_pinned: bool, is_running: bool) -> Vec<(&'static str, ContextMenuAction)> {
+    let mut items: Vec<(&str, ContextMenuAction)> = Vec::new();
+    items.push(if is_running { ("Fokussieren", ContextMenuAction::Launch) } else { ("Starten", ContextMenuAction::Launch) });
+    items.push(("Neues Fenster", ContextMenuAction::NewWindow));
     if !is_terminal {
         items.push(("Im Terminal starten", ContextMenuAction::LaunchInTerminal));
     }
@@ -43,6 +48,7 @@ pub(crate) fn item_list(is_terminal: bool, is_pinned: bool) -> Vec<(&'static str
     } else {
         items.push(("An Panel anheften", ContextMenuAction::PinToPanel));
     }
+    items.push(("Entfernen", ContextMenuAction::RemoveFromLauncher));
     items
 }
 
@@ -217,45 +223,51 @@ mod tests {
             exec: "test".into(),
             is_terminal,
             is_pinned,
+            running_window_id: None,
             hover_idx: None,
         }
     }
 
     #[test]
-    fn item_list_non_terminal_non_pinned_has_three_items() {
-        let items = item_list(false, false);
-        assert_eq!(items.len(), 3);
+    fn item_list_non_terminal_non_pinned_has_five_items() {
+        let items = item_list(false, false, false);
+        assert_eq!(items.len(), 5);
         assert!(matches!(items[0].1, ContextMenuAction::Launch));
-        assert!(matches!(items[1].1, ContextMenuAction::LaunchInTerminal));
-        assert!(matches!(items[2].1, ContextMenuAction::PinToPanel));
+        assert!(matches!(items[1].1, ContextMenuAction::NewWindow));
+        assert!(matches!(items[2].1, ContextMenuAction::LaunchInTerminal));
+        assert!(matches!(items[3].1, ContextMenuAction::PinToPanel));
+        assert!(matches!(items[4].1, ContextMenuAction::RemoveFromLauncher));
     }
 
     #[test]
-    fn item_list_terminal_pinned_has_two_items() {
-        let items = item_list(true, true);
-        assert_eq!(items.len(), 2);
+    fn item_list_terminal_pinned_has_four_items() {
+        let items = item_list(true, true, false);
+        assert_eq!(items.len(), 4);
         assert!(matches!(items[0].1, ContextMenuAction::Launch));
-        assert!(matches!(items[1].1, ContextMenuAction::UnpinFromPanel));
+        assert!(matches!(items[1].1, ContextMenuAction::NewWindow));
+        assert!(matches!(items[2].1, ContextMenuAction::UnpinFromPanel));
+        assert!(matches!(items[3].1, ContextMenuAction::RemoveFromLauncher));
     }
 
     #[test]
     fn item_list_non_terminal_pinned_shows_unpin() {
-        let items = item_list(false, true);
-        assert_eq!(items.len(), 3);
-        assert!(matches!(items[2].1, ContextMenuAction::UnpinFromPanel));
+        let items = item_list(false, true, false);
+        assert_eq!(items.len(), 5);
+        assert!(matches!(items[3].1, ContextMenuAction::UnpinFromPanel));
+        assert!(matches!(items[4].1, ContextMenuAction::RemoveFromLauncher));
     }
 
     #[test]
     fn hit_item_above_menu_is_none() {
         let s = state(false, false);
-        let items = item_list(false, false);
+        let items = item_list(false, false, false);
         assert!(hit_item(&s, items.len(), 50.0, -10.0).is_none());
     }
 
     #[test]
     fn hit_item_first_row() {
         let s = state(false, false);
-        let items = item_list(false, false);
+        let items = item_list(false, false, false);
         let n = items.len();
         let mid_y = (VPAD + ITEM_H / 2) as f64;
         assert_eq!(hit_item(&s, n, 50.0, mid_y), Some(0));
@@ -264,7 +276,7 @@ mod tests {
     #[test]
     fn hit_item_last_row() {
         let s = state(false, false);
-        let items = item_list(false, false);
+        let items = item_list(false, false, false);
         let n = items.len();
         // last item is n-1, with 1px separator shift
         let last_top = VPAD + (n as i32 - 1) * ITEM_H + 1;
@@ -275,7 +287,7 @@ mod tests {
     #[test]
     fn contains_point_outside_returns_false() {
         let s = ContextMenuState { x: 100, y: 100, ..state(false, false) };
-        let items = item_list(false, false);
+        let items = item_list(false, false, false);
         assert!(!contains_point(&s, items.len(), 50.0, 50.0));
     }
 
@@ -302,7 +314,7 @@ mod tests {
     #[test]
     fn draw_overlay_does_not_panic() {
         let s = state(false, false);
-        let items = item_list(false, false);
+        let items = item_list(false, false, false);
         let mut canvas = vec![0u8; 880 * 620 * 4];
         draw_overlay(&mut canvas, 880, 620, &s, &items);
     }
@@ -310,7 +322,7 @@ mod tests {
     #[test]
     fn draw_overlay_modifies_canvas_at_menu_location() {
         let s = state(false, false);
-        let items = item_list(false, false);
+        let items = item_list(false, false, false);
         let mut canvas = vec![0u8; 880 * 620 * 4];
         draw_overlay(&mut canvas, 880, 620, &s, &items);
         // At least some pixel in the menu area should be non-zero.
