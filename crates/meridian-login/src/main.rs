@@ -83,7 +83,8 @@ type Rect = (f32, f32, f32, f32);
 type PowerButtonRects = (Rect, Rect);
 
 const CARD_PAD: f32 = 32.0;
-const TITLE_OFFSET_Y: f32 = 32.0;
+const METRO_STRIPE_HEIGHT: f32 = 4.0;
+const TITLE_OFFSET_Y: f32 = 31.0;
 const USER_LABEL_OFFSET_Y: f32 = 76.0;
 const USER_BOX_OFFSET_Y: f32 = 88.0;
 const PASSWORD_LABEL_OFFSET_Y: f32 = 138.0;
@@ -931,14 +932,7 @@ fn run_animation(
             }
 
             if af.card_alpha > 0.0 {
-                draw_card(
-                    &mut pm,
-                    w as f32,
-                    h as f32,
-                    af.card_alpha,
-                    painter,
-                    shake_dx,
-                );
+                draw_card(&mut pm, w as f32, h as f32, af.card_alpha, shake_dx);
             }
 
             if af.ui_alpha > 0.0 {
@@ -1050,9 +1044,45 @@ fn mix_color(a: Color, b: Color, t: f32, alpha: u8) -> Color {
     )
 }
 
+fn alpha_byte(alpha: f32, max: f32) -> u8 {
+    (alpha.clamp(0.0, 1.0) * max).clamp(0.0, 255.0) as u8
+}
+
+fn metro_surface(alpha: f32) -> Color {
+    Color::from_rgba8(0x24, 0x28, 0x3b, alpha_byte(alpha, 244.0))
+}
+
+fn metro_surface_alt(alpha: f32) -> Color {
+    Color::from_rgba8(0x1f, 0x23, 0x35, alpha_byte(alpha, 242.0))
+}
+
+fn metro_background(alpha: f32) -> Color {
+    Color::from_rgba8(0x1a, 0x1b, 0x26, alpha_byte(alpha, 238.0))
+}
+
+fn metro_accent(alpha: f32) -> Color {
+    Color::from_rgba8(0x7a, 0xa2, 0xf7, alpha_byte(alpha, 255.0))
+}
+
+fn metro_text(alpha: f32) -> Color {
+    Color::from_rgba8(0xc0, 0xca, 0xf5, alpha_byte(alpha, 255.0))
+}
+
+fn metro_text_dim(alpha: f32) -> Color {
+    Color::from_rgba8(0xa9, 0xb1, 0xd6, alpha_byte(alpha, 230.0))
+}
+
+fn metro_border(alpha: f32) -> Color {
+    Color::from_rgba8(0x41, 0x48, 0x68, alpha_byte(alpha, 230.0))
+}
+
+fn metro_error(alpha: f32) -> Color {
+    Color::from_rgba8(0xf7, 0x76, 0x8e, alpha_byte(alpha, 255.0))
+}
+
 fn draw_soft_card_shadow(pm: &mut PixmapMut, left: f32, top: f32, w: f32, h: f32, alpha: f32) {
-    for (dy, spread, opacity) in [(12.0, 9.0, 76u8), (5.0, 3.0, 58u8)] {
-        let path = rounded_rect_path(left - spread / 2.0, top + dy, w + spread, h, 22.0);
+    for (dy, spread, opacity) in [(8.0, 4.0, 36u8), (2.0, 1.0, 28u8)] {
+        let path = rounded_rect_path(left - spread / 2.0, top + dy, w + spread, h, 0.0);
         let mut paint = Paint::default();
         paint.set_color(Color::from_rgba8(0, 0, 0, (alpha * opacity as f32) as u8));
         paint.anti_alias = true;
@@ -1079,16 +1109,16 @@ fn draw_card_stroke(pm: &mut PixmapMut, path: &tiny_skia::Path, color: Color, wi
 
 fn draw_card_highlight(pm: &mut PixmapMut, left: f32, top: f32, w: f32, alpha: f32) {
     let mut pb = PathBuilder::new();
-    pb.move_to(left + 22.0, top + 8.0);
-    pb.line_to(left + w - 22.0, top + 8.0);
+    pb.move_to(left, top + METRO_STRIPE_HEIGHT + 1.0);
+    pb.line_to(left + w, top + METRO_STRIPE_HEIGHT + 1.0);
     let Some(path) = pb.finish() else {
         return;
     };
     let mut paint = Paint::default();
-    paint.set_color(Color::from_rgba8(255, 255, 255, (alpha * 72.0) as u8));
+    paint.set_color(Color::from_rgba8(255, 255, 255, alpha_byte(alpha, 24.0)));
     paint.anti_alias = true;
     let stroke = Stroke {
-        width: 1.2,
+        width: 1.0,
         ..Default::default()
     };
     pm.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
@@ -1103,12 +1133,12 @@ fn draw_login_button(
     alpha: f32,
     selected: bool,
 ) {
-    let path = rounded_rect_path(rect.0, rect.1, rect.2, rect.3, 8.0);
+    let path = rounded_rect_path(rect.0, rect.1, rect.2, rect.3, 0.0);
     let fill = mix_color(
-        Color::from_rgba8(48, 60, 96, 255),
+        metro_surface(1.0),
         accent,
-        if selected { 0.44 } else { 0.20 },
-        (alpha * if selected { 232.0 } else { 214.0 }) as u8,
+        if selected { 0.26 } else { 0.08 },
+        alpha_byte(alpha, if selected { 238.0 } else { 224.0 }),
     );
     let mut fill_paint = Paint::default();
     fill_paint.set_color(fill);
@@ -1124,16 +1154,33 @@ fn draw_login_button(
     draw_card_stroke(
         pm,
         &path,
-        color_with_alpha(accent, (alpha * if selected { 230.0 } else { 150.0 }) as u8),
-        if selected { 1.8 } else { 1.2 },
+        if selected {
+            color_with_alpha(accent, alpha_byte(alpha, 240.0))
+        } else {
+            metro_border(alpha)
+        },
+        if selected { 2.0 } else { 1.0 },
     );
+
+    let stripe = rounded_rect_path(rect.0, rect.1, rect.2, 3.0, 0.0);
+    let mut stripe_paint = Paint::default();
+    stripe_paint.set_color(color_with_alpha(accent, alpha_byte(alpha, 230.0)));
+    stripe_paint.anti_alias = true;
+    pm.fill_path(
+        &stripe,
+        &stripe_paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
+
     painter.render_text_centered(
         pm,
         TextStyle::SansBold(13.0),
         label,
         rect.0 + rect.2 / 2.0,
         rect.1 + rect.3 / 2.0,
-        Color::from_rgba8(238, 244, 252, (alpha * 235.0) as u8),
+        metro_text(alpha),
     );
 }
 
@@ -1156,7 +1203,7 @@ fn draw_power_buttons(
         } else {
             "Neustart"
         },
-        painter.style().north,
+        metro_accent(1.0),
         alpha,
         pending == Some(PowerAction::Reboot),
     );
@@ -1169,7 +1216,7 @@ fn draw_power_buttons(
         } else {
             "Aus"
         },
-        painter.style().south,
+        metro_error(1.0),
         alpha,
         pending == Some(PowerAction::PowerOff),
     );
@@ -1179,49 +1226,30 @@ fn point_in_rect(px: f32, py: f32, x: f32, y: f32, w: f32, h: f32) -> bool {
     px >= x && px < x + w && py >= y && py < y + h
 }
 
-fn draw_card(
-    pm: &mut PixmapMut,
-    w: f32,
-    h: f32,
-    alpha: f32,
-    painter: &CompassPainter,
-    shake_dx: f32,
-) {
+fn draw_card(pm: &mut PixmapMut, w: f32, h: f32, alpha: f32, shake_dx: f32) {
     let (left, top, cw, ch) = card_rect(w, h);
     let left = left + shake_dx;
-    let path = rounded_rect_path(left, top, cw, ch, 20.0);
+    let path = rounded_rect_path(left, top, cw, ch, 0.0);
     draw_soft_card_shadow(pm, left, top, cw, ch, alpha);
 
     let mut fill = Paint::default();
-    fill.set_color(Color::from_rgba8(56, 70, 112, (alpha * 242.0) as u8));
+    fill.set_color(metro_surface_alt(alpha));
     fill.anti_alias = true;
     pm.fill_path(&path, &fill, FillRule::Winding, Transform::identity(), None);
 
-    let top_glow = rounded_rect_path(left + 8.0, top + 8.0, cw - 16.0, ch * 0.42, 16.0);
-    let mut glow_paint = Paint::default();
-    glow_paint.set_color(Color::from_rgba8(92, 112, 160, (alpha * 96.0) as u8));
-    glow_paint.anti_alias = true;
+    let stripe = rounded_rect_path(left, top, cw, METRO_STRIPE_HEIGHT, 0.0);
+    let mut stripe_paint = Paint::default();
+    stripe_paint.set_color(metro_accent(alpha));
+    stripe_paint.anti_alias = true;
     pm.fill_path(
-        &top_glow,
-        &glow_paint,
+        &stripe,
+        &stripe_paint,
         FillRule::Winding,
         Transform::identity(),
         None,
     );
 
-    let north = painter.style().north;
-    draw_card_stroke(
-        pm,
-        &path,
-        rgba_with_alpha(north, (alpha * 205.0) as u8),
-        2.0,
-    );
-    draw_card_stroke(
-        pm,
-        &rounded_rect_path(left + 2.0, top + 2.0, cw - 4.0, ch - 4.0, 18.0),
-        Color::from_rgba8(255, 255, 255, (alpha * 58.0) as u8),
-        1.0,
-    );
+    draw_card_stroke(pm, &path, metro_border(alpha), 1.0);
     draw_card_highlight(pm, left, top, cw, alpha);
 }
 
@@ -1243,20 +1271,19 @@ fn draw_login_ui(
     let inner_w = cw - 2.0 * CARD_PAD;
     let cx = card_left + cw / 2.0;
 
-    let north = painter.style().north;
-    let text_color = Color::from_rgba8(240, 245, 252, (alpha * 246.0) as u8);
-    let label_color = Color::from_rgba8(205, 218, 240, (alpha * 220.0) as u8);
-    let hint_color = Color::from_rgba8(202, 216, 238, (alpha * 172.0) as u8);
-    let title_color = Color::from_rgba8(248, 251, 255, (alpha * 236.0) as u8);
-    let caret_color = rgba_with_alpha(north, (alpha * 220.0) as u8);
-    let box_fill = Color::from_rgba8(18, 26, 48, (alpha * 218.0) as u8);
-    let box_outline = rgba_with_alpha(north, (alpha * 96.0) as u8);
+    let text_color = metro_text(alpha);
+    let label_color = metro_text_dim(alpha);
+    let hint_color = metro_text_dim(alpha * 0.78);
+    let title_color = metro_accent(alpha);
+    let caret_color = metro_accent(alpha);
+    let box_fill = metro_background(alpha);
+    let box_outline = metro_border(alpha);
 
     // Title
     painter.render_text_centered(
         pm,
-        TextStyle::Script(44.0),
-        "Willkommen",
+        TextStyle::SansBold(24.0),
+        "Meridian",
         cx,
         inner_top + TITLE_OFFSET_Y,
         title_color,
@@ -1284,6 +1311,8 @@ fn draw_login_ui(
         INPUT_BOX_HEIGHT,
         box_fill,
         box_outline,
+        ui.focus == Field::Username,
+        alpha,
     );
     let user_text_x = inner_left + INPUT_TEXT_PAD_X;
     let user_baseline = user_box_top + INPUT_BOX_HEIGHT - INPUT_BASELINE_PAD_BOTTOM;
@@ -1318,6 +1347,8 @@ fn draw_login_ui(
         INPUT_BOX_HEIGHT,
         box_fill,
         box_outline,
+        ui.focus == Field::Password,
+        alpha,
     );
     let pwd_text_x = inner_left + INPUT_TEXT_PAD_X;
     let pwd_baseline = pwd_box_top + INPUT_BOX_HEIGHT - INPUT_BASELINE_PAD_BOTTOM;
@@ -1339,7 +1370,7 @@ fn draw_login_ui(
     let hint_y = restart_rect.1 - HINT_POWER_GAP;
     let hint_text = ui.hint();
     let hint_color_phase = match ui.phase {
-        InputPhase::Failed(_) => rgba_with_alpha(painter.style().south, (alpha * 220.0) as u8),
+        InputPhase::Failed(_) => metro_error(alpha),
         InputPhase::Editing | InputPhase::Authenticating => hint_color,
     };
     painter.render_text_centered(
@@ -1361,8 +1392,19 @@ fn draw_login_ui(
     );
 }
 
-fn draw_input_box(pm: &mut PixmapMut, x: f32, y: f32, w: f32, h: f32, fill: Color, outline: Color) {
-    let path = rounded_rect_path(x, y, w, h, 6.0);
+#[allow(clippy::too_many_arguments)]
+fn draw_input_box(
+    pm: &mut PixmapMut,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    fill: Color,
+    outline: Color,
+    focused: bool,
+    alpha: f32,
+) {
+    let path = rounded_rect_path(x, y, w, h, 0.0);
     let mut fill_paint = Paint::default();
     fill_paint.set_color(fill);
     fill_paint.anti_alias = true;
@@ -1375,13 +1417,31 @@ fn draw_input_box(pm: &mut PixmapMut, x: f32, y: f32, w: f32, h: f32, fill: Colo
     );
 
     let mut stroke_paint = Paint::default();
-    stroke_paint.set_color(outline);
+    stroke_paint.set_color(if focused {
+        metro_accent(alpha)
+    } else {
+        outline
+    });
     stroke_paint.anti_alias = true;
     let stroke = Stroke {
-        width: 1.0,
+        width: if focused { 2.0 } else { 1.0 },
         ..Default::default()
     };
     pm.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
+
+    if focused {
+        let accent = rounded_rect_path(x, y, 3.0, h, 0.0);
+        let mut accent_paint = Paint::default();
+        accent_paint.set_color(metro_accent(alpha));
+        accent_paint.anti_alias = true;
+        pm.fill_path(
+            &accent,
+            &accent_paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
 }
 
 fn draw_caret(pm: &mut PixmapMut, x: f32, baseline_y: f32, font_size: f32, color: Color) {
@@ -1453,15 +1513,6 @@ fn rounded_rect_path(x: f32, y: f32, w: f32, h: f32, r: f32) -> tiny_skia::Path 
     pb.quad_to(x, y, x + r, y);
     pb.close();
     pb.finish().unwrap()
-}
-
-fn rgba_with_alpha(c: Color, a: u8) -> Color {
-    Color::from_rgba8(
-        (c.red() * 255.0) as u8,
-        (c.green() * 255.0) as u8,
-        (c.blue() * 255.0) as u8,
-        a,
-    )
 }
 
 fn bootsplash_handover() -> std::io::Result<()> {
