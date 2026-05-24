@@ -18,6 +18,9 @@ ExecStart=/home/eduard/meridian-desktop/target/release/meridian-login
 # Default compositor path; auth.rs spawns this as the authenticated user
 # after PAM open_session(). Override at unit level for testing.
 Environment=MERIDIAN_LOGIN_COMPOSITOR=/home/eduard/meridian-desktop/target/release/meridian
+# Defaults to /dev/dri/card0. Override for systems where the boot/display
+# GPU is exposed under a different DRM node.
+# Environment=MERIDIAN_LOGIN_DRM_CARD=/dev/dri/card0
 # tracing_subscriber::fmt::init() defaults to filtering everything below
 # ERROR when RUST_LOG is unset. INFO keeps the boot trail visible in the
 # journal without exploding the volume.
@@ -36,7 +39,7 @@ StandardInput=tty
 StandardOutput=journal
 StandardError=journal
 
-# We need root to open /dev/dri/card0 with DRM master, run pam_authenticate
+# We need root to open the DRM card with master, run pam_authenticate
 # against /etc/shadow, and call setuid/setgid into the user before spawning
 # the compositor.
 User=root

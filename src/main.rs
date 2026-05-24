@@ -18,9 +18,14 @@ use smithay::reexports::{
 };
 use tracing::{info, warn};
 
+const SHELL_RESTART_MIN_DELAY: Duration = Duration::from_secs(2);
+const SHELL_RESTART_MAX_DELAY: Duration = Duration::from_secs(30);
+const SHELL_STABLE_AFTER: Duration = Duration::from_secs(10);
+
 struct ShellWatchdog {
     child: Option<Child>,
     last_start: std::time::Instant,
+    restart_delay: Duration,
     shutting_down: bool,
     wayland_display: String,
     shell_binary: PathBuf,
@@ -33,6 +38,7 @@ impl ShellWatchdog {
         Self {
             child: None,
             last_start: std::time::Instant::now() - Duration::from_secs(5),
+            restart_delay: SHELL_RESTART_MIN_DELAY,
             shutting_down: false,
             wayland_display,
             shell_binary,
@@ -72,6 +78,7 @@ impl ShellWatchdog {
                     "failed to start meridian-shell {:?}: {}",
                     self.shell_binary, err
                 );
+                self.bump_restart_delay();
             }
         }
     }
@@ -84,7 +91,16 @@ impl ShellWatchdog {
         if let Some(child) = self.child.as_mut() {
             match child.try_wait() {
                 Ok(Some(status)) => {
-                    info!("meridian-shell exited: {}", status);
+                    let uptime = self.last_start.elapsed();
+                    if uptime >= SHELL_STABLE_AFTER {
+                        self.restart_delay = SHELL_RESTART_MIN_DELAY;
+                    } else {
+                        self.bump_restart_delay();
+                    }
+                    info!(
+                        "meridian-shell exited: {} (uptime {:?}, next restart in {:?})",
+                        status, uptime, self.restart_delay
+                    );
                     self.child = None;
                 }
                 Ok(None) => return,
@@ -95,9 +111,13 @@ impl ShellWatchdog {
             }
         }
 
-        if self.child.is_none() && self.last_start.elapsed() >= Duration::from_secs(2) {
+        if self.child.is_none() && self.last_start.elapsed() >= self.restart_delay {
             self.start();
         }
+    }
+
+    fn bump_restart_delay(&mut self) {
+        self.restart_delay = next_restart_delay(self.restart_delay);
     }
 
     fn stop(&mut self) {
@@ -126,6 +146,11 @@ fn find_shell_binary() -> PathBuf {
         }
     }
     PathBuf::from("meridian-shell")
+}
+
+fn next_restart_delay(current: Duration) -> Duration {
+    let doubled = current.saturating_mul(2);
+    doubled.clamp(SHELL_RESTART_MIN_DELAY, SHELL_RESTART_MAX_DELAY)
 }
 
 fn env_flag_enabled(name: &str) -> bool {

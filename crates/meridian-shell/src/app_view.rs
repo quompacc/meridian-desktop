@@ -354,6 +354,7 @@ impl Widget for GridPlaceholder {
     fn paint(&self, _area: Rect, _canvas: &mut PixmapMut<'_>, _theme: &Theme, _state: WidgetState) {}
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_app_view_widget_tree(
     width: u32,
     height: u32,
@@ -551,7 +552,7 @@ pub(crate) fn draw_app_view(
         let grid_x = app_grid_content_x(width);
 
         let filtered = collect_filtered_apps(apps, category, search_query, icon_cache, hidden_execs);
-        let rows = (filtered.len() + APP_GRID_COLS - 1) / APP_GRID_COLS;
+        let rows = filtered.len().div_ceil(APP_GRID_COLS);
         let content_h = rows as i32 * APP_GRID_ROW_H;
 
         if let Some(mut grid_pix) = Pixmap::new(width, grid_h) {

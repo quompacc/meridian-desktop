@@ -345,7 +345,7 @@ fn pinned_app_window_status(
             continue;
         }
         any = true;
-        if focused_window_id.map_or(true, |fid| fid != w.id) && first_unfocused.is_none() {
+        if focused_window_id.is_none_or(|fid| fid != w.id) && first_unfocused.is_none() {
             first_unfocused = Some(w.id.clone());
         }
     }

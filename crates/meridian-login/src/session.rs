@@ -15,7 +15,7 @@ use std::process::{Child, Command};
 use tracing::info;
 
 const COMPOSITOR_ENV: &str = "MERIDIAN_LOGIN_COMPOSITOR";
-const DEFAULT_COMPOSITOR: &str = "/home/eduard/meridian-desktop/target/release/meridian";
+const DEFAULT_COMPOSITOR: &str = "/usr/local/bin/meridian";
 
 #[derive(Debug)]
 pub enum SessionError {
@@ -123,8 +123,8 @@ pub fn launch_compositor_for(
     // compositor would not pick up `video`/`render`/`input` membership and
     // could not open /dev/dri/card0. The closure captures CString-converted
     // username so the syscall does not allocate after fork.
-    let username_c = CString::new(username.to_string())
-        .map_err(|_| SessionError::UsernameNotCString)?;
+    let username_c =
+        CString::new(username.to_string()).map_err(|_| SessionError::UsernameNotCString)?;
     let uid_nix = nix::unistd::Uid::from_raw(uid);
     let gid_nix = nix::unistd::Gid::from_raw(gid);
     // SAFETY: pre_exec runs between fork and exec in the child process. The

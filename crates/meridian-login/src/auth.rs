@@ -62,8 +62,8 @@ pub enum AuthResult {
 /// Handle held by main for the lifetime of the user's session. Sending
 /// `()` (or dropping it) tells the worker thread to run pam_close_session
 /// + pam_end. Both `close()` and `Drop` block until the worker thread
-/// has fully finished, so by the time control returns to main the logind
-/// session is gone.
+///   has fully finished, so by the time control returns to main the logind
+///   session is gone.
 pub struct AuthDriver {
     close_tx: mpsc::SyncSender<()>,
     join: Option<thread::JoinHandle<()>>,
@@ -126,7 +126,7 @@ impl Drop for ConvData {
         // (strdup'd inside the conversation callback) is freed by libpam
         // without zeroization shortly after pam_authenticate returns —
         // that brief window is the unavoidable cost of using libpam.
-        let pass = std::mem::replace(&mut self.pass, CString::default());
+        let pass = std::mem::take(&mut self.pass);
         let raw = pass.into_raw();
         // SAFETY: raw was just produced by CString::into_raw and points
         // to a NUL-terminated C-string we still uniquely own; strlen is

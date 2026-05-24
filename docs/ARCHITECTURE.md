@@ -8,6 +8,7 @@
 - `crates/meridian-ipc`: IPC-Protokoll (`ShellCommand`, `ShellEvent`) + gemeinsame Screenshot-Bridge-Contract-Typen.
 - `crates/meridian-wm`: Tiling/Floating-Workspace-Logik.
 - `crates/meridian-portal`: separates Portal-Backend-Binary (D-Bus-Skeleton + deny-only Screenshot-Bridge über bestehenden IPC-Pfad).
+- `crates/meridian-boot-common`: gemeinsame Boot-Chain-Helfer für `bootsplash`/`meridian-login` (Socket-Cleanup, Boot-Mode-Auswahl).
 
 ## Modulstruktur (aktuell)
 - `meridian-compositor/backend/drm/*`: Init/GPU/Render (inkl. `render/layers.rs`, `render/stack.rs`)

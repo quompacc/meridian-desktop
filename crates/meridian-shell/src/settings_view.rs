@@ -15,8 +15,9 @@ use meridian_config::{WallpaperEntry, WallpaperMode};
 
 // ─── SettingsCategory ────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SettingsCategory {
+    #[default]
     Theme,
     Cursor,
     Wallpaper,
@@ -59,12 +60,6 @@ impl SettingsCategory {
     }
 }
 
-impl Default for SettingsCategory {
-    fn default() -> Self {
-        SettingsCategory::Theme
-    }
-}
-
 // ─── Widget-based launcher sub-page ─────────────────────────────────────────
 
 const HEADER_HEIGHT: u32 = 44;
@@ -87,7 +82,7 @@ const PINNED_ROW_H: i32 = 44;
 const PINNED_BTN_W: i32 = 30;
 const PINNED_MAX: usize = 16;
 
-pub(crate) const THEME_WIDGET_IDS: &[&'static str] = &[
+pub(crate) const THEME_WIDGET_IDS: &[&str] = &[
     "settings-theme-0",  "settings-theme-1",  "settings-theme-2",  "settings-theme-3",
     "settings-theme-4",  "settings-theme-5",  "settings-theme-6",  "settings-theme-7",
     "settings-theme-8",  "settings-theme-9",  "settings-theme-10", "settings-theme-11",
@@ -95,7 +90,7 @@ pub(crate) const THEME_WIDGET_IDS: &[&'static str] = &[
     "settings-theme-16", "settings-theme-17", "settings-theme-18", "settings-theme-19",
 ];
 
-pub(crate) const WALLPAPER_WIDGET_IDS: &[&'static str] = &[
+pub(crate) const WALLPAPER_WIDGET_IDS: &[&str] = &[
     "settings-wallpaper-0",  "settings-wallpaper-1",  "settings-wallpaper-2",  "settings-wallpaper-3",  "settings-wallpaper-4",
     "settings-wallpaper-5",  "settings-wallpaper-6",  "settings-wallpaper-7",  "settings-wallpaper-8",  "settings-wallpaper-9",
     "settings-wallpaper-10", "settings-wallpaper-11", "settings-wallpaper-12", "settings-wallpaper-13", "settings-wallpaper-14",
@@ -498,6 +493,7 @@ fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
     Some(pixmap)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_settings_widget_tree(
     width: u32,
     height: u32,
@@ -617,7 +613,7 @@ pub(crate) fn build_settings_widget_tree(
                         index: i,
                         display_name: entry.display_name.as_str().into(),
                         thumbnail,
-                        is_selected: current_wallpaper.map_or(false, |c| c == entry.apply_path.as_str()),
+                        is_selected: current_wallpaper == Some(entry.apply_path.as_str()),
                         accent: pal.accent,
                         row_width: row_w,
                     }));
@@ -789,6 +785,7 @@ pub(crate) fn build_settings_widget_tree(
 
 
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_settings_launcher(
     canvas: &mut [u8],
     width: u32,

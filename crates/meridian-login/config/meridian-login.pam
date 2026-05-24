@@ -7,7 +7,7 @@
 # account   — check account validity (not locked, not expired).
 # session   — pam_systemd registers a logind session (class=user,
 #             type=wayland) so the spawned compositor can acquire
-#             /dev/dri/card0 and input devices via libseat. pam_unix
+#             the DRM card and input devices via libseat. pam_unix
 #             handles utmp/wtmp bookkeeping and other per-user setup.
 #
 # meridian-login itself calls pam_open_session() after a successful

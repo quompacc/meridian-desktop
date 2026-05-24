@@ -1135,7 +1135,7 @@ fn collect_images_by_dir(
 fn wallpaper_entry_display_name(path: &str) -> String {
     let meaningful: Vec<&str> = path.split('/')
         .filter(|s| !s.is_empty())
-        .filter(|p| { let lo = p.to_ascii_lowercase(); !WALLPAPER_SKIP.iter().any(|s| *s == lo.as_str()) })
+        .filter(|p| { let lo = p.to_ascii_lowercase(); !WALLPAPER_SKIP.contains(&lo.as_str()) })
         .collect();
     let filename = meaningful.last().copied().unwrap_or(path);
     let stem = filename.rsplitn(2, '.').last().unwrap_or(filename);
@@ -1150,7 +1150,7 @@ fn wallpaper_dir_display_name(dir: &std::path::Path) -> String {
     let s = dir.to_str().unwrap_or("");
     let meaningful: Vec<&str> = s.split('/')
         .filter(|c| !c.is_empty())
-        .filter(|p| { let lo = p.to_ascii_lowercase(); !WALLPAPER_SKIP.iter().any(|s| *s == lo.as_str()) })
+        .filter(|p| { let lo = p.to_ascii_lowercase(); !WALLPAPER_SKIP.contains(&lo.as_str()) })
         .collect();
     meaningful.last().copied().unwrap_or(s).to_string()
 }

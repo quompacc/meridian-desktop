@@ -88,6 +88,7 @@ Selbe Befehle wie Boot-Splash:
 
 **Ausgehend**
 - `/run/bootsplash.sock`: `handover` beim eigenen Start, `exit` nach erstem committed Frame
+  - Pfad per `BOOTSPLASH_SOCKET` überschreibbar
 - ggf. an `meridian-compositor`: über dessen Lifecycle-Hook (separat zu spezifizieren)
 
 ### Lifecycle
@@ -151,7 +152,8 @@ Selbe Befehle wie Boot-Splash:
 - `cargo check --workspace` grün
 
 ### Phase 2: DRM-Master-Handover Boot-Splash → Login
-- meridian-login öffnet card0
+- meridian-login öffnet die DRM-Card (`MERIDIAN_LOGIN_DRM_CARD`, Default `/dev/dri/card0`)
+- compositor binary: `MERIDIAN_LOGIN_COMPOSITOR`, Default `/usr/local/bin/meridian`
 - Sendet `handover` an Boot-Splash-Socket
 - Wird DRM-Master
 - Rendert deterministischen End-Frame des Boot-Splashs (statisch, gleiche Kompass-Geometrie)

@@ -21,6 +21,7 @@ jobs:
             libgbm-dev \
             libgles2-mesa-dev \
             libinput-dev \
+            libpam0g-dev \
             libseat-dev \
             libudev-dev \
             libwayland-dev \

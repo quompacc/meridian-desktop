@@ -1393,6 +1393,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "meridian-boot-common"
+version = "0.1.0"
+dependencies = [
+ "drm 0.15.0",
+]
+
+[[package]]
 name = "meridian-compass-render"
 version = "0.1.0"
 dependencies = [
@@ -1444,6 +1451,7 @@ dependencies = [
  "drm 0.15.0",
  "evdev",
  "libc",
+ "meridian-boot-common",
  "meridian-compass-render",
  "nix",
  "pam-sys",

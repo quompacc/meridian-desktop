@@ -83,8 +83,10 @@ fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
     let waist: f32 = 3.2;
 
     let paint_for = |color: Color| {
-        let mut p = Paint::default();
-        p.anti_alias = true;
+        let mut p = Paint {
+            anti_alias: true,
+            ..Paint::default()
+        };
         p.set_color_rgba8(color.r, color.g, color.b, color.a);
         p
     };
@@ -114,8 +116,10 @@ fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
         pb.finish()
     };
     if let Some(ref path) = inner_ring {
-        let mut stroke = Stroke::default();
-        stroke.width = 1.0;
+        let stroke = Stroke {
+            width: 1.0,
+            ..Stroke::default()
+        };
         pm.as_mut().stroke_path(
             path,
             &paint_for(palette.accent_alt),
@@ -424,6 +428,7 @@ impl Widget for PanelPinnedChip {
 
 // ── PanelWindowChip ─────────────────────────────────────────────────────────
 
+#[cfg(test)]
 struct PanelWindowChip {
     window_id: Box<str>,
     title: Box<str>,
@@ -432,6 +437,7 @@ struct PanelWindowChip {
     width: i32,
 }
 
+#[cfg(test)]
 impl Widget for PanelWindowChip {
     fn id(&self) -> Option<&'static str> {
         None
@@ -511,8 +517,10 @@ fn draw_circle(canvas: &mut PixmapMut<'_>, cx: f32, cy: f32, radius: f32, color:
     let mut pb = PathBuilder::new();
     pb.push_circle(cx, cy, radius);
     if let Some(path) = pb.finish() {
-        let mut paint = Paint::default();
-        paint.anti_alias = true;
+        let mut paint = Paint {
+            anti_alias: true,
+            ..Paint::default()
+        };
         paint.set_color_rgba8(color.r, color.g, color.b, color.a);
         canvas.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
     }
@@ -895,7 +903,6 @@ mod tests {
         assert_eq!(tree.children().len(), 3);
     }
 
-    #[test]
     #[test]
     fn draw_panel_ui_modifies_canvas_and_fills_clicks() {
         let width = 1024u32;

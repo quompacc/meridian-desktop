@@ -158,8 +158,7 @@ impl PointerHandler for MeridianShell {
                                 crate::app_view::app_grid_content_x(crate::LAUNCHER_WIDTH);
                             let rel_y = cy - grid_start + self.app_view_scroll_y;
                             let rel_x = cx - grid_x;
-                            if rel_x >= 0
-                                && rel_x < crate::app_view::APP_GRID_CONTENT_W
+                            if (0..crate::app_view::APP_GRID_CONTENT_W).contains(&rel_x)
                                 && rel_y >= 0
                             {
                                 let row = (rel_y / crate::app_view::APP_GRID_ROW_H) as usize;
@@ -208,8 +207,7 @@ impl PointerHandler for MeridianShell {
                                 crate::app_view::app_grid_content_x(crate::LAUNCHER_WIDTH);
                             let rel_y = cy - grid_start + self.app_view_scroll_y;
                             let rel_x = cx - grid_x;
-                            if rel_x >= 0
-                                && rel_x < crate::app_view::APP_GRID_CONTENT_W
+                            if (0..crate::app_view::APP_GRID_CONTENT_W).contains(&rel_x)
                                 && rel_y >= 0
                             {
                                 let row = (rel_y / crate::app_view::APP_GRID_ROW_H) as usize;
@@ -412,11 +410,11 @@ impl PointerHandler for MeridianShell {
                                 &self.icon_cache,
                                 &self.hidden_execs,
                             );
-                            let content_h =
-                                ((filtered.len() + crate::app_view::APP_GRID_COLS - 1)
-                                    / crate::app_view::APP_GRID_COLS)
-                                    as i32
-                                    * crate::app_view::APP_GRID_ROW_H;
+                            let content_h = filtered
+                                .len()
+                                .div_ceil(crate::app_view::APP_GRID_COLS)
+                                as i32
+                                * crate::app_view::APP_GRID_ROW_H;
                             let grid_h = crate::LAUNCHER_HEIGHT as i32
                                 - crate::app_view::APP_GRID_HEADER_H
                                 - crate::app_view::APP_GRID_FOOTER_H;
@@ -445,8 +443,7 @@ impl PointerHandler for MeridianShell {
                             );
                             let rel_y = cy - grid_start + self.app_view_scroll_y;
                             let rel_x = cx - grid_x;
-                            if rel_x >= 0
-                                && rel_x < crate::app_view::APP_GRID_CONTENT_W
+                            if (0..crate::app_view::APP_GRID_CONTENT_W).contains(&rel_x)
                                 && rel_y >= 0
                             {
                                 let row =

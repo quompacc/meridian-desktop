@@ -10,9 +10,7 @@ use wayland_client::{
 use wayland_protocols::ext::{
     image_capture_source::v1::client::{
         ext_image_capture_source_v1::{self, ExtImageCaptureSourceV1},
-        ext_output_image_capture_source_manager_v1::{
-            self, ExtOutputImageCaptureSourceManagerV1,
-        },
+        ext_output_image_capture_source_manager_v1::{self, ExtOutputImageCaptureSourceManagerV1},
     },
     image_copy_capture::v1::client::{
         ext_image_copy_capture_frame_v1::{self, ExtImageCopyCaptureFrameV1},
@@ -168,8 +166,20 @@ fn issue_frame_capture(state: &mut MeridianShell, qh: &QueueHandle<MeridianShell
     let width = cap.width;
     let height = cap.height;
     let format = cap.format.unwrap_or(wl_shm::Format::Xrgb8888);
-    let stride = width * 4;
-    let size = (stride * height) as usize;
+    if !is_supported_screenshot_format(format) {
+        tracing::warn!("screenshot: unsupported shm format: {:?}", format);
+        state.screenshot_capture = None;
+        return;
+    }
+    let Some((stride, size)) = screenshot_buffer_layout(width, height) else {
+        tracing::warn!(
+            width,
+            height,
+            "screenshot: invalid or oversized buffer constraints"
+        );
+        state.screenshot_capture = None;
+        return;
+    };
 
     // Create anonymous file backed by memfd.
     let c_name = std::ffi::CString::new("meridian-screenshot").unwrap();
@@ -204,15 +214,7 @@ fn issue_frame_capture(state: &mut MeridianShell, qh: &QueueHandle<MeridianShell
 
     let wl_shm = state.shm.wl_shm();
     let pool = wl_shm.create_pool(fd.as_fd(), size as i32, qh, ());
-    let buffer = pool.create_buffer(
-        0,
-        width as i32,
-        height as i32,
-        stride as i32,
-        format,
-        qh,
-        (),
-    );
+    let buffer = pool.create_buffer(0, width as i32, height as i32, stride, format, qh, ());
 
     let cap = state.screenshot_capture.as_mut().unwrap();
     cap.fd = Some(fd);
@@ -226,6 +228,22 @@ fn issue_frame_capture(state: &mut MeridianShell, qh: &QueueHandle<MeridianShell
     frame.damage_buffer(0, 0, width as i32, height as i32);
     frame.capture();
     cap.frame = Some(frame);
+}
+
+fn is_supported_screenshot_format(format: wl_shm::Format) -> bool {
+    matches!(format, wl_shm::Format::Xrgb8888 | wl_shm::Format::Argb8888)
+}
+
+fn screenshot_buffer_layout(width: u32, height: u32) -> Option<(i32, usize)> {
+    if width == 0 || height == 0 || width > i32::MAX as u32 || height > i32::MAX as u32 {
+        return None;
+    }
+    let stride = width.checked_mul(4)?;
+    let size = u64::from(stride).checked_mul(u64::from(height))?;
+    if stride > i32::MAX as u32 || size > i32::MAX as u64 {
+        return None;
+    }
+    Some((stride as i32, size as usize))
 }
 
 // ──── Dispatch: frame events ─────────────────────────────────────────────────
@@ -250,18 +268,11 @@ impl Dispatch<ExtImageCopyCaptureFrameV1, ()> for MeridianShell {
                     let len = cap.mapped_len;
 
                     if !ptr.is_null() && len > 0 {
-                        let raw =
-                            unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
+                        let raw = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
                         match encode_screenshot_png(raw, width, height) {
                             Ok(png_data) => match std::fs::write(&path, &png_data) {
-                                Ok(()) => tracing::info!(
-                                    "screenshot saved: {}",
-                                    path.display()
-                                ),
-                                Err(e) => tracing::warn!(
-                                    "screenshot: write failed: {}",
-                                    e
-                                ),
+                                Ok(()) => tracing::info!("screenshot saved: {}", path.display()),
+                                Err(e) => tracing::warn!("screenshot: write failed: {}", e),
                             },
                             Err(e) => {
                                 tracing::warn!("screenshot: PNG encode failed: {}", e)
@@ -304,7 +315,7 @@ pub(crate) fn encode_screenshot_png(
 
 #[cfg(test)]
 mod tests {
-    use super::encode_screenshot_png;
+    use super::{encode_screenshot_png, screenshot_buffer_layout};
 
     #[test]
     fn xrgb_to_rgb_channel_swap() {
@@ -320,5 +331,16 @@ mod tests {
         assert_eq!(info.color_type, png::ColorType::Rgb);
         // Expect R=0x33, G=0x22, B=0x11
         assert_eq!(&buf[..3], &[0x33, 0x22, 0x11]);
+    }
+
+    #[test]
+    fn screenshot_buffer_layout_rejects_empty_or_oversized_constraints() {
+        assert_eq!(screenshot_buffer_layout(0, 1), None);
+        assert_eq!(screenshot_buffer_layout(1, 0), None);
+        assert_eq!(screenshot_buffer_layout(u32::MAX, 1), None);
+        assert_eq!(
+            screenshot_buffer_layout(1920, 1080),
+            Some((7680, 8_294_400))
+        );
     }
 }

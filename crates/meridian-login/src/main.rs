@@ -16,10 +16,9 @@ mod auth;
 mod input;
 mod session;
 
-use std::fs::{File, OpenOptions, Permissions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::fd::{AsFd, BorrowedFd};
-use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -37,8 +36,14 @@ use zeroize::Zeroizing;
 
 use auth::{start_auth_session, AuthDriver, AuthResult};
 use input::{open_keyboards, poll_keyboards, KeyAction, Keyboard};
+use meridian_boot_common::{
+    cleanup_socket_path, secure_socket_permissions, select_boot_mode, SocketIdentity,
+};
 
+const BOOTSPLASH_SOCKET_ENV: &str = "BOOTSPLASH_SOCKET";
 const BOOTSPLASH_SOCKET: &str = "/run/bootsplash.sock";
+const LOGIN_DRM_CARD_ENV: &str = "MERIDIAN_LOGIN_DRM_CARD";
+const DEFAULT_DRM_CARD: &str = "/dev/dri/card0";
 // No client-side sleep needed: bootsplash's `handover` ack is now
 // synchronous — it only writes "ok handover" after drmDropMaster has
 // completed, so our set_crtc is race-free immediately after the call
@@ -252,21 +257,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => warn!(error = %e, "bootsplash handover failed (not running?); proceeding"),
     }
 
-    let card = Card(
-        OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open("/dev/dri/card0")?,
-    );
+    let drm_card =
+        std::env::var(LOGIN_DRM_CARD_ENV).unwrap_or_else(|_| DEFAULT_DRM_CARD.to_string());
+    info!(path = %drm_card, "opening login DRM card");
+    let card = Card(OpenOptions::new().read(true).write(true).open(&drm_card)?);
 
     let res = card.resource_handles()?;
     let conn_info = res
         .connectors()
         .iter()
-        .map(|&h| card.get_connector(h, false).unwrap())
+        .filter_map(|&h| match card.get_connector(h, false) {
+            Ok(connector) => Some(connector),
+            Err(err) => {
+                warn!(connector = ?h, error = %err, "failed to inspect DRM connector");
+                None
+            }
+        })
         .find(|c| c.state() == connector::State::Connected)
         .ok_or("no connected connector")?;
-    let mode = pick_mode(conn_info.modes()).ok_or("connector has no usable mode")?;
+    let mode = select_boot_mode(conn_info.modes()).ok_or("connector has no usable mode")?;
     let (w, h) = mode.size();
     let (w, h) = (w as u32, h as u32);
     info!(width = w, height = h, refresh = mode.vrefresh(), "drm mode");
@@ -276,7 +285,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     }
-    .unwrap_or_else(|| res.crtcs()[0]);
+    .or_else(|| res.crtcs().first().copied())
+    .ok_or("no CRTC available")?;
 
     let mut db = card.create_dumb_buffer((w, h), DrmFourcc::Xrgb8888, 32)?;
     let fb = card.add_framebuffer(&db, 24, 32)?;
@@ -400,11 +410,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ipc_socket_path = match compositor_child.as_ref() {
         Some(_) => match nix::unistd::User::from_name(&username) {
             Ok(Some(user)) => {
-                match spawn_login_ipc_server(
-                    ipc_tx,
-                    user.uid.as_raw(),
-                    user.gid.as_raw(),
-                ) {
+                match spawn_login_ipc_server(ipc_tx, user.uid.as_raw(), user.gid.as_raw()) {
                     Ok(p) => Some(p),
                     Err(e) => {
                         warn!(error = %e, "login ipc server bind failed; releasing drm immediately");
@@ -467,9 +473,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if !master_released {
                         if let Some(card) = card_opt.as_ref() {
                             match card.release_master_lock() {
-                                Ok(()) => info!(
-                                    "ipc handover: released drm master (fd kept alive)"
-                                ),
+                                Ok(()) => {
+                                    info!("ipc handover: released drm master (fd kept alive)")
+                                }
                                 Err(e) => warn!(error = %e, "release_master failed"),
                             }
                         }
@@ -535,8 +541,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    if let Some(path) = ipc_socket_path {
-        let _ = std::fs::remove_file(&path);
+    if let Some((path, identity)) = ipc_socket_path {
+        match cleanup_socket_path(&path, identity) {
+            Ok(true) | Ok(false) => {}
+            Err(err) => warn!(path = %path.display(), error = %err, "login ipc cleanup failed"),
+        }
     }
 
     if let Some(driver) = auth_driver {
@@ -982,11 +991,15 @@ fn rgba_with_alpha(c: Color, a: u8) -> Color {
 }
 
 fn bootsplash_handover() -> std::io::Result<()> {
-    send_command(BOOTSPLASH_SOCKET, b"handover\n").map(|_| ())
+    send_command(&bootsplash_socket_path(), b"handover\n").map(|_| ())
 }
 
 fn bootsplash_exit() -> std::io::Result<()> {
-    send_command(BOOTSPLASH_SOCKET, b"exit\n").map(|_| ())
+    send_command(&bootsplash_socket_path(), b"exit\n").map(|_| ())
+}
+
+fn bootsplash_socket_path() -> String {
+    std::env::var(BOOTSPLASH_SOCKET_ENV).unwrap_or_else(|_| BOOTSPLASH_SOCKET.to_string())
 }
 
 fn send_command(path: &str, cmd: &[u8]) -> std::io::Result<String> {
@@ -1031,7 +1044,7 @@ enum IpcEvent {
 
 /// Bind the login IPC socket and spawn an accept thread that forwards
 /// each parsed command as an [`IpcEvent`] into `tx`. Returns the socket
-/// path so the caller can unlink it on shutdown.
+/// path and identity so the caller can unlink exactly this socket on shutdown.
 ///
 /// `owner_uid`/`owner_gid` are the authenticated user — we chown the
 /// socket to them and clamp to mode 0600 so only the spawned compositor
@@ -1042,9 +1055,9 @@ fn spawn_login_ipc_server(
     tx: mpsc::Sender<IpcEvent>,
     owner_uid: u32,
     owner_gid: u32,
-) -> std::io::Result<PathBuf> {
+) -> std::io::Result<(PathBuf, SocketIdentity)> {
     let path = PathBuf::from(LOGIN_SOCKET);
-    let _ = std::fs::remove_file(&path);
+    let _ = fs::remove_file(&path);
     let listener = UnixListener::bind(&path)?;
     // chown FIRST, then chmod: shrinking the access window during the
     // tiny gap between bind and lockdown.
@@ -1054,7 +1067,7 @@ fn spawn_login_ipc_server(
         Some(nix::unistd::Gid::from_raw(owner_gid)),
     )
     .map_err(|e| std::io::Error::other(format!("chown ipc socket: {}", e)))?;
-    std::fs::set_permissions(&path, Permissions::from_mode(0o600))?;
+    let socket_identity = secure_socket_permissions(&path)?;
     info!(
         path = %path.display(),
         owner_uid,
@@ -1076,7 +1089,7 @@ fn spawn_login_ipc_server(
             }
         }
     });
-    Ok(path)
+    Ok((path, socket_identity))
 }
 
 fn handle_login_ipc_client(mut stream: UnixStream, tx: mpsc::Sender<IpcEvent>) {
@@ -1102,22 +1115,6 @@ fn handle_login_ipc_client(mut stream: UnixStream, tx: mpsc::Sender<IpcEvent>) {
             }
         }
     }
-}
-
-fn pick_mode(modes: &[drm::control::Mode]) -> Option<drm::control::Mode> {
-    let mut filtered: Vec<_> = modes
-        .iter()
-        .copied()
-        .filter(|m| {
-            let (w, h) = m.size();
-            w.max(h) <= 2560 && w >= 1280 && h >= 720
-        })
-        .collect();
-    filtered.sort_by_key(|m| {
-        let (w, h) = m.size();
-        std::cmp::Reverse(w as u32 * h as u32)
-    });
-    filtered.first().copied().or_else(|| modes.first().copied())
 }
 
 #[cfg(test)]

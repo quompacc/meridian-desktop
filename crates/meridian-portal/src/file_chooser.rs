@@ -4,6 +4,8 @@ use tracing::{debug, info, warn};
 use zbus::zvariant::{Array, ObjectPath, OwnedValue, Signature, Value};
 
 type Asv = HashMap<String, OwnedValue>;
+const FILE_PICKER_ENV: &str = "MERIDIAN_FILE_PICKER";
+const DEFAULT_FILE_PICKER: &str = "/usr/local/bin/meridian-file-picker";
 
 pub struct FileChooserImpl;
 
@@ -26,10 +28,14 @@ impl FileChooserImpl {
         let directory = bool_opt(&options, "directory");
         debug!("OpenFile title={title:?} multiple={multiple} directory={directory}");
 
-        let mut cmd = Command::new("/usr/local/bin/meridian-file-picker");
+        let mut cmd = Command::new(file_picker_path());
         cmd.arg("--title").arg(title);
-        if multiple { cmd.arg("--multiple"); }
-        if directory { cmd.arg("--directory"); }
+        if multiple {
+            cmd.arg("--multiple");
+        }
+        if directory {
+            cmd.arg("--directory");
+        }
         forward_env(&mut cmd);
 
         match cmd.output().await {
@@ -39,7 +45,7 @@ impl FileChooserImpl {
                     .lines()
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
-                    .map(|p| path_to_uri(p))
+                    .map(path_to_uri)
                     .collect();
                 info!("OpenFile: {} file(s) selected", uris.len());
                 (0, uris_asv(uris))
@@ -69,7 +75,7 @@ impl FileChooserImpl {
         let current_name = str_opt(&options, "current_name").map(str::to_owned);
         debug!("SaveFile title={title:?}");
 
-        let mut cmd = Command::new("/usr/local/bin/meridian-file-picker");
+        let mut cmd = Command::new(file_picker_path());
         cmd.arg("--save").arg("--title").arg(title);
         if let Some(ref name) = current_name {
             cmd.arg("--filename").arg(name);
@@ -103,7 +109,7 @@ impl FileChooserImpl {
         _options: Asv,
     ) -> (u32, Asv) {
         debug!("SaveFiles title={title:?} (directory picker)");
-        let mut cmd = Command::new("/usr/local/bin/meridian-file-picker");
+        let mut cmd = Command::new(file_picker_path());
         cmd.arg("--directory").arg("--title").arg(title);
         forward_env(&mut cmd);
 
@@ -155,16 +161,32 @@ fn bool_opt(opts: &Asv, key: &str) -> bool {
 }
 
 fn str_opt<'a>(opts: &'a Asv, key: &str) -> Option<&'a str> {
-    opts.get(key)
-        .and_then(|v| <&str>::try_from(v).ok())
+    opts.get(key).and_then(|v| <&str>::try_from(v).ok())
 }
 
 fn path_to_uri(path: &str) -> String {
     if path.starts_with("file://") {
         path.to_string()
     } else {
-        format!("file://{path}")
+        format!("file://{}", percent_encode_path(path))
     }
+}
+
+fn file_picker_path() -> String {
+    std::env::var(FILE_PICKER_ENV).unwrap_or_else(|_| DEFAULT_FILE_PICKER.to_string())
+}
+
+fn percent_encode_path(path: &str) -> String {
+    let mut out = String::with_capacity(path.len());
+    for byte in path.as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*byte as char)
+            }
+            other => out.push_str(&format!("%{other:02X}")),
+        }
+    }
+    out
 }
 
 fn forward_env(cmd: &mut Command) {
@@ -175,4 +197,25 @@ fn forward_env(cmd: &mut Command) {
     }
     // GTK3 GtkFileChooserDialog — never touches the portal.
     cmd.env("GDK_BACKEND", "wayland");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::path_to_uri;
+
+    #[test]
+    fn path_to_uri_preserves_existing_file_uri() {
+        assert_eq!(
+            path_to_uri("file:///tmp/already%20encoded"),
+            "file:///tmp/already%20encoded"
+        );
+    }
+
+    #[test]
+    fn path_to_uri_percent_encodes_path_bytes() {
+        assert_eq!(
+            path_to_uri("/tmp/Meridian Test/ä.png"),
+            "file:///tmp/Meridian%20Test/%C3%A4.png"
+        );
+    }
 }
