@@ -806,16 +806,22 @@ impl MeridianShell {
         if self.wallpaper_picker_rx.is_some() { return; }
         let (tx, rx) = std::sync::mpsc::channel();
         self.wallpaper_picker_rx = Some(rx);
+        let wayland_display = std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-1".into());
         std::thread::spawn(move || {
-            let out = std::process::Command::new("zenity")
+            let out = std::process::Command::new("/usr/bin/zenity")
                 .args(["--file-selection", "--title=Choose Wallpaper",
                        "--file-filter=Images | *.jpg *.jpeg *.png *.webp"])
+                .env("WAYLAND_DISPLAY", &wayland_display)
+                .env("GDK_BACKEND", "wayland")
                 .output();
-            if let Ok(o) = out {
-                if o.status.success() {
+            match out {
+                Ok(o) if o.status.success() => {
                     let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
                     if !path.is_empty() { let _ = tx.send(path); }
                 }
+                Ok(o) => tracing::warn!("zenity exited {:?}: {}", o.status,
+                    String::from_utf8_lossy(&o.stderr).trim()),
+                Err(e) => tracing::warn!("zenity spawn failed: {}", e),
             }
         });
     }
