@@ -19,7 +19,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
@@ -78,6 +78,8 @@ const GLOW_HIDE_MS: u64 = 1700;
 const GLOW_FINAL_SCALE: f32 = 4.0;
 const MAX_FIELD_LEN: usize = 128;
 const POWER_CONFIRM_WINDOW: Duration = Duration::from_secs(3);
+const SECURITY_KEY_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const YUBICO_USB_VENDOR_ID: &str = "1050";
 
 type Rect = (f32, f32, f32, f32);
 type PowerButtonRects = (Rect, Rect);
@@ -136,6 +138,7 @@ struct LoginUiState {
     pam_env: Vec<(String, String)>,
     pending_power: Option<PendingPowerAction>,
     keyboard_status: KeyboardStatus,
+    security_key_present: bool,
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -348,6 +351,12 @@ impl LoginUiState {
         }
         let layout = keyboard_layout_label(&self.keyboard_status);
         match self.phase {
+            InputPhase::Editing if self.security_key_present && self.keyboard_status.caps_lock => {
+                format!("YubiKey erkannt - Caps Lock aktiv - Layout {layout}")
+            }
+            InputPhase::Editing if self.security_key_present => {
+                format!("YubiKey erkannt - Passwort eingeben - Layout {layout}")
+            }
             InputPhase::Editing if self.keyboard_status.caps_lock => {
                 format!("Caps Lock aktiv - Layout {layout}")
             }
@@ -356,6 +365,22 @@ impl LoginUiState {
             InputPhase::Failed(_) => "Passwort erneut eingeben".to_string(),
         }
     }
+}
+
+fn yubikey_present() -> bool {
+    yubikey_present_in_sysfs(Path::new("/sys/bus/usb/devices"))
+}
+
+fn yubikey_present_in_sysfs(root: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(root) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let vendor_path = entry.path().join("idVendor");
+        fs::read_to_string(vendor_path)
+            .ok()
+            .is_some_and(|vendor| vendor.trim().eq_ignore_ascii_case(YUBICO_USB_VENDOR_ID))
+    })
 }
 
 fn keyboard_layout_label(status: &KeyboardStatus) -> String {
@@ -459,6 +484,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pointers = open_pointers()?;
     let mut keyboard = Keyboard::new().map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
     ui_state.keyboard_status = keyboard.status();
+    ui_state.security_key_present = yubikey_present();
     let mut pointer = PointerState::new(w, h);
 
     let exit = run_animation(
@@ -800,6 +826,7 @@ fn run_animation(
     let mut frame_idx: u64 = 0;
     let mut exit = ControlFlow::Continue;
     let mut steady_frame_drawn = false;
+    let mut next_security_key_probe = Instant::now();
 
     while exit == ControlFlow::Continue {
         let t = anim_start.elapsed();
@@ -819,6 +846,14 @@ fn run_animation(
             }
             if ui_state.clear_expired_power_confirmation() {
                 redraw = true;
+            }
+            if Instant::now() >= next_security_key_probe {
+                let present = yubikey_present();
+                if ui_state.security_key_present != present {
+                    ui_state.security_key_present = present;
+                    redraw = true;
+                }
+                next_security_key_probe = Instant::now() + SECURITY_KEY_POLL_INTERVAL;
             }
 
             // Ignore key events during Authenticating or Failed — they would
@@ -958,7 +993,14 @@ fn run_animation(
             }
 
             if af.card_alpha > 0.0 {
-                draw_card(&mut pm, w as f32, h as f32, af.card_alpha, shake_dx);
+                draw_card(
+                    &mut pm,
+                    w as f32,
+                    h as f32,
+                    af.card_alpha,
+                    shake_dx,
+                    ui_state.security_key_present,
+                );
             }
 
             if af.ui_alpha > 0.0 {
@@ -1104,6 +1146,10 @@ fn metro_border(alpha: f32) -> Color {
 
 fn metro_error(alpha: f32) -> Color {
     Color::from_rgba8(0xf7, 0x76, 0x8e, alpha_byte(alpha, 255.0))
+}
+
+fn metro_success(alpha: f32) -> Color {
+    Color::from_rgba8(0x9e, 0xce, 0x6a, alpha_byte(alpha, 255.0))
 }
 
 fn draw_soft_card_shadow(pm: &mut PixmapMut, left: f32, top: f32, w: f32, h: f32, alpha: f32) {
@@ -1252,20 +1298,41 @@ fn point_in_rect(px: f32, py: f32, x: f32, y: f32, w: f32, h: f32) -> bool {
     px >= x && px < x + w && py >= y && py < y + h
 }
 
-fn draw_card(pm: &mut PixmapMut, w: f32, h: f32, alpha: f32, shake_dx: f32) {
+fn draw_card(
+    pm: &mut PixmapMut,
+    w: f32,
+    h: f32,
+    alpha: f32,
+    shake_dx: f32,
+    security_key_present: bool,
+) {
     let (left, top, cw, ch) = card_rect(w, h);
     let left = left + shake_dx;
     let path = rounded_rect_path(left, top, cw, ch, 0.0);
     draw_soft_card_shadow(pm, left, top, cw, ch, alpha);
+    let key_accent = if security_key_present {
+        metro_success(alpha)
+    } else {
+        metro_accent(alpha)
+    };
 
     let mut fill = Paint::default();
-    fill.set_color(metro_surface_alt(alpha));
+    fill.set_color(if security_key_present {
+        mix_color(
+            metro_surface_alt(1.0),
+            metro_success(1.0),
+            0.08,
+            alpha_byte(alpha, 242.0),
+        )
+    } else {
+        metro_surface_alt(alpha)
+    });
     fill.anti_alias = true;
     pm.fill_path(&path, &fill, FillRule::Winding, Transform::identity(), None);
 
     let stripe = rounded_rect_path(left, top, cw, METRO_STRIPE_HEIGHT, 0.0);
     let mut stripe_paint = Paint::default();
-    stripe_paint.set_color(metro_accent(alpha));
+    stripe_paint.set_color(key_accent);
     stripe_paint.anti_alias = true;
     pm.fill_path(
         &stripe,
@@ -1275,7 +1342,12 @@ fn draw_card(pm: &mut PixmapMut, w: f32, h: f32, alpha: f32, shake_dx: f32) {
         None,
     );
 
-    draw_card_stroke(pm, &path, metro_border(alpha), 1.0);
+    let border = if security_key_present {
+        color_with_alpha(metro_success(1.0), alpha_byte(alpha, 220.0))
+    } else {
+        metro_border(alpha)
+    };
+    draw_card_stroke(pm, &path, border, 1.0);
     draw_card_highlight(pm, left, top, cw, alpha);
 }
 
@@ -1304,6 +1376,15 @@ fn draw_login_ui(
     let caret_color = metro_accent(alpha);
     let box_fill = metro_background(alpha);
     let box_outline = metro_border(alpha);
+
+    draw_security_key_badge(
+        pm,
+        painter,
+        inner_left,
+        inner_top + 8.0,
+        alpha,
+        ui.security_key_present,
+    );
 
     // Title
     painter.render_text_centered(
@@ -1415,6 +1496,88 @@ fn draw_login_ui(
         alpha,
         shake_dx,
         ui.pending_power_action(),
+    );
+}
+
+fn draw_security_key_badge(
+    pm: &mut PixmapMut,
+    painter: &CompassPainter,
+    x: f32,
+    y: f32,
+    alpha: f32,
+    present: bool,
+) {
+    let accent = if present {
+        metro_success(alpha)
+    } else {
+        metro_border(alpha)
+    };
+    let body = mix_color(
+        metro_background(1.0),
+        if present {
+            metro_success(1.0)
+        } else {
+            metro_surface(1.0)
+        },
+        if present { 0.18 } else { 0.08 },
+        alpha_byte(alpha, 224.0),
+    );
+    let card = rounded_rect_path(x, y, 66.0, 40.0, 0.0);
+    let mut fill = Paint::default();
+    fill.set_color(body);
+    fill.anti_alias = true;
+    pm.fill_path(&card, &fill, FillRule::Winding, Transform::identity(), None);
+    draw_card_stroke(pm, &card, accent, 1.0);
+
+    let chip = rounded_rect_path(x + 8.0, y + 10.0, 18.0, 18.0, 2.0);
+    let mut chip_fill = Paint::default();
+    chip_fill.set_color(metro_surface_alt(alpha));
+    chip_fill.anti_alias = true;
+    pm.fill_path(
+        &chip,
+        &chip_fill,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
+    draw_card_stroke(pm, &chip, accent, 1.0);
+
+    for offset in [0.0, 6.0, 12.0] {
+        let mut pb = PathBuilder::new();
+        pb.move_to(x + 10.0, y + 14.0 + offset);
+        pb.line_to(x + 24.0, y + 14.0 + offset);
+        if let Some(path) = pb.finish() {
+            draw_card_stroke(pm, &path, metro_border(alpha), 0.8);
+        }
+    }
+
+    let status = rounded_rect_path(x + 52.0, y + 8.0, 6.0, 6.0, 3.0);
+    let mut status_fill = Paint::default();
+    status_fill.set_color(if present {
+        metro_success(alpha)
+    } else {
+        metro_text_dim(alpha * 0.45)
+    });
+    status_fill.anti_alias = true;
+    pm.fill_path(
+        &status,
+        &status_fill,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
+
+    painter.render_text_left(
+        pm,
+        TextStyle::SansBold(9.0),
+        if present { "KEY" } else { "USB" },
+        x + 32.0,
+        y + 27.0,
+        if present {
+            metro_text(alpha)
+        } else {
+            metro_text_dim(alpha * 0.8)
+        },
     );
 }
 
@@ -1721,6 +1884,36 @@ mod tests {
     }
 
     #[test]
+    fn yubikey_detector_matches_yubico_vendor_id() {
+        let root = std::env::temp_dir().join(format!(
+            "meridian-login-yubikey-test-{}",
+            std::process::id()
+        ));
+        let dev = root.join("1-1");
+        fs::create_dir_all(&dev).unwrap();
+        fs::write(dev.join("idVendor"), "1050\n").unwrap();
+
+        assert!(yubikey_present_in_sysfs(&root));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn yubikey_detector_ignores_other_vendor_ids() {
+        let root = std::env::temp_dir().join(format!(
+            "meridian-login-no-yubikey-test-{}",
+            std::process::id()
+        ));
+        let dev = root.join("1-1");
+        fs::create_dir_all(&dev).unwrap();
+        fs::write(dev.join("idVendor"), "1234\n").unwrap();
+
+        assert!(!yubikey_present_in_sysfs(&root));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn power_buttons_are_click_targets() {
         let (restart, poweroff) = power_button_rects(1920.0, 1080.0, 0.0);
         let restart_center = (restart.0 + restart.2 / 2.0, restart.1 + restart.3 / 2.0);
@@ -1883,6 +2076,19 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(s.hint(), "Caps Lock aktiv - Layout DE");
+    }
+
+    #[test]
+    fn hint_mentions_yubikey_when_present() {
+        let s = LoginUiState {
+            security_key_present: true,
+            keyboard_status: KeyboardStatus {
+                layout: "de".to_string(),
+                caps_lock: false,
+            },
+            ..Default::default()
+        };
+        assert_eq!(s.hint(), "YubiKey erkannt - Passwort eingeben - Layout DE");
     }
 
     #[test]
