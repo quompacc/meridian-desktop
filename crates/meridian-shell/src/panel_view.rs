@@ -62,13 +62,9 @@ pub(crate) fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
     Some(pixmap)
 }
 
-/// Compass-rose launcher badge. A filled accent circle (the "medallion")
-/// with a light-coloured 4-point rose on top — visually unmistakably
-/// round, and contrasts strongly enough against the panel surface to
-/// read as the entry point. Genuine "lifts above the panel line" would
-/// need the panel layer-surface to be taller than its exclusive zone
-/// (panel chrome painted only in the bottom band, top transparent so
-/// the icon overflows visually); see TODO at the call site.
+/// Faceted compass launcher badge. The icon is still rendered in-house so it
+/// matches the boot/login compass language, but it uses layered shadow,
+/// bevel and needle facets instead of the old flat 2D disc.
 fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
     use tiny_skia::{FillRule, Paint, PathBuilder, Stroke, Transform};
     let size = LAUNCHER_ICON_SIZE;
@@ -76,11 +72,14 @@ fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
     let cy = (size as f32) / 2.0;
     let mut pm = Pixmap::new(size, size)?;
     let palette = &theme.palette;
-    let outer_r = (size as f32) / 2.0 - 1.0;
-    let tip_inset = 5.5_f32;
-    let tip = tip_inset;
-    let edge = (size as f32) - tip_inset;
-    let waist: f32 = 3.2;
+    let outer_r = (size as f32) / 2.0 - 2.0;
+    let inner_r = outer_r - 3.0;
+    let tip_inset = 5.2_f32;
+    let tip_n = tip_inset;
+    let tip_s = size as f32 - tip_inset - 1.0;
+    let tip_e = size as f32 - tip_inset - 1.0;
+    let tip_w = tip_inset;
+    let waist = 3.4_f32;
 
     let paint_for = |color: Color| {
         let mut p = Paint {
@@ -90,15 +89,53 @@ fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
         p.set_color_rgba8(color.r, color.g, color.b, color.a);
         p
     };
+    let paint_rgba = |r: u8, g: u8, b: u8, a: u8| {
+        let mut p = Paint {
+            anti_alias: true,
+            ..Paint::default()
+        };
+        p.set_color_rgba8(r, g, b, a);
+        p
+    };
 
-    // 1) Filled medallion — accent-blue disc, full radius. This is what
-    //    makes the icon read as round at a glance.
-    let medallion = {
+    let circle = |x: f32, y: f32, r: f32| {
         let mut pb = PathBuilder::new();
-        pb.push_circle(cx, cy, outer_r);
+        pb.push_circle(x, y, r);
         pb.finish()
     };
-    if let Some(ref path) = medallion {
+
+    // Ground shadow.
+    if let Some(ref path) = circle(cx, cy + 2.4, outer_r - 1.0) {
+        pm.as_mut().fill_path(
+            path,
+            &paint_rgba(0, 0, 0, 92),
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+
+    // Outer metal rim, then inner accent glass. Several circles are cheaper
+    // than a gradient and still create enough dimensionality at 36px.
+    if let Some(ref path) = circle(cx, cy, outer_r) {
+        pm.as_mut().fill_path(
+            path,
+            &paint_rgba(18, 22, 34, 255),
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+    if let Some(ref path) = circle(cx - 0.4, cy - 0.8, outer_r - 1.2) {
+        pm.as_mut().fill_path(
+            path,
+            &paint_for(palette.border),
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+    if let Some(ref path) = circle(cx, cy, inner_r) {
         pm.as_mut().fill_path(
             path,
             &paint_for(palette.accent),
@@ -107,17 +144,27 @@ fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
             None,
         );
     }
-
-    // 2) Inner highlight ring — 1px stroke in a lighter accent variant
-    //    for a touch of depth (no full bevel, just a hint of dimension).
-    let inner_ring = {
-        let mut pb = PathBuilder::new();
-        pb.push_circle(cx, cy, outer_r - 1.5);
-        pb.finish()
-    };
-    if let Some(ref path) = inner_ring {
+    if let Some(ref path) = circle(cx - 3.2, cy - 4.4, inner_r * 0.62) {
+        pm.as_mut().fill_path(
+            path,
+            &paint_rgba(255, 255, 255, 36),
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+    if let Some(ref path) = circle(cx + 3.0, cy + 4.0, inner_r * 0.76) {
+        pm.as_mut().fill_path(
+            path,
+            &paint_rgba(0, 0, 0, 42),
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+    if let Some(ref path) = circle(cx, cy, inner_r - 1.0) {
         let stroke = Stroke {
-            width: 1.0,
+            width: 0.9,
             ..Stroke::default()
         };
         pm.as_mut().stroke_path(
@@ -129,10 +176,7 @@ fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
         );
     }
 
-    // 3) 4-point rose. N arm uses palette.surface so it pops clean
-    //    against the accent medallion; S/E/W in text_dim give a subtle
-    //    directional hint without competing.
-    let arm = |x0: f32, y0: f32, ax: f32, ay: f32, bx: f32, by: f32| {
+    let triangle = |x0: f32, y0: f32, ax: f32, ay: f32, bx: f32, by: f32| {
         let mut pb = PathBuilder::new();
         pb.move_to(x0, y0);
         pb.line_to(ax, ay);
@@ -141,44 +185,105 @@ fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
         pb.finish()
     };
 
-    if let Some(ref path) = arm(cx, tip, cx - waist, cy, cx + waist, cy) {
-        pm.as_mut().fill_path(
-            path,
-            &paint_for(palette.surface),
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
-    }
-    let muted = palette.text_dim;
+    // Needle shadow.
     for path in [
-        arm(cx, edge, cx - waist, cy, cx + waist, cy),
-        arm(edge, cy, cx, cy - waist, cx, cy + waist),
-        arm(tip, cy, cx, cy - waist, cx, cy + waist),
+        triangle(
+            cx + 0.8,
+            tip_n + 1.2,
+            cx - waist + 0.8,
+            cy + 1.2,
+            cx + waist + 0.8,
+            cy + 1.2,
+        ),
+        triangle(
+            cx + 0.8,
+            tip_s + 1.2,
+            cx - waist + 0.8,
+            cy + 1.2,
+            cx + waist + 0.8,
+            cy + 1.2,
+        ),
+        triangle(
+            tip_e + 0.8,
+            cy + 1.2,
+            cx + 0.8,
+            cy - waist + 1.2,
+            cx + 0.8,
+            cy + waist + 1.2,
+        ),
+        triangle(
+            tip_w + 0.8,
+            cy + 1.2,
+            cx + 0.8,
+            cy - waist + 1.2,
+            cx + 0.8,
+            cy + waist + 1.2,
+        ),
     ]
     .into_iter()
     .flatten()
     {
         pm.as_mut().fill_path(
             &path,
-            &paint_for(muted),
+            &paint_rgba(0, 0, 0, 66),
             FillRule::Winding,
             Transform::identity(),
             None,
         );
     }
 
-    // 4) Central pivot — bright dot in surface, ties the arms together
-    //    and reads as the hinge of a real compass needle.
-    let pivot = {
-        let mut pb = PathBuilder::new();
-        pb.push_circle(cx, cy, 2.0);
-        pb.finish()
-    };
-    if let Some(ref path) = pivot {
+    // Faceted rose. North is bright, the other arms are shaded so the
+    // direction reads immediately without becoming a flat star.
+    if let Some(ref path) = triangle(cx, tip_n, cx - waist, cy, cx + waist, cy) {
         pm.as_mut().fill_path(
             path,
-            &paint_for(palette.surface),
+            &paint_rgba(246, 249, 255, 255),
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+    for (shape, color) in [
+        (
+            triangle(cx, tip_s, cx - waist, cy, cx + waist, cy),
+            palette.text_dim,
+        ),
+        (
+            triangle(tip_e, cy, cx, cy - waist, cx, cy + waist),
+            palette.surface,
+        ),
+        (
+            triangle(tip_w, cy, cx, cy - waist, cx, cy + waist),
+            palette.text_dim,
+        ),
+    ]
+    .into_iter()
+    {
+        if let Some(ref path) = shape {
+            pm.as_mut().fill_path(
+                path,
+                &paint_for(color),
+                FillRule::Winding,
+                Transform::identity(),
+                None,
+            );
+        }
+    }
+
+    // Hub and specular dot.
+    if let Some(ref path) = circle(cx, cy, 3.4) {
+        pm.as_mut().fill_path(
+            path,
+            &paint_rgba(18, 22, 34, 230),
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+    if let Some(ref path) = circle(cx - 0.9, cy - 1.1, 1.45) {
+        pm.as_mut().fill_path(
+            path,
+            &paint_rgba(255, 255, 255, 210),
             FillRule::Winding,
             Transform::identity(),
             None,
