@@ -121,7 +121,11 @@ impl MeridianState {
             ShellCommand::Quit => {
                 self.loop_signal.stop();
             }
-            ShellCommand::CaptureWindowThumbnail { id, max_width, max_height } => {
+            ShellCommand::CaptureWindowThumbnail {
+                id,
+                max_width,
+                max_height,
+            } => {
                 use crate::state::ThumbnailRequest;
                 self.pending_thumbnail_requests.push(ThumbnailRequest {
                     window_id: id,

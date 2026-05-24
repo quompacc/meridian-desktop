@@ -351,7 +351,8 @@ impl Widget for GridPlaceholder {
         }
     }
 
-    fn paint(&self, _area: Rect, _canvas: &mut PixmapMut<'_>, _theme: &Theme, _state: WidgetState) {}
+    fn paint(&self, _area: Rect, _canvas: &mut PixmapMut<'_>, _theme: &Theme, _state: WidgetState) {
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -455,24 +456,59 @@ pub(crate) fn build_app_view_widget_tree(
     let armed_for = |id: &str| armed_power.and_then(|(a, p)| if a == id { Some(p) } else { None });
     let footer_right = vec![
         Box::new(
-            Button::with_id_and_icon("power-off", "Off", pal.error, FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_off_icon)
-                .with_armed_progress(armed_for("power-off"))
+            Button::with_id_and_icon(
+                "power-off",
+                "Off",
+                pal.error,
+                FOOTER_POWER_BUTTON_SIZE,
+                FOOTER_POWER_BUTTON_SIZE,
+                power_off_icon,
+            )
+            .with_armed_progress(armed_for("power-off")),
         ) as Box<dyn Widget>,
         Box::new(
-            Button::with_id_and_icon("power-restart", "Rst", pal.warning, FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_restart_icon)
-                .with_armed_progress(armed_for("power-restart"))
+            Button::with_id_and_icon(
+                "power-restart",
+                "Rst",
+                pal.warning,
+                FOOTER_POWER_BUTTON_SIZE,
+                FOOTER_POWER_BUTTON_SIZE,
+                power_restart_icon,
+            )
+            .with_armed_progress(armed_for("power-restart")),
         ) as Box<dyn Widget>,
         Box::new(
-            Button::with_id_and_icon("power-sleep", "Zzz", pal.accent, FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_sleep_icon)
-                .with_armed_progress(armed_for("power-sleep"))
+            Button::with_id_and_icon(
+                "power-sleep",
+                "Zzz",
+                pal.accent,
+                FOOTER_POWER_BUTTON_SIZE,
+                FOOTER_POWER_BUTTON_SIZE,
+                power_sleep_icon,
+            )
+            .with_armed_progress(armed_for("power-sleep")),
         ) as Box<dyn Widget>,
         Box::new(
-            Button::with_id_and_icon("power-lock", "Lock", pal.accent_alt, FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_lock_icon)
-                .with_armed_progress(armed_for("power-lock"))
+            Button::with_id_and_icon(
+                "power-lock",
+                "Lock",
+                pal.accent_alt,
+                FOOTER_POWER_BUTTON_SIZE,
+                FOOTER_POWER_BUTTON_SIZE,
+                power_lock_icon,
+            )
+            .with_armed_progress(armed_for("power-lock")),
         ) as Box<dyn Widget>,
         Box::new(
-            Button::with_id_and_icon("power-logout", "Out", pal.success, FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_logout_icon)
-                .with_armed_progress(armed_for("power-logout"))
+            Button::with_id_and_icon(
+                "power-logout",
+                "Out",
+                pal.success,
+                FOOTER_POWER_BUTTON_SIZE,
+                FOOTER_POWER_BUTTON_SIZE,
+                power_logout_icon,
+            )
+            .with_armed_progress(armed_for("power-logout")),
         ) as Box<dyn Widget>,
     ];
 
@@ -535,7 +571,16 @@ pub(crate) fn draw_app_view(
     let theme = Theme::TOKYO_NIGHT_METRO;
     pixmap.fill(to_tiny_skia_color(theme.palette.background));
 
-    let root = build_app_view_widget_tree(width, height, apps, category, icon_cache, search_query, scroll_y, armed_power);
+    let root = build_app_view_widget_tree(
+        width,
+        height,
+        apps,
+        category,
+        icon_cache,
+        search_query,
+        scroll_y,
+        armed_power,
+    );
 
     if let Ok(layout) =
         meridian_ui::compute_layout(&*root, meridian_ui::PixelSize { width, height })
@@ -551,7 +596,8 @@ pub(crate) fn draw_app_view(
         let grid_h = (grid_end_y - grid_start_y).max(0) as u32;
         let grid_x = app_grid_content_x(width);
 
-        let filtered = collect_filtered_apps(apps, category, search_query, icon_cache, hidden_execs);
+        let filtered =
+            collect_filtered_apps(apps, category, search_query, icon_cache, hidden_execs);
         let rows = filtered.len().div_ceil(APP_GRID_COLS);
         let content_h = rows as i32 * APP_GRID_ROW_H;
 
@@ -581,7 +627,10 @@ pub(crate) fn draw_app_view(
                         // draw card background
                         let global_idx = row_idx * APP_GRID_COLS + col_idx;
                         let bg_color = if hovered_app_card_idx == Some(global_idx) {
-                            theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15)
+                            theme
+                                .palette
+                                .surface
+                                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15)
                         } else {
                             theme.palette.surface
                         };
@@ -620,16 +669,13 @@ pub(crate) fn draw_app_view(
                 if content_h > grid_h as i32 {
                     let track_x = width as i32 - 8;
                     let track_h = grid_h as i32 - 8;
-                    let thumb_h = ((track_h * grid_h as i32) / content_h)
-                        .max(20)
-                        .min(track_h);
+                    let thumb_h = ((track_h * grid_h as i32) / content_h).max(20).min(track_h);
                     let max_scroll = content_h - grid_h as i32;
-                    let thumb_y = 4
-                        + if max_scroll > 0 {
-                            scroll_y * (track_h - thumb_h) / max_scroll
-                        } else {
-                            0
-                        };
+                    let thumb_y = 4 + if max_scroll > 0 {
+                        scroll_y * (track_h - thumb_h) / max_scroll
+                    } else {
+                        0
+                    };
                     let track_col = Color::rgba(
                         theme.palette.text.r,
                         theme.palette.text.g,
@@ -833,7 +879,8 @@ mod tests {
     #[test]
     fn build_app_view_widget_tree_empty_apps() {
         let icon_cache = IconCache::new();
-        let tree = build_app_view_widget_tree(880, 620, &[], AppCategory::Alle, &icon_cache, "", 0, None);
+        let tree =
+            build_app_view_widget_tree(880, 620, &[], AppCategory::Alle, &icon_cache, "", 0, None);
         let children = tree.children();
         assert_eq!(
             children.len(),

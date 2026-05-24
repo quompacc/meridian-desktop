@@ -351,13 +351,19 @@ impl Widget for PanelPinnedChip {
         let bg = if self.has_focused {
             match state {
                 WidgetState::Idle => theme.palette.surface.lerp(theme.palette.accent, 0.12),
-                WidgetState::Hovered => theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15),
+                WidgetState::Hovered => theme
+                    .palette
+                    .surface
+                    .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15),
                 WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.15),
             }
         } else {
             match state {
                 WidgetState::Idle => theme.palette.surface,
-                WidgetState::Hovered => theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12),
+                WidgetState::Hovered => theme
+                    .palette
+                    .surface
+                    .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12),
                 WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.15),
             }
         };
@@ -372,7 +378,14 @@ impl Widget for PanelPinnedChip {
             let ih = icon.height() as i32;
             let x = area.x + (area.width - iw) / 2;
             let y = area.y + (area.height - ACCENT_LINE_H - ih) / 2;
-            canvas.draw_pixmap(x, y, icon.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+            canvas.draw_pixmap(
+                x,
+                y,
+                icon.as_ref(),
+                &PixmapPaint::default(),
+                Transform::identity(),
+                None,
+            );
         } else {
             let (text_w, _) = measure_text(&self.label, FONT_SIZE);
             let tx = area.x + (area.width - text_w) / 2;
@@ -382,12 +395,17 @@ impl Widget for PanelPinnedChip {
 
         // Indicator: dot or pill at the bottom of the chip
         let chip_cx = (area.x + area.width / 2) as f32;
-        let indicator_cy = (area.y + area.height - 2) as f32;  // 2px from chip bottom
+        let indicator_cy = (area.y + area.height - 2) as f32; // 2px from chip bottom
 
         match self.window_count {
             0 => {
                 // No running window: dim accent line (subtle, just chip chrome)
-                let dim = Color::rgba(theme.palette.accent.r, theme.palette.accent.g, theme.palette.accent.b, 55);
+                let dim = Color::rgba(
+                    theme.palette.accent.r,
+                    theme.palette.accent.g,
+                    theme.palette.accent.b,
+                    55,
+                );
                 let line = Rect {
                     x: area.x + 4,
                     y: area.y + area.height - ACCENT_LINE_H,
@@ -401,7 +419,12 @@ impl Widget for PanelPinnedChip {
             1 => {
                 // Single window: small dot
                 let dot_color = if self.has_focused {
-                    Color::rgba(theme.palette.text.r, theme.palette.text.g, theme.palette.text.b, 220)
+                    Color::rgba(
+                        theme.palette.text.r,
+                        theme.palette.text.g,
+                        theme.palette.text.b,
+                        220,
+                    )
                 } else {
                     theme.palette.accent
                 };
@@ -409,18 +432,41 @@ impl Widget for PanelPinnedChip {
             }
             n => {
                 // Multiple windows: pill with count
-                let dot_color = if self.has_focused { theme.palette.text } else { theme.palette.accent };
-                let label: Box<str> = if n > 9 { "9+".into() } else { n.to_string().into() };
+                let dot_color = if self.has_focused {
+                    theme.palette.text
+                } else {
+                    theme.palette.accent
+                };
+                let label: Box<str> = if n > 9 {
+                    "9+".into()
+                } else {
+                    n.to_string().into()
+                };
                 let (text_w, _) = measure_text(&label, 9.0);
                 let pill_w = (text_w + 8).max(14);
                 let pill_h = 9;
                 let pill_x = area.x + (area.width - pill_w) / 2;
                 let pill_y = area.y + area.height - pill_h - 1;
-                if let Some(ref path) = rounded_rect_path(Rect { x: pill_x, y: pill_y, width: pill_w, height: pill_h }, 4) {
+                if let Some(ref path) = rounded_rect_path(
+                    Rect {
+                        x: pill_x,
+                        y: pill_y,
+                        width: pill_w,
+                        height: pill_h,
+                    },
+                    4,
+                ) {
                     paint_fill(canvas, path, dot_color);
                 }
                 let text_color = theme.palette.background;
-                paint_text(canvas, &label, pill_x + (pill_w - text_w) / 2, pill_y + pill_h - 1, 9.0, text_color);
+                paint_text(
+                    canvas,
+                    &label,
+                    pill_x + (pill_w - text_w) / 2,
+                    pill_y + pill_h - 1,
+                    9.0,
+                    text_color,
+                );
             }
         }
     }
@@ -522,7 +568,13 @@ fn draw_circle(canvas: &mut PixmapMut<'_>, cx: f32, cy: f32, radius: f32, color:
             ..Paint::default()
         };
         paint.set_color_rgba8(color.r, color.g, color.b, color.a);
-        canvas.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+        canvas.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 }
 

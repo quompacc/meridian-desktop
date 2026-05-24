@@ -13,9 +13,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .build()
         .await?;
 
-    info!(
-        "portal service ready: name={DBUS_NAME} path={OBJECT_PATH}"
-    );
+    info!("portal service ready: name={DBUS_NAME} path={OBJECT_PATH}");
 
     // Block forever — the connection keeps the service alive.
     loop {

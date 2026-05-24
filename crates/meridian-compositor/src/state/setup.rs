@@ -636,8 +636,7 @@ impl MeridianState {
         let image_capture_source_state = ImageCaptureSourceState::new();
         let output_capture_source_state =
             OutputCaptureSourceState::new::<MeridianState>(&display_handle);
-        let image_copy_capture_state =
-            ImageCopyCaptureState::new::<MeridianState>(&display_handle);
+        let image_copy_capture_state = ImageCopyCaptureState::new::<MeridianState>(&display_handle);
 
         let meridian_config = MeridianConfig::load();
         let output_config_entries = meridian_config.outputs.clone();

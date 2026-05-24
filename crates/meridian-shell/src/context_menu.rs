@@ -36,9 +36,17 @@ pub(crate) struct ContextMenuState {
 }
 
 /// Build the item list from the current state flags.
-pub(crate) fn item_list(is_terminal: bool, is_pinned: bool, is_running: bool) -> Vec<(&'static str, ContextMenuAction)> {
+pub(crate) fn item_list(
+    is_terminal: bool,
+    is_pinned: bool,
+    is_running: bool,
+) -> Vec<(&'static str, ContextMenuAction)> {
     let mut items: Vec<(&str, ContextMenuAction)> = Vec::new();
-    items.push(if is_running { ("Fokussieren", ContextMenuAction::Launch) } else { ("Starten", ContextMenuAction::Launch) });
+    items.push(if is_running {
+        ("Fokussieren", ContextMenuAction::Launch)
+    } else {
+        ("Starten", ContextMenuAction::Launch)
+    });
     items.push(("Neues Fenster", ContextMenuAction::NewWindow));
     if !is_terminal {
         items.push(("Im Terminal starten", ContextMenuAction::LaunchInTerminal));
@@ -80,10 +88,7 @@ pub(crate) fn contains_point(state: &ContextMenuState, n: usize, px: f64, py: f6
     let ix = px as i32;
     let iy = py as i32;
     let mh = menu_height(n);
-    ix >= state.x
-        && ix < state.x + MENU_WIDTH
-        && iy >= state.y
-        && iy < state.y + mh
+    ix >= state.x && ix < state.x + MENU_WIDTH && iy >= state.y && iy < state.y + mh
 }
 
 /// Returns the 0-based item index under `(px, py)`, or `None`.
@@ -124,7 +129,12 @@ pub(crate) fn draw_overlay(
     let pal = Palette::TOKYO_NIGHT_METRO;
 
     // Background
-    let bg_rect = Rect { x: 0, y: 0, width: mw as i32, height: mh as i32 };
+    let bg_rect = Rect {
+        x: 0,
+        y: 0,
+        width: mw as i32,
+        height: mh as i32,
+    };
     let Some(bg_path) = rounded_rect_path(bg_rect, CORNER_R) else {
         return;
     };
@@ -134,7 +144,12 @@ pub(crate) fn draw_overlay(
     // Separator before last item
     let sep_before = n.saturating_sub(1);
     let sep_y = VPAD + sep_before as i32 * ITEM_H;
-    let sep_rect = Rect { x: 8, y: sep_y, width: mw as i32 - 16, height: 1 };
+    let sep_rect = Rect {
+        x: 8,
+        y: sep_y,
+        width: mw as i32 - 16,
+        height: 1,
+    };
     if let Some(sep_path) = rounded_rect_path(sep_rect, 0) {
         paint_fill(&mut pm.as_mut(), &sep_path, pal.border);
     }
@@ -161,10 +176,24 @@ pub(crate) fn draw_overlay(
         }
 
         let text_y = item_top + ITEM_H - 10;
-        paint_text(&mut pm.as_mut(), label, PADDING_X, text_y, FONT_SIZE, pal.text);
+        paint_text(
+            &mut pm.as_mut(),
+            label,
+            PADDING_X,
+            text_y,
+            FONT_SIZE,
+            pal.text,
+        );
     }
 
-    blit_over(canvas, canvas_w as i32, canvas_h as i32, &pm, state.x, state.y);
+    blit_over(
+        canvas,
+        canvas_w as i32,
+        canvas_h as i32,
+        &pm,
+        state.x,
+        state.y,
+    );
 }
 
 /// Alpha-composite a tiny_skia Pixmap (premultiplied RGBA) over a Wayland BGRA canvas.
@@ -286,7 +315,11 @@ mod tests {
 
     #[test]
     fn contains_point_outside_returns_false() {
-        let s = ContextMenuState { x: 100, y: 100, ..state(false, false) };
+        let s = ContextMenuState {
+            x: 100,
+            y: 100,
+            ..state(false, false)
+        };
         let items = item_list(false, false, false);
         assert!(!contains_point(&s, items.len(), 50.0, 50.0));
     }
@@ -328,10 +361,8 @@ mod tests {
         // At least some pixel in the menu area should be non-zero.
         let row_stride = 880 * 4;
         let menu_start = (s.y * row_stride + s.x * 4) as usize;
-        assert!(
-            canvas[menu_start..menu_start + MENU_WIDTH as usize * 4]
-                .iter()
-                .any(|b| *b != 0)
-        );
+        assert!(canvas[menu_start..menu_start + MENU_WIDTH as usize * 4]
+            .iter()
+            .any(|b| *b != 0));
     }
 }

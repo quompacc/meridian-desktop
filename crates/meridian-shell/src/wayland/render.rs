@@ -8,8 +8,8 @@ use crate::{
     buffer, network_popup, notification_popup, panel, thumbnail_popup, ui_preview, workspaces,
     Painter, Rect, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
     NETWORK_POPUP_HEIGHT, NETWORK_POPUP_WIDTH, NOTIFICATION_HEIGHT, NOTIFICATION_WIDTH,
-    PANEL_HEIGHT, THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH,
-    WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
+    PANEL_HEIGHT, THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT,
+    WORKSPACE_POPUP_WIDTH,
 };
 
 use super::{
@@ -327,8 +327,16 @@ impl MeridianShell {
         }
         self.repaint_stats.record_launcher(reason);
 
-        let width = if self.launcher_is_fullscreen { self.launcher_width } else { LAUNCHER_WIDTH };
-        let height = if self.launcher_is_fullscreen { self.launcher_height } else { LAUNCHER_HEIGHT };
+        let width = if self.launcher_is_fullscreen {
+            self.launcher_width
+        } else {
+            LAUNCHER_WIDTH
+        };
+        let height = if self.launcher_is_fullscreen {
+            self.launcher_height
+        } else {
+            LAUNCHER_HEIGHT
+        };
         debug!(
             "draw_launcher size: configured={}x{} effective={}x{} desired={}x{}",
             self.launcher_width,
@@ -431,9 +439,18 @@ impl MeridianShell {
                 );
             }
             if let Some(ref cm) = self.context_menu {
-                let items =
-                    crate::context_menu::item_list(cm.is_terminal, cm.is_pinned, cm.running_window_id.is_some());
-                crate::context_menu::draw_overlay(&mut content, LAUNCHER_WIDTH, LAUNCHER_HEIGHT, cm, &items);
+                let items = crate::context_menu::item_list(
+                    cm.is_terminal,
+                    cm.is_pinned,
+                    cm.running_window_id.is_some(),
+                );
+                crate::context_menu::draw_overlay(
+                    &mut content,
+                    LAUNCHER_WIDTH,
+                    LAUNCHER_HEIGHT,
+                    cm,
+                    &items,
+                );
             }
 
             if self.launcher_is_fullscreen {
@@ -979,12 +996,17 @@ impl MeridianShell {
                 stride,
             );
             let Some(buf) = buf else {
-                warn!("thumbnail: buffer unavailable reason={:?} width={} height={}", reason, width, height);
+                warn!(
+                    "thumbnail: buffer unavailable reason={:?} width={} height={}",
+                    reason, width, height
+                );
                 return;
             };
             let Some(canvas) = buf.canvas(&mut self.pool) else {
                 self.thumbnail_buffer = None;
-                if attempt + 1 < CANVAS_RETRY_ATTEMPTS { continue; }
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
                 return;
             };
 
@@ -1016,5 +1038,4 @@ impl MeridianShell {
         self.thumbnail_layer.commit();
         self.thumbnail_dirty = false;
     }
-
 }

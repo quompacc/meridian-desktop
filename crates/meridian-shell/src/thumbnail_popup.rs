@@ -20,7 +20,10 @@ pub(crate) fn popup_width_for(
     }
     let mut total = 2 * pad + (n as u32 - 1) * gap;
     for id in window_ids.iter().take(n) {
-        let w = cache.get(id.as_str()).map(|(w, _, _)| *w).unwrap_or(max_thumb_w);
+        let w = cache
+            .get(id.as_str())
+            .map(|(w, _, _)| *w)
+            .unwrap_or(max_thumb_w);
         total += w;
     }
     total
@@ -39,7 +42,12 @@ pub(crate) fn draw_thumbnail_popup(
     // Background + thin border around the popup
     painter.clear(colors.surface_alt);
     painter.stroke_rect(
-        Rect { x: 0, y: 0, w: width as i32, h: height as i32 },
+        Rect {
+            x: 0,
+            y: 0,
+            w: width as i32,
+            h: height as i32,
+        },
         colors.border,
     );
 
@@ -53,7 +61,9 @@ pub(crate) fn draw_thumbnail_popup(
     for id in window_ids.iter().take(crate::THUMBNAIL_MAX_WINDOWS) {
         let slot_y = pad;
         match cache.get(id.as_str()) {
-            Some((tw, th, data)) if *tw > 0 && *th > 0 && data.len() == (*tw * *th * 4) as usize => {
+            Some((tw, th, data))
+                if *tw > 0 && *th > 0 && data.len() == (*tw * *th * 4) as usize =>
+            {
                 let tw_i = *tw as i32;
                 let th_i = *th as i32;
                 // Center vertically within the max thumb_h band (in case thumb is shorter)
@@ -65,7 +75,12 @@ pub(crate) fn draw_thumbnail_popup(
             _ => {
                 // Loading placeholder at max thumb width
                 painter.rect(
-                    Rect { x: cursor_x, y: slot_y, w: max_thumb_w, h: max_thumb_h },
+                    Rect {
+                        x: cursor_x,
+                        y: slot_y,
+                        w: max_thumb_w,
+                        h: max_thumb_h,
+                    },
                     loading_bg,
                 );
                 cursor_x += max_thumb_w + gap;
@@ -91,10 +106,10 @@ fn blit_xrgb(painter: &mut Painter<'_>, data: &[u8], tw: u32, th: u32, blit_x: i
             let si = (row as usize * tw as usize + col as usize) * 4;
             let di = (dst_y as usize * canvas_w as usize + dst_x as usize) * 4;
             if si + 3 < data.len() && di + 3 < canvas.len() {
-                canvas[di]     = data[si];     // B
+                canvas[di] = data[si]; // B
                 canvas[di + 1] = data[si + 1]; // G
                 canvas[di + 2] = data[si + 2]; // R
-                canvas[di + 3] = 0xFF;         // A
+                canvas[di + 3] = 0xFF; // A
             }
         }
     }
@@ -159,7 +174,7 @@ mod tests {
         let blit_x = 12usize;
         let blit_y = 66usize;
         let off = (blit_y * w as usize + blit_x) * 4;
-        assert_eq!(data[off],     0);
+        assert_eq!(data[off], 0);
         assert_eq!(data[off + 1], 0);
         assert_eq!(data[off + 2], 255);
         assert_eq!(data[off + 3], 255);

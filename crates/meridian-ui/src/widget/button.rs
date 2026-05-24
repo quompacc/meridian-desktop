@@ -172,12 +172,7 @@ impl Widget for Button {
 /// Draw a circular progress arc inside `area`, starting at 12 o'clock and
 /// sweeping clockwise. `progress` runs 0.0 (full circle) → 1.0 (no arc), so
 /// it visualises a countdown that drains.
-fn paint_progress_ring(
-    canvas: &mut PixmapMut<'_>,
-    area: Rect,
-    color: Color,
-    progress: f32,
-) {
+fn paint_progress_ring(canvas: &mut PixmapMut<'_>, area: Rect, color: Color, progress: f32) {
     use std::f32::consts::PI;
     use tiny_skia::{LineCap, Paint, PathBuilder, Stroke};
 
@@ -207,7 +202,9 @@ fn paint_progress_ring(
         anti_alias: true,
         ..Paint::default()
     };
-    paint.set_color(tiny_skia::Color::from_rgba8(color.r, color.g, color.b, 0xFF));
+    paint.set_color(tiny_skia::Color::from_rgba8(
+        color.r, color.g, color.b, 0xFF,
+    ));
     let stroke = Stroke {
         width: 3.0,
         line_cap: LineCap::Round,

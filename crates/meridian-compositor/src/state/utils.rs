@@ -55,7 +55,11 @@ pub(crate) fn window_app_id(window: &Window) -> Option<String> {
     window.x11_surface().map(|x11| {
         let class = x11.class();
         let instance = x11.instance();
-        if !class.trim().is_empty() { class } else { instance }
+        if !class.trim().is_empty() {
+            class
+        } else {
+            instance
+        }
     })
 }
 

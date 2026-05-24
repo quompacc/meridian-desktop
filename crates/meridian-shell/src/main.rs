@@ -16,11 +16,11 @@ mod launcher;
 mod network;
 mod network_popup;
 mod notification_popup;
-mod thumbnail_popup;
 mod notifications;
 mod panel;
 mod panel_view;
 mod settings_view;
+mod thumbnail_popup;
 mod ui;
 mod ui_preview;
 mod wayland;
@@ -154,36 +154,38 @@ fn insert_notifications_source(
             return Ok(());
         }
     };
-    event_loop.handle().insert_source(rx, move |event, _, shell| {
-        use smithay_client_toolkit::reexports::calloop::channel::Event as ChEvent;
-        match event {
-            ChEvent::Msg(notifications::DbusEvent::Notify(n)) => {
-                tracing::info!(
-                    id = n.id,
-                    app = %n.app,
-                    title = %n.title,
-                    body = %n.body,
-                    urgency = ?n.urgency,
-                    "notifications: incoming"
-                );
-                shell.notifications.push_back(n);
-                shell.notification_dirty = true;
-                shell.draw_notification_popup(&qh, wayland::RepaintReason::Ipc);
-            }
-            ChEvent::Msg(notifications::DbusEvent::Close(id)) => {
-                tracing::info!(id, "notifications: close request");
-                shell.notifications.retain(|n| n.id != id);
-                if shell.notifications.is_empty() {
-                    shell.unmap_notification_popup(wayland::CommitReason::UnknownOther);
-                } else {
+    event_loop
+        .handle()
+        .insert_source(rx, move |event, _, shell| {
+            use smithay_client_toolkit::reexports::calloop::channel::Event as ChEvent;
+            match event {
+                ChEvent::Msg(notifications::DbusEvent::Notify(n)) => {
+                    tracing::info!(
+                        id = n.id,
+                        app = %n.app,
+                        title = %n.title,
+                        body = %n.body,
+                        urgency = ?n.urgency,
+                        "notifications: incoming"
+                    );
+                    shell.notifications.push_back(n);
+                    shell.notification_dirty = true;
                     shell.draw_notification_popup(&qh, wayland::RepaintReason::Ipc);
                 }
+                ChEvent::Msg(notifications::DbusEvent::Close(id)) => {
+                    tracing::info!(id, "notifications: close request");
+                    shell.notifications.retain(|n| n.id != id);
+                    if shell.notifications.is_empty() {
+                        shell.unmap_notification_popup(wayland::CommitReason::UnknownOther);
+                    } else {
+                        shell.draw_notification_popup(&qh, wayland::RepaintReason::Ipc);
+                    }
+                }
+                ChEvent::Closed => {
+                    tracing::warn!("notifications: dbus channel closed");
+                }
             }
-            ChEvent::Closed => {
-                tracing::warn!("notifications: dbus channel closed");
-            }
-        }
-    })?;
+        })?;
     Ok(())
 }
 

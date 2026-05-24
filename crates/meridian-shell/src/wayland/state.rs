@@ -268,7 +268,6 @@ fn resolve_shell_theme_from_config(
     ))
 }
 
-
 pub(crate) fn pinned_app_has_windows_on_workspace(
     app: &crate::panel::PinnedApp,
     windows: &[crate::wayland::types::WindowInfo],
@@ -352,7 +351,6 @@ fn pinned_app_window_status(
     (first_unfocused, any)
 }
 
-
 impl MeridianShell {
     pub(crate) fn tick_commit_stats(&mut self) {
         self.maybe_log_commit_stats(Instant::now());
@@ -403,18 +401,22 @@ impl MeridianShell {
 
         // Thumbnail hover delay: open popup if 400ms passed while hovering a pinned app
         if !self.thumbnail_popup_open {
-            if let (Some(idx), Some(since)) = (self.thumbnail_hover_app_idx, self.thumbnail_hover_since) {
+            if let (Some(idx), Some(since)) =
+                (self.thumbnail_hover_app_idx, self.thumbnail_hover_since)
+            {
                 let elapsed = since.elapsed().as_millis();
                 if elapsed >= crate::THUMBNAIL_HOVER_DELAY_MS {
                     if let Some(app) = self.pinned_apps.get(idx).cloned() {
                         let ws = self.panel_active_workspace();
-                        let window_ids = crate::wayland::state::pinned_app_window_ids(&app, &self.windows, ws);
+                        let window_ids =
+                            crate::wayland::state::pinned_app_window_ids(&app, &self.windows, ws);
                         if !window_ids.is_empty() {
                             // Wait until prefetched thumbs land (or open after
                             // timeout) so the popup starts at the correct width
                             // instead of opening at max-placeholder size and
                             // snapping smaller a tick later.
-                            let all_cached = window_ids.iter()
+                            let all_cached = window_ids
+                                .iter()
                                 .take(crate::THUMBNAIL_MAX_WINDOWS)
                                 .all(|id| self.thumbnail_cache.contains_key(id.as_str()));
                             let timed_out = elapsed >= crate::THUMBNAIL_OPEN_TIMEOUT_MS;
@@ -594,21 +596,30 @@ impl MeridianShell {
             ShellEvent::ToggleLauncher => {
                 self.toggle_launcher();
             }
-            ShellEvent::WindowThumbnail { id, path, width, height } => {
-                match std::fs::read(&path) {
-                    Ok(data) => {
-                        let _ = std::fs::remove_file(&path);
-                        tracing::debug!("thumbnail received: id={} {}x{} bytes={}", id, width, height, data.len());
-                        self.thumbnail_cache.insert(id, (width, height, data));
-                        if self.thumbnail_popup_open {
-                            self.thumbnail_dirty = true;
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("thumbnail: read failed {}: {}", path, e);
+            ShellEvent::WindowThumbnail {
+                id,
+                path,
+                width,
+                height,
+            } => match std::fs::read(&path) {
+                Ok(data) => {
+                    let _ = std::fs::remove_file(&path);
+                    tracing::debug!(
+                        "thumbnail received: id={} {}x{} bytes={}",
+                        id,
+                        width,
+                        height,
+                        data.len()
+                    );
+                    self.thumbnail_cache.insert(id, (width, height, data));
+                    if self.thumbnail_popup_open {
+                        self.thumbnail_dirty = true;
                     }
                 }
-            }
+                Err(e) => {
+                    tracing::warn!("thumbnail: read failed {}: {}", path, e);
+                }
+            },
         }
     }
 
@@ -700,7 +711,9 @@ impl MeridianShell {
             self.launcher_layer.set_size(0, 0);
             self.launcher_layer
                 .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
-            tracing::debug!("launcher focus request: keyboard_interactivity=Exclusive (fullscreen)");
+            tracing::debug!(
+                "launcher focus request: keyboard_interactivity=Exclusive (fullscreen)"
+            );
             self.launcher_is_fullscreen = true;
             self.launcher_state.reshuffle();
         } else {
@@ -919,7 +932,8 @@ impl MeridianShell {
         window_ids: &[String],
         icon_center: Option<i32>,
     ) {
-        self.thumbnail_popup_window_ids = window_ids.iter()
+        self.thumbnail_popup_window_ids = window_ids
+            .iter()
             .take(crate::THUMBNAIL_MAX_WINDOWS)
             .cloned()
             .collect();
@@ -937,7 +951,10 @@ impl MeridianShell {
             let _ = self.ipc.send(&cmd);
         }
 
-        let popup_w = crate::thumbnail_popup::popup_width_for(&self.thumbnail_cache, &self.thumbnail_popup_window_ids);
+        let popup_w = crate::thumbnail_popup::popup_width_for(
+            &self.thumbnail_cache,
+            &self.thumbnail_popup_window_ids,
+        );
         let left_margin = icon_center
             .map(|c| (c - popup_w as i32 / 2).max(0))
             .unwrap_or(0);
@@ -947,17 +964,14 @@ impl MeridianShell {
             smithay_client_toolkit::shell::wlr_layer::Anchor::BOTTOM
                 | smithay_client_toolkit::shell::wlr_layer::Anchor::LEFT,
         );
-        self.thumbnail_layer.set_margin(
-            0,
-            0,
-            crate::SHELL_POPUP_BOTTOM_MARGIN,
-            left_margin,
-        );
+        self.thumbnail_layer
+            .set_margin(0, 0, crate::SHELL_POPUP_BOTTOM_MARGIN, left_margin);
         self.thumbnail_layer.set_exclusive_zone(0);
         self.thumbnail_layer
             .set_size(popup_w, crate::THUMBNAIL_POPUP_HEIGHT);
-        self.thumbnail_layer
-            .set_keyboard_interactivity(smithay_client_toolkit::shell::wlr_layer::KeyboardInteractivity::None);
+        self.thumbnail_layer.set_keyboard_interactivity(
+            smithay_client_toolkit::shell::wlr_layer::KeyboardInteractivity::None,
+        );
         self.thumbnail_width = popup_w;
         self.thumbnail_height = crate::THUMBNAIL_POPUP_HEIGHT;
         self.thumbnail_dirty = true;
@@ -971,13 +985,19 @@ impl MeridianShell {
         if !self.thumbnail_popup_open {
             return;
         }
-        let new_w = crate::thumbnail_popup::popup_width_for(&self.thumbnail_cache, &self.thumbnail_popup_window_ids);
+        let new_w = crate::thumbnail_popup::popup_width_for(
+            &self.thumbnail_cache,
+            &self.thumbnail_popup_window_ids,
+        );
         if new_w != self.thumbnail_width {
-            let left_margin = self.thumbnail_icon_center
+            let left_margin = self
+                .thumbnail_icon_center
                 .map(|c| (c - new_w as i32 / 2).max(0))
                 .unwrap_or(0);
-            self.thumbnail_layer.set_margin(0, 0, crate::SHELL_POPUP_BOTTOM_MARGIN, left_margin);
-            self.thumbnail_layer.set_size(new_w, crate::THUMBNAIL_POPUP_HEIGHT);
+            self.thumbnail_layer
+                .set_margin(0, 0, crate::SHELL_POPUP_BOTTOM_MARGIN, left_margin);
+            self.thumbnail_layer
+                .set_size(new_w, crate::THUMBNAIL_POPUP_HEIGHT);
             self.thumbnail_width = new_w;
         }
         self.draw_thumbnail_popup(qh, crate::wayland::RepaintReason::Ipc);
@@ -1045,30 +1065,37 @@ impl MeridianShell {
         self.wallpaper_path = Some(path);
         self.wallpaper_mode = mode;
         self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
-        tracing::info!("Wallpaper applied: path={:?} mode={:?}", self.wallpaper_path, mode);
+        tracing::info!(
+            "Wallpaper applied: path={:?} mode={:?}",
+            self.wallpaper_path,
+            mode
+        );
         if self.launcher_settings_open {
             self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
         }
     }
 
     pub(crate) fn save_pinned_apps(&self) {
-        let configs: Vec<meridian_config::PinnedAppConfig> = self.pinned_apps.iter().map(|a| {
-            meridian_config::PinnedAppConfig {
+        let configs: Vec<meridian_config::PinnedAppConfig> = self
+            .pinned_apps
+            .iter()
+            .map(|a| meridian_config::PinnedAppConfig {
                 label: a.label.clone(),
                 program: a.program.clone(),
                 icon: a.icon_name.clone(),
-            }
-        }).collect();
+            })
+            .collect();
         meridian_config::MeridianConfig::save_pinned_apps(&configs);
     }
-
 
     pub(crate) fn save_hidden_apps(&self) {
         let dir = hidden_apps_path();
         if let Some(parent) = std::path::Path::new(&dir).parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        let content: String = self.hidden_execs.iter()
+        let content: String = self
+            .hidden_execs
+            .iter()
             .map(|s| s.as_str())
             .collect::<Vec<_>>()
             .join("\n");
@@ -1076,31 +1103,47 @@ impl MeridianShell {
     }
 
     pub(crate) fn load_wallpaper_thumbnails(&mut self) {
-        self.wallpaper_thumbnails = self.available_wallpapers.iter().map(|entry| {
-            load_wallpaper_thumbnail(&entry.thumbnail_path, 96, 54)
-        }).collect();
-        tracing::debug!("loaded {} wallpaper thumbnails", self.wallpaper_thumbnails.len());
+        self.wallpaper_thumbnails = self
+            .available_wallpapers
+            .iter()
+            .map(|entry| load_wallpaper_thumbnail(&entry.thumbnail_path, 96, 54))
+            .collect();
+        tracing::debug!(
+            "loaded {} wallpaper thumbnails",
+            self.wallpaper_thumbnails.len()
+        );
     }
 
     pub(crate) fn spawn_file_picker(&mut self) {
-        if self.wallpaper_picker_rx.is_some() { return; }
+        if self.wallpaper_picker_rx.is_some() {
+            return;
+        }
         let (tx, rx) = std::sync::mpsc::channel();
         self.wallpaper_picker_rx = Some(rx);
-        let wayland_display = std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-1".into());
+        let wayland_display =
+            std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-1".into());
         std::thread::spawn(move || {
             let out = std::process::Command::new("/usr/bin/zenity")
-                .args(["--file-selection", "--title=Choose Wallpaper",
-                       "--file-filter=Images | *.jpg *.jpeg *.png *.webp"])
+                .args([
+                    "--file-selection",
+                    "--title=Choose Wallpaper",
+                    "--file-filter=Images | *.jpg *.jpeg *.png *.webp",
+                ])
                 .env("WAYLAND_DISPLAY", &wayland_display)
                 .env("GDK_BACKEND", "wayland")
                 .output();
             match out {
                 Ok(o) if o.status.success() => {
                     let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                    if !path.is_empty() { let _ = tx.send(path); }
+                    if !path.is_empty() {
+                        let _ = tx.send(path);
+                    }
                 }
-                Ok(o) => tracing::warn!("zenity exited {:?}: {}", o.status,
-                    String::from_utf8_lossy(&o.stderr).trim()),
+                Ok(o) => tracing::warn!(
+                    "zenity exited {:?}: {}",
+                    o.status,
+                    String::from_utf8_lossy(&o.stderr).trim()
+                ),
                 Err(e) => tracing::warn!("zenity spawn failed: {}", e),
             }
         });
@@ -1109,8 +1152,14 @@ impl MeridianShell {
     pub(crate) fn poll_wallpaper_picker(&mut self) -> Option<String> {
         let rx = self.wallpaper_picker_rx.as_ref()?;
         match rx.try_recv() {
-            Ok(path) => { self.wallpaper_picker_rx = None; Some(path) }
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => { self.wallpaper_picker_rx = None; None }
+            Ok(path) => {
+                self.wallpaper_picker_rx = None;
+                Some(path)
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.wallpaper_picker_rx = None;
+                None
+            }
             Err(std::sync::mpsc::TryRecvError::Empty) => None,
         }
     }
@@ -1161,7 +1210,12 @@ impl MeridianShell {
             ClickAction::LaunchPinnedApp(idx) => {
                 if let Some(app) = self.pinned_apps.get(idx).cloned() {
                     let ws = self.panel_active_workspace();
-                    let (unfocused_id, any_window) = pinned_app_window_status(&app, &self.windows, ws, self.focused_window_id.as_deref());
+                    let (unfocused_id, any_window) = pinned_app_window_status(
+                        &app,
+                        &self.windows,
+                        ws,
+                        self.focused_window_id.as_deref(),
+                    );
                     if let Some(id) = unfocused_id {
                         // A window exists but is not focused: bring it to front.
                         self.ipc.send(&ShellCommand::FocusWindow { id });
@@ -1258,29 +1312,23 @@ impl MeridianShell {
                 };
                 let capture_source: ExtImageCaptureSourceV1 =
                     src_mgr.create_source(&wl_output, qh, ());
-                let session = mgr.create_session(
-                    &capture_source,
-                    Options::empty(),
-                    qh,
-                    (),
-                );
+                let session = mgr.create_session(&capture_source, Options::empty(), qh, ());
                 capture_source.destroy();
 
-                self.screenshot_capture =
-                    Some(crate::wayland::screencopy::ScreenshotCapture {
-                        session,
-                        path,
-                        width: 0,
-                        height: 0,
-                        format: None,
-                        constraints_done: false,
-                        pool: None,
-                        buffer: None,
-                        frame: None,
-                        fd: None,
-                        mapped_ptr: std::ptr::null_mut(),
-                        mapped_len: 0,
-                    });
+                self.screenshot_capture = Some(crate::wayland::screencopy::ScreenshotCapture {
+                    session,
+                    path,
+                    width: 0,
+                    height: 0,
+                    format: None,
+                    constraints_done: false,
+                    pool: None,
+                    buffer: None,
+                    frame: None,
+                    fd: None,
+                    mapped_ptr: std::ptr::null_mut(),
+                    mapped_len: 0,
+                });
             }
             ClickAction::ToggleSettings => {
                 self.launcher_settings_open = true;
@@ -1468,7 +1516,11 @@ impl MeridianShell {
 pub(crate) fn load_hidden_apps() -> std::collections::HashSet<String> {
     let path = hidden_apps_path();
     match std::fs::read_to_string(&path) {
-        Ok(content) => content.lines().filter(|l| !l.trim().is_empty()).map(|l| l.trim().to_string()).collect(),
+        Ok(content) => content
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| l.trim().to_string())
+            .collect(),
         Err(_) => std::collections::HashSet::new(),
     }
 }
@@ -2078,18 +2130,23 @@ mod tests {
     }
 }
 
-
 fn load_wallpaper_thumbnail(path: &str, max_w: u32, max_h: u32) -> Option<(u32, u32, Vec<u8>)> {
     let img = image::open(path).ok()?;
     let thumb = img.thumbnail(max_w, max_h);
     let rgba = thumb.to_rgba8();
     let (w, h) = (rgba.width(), rgba.height());
-    let premul: Vec<u8> = rgba.into_raw().chunks_exact(4).flat_map(|c| {
-        let a = c[3] as u16;
-        [((c[0] as u16 * a) / 255) as u8,
-         ((c[1] as u16 * a) / 255) as u8,
-         ((c[2] as u16 * a) / 255) as u8,
-         c[3]]
-    }).collect();
+    let premul: Vec<u8> = rgba
+        .into_raw()
+        .chunks_exact(4)
+        .flat_map(|c| {
+            let a = c[3] as u16;
+            [
+                ((c[0] as u16 * a) / 255) as u8,
+                ((c[1] as u16 * a) / 255) as u8,
+                ((c[2] as u16 * a) / 255) as u8,
+                c[3],
+            ]
+        })
+        .collect();
     Some((w, h, premul))
 }

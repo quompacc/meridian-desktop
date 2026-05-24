@@ -957,7 +957,9 @@ impl LauncherState {
         let mut rng = seed;
         let n = self.apps.len();
         for i in (1..n).rev() {
-            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let j = (rng >> 33) as usize % (i + 1);
             self.apps.swap(i, j);
         }
@@ -2449,7 +2451,8 @@ fn draw_tile_start_view(
     );
 
     // Settings button — left side of footer
-    let settings_btn_w = TILE_START_SWITCH_BUTTON_W.min((footer.w - tokens::launcher::INNER_PADDING * 2).max(0));
+    let settings_btn_w =
+        TILE_START_SWITCH_BUTTON_W.min((footer.w - tokens::launcher::INNER_PADDING * 2).max(0));
     if settings_btn_w > 0 {
         let settings_rect = Rect {
             x: footer.x + tokens::launcher::INNER_PADDING,
@@ -2457,7 +2460,13 @@ fn draw_tile_start_view(
             w: settings_btn_w,
             h: FOOTER_ACTION_BUTTON_H,
         };
-        let tc = draw_panel_button(painter, settings_rect, theme, InteractiveState::Default, false);
+        let tc = draw_panel_button(
+            painter,
+            settings_rect,
+            theme,
+            InteractiveState::Default,
+            false,
+        );
         painter.text_clipped(
             font,
             "Settings",

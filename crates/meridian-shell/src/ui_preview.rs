@@ -11,7 +11,10 @@ use meridian_ui::{
     PixelSize, Theme, TileSize, WidgetState,
 };
 use meridian_ui::{
-    effect::{dominant_color, paint_fill, paint_metro_surface, paint_text, rounded_rect_path, truncate_to_fit},
+    effect::{
+        dominant_color, paint_fill, paint_metro_surface, paint_text, rounded_rect_path,
+        truncate_to_fit,
+    },
     paint::Rect,
     style::Color,
 };
@@ -252,24 +255,59 @@ pub(crate) fn build_ui_preview_widget_tree(
     let armed_for = |id: &str| armed_power.and_then(|(a, p)| if a == id { Some(p) } else { None });
     let footer_right = vec![
         Box::new(
-            Button::with_id_and_icon("power-off", "Off", pal.error, FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_off_icon)
-                .with_armed_progress(armed_for("power-off"))
+            Button::with_id_and_icon(
+                "power-off",
+                "Off",
+                pal.error,
+                FOOTER_POWER_BUTTON_SIZE,
+                FOOTER_POWER_BUTTON_SIZE,
+                power_off_icon,
+            )
+            .with_armed_progress(armed_for("power-off")),
         ) as Box<dyn Widget>,
         Box::new(
-            Button::with_id_and_icon("power-restart", "Rst", pal.warning, FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_restart_icon)
-                .with_armed_progress(armed_for("power-restart"))
+            Button::with_id_and_icon(
+                "power-restart",
+                "Rst",
+                pal.warning,
+                FOOTER_POWER_BUTTON_SIZE,
+                FOOTER_POWER_BUTTON_SIZE,
+                power_restart_icon,
+            )
+            .with_armed_progress(armed_for("power-restart")),
         ) as Box<dyn Widget>,
         Box::new(
-            Button::with_id_and_icon("power-sleep", "Zzz", pal.accent, FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_sleep_icon)
-                .with_armed_progress(armed_for("power-sleep"))
+            Button::with_id_and_icon(
+                "power-sleep",
+                "Zzz",
+                pal.accent,
+                FOOTER_POWER_BUTTON_SIZE,
+                FOOTER_POWER_BUTTON_SIZE,
+                power_sleep_icon,
+            )
+            .with_armed_progress(armed_for("power-sleep")),
         ) as Box<dyn Widget>,
         Box::new(
-            Button::with_id_and_icon("power-lock", "Lock", pal.accent_alt, FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_lock_icon)
-                .with_armed_progress(armed_for("power-lock"))
+            Button::with_id_and_icon(
+                "power-lock",
+                "Lock",
+                pal.accent_alt,
+                FOOTER_POWER_BUTTON_SIZE,
+                FOOTER_POWER_BUTTON_SIZE,
+                power_lock_icon,
+            )
+            .with_armed_progress(armed_for("power-lock")),
         ) as Box<dyn Widget>,
         Box::new(
-            Button::with_id_and_icon("power-logout", "Out", pal.success, FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_logout_icon)
-                .with_armed_progress(armed_for("power-logout"))
+            Button::with_id_and_icon(
+                "power-logout",
+                "Out",
+                pal.success,
+                FOOTER_POWER_BUTTON_SIZE,
+                FOOTER_POWER_BUTTON_SIZE,
+                power_logout_icon,
+            )
+            .with_armed_progress(armed_for("power-logout")),
         ) as Box<dyn Widget>,
     ];
     let footer = Container::footer_row(

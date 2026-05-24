@@ -103,8 +103,7 @@ impl PointerHandler for MeridianShell {
                             cm.running_window_id.is_some(),
                         );
                         let n = items.len();
-                        if let Some(idx) =
-                            context_menu::hit_item(&cm, n, local_pos.0, local_pos.1)
+                        if let Some(idx) = context_menu::hit_item(&cm, n, local_pos.0, local_pos.1)
                         {
                             let action = items[idx].1;
                             self.handle_context_menu_action(qh, action, &cm);
@@ -136,8 +135,7 @@ impl PointerHandler for MeridianShell {
                             cm.running_window_id.is_some(),
                         );
                         let n = items.len();
-                        let new_hover =
-                            context_menu::hit_item(cm, n, local_pos.0, local_pos.1);
+                        let new_hover = context_menu::hit_item(cm, n, local_pos.0, local_pos.1);
                         if new_hover != cm.hover_idx {
                             cm.hover_idx = new_hover;
                             self.draw_launcher(qh, RepaintReason::Pointer);
@@ -151,19 +149,17 @@ impl PointerHandler for MeridianShell {
                         let cx = local_pos.0 as i32;
                         let cy = local_pos.1 as i32;
                         let grid_start = crate::app_view::APP_GRID_HEADER_H;
-                        let grid_end = crate::LAUNCHER_HEIGHT as i32
-                            - crate::app_view::APP_GRID_FOOTER_H;
+                        let grid_end =
+                            crate::LAUNCHER_HEIGHT as i32 - crate::app_view::APP_GRID_FOOTER_H;
                         if cy >= grid_start && cy < grid_end {
-                            let grid_x =
-                                crate::app_view::app_grid_content_x(crate::LAUNCHER_WIDTH);
+                            let grid_x = crate::app_view::app_grid_content_x(crate::LAUNCHER_WIDTH);
                             let rel_y = cy - grid_start + self.app_view_scroll_y;
                             let rel_x = cx - grid_x;
                             if (0..crate::app_view::APP_GRID_CONTENT_W).contains(&rel_x)
                                 && rel_y >= 0
                             {
                                 let row = (rel_y / crate::app_view::APP_GRID_ROW_H) as usize;
-                                let col =
-                                    (rel_x / (crate::app_view::APP_CARD_WIDTH + 8)) as usize;
+                                let col = (rel_x / (crate::app_view::APP_CARD_WIDTH + 8)) as usize;
                                 if col < crate::app_view::APP_GRID_COLS {
                                     let idx = row * crate::app_view::APP_GRID_COLS + col;
                                     let filtered = crate::app_view::collect_filtered_apps(
@@ -173,7 +169,11 @@ impl PointerHandler for MeridianShell {
                                         &self.icon_cache,
                                         &self.hidden_execs,
                                     );
-                                    if idx < filtered.len() { Some(idx) } else { None }
+                                    if idx < filtered.len() {
+                                        Some(idx)
+                                    } else {
+                                        None
+                                    }
                                 } else {
                                     None
                                 }
@@ -200,19 +200,17 @@ impl PointerHandler for MeridianShell {
                         let cx = local_pos.0 as i32;
                         let cy = local_pos.1 as i32;
                         let grid_start = crate::app_view::APP_GRID_HEADER_H;
-                        let grid_end = crate::LAUNCHER_HEIGHT as i32
-                            - crate::app_view::APP_GRID_FOOTER_H;
+                        let grid_end =
+                            crate::LAUNCHER_HEIGHT as i32 - crate::app_view::APP_GRID_FOOTER_H;
                         if cy >= grid_start && cy < grid_end {
-                            let grid_x =
-                                crate::app_view::app_grid_content_x(crate::LAUNCHER_WIDTH);
+                            let grid_x = crate::app_view::app_grid_content_x(crate::LAUNCHER_WIDTH);
                             let rel_y = cy - grid_start + self.app_view_scroll_y;
                             let rel_x = cx - grid_x;
                             if (0..crate::app_view::APP_GRID_CONTENT_W).contains(&rel_x)
                                 && rel_y >= 0
                             {
                                 let row = (rel_y / crate::app_view::APP_GRID_ROW_H) as usize;
-                                let col =
-                                    (rel_x / (crate::app_view::APP_CARD_WIDTH + 8)) as usize;
+                                let col = (rel_x / (crate::app_view::APP_CARD_WIDTH + 8)) as usize;
                                 if col < crate::app_view::APP_GRID_COLS {
                                     let idx = row * crate::app_view::APP_GRID_COLS + col;
                                     let filtered = crate::app_view::collect_filtered_apps(
@@ -238,9 +236,8 @@ impl PointerHandler for MeridianShell {
                                                     .as_deref()
                                                     .map(|a| {
                                                         a.eq_ignore_ascii_case(&exec_str)
-                                                            || a.to_lowercase().contains(
-                                                                &exec_str.to_lowercase(),
-                                                            )
+                                                            || a.to_lowercase()
+                                                                .contains(&exec_str.to_lowercase())
                                                     })
                                                     .unwrap_or(false)
                                             })
@@ -258,17 +255,16 @@ impl PointerHandler for MeridianShell {
                                             crate::LAUNCHER_WIDTH as i32,
                                             crate::LAUNCHER_HEIGHT as i32,
                                         );
-                                        self.context_menu =
-                                            Some(context_menu::ContextMenuState {
-                                                x: mx,
-                                                y: my,
-                                                app_name,
-                                                exec: exec_str,
-                                                is_terminal,
-                                                is_pinned,
-                                                running_window_id,
-                                                hover_idx: None,
-                                            });
+                                        self.context_menu = Some(context_menu::ContextMenuState {
+                                            x: mx,
+                                            y: my,
+                                            app_name,
+                                            exec: exec_str,
+                                            is_terminal,
+                                            is_pinned,
+                                            running_window_id,
+                                            hover_idx: None,
+                                        });
                                         self.draw_launcher(qh, RepaintReason::Pointer);
                                         continue;
                                     }
@@ -312,17 +308,11 @@ impl PointerHandler for MeridianShell {
                                 crate::widget_traversal::find_widget_at_path(&*tree, &path)
                             {
                                 if let Some(exec) = widget.launch_exec() {
-                                    let app = self
-                                        .launcher_state
-                                        .apps
-                                        .iter()
-                                        .find(|a| a.program == exec);
-                                    let app_name: Box<str> = app
-                                        .map(|a| a.name.as_str())
-                                        .unwrap_or(exec)
-                                        .into();
-                                    let is_terminal =
-                                        app.map(|a| a.terminal).unwrap_or(false);
+                                    let app =
+                                        self.launcher_state.apps.iter().find(|a| a.program == exec);
+                                    let app_name: Box<str> =
+                                        app.map(|a| a.name.as_str()).unwrap_or(exec).into();
+                                    let is_terminal = app.map(|a| a.terminal).unwrap_or(false);
                                     let exec_str: Box<str> = exec.into();
                                     let is_pinned = self
                                         .pinned_apps
@@ -336,19 +326,15 @@ impl PointerHandler for MeridianShell {
                                                 .as_deref()
                                                 .map(|a| {
                                                     a.eq_ignore_ascii_case(&exec_str)
-                                                        || a.to_lowercase().contains(
-                                                            &exec_str.to_lowercase(),
-                                                        )
+                                                        || a.to_lowercase()
+                                                            .contains(&exec_str.to_lowercase())
                                                 })
                                                 .unwrap_or(false)
                                         })
                                         .map(|w| w.id.clone());
                                     let is_running = running_window_id.is_some();
-                                    let items = context_menu::item_list(
-                                        is_terminal,
-                                        is_pinned,
-                                        is_running,
-                                    );
+                                    let items =
+                                        context_menu::item_list(is_terminal, is_pinned, is_running);
                                     let (mx, my) = context_menu::clamp_position(
                                         local_pos.0 as i32,
                                         local_pos.1 as i32,
@@ -356,17 +342,16 @@ impl PointerHandler for MeridianShell {
                                         crate::LAUNCHER_WIDTH as i32,
                                         crate::LAUNCHER_HEIGHT as i32,
                                     );
-                                    self.context_menu =
-                                        Some(context_menu::ContextMenuState {
-                                            x: mx,
-                                            y: my,
-                                            app_name,
-                                            exec: exec_str,
-                                            is_terminal,
-                                            is_pinned,
-                                            running_window_id,
-                                            hover_idx: None,
-                                        });
+                                    self.context_menu = Some(context_menu::ContextMenuState {
+                                        x: mx,
+                                        y: my,
+                                        app_name,
+                                        exec: exec_str,
+                                        is_terminal,
+                                        is_pinned,
+                                        running_window_id,
+                                        hover_idx: None,
+                                    });
                                     self.draw_launcher(qh, RepaintReason::Pointer);
                                 }
                             }
@@ -377,9 +362,7 @@ impl PointerHandler for MeridianShell {
 
                 // ── Step 4: Scroll in the launcher.
                 if let PointerEventKind::Axis { vertical, .. } = event.kind {
-                    if self.launcher_state.view()
-                        == crate::launcher::LauncherView::TileStart
-                    {
+                    if self.launcher_state.view() == crate::launcher::LauncherView::TileStart {
                         let step_px: i32 = 60;
                         let delta_px = if vertical.discrete != 0 {
                             vertical.discrete * step_px
@@ -410,9 +393,7 @@ impl PointerHandler for MeridianShell {
                                 &self.icon_cache,
                                 &self.hidden_execs,
                             );
-                            let content_h = filtered
-                                .len()
-                                .div_ceil(crate::app_view::APP_GRID_COLS)
+                            let content_h = filtered.len().div_ceil(crate::app_view::APP_GRID_COLS)
                                 as i32
                                 * crate::app_view::APP_GRID_ROW_H;
                             let grid_h = crate::LAUNCHER_HEIGHT as i32
@@ -435,22 +416,17 @@ impl PointerHandler for MeridianShell {
                         let cx = local_pos.0 as i32;
                         let cy = local_pos.1 as i32;
                         let grid_start = crate::app_view::APP_GRID_HEADER_H;
-                        let grid_end = crate::LAUNCHER_HEIGHT as i32
-                            - crate::app_view::APP_GRID_FOOTER_H;
+                        let grid_end =
+                            crate::LAUNCHER_HEIGHT as i32 - crate::app_view::APP_GRID_FOOTER_H;
                         if cy >= grid_start && cy < grid_end {
-                            let grid_x = crate::app_view::app_grid_content_x(
-                                crate::LAUNCHER_WIDTH,
-                            );
+                            let grid_x = crate::app_view::app_grid_content_x(crate::LAUNCHER_WIDTH);
                             let rel_y = cy - grid_start + self.app_view_scroll_y;
                             let rel_x = cx - grid_x;
                             if (0..crate::app_view::APP_GRID_CONTENT_W).contains(&rel_x)
                                 && rel_y >= 0
                             {
-                                let row =
-                                    (rel_y / crate::app_view::APP_GRID_ROW_H) as usize;
-                                let col = (rel_x
-                                    / (crate::app_view::APP_CARD_WIDTH + 8))
-                                    as usize;
+                                let row = (rel_y / crate::app_view::APP_GRID_ROW_H) as usize;
+                                let col = (rel_x / (crate::app_view::APP_CARD_WIDTH + 8)) as usize;
                                 if col < crate::app_view::APP_GRID_COLS {
                                     let idx = row * crate::app_view::APP_GRID_COLS + col;
                                     let filtered = crate::app_view::collect_filtered_apps(
@@ -464,9 +440,7 @@ impl PointerHandler for MeridianShell {
                                         let exec = app.program.clone();
                                         self.dispatch_widget_action(
                                             qh,
-                                            crate::widget_action::WidgetAction::LaunchExec(
-                                                exec,
-                                            ),
+                                            crate::widget_action::WidgetAction::LaunchExec(exec),
                                         );
                                         continue;
                                     }
@@ -542,15 +516,12 @@ impl PointerHandler for MeridianShell {
                                 self.draw_launcher(qh, RepaintReason::Pointer);
                             }
                             if let Some(clicked_path) = clicked_path {
-                                if let Some(widget) =
-                                    crate::widget_traversal::find_widget_at_path(
-                                        &*tree,
-                                        &clicked_path,
-                                    )
-                                {
-                                    if let Some(action) = widget
-                                        .id()
-                                        .and_then(crate::widget_action::action_for_id)
+                                if let Some(widget) = crate::widget_traversal::find_widget_at_path(
+                                    &*tree,
+                                    &clicked_path,
+                                ) {
+                                    if let Some(action) =
+                                        widget.id().and_then(crate::widget_action::action_for_id)
                                     {
                                         self.dispatch_widget_action(qh, action);
                                     } else if let Some(exec) = widget.launch_exec() {
@@ -620,10 +591,16 @@ impl PointerHandler for MeridianShell {
             // Thumbnail hover detection on panel
             if self.pointer_surface == SurfaceKind::Panel {
                 if let PointerEventKind::Motion { .. } = event.kind {
-                    let hovered_pinned_idx = self.panel_state.clicks.iter()
+                    let hovered_pinned_idx = self
+                        .panel_state
+                        .clicks
+                        .iter()
                         .find(|z| {
                             z.rect.contains(event.position.0, event.position.1)
-                                && matches!(z.action, crate::wayland::ClickAction::LaunchPinnedApp(_))
+                                && matches!(
+                                    z.action,
+                                    crate::wayland::ClickAction::LaunchPinnedApp(_)
+                                )
                         })
                         .and_then(|z| {
                             if let crate::wayland::ClickAction::LaunchPinnedApp(idx) = z.action {
@@ -638,12 +615,18 @@ impl PointerHandler for MeridianShell {
                         .and_then(|idx| self.pinned_apps.get(idx))
                         .map(|app| {
                             crate::wayland::state::pinned_app_has_windows_on_workspace(
-                                app, &self.windows, ws,
+                                app,
+                                &self.windows,
+                                ws,
                             )
                         })
                         .unwrap_or(false);
 
-                    let new_hover = if has_windows { hovered_pinned_idx } else { None };
+                    let new_hover = if has_windows {
+                        hovered_pinned_idx
+                    } else {
+                        None
+                    };
 
                     if new_hover != self.thumbnail_hover_app_idx {
                         self.thumbnail_hover_app_idx = new_hover;
@@ -658,7 +641,9 @@ impl PointerHandler for MeridianShell {
                         if let Some(idx) = new_hover {
                             if let Some(app) = self.pinned_apps.get(idx).cloned() {
                                 let window_ids = crate::wayland::state::pinned_app_window_ids(
-                                    &app, &self.windows, ws,
+                                    &app,
+                                    &self.windows,
+                                    ws,
                                 );
                                 for id in window_ids.iter().take(crate::THUMBNAIL_MAX_WINDOWS) {
                                     let cmd = meridian_ipc::ShellCommand::CaptureWindowThumbnail {
@@ -682,7 +667,6 @@ impl PointerHandler for MeridianShell {
             {
                 self.draw_workspace_popup(qh, RepaintReason::Pointer);
             }
-
 
             if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
                 let action = match self.pointer_surface {

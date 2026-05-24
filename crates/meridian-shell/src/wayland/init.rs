@@ -13,12 +13,12 @@ use smithay_client_toolkit::{
     },
     shm::{slot::SlotPool, Shm},
 };
+use tracing::{debug, info, warn};
+use wayland_client::{globals::registry_queue_init, Connection, QueueHandle};
 use wayland_protocols::ext::{
     image_capture_source::v1::client::ext_output_image_capture_source_manager_v1::ExtOutputImageCaptureSourceManagerV1,
     image_copy_capture::v1::client::ext_image_copy_capture_manager_v1::ExtImageCopyCaptureManagerV1,
 };
-use tracing::{debug, info, warn};
-use wayland_client::{globals::registry_queue_init, Connection, QueueHandle};
 
 use crate::{
     default_pinned_apps, icons::IconCache, launcher, network::NetworkController, panel,
@@ -300,16 +300,22 @@ pub(crate) fn initialize(
     let pinned_apps: Vec<panel::PinnedApp> = if meridian_config.panel.pinned.is_empty() {
         default_pinned_apps()
     } else {
-        meridian_config.panel.pinned.iter().map(|app| panel::PinnedApp {
-            label: app.label.clone(),
-            program: app.program.clone(),
-            args: vec![],
-            terminal: false,
-            icon_name: app.icon.clone(),
-        }).collect()
+        meridian_config
+            .panel
+            .pinned
+            .iter()
+            .map(|app| panel::PinnedApp {
+                label: app.label.clone(),
+                program: app.program.clone(),
+                args: vec![],
+                terminal: false,
+                icon_name: app.icon.clone(),
+            })
+            .collect()
     };
     {
-        let pinned_icons: Vec<&str> = pinned_apps.iter()
+        let pinned_icons: Vec<&str> = pinned_apps
+            .iter()
             .filter_map(|a| a.icon_name.as_deref())
             .filter(|n| !n.is_empty())
             .collect();
@@ -402,7 +408,11 @@ pub(crate) fn initialize(
         wallpaper_thumbnails: Vec::new(),
         wallpaper_picker_rx: None,
         wallpaper_path: meridian_config.wallpaper.as_ref().map(|w| w.path.clone()),
-        wallpaper_mode: meridian_config.wallpaper.as_ref().map(|w| w.mode).unwrap_or_default(),
+        wallpaper_mode: meridian_config
+            .wallpaper
+            .as_ref()
+            .map(|w| w.mode)
+            .unwrap_or_default(),
         theme,
         font: RefCell::new(font),
         icon_cache,

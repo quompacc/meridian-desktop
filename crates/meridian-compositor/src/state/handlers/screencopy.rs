@@ -8,8 +8,8 @@ use smithay::{
             OutputCaptureSourceState,
         },
         image_copy_capture::{
-            BufferConstraints, Frame, ImageCopyCaptureHandler, ImageCopyCaptureState,
-            Session, SessionRef,
+            BufferConstraints, Frame, ImageCopyCaptureHandler, ImageCopyCaptureState, Session,
+            SessionRef,
         },
     },
 };
@@ -36,10 +36,7 @@ impl ImageCopyCaptureHandler for MeridianState {
     }
 
     fn capture_constraints(&mut self, source: &ImageCaptureSource) -> Option<BufferConstraints> {
-        let output = source
-            .user_data()
-            .get::<WeakOutput>()?
-            .upgrade()?;
+        let output = source.user_data().get::<WeakOutput>()?.upgrade()?;
         let mode = output.current_mode()?;
         Some(BufferConstraints {
             size: Size::from((mode.size.w, mode.size.h)),
@@ -102,6 +99,9 @@ mod tests {
             refresh: 60000,
         };
         output.change_current_state(Some(mode), None, None, None);
-        assert_eq!(output.current_mode().unwrap().size, Size::from((1920, 1080)));
+        assert_eq!(
+            output.current_mode().unwrap().size,
+            Size::from((1920, 1080))
+        );
     }
 }

@@ -223,8 +223,7 @@ impl XdgDecorationHandler for MeridianState {
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(DecorationMode::ServerSide);
         });
-        self.decoration_manager
-            .set_ssd(toplevel.wl_surface(), true);
+        self.decoration_manager.set_ssd(toplevel.wl_surface(), true);
         reposition_xdg_window_for_visible_frame(self, &toplevel);
         toplevel.send_configure();
     }
@@ -258,8 +257,7 @@ impl XdgDecorationHandler for MeridianState {
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(DecorationMode::ServerSide);
         });
-        self.decoration_manager
-            .set_ssd(toplevel.wl_surface(), true);
+        self.decoration_manager.set_ssd(toplevel.wl_surface(), true);
         reposition_xdg_window_for_visible_frame(self, &toplevel);
         toplevel.send_configure();
     }

@@ -144,7 +144,11 @@ impl MeridianShell {
             WidgetAction::PowerOff => {
                 if self.try_consume_armed_power("power-off") {
                     self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
-                    std::thread::spawn(|| { let _ = std::process::Command::new("systemctl").arg("poweroff").status(); });
+                    std::thread::spawn(|| {
+                        let _ = std::process::Command::new("systemctl")
+                            .arg("poweroff")
+                            .status();
+                    });
                 } else {
                     self.arm_power(qh, "power-off");
                 }
@@ -152,7 +156,11 @@ impl MeridianShell {
             WidgetAction::PowerRestart => {
                 if self.try_consume_armed_power("power-restart") {
                     self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
-                    std::thread::spawn(|| { let _ = std::process::Command::new("systemctl").arg("reboot").status(); });
+                    std::thread::spawn(|| {
+                        let _ = std::process::Command::new("systemctl")
+                            .arg("reboot")
+                            .status();
+                    });
                 } else {
                     self.arm_power(qh, "power-restart");
                 }
@@ -160,7 +168,11 @@ impl MeridianShell {
             WidgetAction::PowerSleep => {
                 if self.try_consume_armed_power("power-sleep") {
                     self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
-                    std::thread::spawn(|| { let _ = std::process::Command::new("systemctl").arg("suspend").status(); });
+                    std::thread::spawn(|| {
+                        let _ = std::process::Command::new("systemctl")
+                            .arg("suspend")
+                            .status();
+                    });
                 } else {
                     self.arm_power(qh, "power-sleep");
                 }
@@ -168,7 +180,11 @@ impl MeridianShell {
             WidgetAction::PowerLock => {
                 if self.try_consume_armed_power("power-lock") {
                     self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
-                    std::thread::spawn(|| { let _ = std::process::Command::new("loginctl").arg("lock-session").status(); });
+                    std::thread::spawn(|| {
+                        let _ = std::process::Command::new("loginctl")
+                            .arg("lock-session")
+                            .status();
+                    });
                 } else {
                     self.arm_power(qh, "power-lock");
                 }
@@ -214,9 +230,15 @@ impl MeridianShell {
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
             WidgetAction::PinnedAddApp(idx) => {
-                let pinned_programs: std::collections::HashSet<&str> =
-                    self.pinned_apps.iter().map(|p| p.program.as_str()).collect();
-                let mut addable: Vec<&crate::launcher::DesktopApp> = self.launcher_state.apps.iter()
+                let pinned_programs: std::collections::HashSet<&str> = self
+                    .pinned_apps
+                    .iter()
+                    .map(|p| p.program.as_str())
+                    .collect();
+                let mut addable: Vec<&crate::launcher::DesktopApp> = self
+                    .launcher_state
+                    .apps
+                    .iter()
                     .filter(|a| !pinned_programs.contains(a.program.as_str()))
                     .collect();
                 addable.sort_by(|a, b| a.name.cmp(&b.name));
@@ -250,7 +272,8 @@ impl MeridianShell {
         match action {
             ContextMenuAction::Launch => {
                 if let Some(ref wid) = cm.running_window_id {
-                    self.ipc.send(&meridian_ipc::ShellCommand::FocusWindow { id: wid.clone() });
+                    self.ipc
+                        .send(&meridian_ipc::ShellCommand::FocusWindow { id: wid.clone() });
                 } else {
                     let _ = std::process::Command::new(cm.exec.as_ref()).spawn();
                 }
@@ -264,7 +287,11 @@ impl MeridianShell {
                     .spawn();
             }
             ContextMenuAction::PinToPanel => {
-                if !self.pinned_apps.iter().any(|p| p.program == cm.exec.as_ref()) {
+                if !self
+                    .pinned_apps
+                    .iter()
+                    .any(|p| p.program == cm.exec.as_ref())
+                {
                     let icon_name = self
                         .launcher_state
                         .apps

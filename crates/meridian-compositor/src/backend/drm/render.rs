@@ -622,14 +622,14 @@ fn serve_screencopy_frames(
         let (frame, _) = state.pending_screencopy_frames.remove(i);
 
         let pixels: Option<Vec<u8>> = (|| {
-            let mut tex = <GlesRenderer as Offscreen<smithay::backend::renderer::gles::GlesTexture>>::create_buffer(
-                renderer,
-                Fourcc::Xrgb8888,
-                buf_size,
-            )
+            let mut tex = <GlesRenderer as Offscreen<
+                smithay::backend::renderer::gles::GlesTexture,
+            >>::create_buffer(renderer, Fourcc::Xrgb8888, buf_size)
             .ok()?;
             let mut target = renderer.bind(&mut tex).ok()?;
-            let mut gles_frame = renderer.render(&mut target, phys_size, Transform::Normal).ok()?;
+            let mut gles_frame = renderer
+                .render(&mut target, phys_size, Transform::Normal)
+                .ok()?;
             let _ = gles_frame.clear([0.0f32, 0.0, 0.0, 1.0].into(), &[phys_region]);
             for element in out.scratch_final.iter().rev() {
                 let src = element.src();
@@ -637,8 +637,13 @@ fn serve_screencopy_frames(
                 // damage must be in element-local coords (origin at 0,0 within dst),
                 // not absolute physical coords — passing dst directly would clamp y≥dst.size.h to 0.
                 let element_damage = [smithay::utils::Rectangle::from_size(dst.size)];
-                if let Err(e) = element.draw(&mut gles_frame, src, dst, &element_damage, &[], None) {
-                    tracing::warn!("screencopy: draw error for {:?}: {:?}", std::mem::discriminant(element), e);
+                if let Err(e) = element.draw(&mut gles_frame, src, dst, &element_damage, &[], None)
+                {
+                    tracing::warn!(
+                        "screencopy: draw error for {:?}: {:?}",
+                        std::mem::discriminant(element),
+                        e
+                    );
                 }
             }
             drop(gles_frame);
@@ -659,11 +664,7 @@ fn serve_screencopy_frames(
                 })
                 .is_ok();
                 if ok {
-                    frame.success(
-                        Transform::Normal,
-                        None,
-                        state.start_time.elapsed(),
-                    );
+                    frame.success(Transform::Normal, None, state.start_time.elapsed());
                 } else {
                     frame.fail(CaptureFailureReason::Unknown);
                 }
@@ -682,6 +683,8 @@ fn process_thumbnail_requests(
     out: &super::DrmOutput,
     out_size: (u32, u32),
 ) {
+    use crate::state::window_list_entry;
+    use meridian_ipc::ShellEvent;
     use smithay::{
         backend::{
             allocator::Fourcc,
@@ -692,8 +695,6 @@ fn process_thumbnail_requests(
         },
         utils::{Rectangle, Scale, Size, Transform},
     };
-    use meridian_ipc::ShellEvent;
-    use crate::state::window_list_entry;
 
     if state.pending_thumbnail_requests.is_empty() {
         return;
@@ -714,7 +715,9 @@ fn process_thumbnail_requests(
             renderer, Fourcc::Xrgb8888, buf_size,
         ).ok()?;
         let mut target = renderer.bind(&mut tex).ok()?;
-        let mut gles_frame = renderer.render(&mut target, phys_size, Transform::Normal).ok()?;
+        let mut gles_frame = renderer
+            .render(&mut target, phys_size, Transform::Normal)
+            .ok()?;
         let _ = gles_frame.clear([0.0f32, 0.0, 0.0, 1.0].into(), &[phys_region]);
         for element in out.scratch_final.iter().rev() {
             let src = element.src();
@@ -725,13 +728,18 @@ fn process_thumbnail_requests(
             }
         }
         drop(gles_frame);
-        let mapping = renderer.copy_framebuffer(&target, buf_region, Fourcc::Xrgb8888).ok()?;
+        let mapping = renderer
+            .copy_framebuffer(&target, buf_region, Fourcc::Xrgb8888)
+            .ok()?;
         let raw = renderer.map_texture(&mapping).ok()?;
         Some(raw.to_vec())
     })();
 
     let Some(full_pixels) = full_pixels else {
-        tracing::warn!("thumbnail: full output render failed, dropping {} requests", state.pending_thumbnail_requests.len());
+        tracing::warn!(
+            "thumbnail: full output render failed, dropping {} requests",
+            state.pending_thumbnail_requests.len()
+        );
         state.pending_thumbnail_requests.clear();
         return;
     };
@@ -746,7 +754,11 @@ fn process_thumbnail_requests(
                 .workspaces
                 .space_at(idx)
                 .elements()
-                .find(|w| window_list_entry(w).map(|(wid, _)| wid == req.window_id).unwrap_or(false))
+                .find(|w| {
+                    window_list_entry(w)
+                        .map(|(wid, _)| wid == req.window_id)
+                        .unwrap_or(false)
+                })
                 .cloned()?;
 
             // Client geometry from space, then expand by Meridian SSD frame
@@ -754,7 +766,9 @@ fn process_thumbnail_requests(
             // chrome — not just the client surface region.
             let geo = state.workspaces.space_at(idx).element_geometry(&window)?;
             let (inset_l, inset_t, inset_r, inset_b) = if let Some(s) = window.wl_surface() {
-                state.decoration_manager.decoration_inset(&s, &state.theme_manager.current().config.decorations)
+                state
+                    .decoration_manager
+                    .decoration_inset(&s, &state.theme_manager.current().config.decorations)
             } else {
                 (0, 0, 0, 0)
             };
@@ -779,7 +793,10 @@ fn process_thumbnail_requests(
             let thumb_h = ((ch as f64 * s).round() as u32).max(1);
             let thumb_pixels = scale_down_xrgb(&cropped, cw, ch, thumb_w, thumb_h);
 
-            let path = format!("/tmp/meridian-thumb-{}.rgba", sanitize_window_id(&req.window_id));
+            let path = format!(
+                "/tmp/meridian-thumb-{}.rgba",
+                sanitize_window_id(&req.window_id)
+            );
             if let Err(e) = std::fs::write(&path, &thumb_pixels) {
                 tracing::warn!("thumbnail: write failed {}: {}", path, e);
                 return None;
@@ -795,7 +812,10 @@ fn process_thumbnail_requests(
         })();
 
         if result.is_none() {
-            tracing::debug!("thumbnail capture failed for window: {}", window_id_for_debug);
+            tracing::debug!(
+                "thumbnail capture failed for window: {}",
+                window_id_for_debug
+            );
         }
     }
 }
@@ -815,7 +835,13 @@ fn crop_xrgb(src: &[u8], src_w: u32, x: u32, y: u32, w: u32, h: u32) -> Vec<u8> 
 
 fn sanitize_window_id(id: &str) -> String {
     id.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
