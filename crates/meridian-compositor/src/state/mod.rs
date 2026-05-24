@@ -315,6 +315,13 @@ pub(crate) fn clear_tiled_toplevel_states(state: &mut smithay::wayland::shell::x
     state.states.unset(xdg_toplevel::State::TiledBottom);
 }
 
+#[derive(Debug)]
+pub struct ThumbnailRequest {
+    pub window_id: String,
+    pub max_width: u32,
+    pub max_height: u32,
+}
+
 pub struct MeridianState {
     pub start_time: Instant,
     pub display_handle: DisplayHandle,
@@ -383,6 +390,7 @@ pub struct MeridianState {
     pub image_copy_capture_state: ImageCopyCaptureState,
     pub screencopy_sessions: Vec<CaptureSession>,
     pub pending_screencopy_frames: Vec<(CaptureFrame, Output)>,
+    pub pending_thumbnail_requests: Vec<ThumbnailRequest>,
 }
 
 impl MeridianState {

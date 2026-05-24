@@ -22,10 +22,10 @@ use wayland_client::{globals::registry_queue_init, Connection, QueueHandle};
 
 use crate::{
     default_pinned_apps, icons::IconCache, launcher, network::NetworkController, panel,
-    panel::PinnedApp,
     TextRenderer, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
     NETWORK_POPUP_HEIGHT, NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, PANEL_HEIGHT,
-    SHELL_POPUP_BOTTOM_MARGIN, WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
+    SHELL_POPUP_BOTTOM_MARGIN, THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH,
+    WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
 };
 
 use super::{
@@ -180,6 +180,20 @@ pub(crate) fn initialize(
         crate::NOTIFICATION_RIGHT_MARGIN
     );
 
+    let thumbnail_surface = compositor.create_surface(&qh);
+    let thumbnail_layer = layer_shell.create_layer_surface(
+        &qh,
+        thumbnail_surface,
+        Layer::Overlay,
+        Some("meridian-thumbnail-popup"),
+        None,
+    );
+    thumbnail_layer.set_anchor(Anchor::BOTTOM | Anchor::LEFT);
+    thumbnail_layer.set_margin(0, 0, crate::SHELL_POPUP_BOTTOM_MARGIN, 0);
+    thumbnail_layer.set_size(THUMBNAIL_POPUP_MAX_WIDTH, THUMBNAIL_POPUP_HEIGHT);
+    thumbnail_layer.set_exclusive_zone(0);
+    thumbnail_layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+
     let meridian_config = MeridianConfig::load();
     let mut theme_manager = ThemeManager::new();
     if !meridian_config.general.theme.trim().is_empty()
@@ -333,18 +347,22 @@ pub(crate) fn initialize(
         workspace_layer,
         network_layer,
         notification_layer,
+        thumbnail_layer,
         panel_configured: false,
         launcher_configured: false,
         calendar_configured: false,
         workspace_configured: false,
         network_configured: false,
         notification_configured: false,
+        thumbnail_configured: false,
+        thumbnail_popup_open: false,
         panel_buffer: None,
         launcher_buffer: None,
         calendar_buffer: None,
         workspace_buffer: None,
         network_buffer: None,
         notification_buffer: None,
+        thumbnail_buffer: None,
         pool,
         width: 1024,
         launcher_width: LAUNCHER_WIDTH,
@@ -360,6 +378,14 @@ pub(crate) fn initialize(
         network_height: NETWORK_POPUP_HEIGHT,
         notification_width: crate::NOTIFICATION_WIDTH,
         notification_height: crate::NOTIFICATION_HEIGHT,
+        thumbnail_width: 0,
+        thumbnail_height: 0,
+        thumbnail_dirty: false,
+        thumbnail_hover_app_idx: None,
+        thumbnail_hover_since: None,
+        thumbnail_popup_window_ids: Vec::new(),
+        thumbnail_cache: std::collections::HashMap::new(),
+        thumbnail_icon_center: None,
         notifications: std::collections::VecDeque::new(),
         notification_dirty: false,
         settings_category: crate::settings_view::SettingsCategory::default(),
@@ -459,5 +485,6 @@ pub(crate) fn initialize(
     info!("Network popup surface created and committed");
     shell.notification_layer.commit();
     info!("Notification surface created and committed");
+    shell.thumbnail_layer.commit();
     Ok((shell, qh))
 }

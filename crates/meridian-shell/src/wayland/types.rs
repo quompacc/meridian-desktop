@@ -8,6 +8,7 @@ pub(crate) enum SurfaceKind {
     Calendar,
     WorkspacePopup,
     NetworkPopup,
+    ThumbnailPopup,
 }
 
 #[derive(Debug, Clone)]

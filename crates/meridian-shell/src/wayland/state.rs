@@ -269,6 +269,46 @@ fn resolve_shell_theme_from_config(
 }
 
 
+pub(crate) fn pinned_app_has_windows_on_workspace(
+    app: &crate::panel::PinnedApp,
+    windows: &[crate::wayland::types::WindowInfo],
+    workspace: u8,
+) -> bool {
+    let program_base = std::path::Path::new(&app.program)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(&app.program)
+        .to_lowercase();
+    let label_lower = app.label.to_lowercase();
+    windows.iter().any(|w| {
+        w.workspace == workspace
+            && !w.minimized
+            && app_matches_window(&program_base, &label_lower, w)
+    })
+}
+
+pub(crate) fn pinned_app_window_ids(
+    app: &crate::panel::PinnedApp,
+    windows: &[crate::wayland::types::WindowInfo],
+    workspace: u8,
+) -> Vec<String> {
+    let program_base = std::path::Path::new(&app.program)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(&app.program)
+        .to_lowercase();
+    let label_lower = app.label.to_lowercase();
+    windows
+        .iter()
+        .filter(|w| {
+            w.workspace == workspace
+                && !w.minimized
+                && app_matches_window(&program_base, &label_lower, w)
+        })
+        .map(|w| w.id.clone())
+        .collect()
+}
+
 fn app_matches_window(program_base: &str, label_lower: &str, w: &WindowInfo) -> bool {
     if let Some(ref app_id) = w.app_id {
         let aid = app_id.to_lowercase();
@@ -359,6 +399,40 @@ impl MeridianShell {
         if !self.occupied_state_available && !self.occupied_unavailable_logged {
             debug!("window snapshot unavailable; occupied state fallback active-only");
             self.occupied_unavailable_logged = true;
+        }
+
+        // Thumbnail hover delay: open popup if 400ms passed while hovering a pinned app
+        if !self.thumbnail_popup_open {
+            if let (Some(idx), Some(since)) = (self.thumbnail_hover_app_idx, self.thumbnail_hover_since) {
+                let elapsed = since.elapsed().as_millis();
+                if elapsed >= crate::THUMBNAIL_HOVER_DELAY_MS {
+                    if let Some(app) = self.pinned_apps.get(idx).cloned() {
+                        let ws = self.panel_active_workspace();
+                        let window_ids = crate::wayland::state::pinned_app_window_ids(&app, &self.windows, ws);
+                        if !window_ids.is_empty() {
+                            // Wait until prefetched thumbs land (or open after
+                            // timeout) so the popup starts at the correct width
+                            // instead of opening at max-placeholder size and
+                            // snapping smaller a tick later.
+                            let all_cached = window_ids.iter()
+                                .take(crate::THUMBNAIL_MAX_WINDOWS)
+                                .all(|id| self.thumbnail_cache.contains_key(id.as_str()));
+                            let timed_out = elapsed >= crate::THUMBNAIL_OPEN_TIMEOUT_MS;
+                            if all_cached || timed_out {
+                                let icon_center = self.panel_state.clicks.iter()
+                                    .find(|z| matches!(z.action, crate::ClickAction::LaunchPinnedApp(i) if i == idx))
+                                    .map(|z| z.rect.x + z.rect.w / 2);
+                                self.open_thumbnail_popup(qh, &window_ids, icon_center);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Resize + redraw thumbnail popup when new thumbnails arrive
+        if self.thumbnail_dirty && self.thumbnail_popup_open {
+            self.refresh_thumbnail_popup(qh);
         }
     }
 
@@ -506,6 +580,21 @@ impl MeridianShell {
             }
             ShellEvent::ToggleLauncher => {
                 self.toggle_launcher();
+            }
+            ShellEvent::WindowThumbnail { id, path, width, height } => {
+                match std::fs::read(&path) {
+                    Ok(data) => {
+                        let _ = std::fs::remove_file(&path);
+                        tracing::debug!("thumbnail received: id={} {}x{} bytes={}", id, width, height, data.len());
+                        self.thumbnail_cache.insert(id, (width, height, data));
+                        if self.thumbnail_popup_open {
+                            self.thumbnail_dirty = true;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("thumbnail: read failed {}: {}", path, e);
+                    }
+                }
             }
         }
     }
@@ -809,6 +898,85 @@ impl MeridianShell {
             self.keyboard_focus
         );
         true
+    }
+
+    pub(crate) fn open_thumbnail_popup(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        window_ids: &[String],
+        icon_center: Option<i32>,
+    ) {
+        self.thumbnail_popup_window_ids = window_ids.iter()
+            .take(crate::THUMBNAIL_MAX_WINDOWS)
+            .cloned()
+            .collect();
+        self.thumbnail_icon_center = icon_center;
+
+        // Always request fresh thumbnails — cached data may reflect a previous
+        // window state (size change, content scroll, etc.). Stale cache shows
+        // the user an outdated preview which looks like a crop bug.
+        for id in window_ids.iter().take(crate::THUMBNAIL_MAX_WINDOWS) {
+            let cmd = meridian_ipc::ShellCommand::CaptureWindowThumbnail {
+                id: id.clone(),
+                max_width: crate::THUMBNAIL_THUMB_W,
+                max_height: crate::THUMBNAIL_THUMB_H,
+            };
+            let _ = self.ipc.send(&cmd);
+        }
+
+        let popup_w = crate::thumbnail_popup::popup_width_for(&self.thumbnail_cache, &self.thumbnail_popup_window_ids);
+        let left_margin = icon_center
+            .map(|c| (c - popup_w as i32 / 2).max(0))
+            .unwrap_or(0);
+
+        self.thumbnail_popup_open = true;
+        self.thumbnail_layer.set_anchor(
+            smithay_client_toolkit::shell::wlr_layer::Anchor::BOTTOM
+                | smithay_client_toolkit::shell::wlr_layer::Anchor::LEFT,
+        );
+        self.thumbnail_layer.set_margin(
+            0,
+            0,
+            crate::SHELL_POPUP_BOTTOM_MARGIN,
+            left_margin,
+        );
+        self.thumbnail_layer.set_exclusive_zone(0);
+        self.thumbnail_layer
+            .set_size(popup_w, crate::THUMBNAIL_POPUP_HEIGHT);
+        self.thumbnail_layer
+            .set_keyboard_interactivity(smithay_client_toolkit::shell::wlr_layer::KeyboardInteractivity::None);
+        self.thumbnail_width = popup_w;
+        self.thumbnail_height = crate::THUMBNAIL_POPUP_HEIGHT;
+        self.thumbnail_dirty = true;
+        self.draw_thumbnail_popup(qh, crate::wayland::RepaintReason::Pointer);
+    }
+
+    /// Recompute popup width from current cache. If size changed, request a
+    /// resize from the compositor (which will fire a configure event that
+    /// triggers redraw with the actually-granted size). Otherwise just redraw.
+    pub(crate) fn refresh_thumbnail_popup(&mut self, qh: &QueueHandle<Self>) {
+        if !self.thumbnail_popup_open {
+            return;
+        }
+        let new_w = crate::thumbnail_popup::popup_width_for(&self.thumbnail_cache, &self.thumbnail_popup_window_ids);
+        if new_w != self.thumbnail_width {
+            let left_margin = self.thumbnail_icon_center
+                .map(|c| (c - new_w as i32 / 2).max(0))
+                .unwrap_or(0);
+            self.thumbnail_layer.set_margin(0, 0, crate::SHELL_POPUP_BOTTOM_MARGIN, left_margin);
+            self.thumbnail_layer.set_size(new_w, crate::THUMBNAIL_POPUP_HEIGHT);
+            self.thumbnail_width = new_w;
+        }
+        self.draw_thumbnail_popup(qh, crate::wayland::RepaintReason::Ipc);
+    }
+
+    pub(crate) fn close_thumbnail_popup(&mut self, reason: crate::wayland::CommitReason) {
+        if !self.thumbnail_popup_open {
+            return;
+        }
+        self.thumbnail_popup_open = false;
+        self.thumbnail_popup_window_ids.clear();
+        self.unmap_thumbnail_popup(reason);
     }
 
     pub(crate) fn close_launcher_after_launch(

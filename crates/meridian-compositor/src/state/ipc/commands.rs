@@ -121,6 +121,21 @@ impl MeridianState {
             ShellCommand::Quit => {
                 self.loop_signal.stop();
             }
+            ShellCommand::CaptureWindowThumbnail { id, max_width, max_height } => {
+                use crate::state::ThumbnailRequest;
+                self.pending_thumbnail_requests.push(ThumbnailRequest {
+                    window_id: id,
+                    max_width: if max_width == 0 { 200 } else { max_width },
+                    max_height: if max_height == 0 { 112 } else { max_height },
+                });
+                // Mark all outputs dirty so the render loop picks up the request
+                // on the next frame (same pattern as screencopy frame handler).
+                if let Some(ref mut drm) = self.drm_backend {
+                    for out in drm.outputs.iter_mut() {
+                        out.needs_repaint = true;
+                    }
+                }
+            }
         }
     }
 

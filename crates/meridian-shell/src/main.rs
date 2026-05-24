@@ -16,6 +16,7 @@ mod launcher;
 mod network;
 mod network_popup;
 mod notification_popup;
+mod thumbnail_popup;
 mod notifications;
 mod panel;
 mod panel_view;
@@ -48,6 +49,15 @@ pub const NOTIFICATION_WIDTH: u32 = 360;
 pub const NOTIFICATION_HEIGHT: u32 = 90;
 pub const NOTIFICATION_TOP_MARGIN: i32 = 20;
 pub const NOTIFICATION_RIGHT_MARGIN: i32 = 12;
+pub const THUMBNAIL_POPUP_HEIGHT: u32 = 136; // 2*PAD + THUMB_H
+pub const THUMBNAIL_POPUP_MAX_WIDTH: u32 = 800;
+pub const THUMBNAIL_THUMB_W: u32 = 200;
+pub const THUMBNAIL_THUMB_H: u32 = 112;
+pub const THUMBNAIL_CARD_GAP: u32 = 8;
+pub const THUMBNAIL_CARD_PAD: u32 = 12;
+pub const THUMBNAIL_HOVER_DELAY_MS: u128 = 400;
+pub const THUMBNAIL_OPEN_TIMEOUT_MS: u128 = 1200;
+pub const THUMBNAIL_MAX_WINDOWS: usize = 3;
 pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
     vec![
         PinnedApp {
@@ -205,6 +215,9 @@ fn insert_tick_timer(
                 }
                 if shell.workspace_popup_open {
                     shell.draw_workspace_popup(&qh, RepaintReason::Ipc);
+                }
+                if shell.thumbnail_dirty && shell.thumbnail_popup_open {
+                    shell.draw_thumbnail_popup(&qh, RepaintReason::Ipc);
                 }
             }
             shell.tick(&qh);

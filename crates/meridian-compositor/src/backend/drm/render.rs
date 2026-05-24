@@ -413,6 +413,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
         // are still fresh and not yet assigned to KMS hardware planes (which
         // bypasses the GLES import path and makes draw() silently skip them).
         serve_screencopy_frames(state, renderer, out, out_size);
+        process_thumbnail_requests(state, renderer, out, out_size);
 
         let elements = out.scratch_final.as_slice();
 
@@ -668,4 +669,164 @@ fn serve_screencopy_frames(
             }
         }
     }
+}
+
+/// Capture window thumbnails requested via IPC.
+fn process_thumbnail_requests(
+    state: &mut MeridianState,
+    renderer: &mut GlesRenderer,
+    out: &super::DrmOutput,
+    out_size: (u32, u32),
+) {
+    use smithay::{
+        backend::{
+            allocator::Fourcc,
+            renderer::{
+                element::{Element, RenderElement},
+                Bind, ExportMem, Frame as RendererFrame, Offscreen, Renderer,
+            },
+        },
+        utils::{Rectangle, Scale, Size, Transform},
+    };
+    use meridian_ipc::ShellEvent;
+    use crate::state::window_list_entry;
+
+    if state.pending_thumbnail_requests.is_empty() {
+        return;
+    }
+
+    // Render the full output once; crop per-window regions from the result.
+    // This is identical to serve_screencopy_frames and guarantees correct pixel
+    // content regardless of how individual window render_elements are positioned.
+    let out_w = out_size.0 as i32;
+    let out_h = out_size.1 as i32;
+    let buf_size = Size::<i32, smithay::utils::Buffer>::from((out_w, out_h));
+    let phys_size = Size::<i32, smithay::utils::Physical>::from((out_w, out_h));
+    let phys_region = Rectangle::from_size(phys_size);
+    let buf_region = Rectangle::from_size(buf_size);
+
+    let full_pixels: Option<Vec<u8>> = (|| {
+        let mut tex = <GlesRenderer as Offscreen<smithay::backend::renderer::gles::GlesTexture>>::create_buffer(
+            renderer, Fourcc::Xrgb8888, buf_size,
+        ).ok()?;
+        let mut target = renderer.bind(&mut tex).ok()?;
+        let mut gles_frame = renderer.render(&mut target, phys_size, Transform::Normal).ok()?;
+        let _ = gles_frame.clear([0.0f32, 0.0, 0.0, 1.0].into(), &[phys_region]);
+        for element in out.scratch_final.iter().rev() {
+            let src = element.src();
+            let dst = element.geometry(Scale::from(1.0f64));
+            let element_damage = [Rectangle::from_size(dst.size)];
+            if let Err(e) = element.draw(&mut gles_frame, src, dst, &element_damage, &[], None) {
+                tracing::warn!("thumbnail: output draw error: {:?}", e);
+            }
+        }
+        drop(gles_frame);
+        let mapping = renderer.copy_framebuffer(&target, buf_region, Fourcc::Xrgb8888).ok()?;
+        let raw = renderer.map_texture(&mapping).ok()?;
+        Some(raw.to_vec())
+    })();
+
+    let Some(full_pixels) = full_pixels else {
+        tracing::warn!("thumbnail: full output render failed, dropping {} requests", state.pending_thumbnail_requests.len());
+        state.pending_thumbnail_requests.clear();
+        return;
+    };
+
+    let requests = std::mem::take(&mut state.pending_thumbnail_requests);
+
+    for req in requests {
+        let window_id_for_debug = req.window_id.clone();
+        let result: Option<()> = (|| {
+            let idx = state.current_workspace_index();
+            let window = state
+                .workspaces
+                .space_at(idx)
+                .elements()
+                .find(|w| window_list_entry(w).map(|(wid, _)| wid == req.window_id).unwrap_or(false))
+                .cloned()?;
+
+            // Client geometry from space, then expand by Meridian SSD frame
+            // (titlebar + border) so the thumbnail captures the whole window
+            // chrome — not just the client surface region.
+            let geo = state.workspaces.space_at(idx).element_geometry(&window)?;
+            let (inset_l, inset_t, inset_r, inset_b) = if let Some(s) = window.wl_surface() {
+                state.decoration_manager.decoration_inset(&s, &state.theme_manager.current().config.decorations)
+            } else {
+                (0, 0, 0, 0)
+            };
+            let frame_x = geo.loc.x - inset_l;
+            let frame_y = geo.loc.y - inset_t;
+            let frame_w = geo.size.w + inset_l + inset_r;
+            let frame_h = geo.size.h + inset_t + inset_b;
+            let wx = frame_x.clamp(0, out_w - 1) as u32;
+            let wy = frame_y.clamp(0, out_h - 1) as u32;
+            let wx2 = (frame_x + frame_w).clamp(0, out_w) as u32;
+            let wy2 = (frame_y + frame_h).clamp(0, out_h) as u32;
+            let cw = wx2.saturating_sub(wx).max(1);
+            let ch = wy2.saturating_sub(wy).max(1);
+
+            let cropped = crop_xrgb(&full_pixels, out_size.0, wx, wy, cw, ch);
+
+            // Scale down maintaining aspect ratio
+            let sx = req.max_width as f64 / cw as f64;
+            let sy = req.max_height as f64 / ch as f64;
+            let s = sx.min(sy).min(1.0);
+            let thumb_w = ((cw as f64 * s).round() as u32).max(1);
+            let thumb_h = ((ch as f64 * s).round() as u32).max(1);
+            let thumb_pixels = scale_down_xrgb(&cropped, cw, ch, thumb_w, thumb_h);
+
+            let path = format!("/tmp/meridian-thumb-{}.rgba", sanitize_window_id(&req.window_id));
+            if let Err(e) = std::fs::write(&path, &thumb_pixels) {
+                tracing::warn!("thumbnail: write failed {}: {}", path, e);
+                return None;
+            }
+
+            state.ipc.broadcast(&ShellEvent::WindowThumbnail {
+                id: req.window_id,
+                path,
+                width: thumb_w,
+                height: thumb_h,
+            });
+            Some(())
+        })();
+
+        if result.is_none() {
+            tracing::debug!("thumbnail capture failed for window: {}", window_id_for_debug);
+        }
+    }
+}
+
+fn crop_xrgb(src: &[u8], src_w: u32, x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
+    let mut out = vec![0u8; (w * h * 4) as usize];
+    for row in 0..h {
+        let si = ((y + row) * src_w + x) as usize * 4;
+        let di = (row * w) as usize * 4;
+        let len = (w * 4) as usize;
+        if si + len <= src.len() {
+            out[di..di + len].copy_from_slice(&src[si..si + len]);
+        }
+    }
+    out
+}
+
+fn sanitize_window_id(id: &str) -> String {
+    id.chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect()
+}
+
+fn scale_down_xrgb(src: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_h: u32) -> Vec<u8> {
+    let mut out = vec![0u8; (dst_w * dst_h * 4) as usize];
+    for dy in 0..dst_h {
+        for dx in 0..dst_w {
+            let sx = (dx * src_w / dst_w) as usize;
+            let sy = (dy * src_h / dst_h) as usize;
+            let si = (sy * src_w as usize + sx) * 4;
+            let di = (dy * dst_w + dx) as usize * 4;
+            if si + 4 <= src.len() && di + 4 <= out.len() {
+                out[di..di + 4].copy_from_slice(&src[si..si + 4]);
+            }
+        }
+    }
+    out
 }

@@ -176,6 +176,12 @@ pub enum ShellEvent {
         success: bool,
     },
     ToggleLauncher,
+    WindowThumbnail {
+        id: String,
+        path: String,
+        width: u32,
+        height: u32,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -197,6 +203,13 @@ pub enum ShellCommand {
     },
     ReloadConfig,
     Quit,
+    CaptureWindowThumbnail {
+        id: String,
+        #[serde(default)]
+        max_width: u32,
+        #[serde(default)]
+        max_height: u32,
+    },
 }
 
 pub fn socket_path() -> PathBuf {
@@ -573,5 +586,30 @@ mod tests {
         )
         .expect("decode metadata request");
         assert_eq!(decoded, message);
+    }
+
+    #[test]
+    fn capture_window_thumbnail_command_roundtrip_is_supported() {
+        let command = ShellCommand::CaptureWindowThumbnail {
+            id: "win-1".to_string(),
+            max_width: 200,
+            max_height: 112,
+        };
+        let bytes = encode_command(&command).expect("encode");
+        let decoded = decode_command(std::str::from_utf8(&bytes).expect("utf8")).expect("decode");
+        assert_eq!(decoded, command);
+    }
+
+    #[test]
+    fn window_thumbnail_event_roundtrip_is_supported() {
+        let event = ShellEvent::WindowThumbnail {
+            id: "win-1".to_string(),
+            path: "/tmp/test.rgba".to_string(),
+            width: 200,
+            height: 112,
+        };
+        let bytes = encode_event(&event).expect("encode");
+        let decoded = decode_event(std::str::from_utf8(&bytes).expect("utf8")).expect("decode");
+        assert_eq!(decoded, event);
     }
 }

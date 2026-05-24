@@ -709,6 +709,7 @@ impl MeridianState {
             image_copy_capture_state,
             screencopy_sessions: Vec::new(),
             pending_screencopy_frames: Vec::new(),
+            pending_thumbnail_requests: Vec::new(),
         })
     }
 

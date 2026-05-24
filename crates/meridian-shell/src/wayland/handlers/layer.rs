@@ -63,6 +63,12 @@ impl LayerShellHandler for MeridianShell {
             return;
         }
 
+        if self.thumbnail_layer == *layer {
+            warn!("Thumbnail popup layer surface closed by compositor; recovering popup state");
+            self.thumbnail_popup_open = false;
+            self.thumbnail_configured = false;
+            return;
+        }
 
         warn!("Unknown layer surface closed by compositor");
     }
@@ -278,6 +284,22 @@ impl LayerShellHandler for MeridianShell {
                 self.draw_notification_popup(qh, RepaintReason::LayerConfigure);
             } else {
                 self.unmap_notification_popup(crate::wayland::CommitReason::UnknownOther);
+            }
+        } else if self.thumbnail_layer == *layer {
+            // Adopt the compositor's chosen size as our truth — drawing with a
+            // different (stale) width yields a clipped or stretched popup.
+            // Anchor/margin/set_size are still set by open_thumbnail_popup or
+            // refresh_thumbnail_popup; we only take the resulting configured
+            // dimensions here.
+            if configure.new_size.0 > 0 {
+                self.thumbnail_width = configure.new_size.0;
+            }
+            if configure.new_size.1 > 0 {
+                self.thumbnail_height = configure.new_size.1;
+            }
+            self.thumbnail_configured = true;
+            if self.thumbnail_popup_open {
+                self.draw_thumbnail_popup(qh, RepaintReason::LayerConfigure);
             }
         }
     }

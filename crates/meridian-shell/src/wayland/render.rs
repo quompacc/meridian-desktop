@@ -5,11 +5,11 @@ use tracing::{debug, info, warn};
 use wayland_client::QueueHandle;
 
 use crate::{
-    buffer, network_popup, notification_popup, panel, ui_preview, workspaces,
+    buffer, network_popup, notification_popup, panel, thumbnail_popup, ui_preview, workspaces,
     Painter, Rect, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
     NETWORK_POPUP_HEIGHT, NETWORK_POPUP_WIDTH, NOTIFICATION_HEIGHT, NOTIFICATION_WIDTH,
-    PANEL_HEIGHT, WORKSPACE_POPUP_HEIGHT,
-    WORKSPACE_POPUP_WIDTH,
+    PANEL_HEIGHT, THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH,
+    WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
 };
 
 use super::{
@@ -949,6 +949,61 @@ impl MeridianShell {
         self.notification_layer.wl_surface().attach(None, 0, 0);
         self.notification_layer.commit();
         self.notification_dirty = false;
+    }
+
+    pub(crate) fn draw_thumbnail_popup(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
+        if !self.thumbnail_popup_open || !self.thumbnail_configured {
+            return;
+        }
+
+        let width = self.thumbnail_width.min(THUMBNAIL_POPUP_MAX_WIDTH);
+        let height = self.thumbnail_height.min(THUMBNAIL_POPUP_HEIGHT);
+        let stride = buffer::shm_buffer_stride(width);
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.thumbnail_buffer,
+                width,
+                height,
+                stride,
+            );
+            let Some(buf) = buf else {
+                warn!("thumbnail: buffer unavailable reason={:?} width={} height={}", reason, width, height);
+                return;
+            };
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.thumbnail_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS { continue; }
+                return;
+            };
+
+            let mut painter = Painter::new(canvas, width as i32, height as i32);
+            thumbnail_popup::draw_thumbnail_popup(
+                &mut painter,
+                &self.theme,
+                &self.thumbnail_cache,
+                &self.thumbnail_popup_window_ids,
+                width,
+                height,
+            );
+
+            if let Err(err) = buf.attach_to(self.thumbnail_layer.wl_surface()) {
+                warn!("thumbnail: buffer attach failed: {}", err);
+                return;
+            }
+            self.thumbnail_layer
+                .wl_surface()
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.thumbnail_layer.commit();
+            self.thumbnail_dirty = false;
+            return;
+        }
+    }
+
+    pub(crate) fn unmap_thumbnail_popup(&mut self, _reason: CommitReason) {
+        self.thumbnail_layer.wl_surface().attach(None, 0, 0);
+        self.thumbnail_layer.commit();
+        self.thumbnail_dirty = false;
     }
 
 }

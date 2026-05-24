@@ -231,18 +231,22 @@ pub(crate) struct MeridianShell {
     pub(crate) workspace_layer: LayerSurface,
     pub(crate) network_layer: LayerSurface,
     pub(crate) notification_layer: LayerSurface,
+    pub(crate) thumbnail_layer: LayerSurface,
     pub(crate) panel_configured: bool,
     pub(crate) launcher_configured: bool,
     pub(crate) calendar_configured: bool,
     pub(crate) workspace_configured: bool,
     pub(crate) network_configured: bool,
     pub(crate) notification_configured: bool,
+    pub(crate) thumbnail_configured: bool,
+    pub(crate) thumbnail_popup_open: bool,
     pub(crate) panel_buffer: Option<Buffer>,
     pub(crate) launcher_buffer: Option<Buffer>,
     pub(crate) calendar_buffer: Option<Buffer>,
     pub(crate) workspace_buffer: Option<Buffer>,
     pub(crate) network_buffer: Option<Buffer>,
     pub(crate) notification_buffer: Option<Buffer>,
+    pub(crate) thumbnail_buffer: Option<Buffer>,
     pub(crate) pool: SlotPool,
     pub(crate) width: u32,
     pub(crate) launcher_width: u32,
@@ -258,6 +262,18 @@ pub(crate) struct MeridianShell {
     pub(crate) network_height: u32,
     pub(crate) notification_width: u32,
     pub(crate) notification_height: u32,
+    pub(crate) thumbnail_width: u32,
+    pub(crate) thumbnail_height: u32,
+    pub(crate) thumbnail_dirty: bool,
+    // Hover tracking
+    pub(crate) thumbnail_hover_app_idx: Option<usize>,
+    pub(crate) thumbnail_hover_since: Option<std::time::Instant>,
+    // Current popup window IDs (ordered for display)
+    pub(crate) thumbnail_popup_window_ids: Vec<String>,
+    // Cache: window_id -> (width, height, xrgb8888 bytes)
+    pub(crate) thumbnail_cache: std::collections::HashMap<String, (u32, u32, Vec<u8>)>,
+    // Icon center x for the currently open popup, used to recenter on resize
+    pub(crate) thumbnail_icon_center: Option<i32>,
     /// Queue of in-flight notifications. v1 renders only the front entry;
     /// stacking + cascade animation is A1.3+ polish.
     pub(crate) notifications: std::collections::VecDeque<crate::notifications::Notification>,

@@ -31,6 +31,8 @@ impl PointerHandler for MeridianShell {
                 SurfaceKind::WorkspacePopup
             } else if &event.surface == self.network_layer.wl_surface() {
                 SurfaceKind::NetworkPopup
+            } else if &event.surface == self.thumbnail_layer.wl_surface() {
+                SurfaceKind::ThumbnailPopup
             } else {
                 SurfaceKind::None
             };
@@ -42,6 +44,11 @@ impl PointerHandler for MeridianShell {
                     SurfaceKind::Panel => {
                         if self.panel_widget_state.is_some() {
                             self.panel_widget_state = None;
+                        }
+                        self.thumbnail_hover_app_idx = None;
+                        self.thumbnail_hover_since = None;
+                        if self.thumbnail_popup_open {
+                            self.close_thumbnail_popup(crate::wayland::CommitReason::Input);
                         }
                         self.draw_panel(qh, RepaintReason::Pointer);
                     }
@@ -57,7 +64,7 @@ impl PointerHandler for MeridianShell {
                     SurfaceKind::NetworkPopup => {
                         self.draw_network_popup(qh, RepaintReason::Pointer)
                     }
-                    SurfaceKind::Calendar | SurfaceKind::None => {}
+                    SurfaceKind::ThumbnailPopup | SurfaceKind::Calendar | SurfaceKind::None => {}
                 }
                 self.pointer_surface = SurfaceKind::None;
                 continue;
@@ -258,6 +265,65 @@ impl PointerHandler for MeridianShell {
                     }
                 }
                 // No continue — Press events must fall through to the ClickZone handler below.
+            }
+
+            // Thumbnail hover detection on panel
+            if self.pointer_surface == SurfaceKind::Panel {
+                if let PointerEventKind::Motion { .. } = event.kind {
+                    let hovered_pinned_idx = self.panel_state.clicks.iter()
+                        .find(|z| {
+                            z.rect.contains(event.position.0, event.position.1)
+                                && matches!(z.action, crate::wayland::ClickAction::LaunchPinnedApp(_))
+                        })
+                        .and_then(|z| {
+                            if let crate::wayland::ClickAction::LaunchPinnedApp(idx) = z.action {
+                                Some(idx)
+                            } else {
+                                None
+                            }
+                        });
+
+                    let ws = self.panel_active_workspace();
+                    let has_windows = hovered_pinned_idx
+                        .and_then(|idx| self.pinned_apps.get(idx))
+                        .map(|app| {
+                            crate::wayland::state::pinned_app_has_windows_on_workspace(
+                                app, &self.windows, ws,
+                            )
+                        })
+                        .unwrap_or(false);
+
+                    let new_hover = if has_windows { hovered_pinned_idx } else { None };
+
+                    if new_hover != self.thumbnail_hover_app_idx {
+                        self.thumbnail_hover_app_idx = new_hover;
+                        self.thumbnail_hover_since = new_hover.map(|_| std::time::Instant::now());
+                        if new_hover.is_none() && self.thumbnail_popup_open {
+                            self.close_thumbnail_popup(crate::wayland::CommitReason::Input);
+                        }
+                        // Prefetch thumbnails as soon as hover begins so they
+                        // are cached by the time the 400ms popup-open delay
+                        // elapses. Without prefetch the popup briefly opens at
+                        // max placeholder width and visibly snaps smaller.
+                        if let Some(idx) = new_hover {
+                            if let Some(app) = self.pinned_apps.get(idx).cloned() {
+                                let window_ids = crate::wayland::state::pinned_app_window_ids(
+                                    &app, &self.windows, ws,
+                                );
+                                for id in window_ids.iter().take(crate::THUMBNAIL_MAX_WINDOWS) {
+                                    let cmd = meridian_ipc::ShellCommand::CaptureWindowThumbnail {
+                                        id: id.clone(),
+                                        max_width: crate::THUMBNAIL_THUMB_W,
+                                        max_height: crate::THUMBNAIL_THUMB_H,
+                                    };
+                                    let _ = self.ipc.send(&cmd);
+                                }
+                            }
+                        }
+                    }
+
+                    // Popup is opened from tick() after THUMBNAIL_HOVER_DELAY_MS
+                }
             }
 
             if self.pointer_surface == SurfaceKind::Launcher
@@ -538,6 +604,7 @@ impl PointerHandler for MeridianShell {
                             Some(crate::wayland::ClickAction::ToggleNetworkPopup)
                         }
                     }
+                    SurfaceKind::ThumbnailPopup => None,
                     SurfaceKind::Calendar => None,
                     SurfaceKind::None => None,
                 };
@@ -580,6 +647,7 @@ impl PointerHandler for MeridianShell {
                         SurfaceKind::Launcher => self.handle_launcher_click(qh, action),
                         SurfaceKind::WorkspacePopup => self.handle_workspace_click(qh, action),
                         SurfaceKind::NetworkPopup => {}
+                        SurfaceKind::ThumbnailPopup => {}
                         SurfaceKind::Calendar => {}
                         SurfaceKind::None => {}
                     }
