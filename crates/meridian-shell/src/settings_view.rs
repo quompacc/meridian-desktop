@@ -275,6 +275,30 @@ fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
     Some(pixmap)
 }
 
+
+fn wallpaper_display_name(path: &str) -> String {
+    const SKIP: &[&str] = &[
+        "usr", "share", "wallpapers", "backgrounds",
+        "contents", "images", "pictures",
+    ];
+    let meaningful: Vec<&str> = path
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .filter(|p| {
+            let lo = p.to_ascii_lowercase();
+            !SKIP.iter().any(|s| *s == lo.as_str())
+        })
+        .collect();
+    let filename = *meaningful.last().unwrap_or(&path);
+    let stem = filename.rsplitn(2, '.').last().unwrap_or(filename);
+    if meaningful.len() >= 2 {
+        let pack = meaningful[meaningful.len() - 2];
+        format!("{} · {}", pack, stem)
+    } else {
+        stem.to_string()
+    }
+}
+
 pub(crate) fn build_settings_widget_tree(
     width: u32,
     height: u32,
@@ -348,6 +372,10 @@ pub(crate) fn build_settings_widget_tree(
                 vec![Box::new(Container::row(8, mode_chips)) as Box<dyn Widget>],
             );
             let list_h = content_h.saturating_sub(WALLPAPER_MODE_BAR_H);
+            // Cap rows to what actually fits so the list never overflows footer/header.
+            // Each row takes WALLPAPER_ROW_H + 2px gap (column gap) except the last.
+            let max_visible = ((list_h + 2) / (WALLPAPER_ROW_H as u32 + 2))
+                .min(WALLPAPER_WIDGET_IDS.len() as u32) as usize;
             let row_w = width as i32;
             let rows: Vec<Box<dyn Widget>> = if available_wallpapers.is_empty() {
                 vec![Box::new(SettingsPlaceholder {
@@ -357,13 +385,12 @@ pub(crate) fn build_settings_widget_tree(
             } else {
                 available_wallpapers
                     .iter()
-                    .take(WALLPAPER_WIDGET_IDS.len())
+                    .take(max_visible)
                     .enumerate()
                     .map(|(i, path)| {
-                        let display = path.rsplit('/').next().unwrap_or(path);
                         Box::new(WallpaperRow {
                             index: i,
-                            display_name: display.into(),
+                            display_name: wallpaper_display_name(path).into(),
                             is_selected: current_wallpaper.map_or(false, |c| c == path.as_str()),
                             accent: pal.accent,
                             row_width: row_w,
