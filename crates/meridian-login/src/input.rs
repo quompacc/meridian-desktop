@@ -33,6 +33,21 @@ pub enum KeyAction {
     Cancel,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KeyboardStatus {
+    pub layout: String,
+    pub caps_lock: bool,
+}
+
+impl Default for KeyboardStatus {
+    fn default() -> Self {
+        Self {
+            layout: FALLBACK_LAYOUT.to_string(),
+            caps_lock: false,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PointerAction {
     LeftPress { x: f32, y: f32 },
@@ -94,6 +109,7 @@ impl PointerState {
 /// Wraps the xkbcommon state required to translate evdev keycodes.
 pub struct Keyboard {
     state: xkb::State,
+    layout: String,
     // The keymap must outlive the state; keep both alive together.
     _keymap: xkb::Keymap,
     _context: xkb::Context,
@@ -117,9 +133,19 @@ impl Keyboard {
         let state = xkb::State::new(&keymap);
         Ok(Self {
             state,
+            layout,
             _keymap: keymap,
             _context: context,
         })
+    }
+
+    pub fn status(&self) -> KeyboardStatus {
+        KeyboardStatus {
+            layout: self.layout.clone(),
+            caps_lock: self
+                .state
+                .mod_name_is_active(xkb::MOD_NAME_CAPS, xkb::STATE_MODS_EFFECTIVE),
+        }
     }
 
     /// Process one evdev key event. Returns the resulting [`KeyAction`] if
@@ -426,6 +452,14 @@ mod tests {
     fn read_system_layout_returns_some_or_none_without_panic() {
         // We don't assert the value because it depends on the test host.
         let _ = read_system_layout();
+    }
+
+    #[test]
+    fn keyboard_status_exposes_layout_and_caps_lock() {
+        let kb = Keyboard::new().unwrap();
+        let status = kb.status();
+        assert!(!status.layout.is_empty());
+        assert!(!status.caps_lock);
     }
 
     #[test]

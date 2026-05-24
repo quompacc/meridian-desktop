@@ -37,7 +37,7 @@ use zeroize::Zeroizing;
 use auth::{start_auth_session, AuthDriver, AuthResult};
 use input::{
     open_keyboards, open_pointers, poll_keyboards, poll_pointers, KeyAction, Keyboard,
-    PointerAction, PointerState,
+    KeyboardStatus, PointerAction, PointerState,
 };
 use meridian_boot_common::{
     cleanup_socket_path, secure_socket_permissions, select_boot_mode, SocketIdentity,
@@ -135,6 +135,7 @@ struct LoginUiState {
     /// inherits XDG_SESSION_ID / XDG_SEAT / XDG_VTNR from pam_systemd.
     pam_env: Vec<(String, String)>,
     pending_power: Option<PendingPowerAction>,
+    keyboard_status: KeyboardStatus,
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -338,18 +339,37 @@ impl LoginUiState {
             * (t * FAILED_SHAKE_FREQ_HZ * 2.0 * std::f32::consts::PI).sin()
     }
 
-    fn hint(&self) -> &'static str {
+    fn hint(&self) -> String {
         if let Some(action) = self.pending_power_action() {
             return match action {
                 PowerAction::PowerOff => "Nochmal klicken zum Ausschalten",
                 PowerAction::Reboot => "Nochmal klicken für Neustart",
-            };
+            }
+            .to_string();
         }
+        let layout = keyboard_layout_label(&self.keyboard_status);
         match self.phase {
-            InputPhase::Editing => "Enter zum Anmelden",
-            InputPhase::Authenticating => "Anmelden …",
-            InputPhase::Failed(_) => "Falsche Anmeldedaten",
+            InputPhase::Editing if self.keyboard_status.caps_lock => {
+                format!("Caps Lock aktiv - Layout {layout}")
+            }
+            InputPhase::Editing => format!("Enter zum Anmelden - Layout {layout}"),
+            InputPhase::Authenticating => "Anmelden …".to_string(),
+            InputPhase::Failed(_) => "Falsche Anmeldedaten".to_string(),
         }
+    }
+}
+
+fn keyboard_layout_label(status: &KeyboardStatus) -> String {
+    let layout = status
+        .layout
+        .split(',')
+        .next()
+        .unwrap_or(status.layout.as_str())
+        .trim();
+    if layout.is_empty() {
+        "DE".to_string()
+    } else {
+        layout.to_uppercase()
     }
 }
 
@@ -439,6 +459,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut keyboards = open_keyboards()?;
     let mut pointers = open_pointers()?;
     let mut keyboard = Keyboard::new().map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+    ui_state.keyboard_status = keyboard.status();
     let mut pointer = PointerState::new(w, h);
 
     let exit = run_animation(
@@ -804,7 +825,13 @@ fn run_animation(
             // Ignore key events during Authenticating or Failed — they would
             // queue up against the next Editing window otherwise.
             let accept_input = matches!(ui_state.phase, InputPhase::Editing);
-            for action in poll_keyboards(keyboards, keyboard) {
+            let actions = poll_keyboards(keyboards, keyboard);
+            let keyboard_status = keyboard.status();
+            if ui_state.keyboard_status != keyboard_status {
+                ui_state.keyboard_status = keyboard_status;
+                redraw = true;
+            }
+            for action in actions {
                 if !accept_input {
                     continue;
                 }
@@ -1376,7 +1403,7 @@ fn draw_login_ui(
     painter.render_text_centered(
         pm,
         TextStyle::SansBold(13.0),
-        hint_text,
+        &hint_text,
         cx,
         hint_y,
         hint_color_phase,
@@ -1840,11 +1867,23 @@ mod tests {
     #[test]
     fn hint_changes_with_phase() {
         let mut s = LoginUiState::default();
-        assert_eq!(s.hint(), "Enter zum Anmelden");
+        assert_eq!(s.hint(), "Enter zum Anmelden - Layout DE");
         s.phase = InputPhase::Authenticating;
         assert_eq!(s.hint(), "Anmelden …");
         s.phase = InputPhase::Failed(Instant::now());
         assert_eq!(s.hint(), "Falsche Anmeldedaten");
+    }
+
+    #[test]
+    fn hint_warns_when_caps_lock_is_active() {
+        let s = LoginUiState {
+            keyboard_status: KeyboardStatus {
+                layout: "de".to_string(),
+                caps_lock: true,
+            },
+            ..Default::default()
+        };
+        assert_eq!(s.hint(), "Caps Lock aktiv - Layout DE");
     }
 
     #[test]
