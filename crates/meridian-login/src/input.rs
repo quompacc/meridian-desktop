@@ -1,7 +1,7 @@
 // Keyboard input handling for meridian-login.
 //
-// Opens every /dev/input/event* device that exposes EV_KEY + KEY_A (i.e. a
-// keyboard), sets them non-blocking, and translates raw evdev key events
+// Opens every /dev/input/event* device that exposes keyboard keys, sets them
+// non-blocking, and translates raw evdev key events
 // into [`KeyAction`]s using xkbcommon for layout-aware utf8 production.
 //
 // The render loop is expected to call [`poll_keyboards`] once per frame and
@@ -171,6 +171,13 @@ impl Keyboard {
             return None;
         }
 
+        if KeyCode(raw_code) == KeyCode::KEY_KPENTER {
+            return Some(KeyAction::Submit);
+        }
+        if let Some(digit) = keypad_digit(raw_code) {
+            return Some(KeyAction::Insert(digit.to_string()));
+        }
+
         let sym = self.state.key_get_one_sym(xkb_code);
         match sym {
             xkb::Keysym::Tab => Some(KeyAction::CycleFocus),
@@ -194,7 +201,42 @@ impl Keyboard {
     }
 }
 
-/// Open all event* nodes under /dev/input that expose at least KEY_A.
+fn is_keyboard_keyset(keys: &evdev::AttributeSetRef<KeyCode>) -> bool {
+    keys.contains(KeyCode::KEY_A)
+        || keys.contains(KeyCode::KEY_KPENTER)
+        || [
+            KeyCode::KEY_KP0,
+            KeyCode::KEY_KP1,
+            KeyCode::KEY_KP2,
+            KeyCode::KEY_KP3,
+            KeyCode::KEY_KP4,
+            KeyCode::KEY_KP5,
+            KeyCode::KEY_KP6,
+            KeyCode::KEY_KP7,
+            KeyCode::KEY_KP8,
+            KeyCode::KEY_KP9,
+        ]
+        .iter()
+        .any(|key| keys.contains(*key))
+}
+
+fn keypad_digit(raw_code: u16) -> Option<&'static str> {
+    match KeyCode(raw_code) {
+        KeyCode::KEY_KP0 => Some("0"),
+        KeyCode::KEY_KP1 => Some("1"),
+        KeyCode::KEY_KP2 => Some("2"),
+        KeyCode::KEY_KP3 => Some("3"),
+        KeyCode::KEY_KP4 => Some("4"),
+        KeyCode::KEY_KP5 => Some("5"),
+        KeyCode::KEY_KP6 => Some("6"),
+        KeyCode::KEY_KP7 => Some("7"),
+        KeyCode::KEY_KP8 => Some("8"),
+        KeyCode::KEY_KP9 => Some("9"),
+        _ => None,
+    }
+}
+
+/// Open all event* nodes under /dev/input that expose keyboard keys.
 pub fn open_keyboards() -> std::io::Result<Vec<Device>> {
     let mut devs = Vec::new();
     let dir = match std::fs::read_dir("/dev/input") {
@@ -216,7 +258,7 @@ pub fn open_keyboards() -> std::io::Result<Vec<Device>> {
             Ok(mut dev) => {
                 let is_keyboard = dev
                     .supported_keys()
-                    .map(|k| k.contains(evdev::KeyCode::KEY_A))
+                    .map(is_keyboard_keyset)
                     .unwrap_or(false);
                 if !is_keyboard {
                     continue;
@@ -470,5 +512,23 @@ mod tests {
         let action = kb.process(29, 1);
         // Pressing the modifier by itself does not insert text.
         assert!(!matches!(action, Some(KeyAction::Insert(_))));
+    }
+
+    #[test]
+    fn process_maps_keypad_digits_without_numlock() {
+        let mut kb = Keyboard::new().unwrap();
+        // Raw evdev keypad codes are handled before xkb/NumLock state so
+        // PIN entry works with standalone numpads and with NumLock off.
+        assert_eq!(kb.process(79, 1), Some(KeyAction::Insert("1".into())));
+        assert_eq!(kb.process(80, 1), Some(KeyAction::Insert("2".into())));
+        assert_eq!(kb.process(81, 1), Some(KeyAction::Insert("3".into())));
+        assert_eq!(kb.process(82, 1), Some(KeyAction::Insert("0".into())));
+    }
+
+    #[test]
+    fn process_maps_keypad_enter_to_submit() {
+        let mut kb = Keyboard::new().unwrap();
+        // KEY_KPENTER = 96 in evdev.
+        assert_eq!(kb.process(96, 1), Some(KeyAction::Submit));
     }
 }

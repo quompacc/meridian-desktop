@@ -76,7 +76,7 @@ const UI_FADE_START_MS: u64 = 1700;
 const UI_FADE_END_MS: u64 = 2000;
 const GLOW_HIDE_MS: u64 = 1700;
 const GLOW_FINAL_SCALE: f32 = 4.0;
-const MAX_FIELD_LEN: usize = 128;
+const MAX_FIELD_LEN: usize = 64;
 const POWER_CONFIRM_WINDOW: Duration = Duration::from_secs(3);
 const SECURITY_KEY_POLL_INTERVAL: Duration = Duration::from_secs(1);
 const YUBICO_USB_VENDOR_ID: &str = "1050";
@@ -88,10 +88,12 @@ type PowerButtonRects = (Rect, Rect);
 const CARD_PAD: f32 = 32.0;
 const METRO_STRIPE_HEIGHT: f32 = 4.0;
 const TITLE_OFFSET_Y: f32 = 31.0;
-const USER_LABEL_OFFSET_Y: f32 = 76.0;
 const USER_BOX_OFFSET_Y: f32 = 88.0;
-const PASSWORD_LABEL_OFFSET_Y: f32 = 138.0;
 const PASSWORD_BOX_OFFSET_Y: f32 = 150.0;
+const SMARTCARD_ICON_TOP: f32 = 52.0;
+const SMARTCARD_PIN_LABEL_OFFSET_Y: f32 = 148.0;
+const SMARTCARD_PIN_BOX_OFFSET_Y: f32 = 160.0;
+const SMARTCARD_PIN_WIDTH: f32 = 168.0;
 const INPUT_BOX_HEIGHT: f32 = 36.0;
 const INPUT_TEXT_PAD_X: f32 = 12.0;
 const INPUT_BASELINE_PAD_BOTTOM: f32 = 12.0;
@@ -158,8 +160,8 @@ enum InputPhase {
 
 #[derive(Default, Clone, Copy, PartialEq, Debug)]
 enum Field {
-    #[default]
     Username,
+    #[default]
     Password,
 }
 
@@ -211,51 +213,22 @@ impl LoginUiState {
         self.pending_power = None;
         match action {
             KeyAction::Insert(s) => {
-                let target: &mut String = if self.smartcard_login_ready() {
-                    &mut self.password
-                } else {
-                    match self.focus {
-                        Field::Username => &mut self.username,
-                        Field::Password => &mut self.password,
-                    }
-                };
+                let target: &mut String = &mut self.password;
                 if target.chars().count() + s.chars().count() <= MAX_FIELD_LEN {
                     target.push_str(&s);
                 }
                 ControlFlow::Continue
             }
             KeyAction::Backspace => {
-                let target: &mut String = if self.smartcard_login_ready() {
-                    &mut self.password
-                } else {
-                    match self.focus {
-                        Field::Username => &mut self.username,
-                        Field::Password => &mut self.password,
-                    }
-                };
-                target.pop();
+                self.password.pop();
                 ControlFlow::Continue
             }
             KeyAction::CycleFocus => {
-                if self.smartcard_login_ready() {
-                    self.focus = Field::Password;
-                } else {
-                    self.focus = match self.focus {
-                        Field::Username => Field::Password,
-                        Field::Password => Field::Username,
-                    };
-                }
+                self.focus = Field::Password;
                 ControlFlow::Continue
             }
             KeyAction::CycleFocusBack => {
-                if self.smartcard_login_ready() {
-                    self.focus = Field::Password;
-                } else {
-                    self.focus = match self.focus {
-                        Field::Username => Field::Password,
-                        Field::Password => Field::Username,
-                    };
-                }
+                self.focus = Field::Password;
                 ControlFlow::Continue
             }
             KeyAction::Submit => ControlFlow::Submit,
@@ -272,6 +245,7 @@ impl LoginUiState {
             self.reject();
             return;
         };
+        self.username = username.clone();
         let pin = Zeroizing::new(self.password.to_string());
         let (rx, driver) = start_auth_session(username, pin);
         self.auth_rx = Some(rx);
@@ -402,12 +376,10 @@ impl LoginUiState {
     }
 
     fn auth_username(&self) -> Option<String> {
-        if self.security_key_present {
+        if self.smartcard_login_ready() {
             self.smartcard_user.clone()
-        } else if self.username.is_empty() {
-            None
         } else {
-            Some(self.username.clone())
+            None
         }
     }
 
@@ -989,14 +961,7 @@ fn run_animation(
                 }
                 match action {
                     PointerAction::LeftPress { x, y } => {
-                        match click_target_at(
-                            w as f32,
-                            h as f32,
-                            x,
-                            y,
-                            shake_dx,
-                            ui_state.smartcard_login_ready(),
-                        ) {
+                        match click_target_at(w as f32, h as f32, x, y, shake_dx, true) {
                             Some(ClickTarget::Field(field)) => {
                                 ui_state.focus = field;
                                 ui_state.pending_power = None;
@@ -1128,20 +1093,37 @@ fn click_target_at(
     let user_box_top = inner_top + USER_BOX_OFFSET_Y;
     let pwd_box_top = inner_top + PASSWORD_BOX_OFFSET_Y;
 
-    if !smartcard_mode && point_in_rect(x, y, inner_left, user_box_top, inner_w, INPUT_BOX_HEIGHT) {
-        Some(ClickTarget::Field(Field::Username))
-    } else if point_in_rect(x, y, inner_left, pwd_box_top, inner_w, INPUT_BOX_HEIGHT) {
-        Some(ClickTarget::Field(Field::Password))
-    } else {
-        let (restart, poweroff) = power_button_rects(w, h, shake_dx);
-        if point_in_rect(x, y, restart.0, restart.1, restart.2, restart.3) {
-            Some(ClickTarget::Reboot)
-        } else if point_in_rect(x, y, poweroff.0, poweroff.1, poweroff.2, poweroff.3) {
-            Some(ClickTarget::PowerOff)
-        } else {
-            None
+    if smartcard_mode {
+        let pin = smartcard_pin_rect(w, h, shake_dx);
+        if point_in_rect(x, y, pin.0, pin.1, pin.2, pin.3) {
+            return Some(ClickTarget::Field(Field::Password));
         }
+    } else if point_in_rect(x, y, inner_left, user_box_top, inner_w, INPUT_BOX_HEIGHT) {
+        return Some(ClickTarget::Field(Field::Username));
+    } else if point_in_rect(x, y, inner_left, pwd_box_top, inner_w, INPUT_BOX_HEIGHT) {
+        return Some(ClickTarget::Field(Field::Password));
     }
+
+    let (restart, poweroff) = power_button_rects(w, h, shake_dx);
+    if point_in_rect(x, y, restart.0, restart.1, restart.2, restart.3) {
+        Some(ClickTarget::Reboot)
+    } else if point_in_rect(x, y, poweroff.0, poweroff.1, poweroff.2, poweroff.3) {
+        Some(ClickTarget::PowerOff)
+    } else {
+        None
+    }
+}
+
+fn smartcard_pin_rect(w: f32, h: f32, shake_dx: f32) -> Rect {
+    let (card_left_raw, card_top, cw, _) = card_rect(w, h);
+    let card_left = card_left_raw + shake_dx;
+    let inner_top = card_top + CARD_PAD;
+    (
+        card_left + cw / 2.0 - SMARTCARD_PIN_WIDTH / 2.0,
+        inner_top + SMARTCARD_PIN_BOX_OFFSET_Y,
+        SMARTCARD_PIN_WIDTH,
+        INPUT_BOX_HEIGHT,
+    )
 }
 
 fn power_button_rects(w: f32, h: f32, shake_dx: f32) -> PowerButtonRects {
@@ -1446,9 +1428,7 @@ fn draw_login_ui(
 ) {
     let (card_left_raw, card_top, cw, _ch) = card_rect(w, h);
     let card_left = card_left_raw + shake_dx;
-    let inner_left = card_left + CARD_PAD;
     let inner_top = card_top + CARD_PAD;
-    let inner_w = cw - 2.0 * CARD_PAD;
     let cx = card_left + cw / 2.0;
 
     let text_color = metro_text(alpha);
@@ -1460,107 +1440,53 @@ fn draw_login_ui(
     let box_outline = metro_border(alpha);
     let smartcard_ready = ui.smartcard_login_ready();
 
-    draw_security_key_badge(
-        pm,
-        painter,
-        inner_left,
-        inner_top + 8.0,
-        alpha,
-        ui.security_key_present,
-    );
-
-    // Title
     painter.render_text_centered(
         pm,
-        TextStyle::SansBold(24.0),
-        if smartcard_ready {
-            "Smartcard"
-        } else {
-            "Meridian"
-        },
+        TextStyle::SansBold(20.0),
+        "Smartcard",
         cx,
         inner_top + TITLE_OFFSET_Y,
         title_color,
     );
 
-    let label_size = 14.0;
     let text_size = 22.0;
 
-    if smartcard_ready {
-        painter.render_text_centered(
-            pm,
-            TextStyle::SansBold(14.0),
-            "YubiKey bereit",
-            cx,
-            inner_top + USER_BOX_OFFSET_Y + INPUT_BOX_HEIGHT / 2.0,
-            label_color,
-        );
-    } else {
-        // Username row
-        let user_label_y = inner_top + USER_LABEL_OFFSET_Y;
-        painter.render_text_left(
-            pm,
-            TextStyle::SansBold(label_size),
-            "User",
-            inner_left,
-            user_label_y,
-            label_color,
-        );
-        let user_box_top = inner_top + USER_BOX_OFFSET_Y;
-        draw_input_box(
-            pm,
-            inner_left,
-            user_box_top,
-            inner_w,
-            INPUT_BOX_HEIGHT,
-            box_fill,
-            box_outline,
-            ui.focus == Field::Username,
-            alpha,
-        );
-        let user_text_x = inner_left + INPUT_TEXT_PAD_X;
-        let user_baseline = user_box_top + INPUT_BOX_HEIGHT - INPUT_BASELINE_PAD_BOTTOM;
-        let after_user = painter.render_text_left(
-            pm,
-            TextStyle::SansBold(text_size),
-            &ui.username,
-            user_text_x,
-            user_baseline,
-            text_color,
-        );
-        if ui.focus == Field::Username && caret_on {
-            draw_caret(pm, after_user, user_baseline, text_size, caret_color);
-        }
-    }
-
-    // Password row
-    let pwd_label_y = inner_top + PASSWORD_LABEL_OFFSET_Y;
-    painter.render_text_left(
+    draw_yubikey_icon(
         pm,
-        TextStyle::SansBold(label_size),
+        cx,
+        inner_top + SMARTCARD_ICON_TOP,
+        alpha,
+        ui.security_key_present,
+    );
+
+    painter.render_text_centered(
+        pm,
+        TextStyle::SansBold(13.0),
         if smartcard_ready {
-            "YubiKey PIN"
+            "PIN"
+        } else if ui.security_key_present {
+            "nicht registriert"
         } else {
-            "Passwort"
+            "YubiKey fehlt"
         },
-        inner_left,
-        pwd_label_y,
+        cx,
+        inner_top + SMARTCARD_PIN_LABEL_OFFSET_Y,
         label_color,
     );
-    let pwd_box_top = inner_top + PASSWORD_BOX_OFFSET_Y;
+    let pin_rect = smartcard_pin_rect(w, h, shake_dx);
     draw_input_box(
         pm,
-        inner_left,
-        pwd_box_top,
-        inner_w,
-        INPUT_BOX_HEIGHT,
+        pin_rect.0,
+        pin_rect.1,
+        pin_rect.2,
+        pin_rect.3,
         box_fill,
         box_outline,
-        ui.focus == Field::Password,
+        true,
         alpha,
     );
-    let pwd_text_x = inner_left + INPUT_TEXT_PAD_X;
-    let pwd_baseline = pwd_box_top + INPUT_BOX_HEIGHT - INPUT_BASELINE_PAD_BOTTOM;
+    let pwd_text_x = pin_rect.0 + INPUT_TEXT_PAD_X;
+    let pwd_baseline = pin_rect.1 + INPUT_BOX_HEIGHT - INPUT_BASELINE_PAD_BOTTOM;
     let dots = "•".repeat(ui.password.chars().count());
     let after_pwd = painter.render_text_left(
         pm,
@@ -1570,7 +1496,7 @@ fn draw_login_ui(
         pwd_baseline,
         text_color,
     );
-    if ui.focus == Field::Password && caret_on {
+    if caret_on {
         draw_caret(pm, after_pwd, pwd_baseline, text_size, caret_color);
     }
 
@@ -1601,14 +1527,8 @@ fn draw_login_ui(
     );
 }
 
-fn draw_security_key_badge(
-    pm: &mut PixmapMut,
-    painter: &CompassPainter,
-    x: f32,
-    y: f32,
-    alpha: f32,
-    present: bool,
-) {
+fn draw_yubikey_icon(pm: &mut PixmapMut, cx: f32, y: f32, alpha: f32, present: bool) {
+    let x = cx - 30.0;
     let accent = if present {
         metro_success(alpha)
     } else {
@@ -1624,62 +1544,97 @@ fn draw_security_key_badge(
         if present { 0.18 } else { 0.08 },
         alpha_byte(alpha, 224.0),
     );
-    let card = rounded_rect_path(x, y, 66.0, 40.0, 0.0);
+
+    let usb = rounded_rect_path(cx - 17.0, y - 13.0, 34.0, 18.0, 2.0);
+    let mut usb_fill = Paint::default();
+    usb_fill.set_color(mix_color(
+        metro_surface(1.0),
+        metro_text_dim(1.0),
+        0.22,
+        alpha_byte(alpha, 230.0),
+    ));
+    usb_fill.anti_alias = true;
+    pm.fill_path(
+        &usb,
+        &usb_fill,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
+    draw_card_stroke(pm, &usb, metro_border(alpha), 1.0);
+
+    for offset in [-9.0, 0.0, 9.0] {
+        let contact = rounded_rect_path(cx + offset - 2.0, y - 8.0, 4.0, 8.0, 1.0);
+        let mut contact_fill = Paint::default();
+        contact_fill.set_color(color_with_alpha(
+            metro_accent(1.0),
+            alpha_byte(alpha, 160.0),
+        ));
+        contact_fill.anti_alias = true;
+        pm.fill_path(
+            &contact,
+            &contact_fill,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+
+    let card = rounded_rect_path(x, y, 60.0, 82.0, 6.0);
     let mut fill = Paint::default();
     fill.set_color(body);
     fill.anti_alias = true;
     pm.fill_path(&card, &fill, FillRule::Winding, Transform::identity(), None);
-    draw_card_stroke(pm, &card, accent, 1.0);
+    draw_card_stroke(pm, &card, accent, if present { 2.0 } else { 1.0 });
 
-    let chip = rounded_rect_path(x + 8.0, y + 10.0, 18.0, 18.0, 2.0);
-    let mut chip_fill = Paint::default();
-    chip_fill.set_color(metro_surface_alt(alpha));
-    chip_fill.anti_alias = true;
+    let top_cut = rounded_rect_path(cx - 13.0, y + 7.0, 26.0, 8.0, 2.0);
+    let mut cut_fill = Paint::default();
+    cut_fill.set_color(metro_background(alpha));
+    cut_fill.anti_alias = true;
     pm.fill_path(
-        &chip,
-        &chip_fill,
+        &top_cut,
+        &cut_fill,
         FillRule::Winding,
         Transform::identity(),
         None,
     );
-    draw_card_stroke(pm, &chip, accent, 1.0);
 
-    for offset in [0.0, 6.0, 12.0] {
-        let mut pb = PathBuilder::new();
-        pb.move_to(x + 10.0, y + 14.0 + offset);
-        pb.line_to(x + 24.0, y + 14.0 + offset);
-        if let Some(path) = pb.finish() {
-            draw_card_stroke(pm, &path, metro_border(alpha), 0.8);
-        }
-    }
+    let touch = rounded_rect_path(cx - 16.0, y + 29.0, 32.0, 32.0, 16.0);
+    let mut touch_fill = Paint::default();
+    touch_fill.set_color(mix_color(
+        metro_background(1.0),
+        if present {
+            metro_success(1.0)
+        } else {
+            metro_surface(1.0)
+        },
+        if present { 0.28 } else { 0.1 },
+        alpha_byte(alpha, 238.0),
+    ));
+    touch_fill.anti_alias = true;
+    pm.fill_path(
+        &touch,
+        &touch_fill,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
+    draw_card_stroke(pm, &touch, accent, 2.0);
 
-    let status = rounded_rect_path(x + 52.0, y + 8.0, 6.0, 6.0, 3.0);
-    let mut status_fill = Paint::default();
-    status_fill.set_color(if present {
+    let dot = rounded_rect_path(cx - 3.0, y + 70.0, 6.0, 6.0, 3.0);
+    let mut dot_fill = Paint::default();
+    dot_fill.set_color(if present {
         metro_success(alpha)
     } else {
-        metro_text_dim(alpha * 0.45)
+        metro_text_dim(alpha * 0.35)
     });
-    status_fill.anti_alias = true;
+    dot_fill.anti_alias = true;
     pm.fill_path(
-        &status,
-        &status_fill,
+        &dot,
+        &dot_fill,
         FillRule::Winding,
         Transform::identity(),
         None,
-    );
-
-    painter.render_text_left(
-        pm,
-        TextStyle::SansBold(9.0),
-        if present { "KEY" } else { "USB" },
-        x + 32.0,
-        y + 27.0,
-        if present {
-            metro_text(alpha)
-        } else {
-            metro_text_dim(alpha * 0.8)
-        },
     );
 }
 
@@ -2072,6 +2027,22 @@ mod tests {
     }
 
     #[test]
+    fn smartcard_mode_focuses_short_pin_field() {
+        let pin = smartcard_pin_rect(1920.0, 1080.0, 0.0);
+        assert_eq!(
+            click_target_at(
+                1920.0,
+                1080.0,
+                pin.0 + pin.2 / 2.0,
+                pin.1 + pin.3 / 2.0,
+                0.0,
+                true
+            ),
+            Some(ClickTarget::Field(Field::Password))
+        );
+    }
+
+    #[test]
     fn power_action_requires_second_matching_click() {
         let mut s = LoginUiState::default();
         assert_eq!(s.confirm_power_action(PowerAction::Reboot), None);
@@ -2107,9 +2078,9 @@ mod tests {
     }
 
     #[test]
-    fn insert_appends_to_focused_field() {
+    fn insert_appends_to_pin_field() {
         let mut s = LoginUiState::default();
-        assert_eq!(s.focus, Field::Username);
+        assert_eq!(s.focus, Field::Password);
         assert_eq!(
             s.apply(KeyAction::Insert("a".into())),
             ControlFlow::Continue
@@ -2118,34 +2089,29 @@ mod tests {
             s.apply(KeyAction::Insert("b".into())),
             ControlFlow::Continue
         );
-        assert_eq!(s.username, "ab");
-        assert!(s.password.is_empty());
-
-        s.focus = Field::Password;
-        s.apply(KeyAction::Insert("x".into()));
-        assert_eq!(s.username, "ab");
-        assert_eq!(s.password.as_str(), "x");
+        assert_eq!(s.username, "");
+        assert_eq!(s.password.as_str(), "ab");
     }
 
     #[test]
-    fn backspace_removes_last_char_from_focused_field() {
+    fn backspace_removes_last_char_from_pin_field() {
         let mut s = LoginUiState::default();
         s.apply(KeyAction::Insert("abc".into()));
         s.apply(KeyAction::Backspace);
-        assert_eq!(s.username, "ab");
+        assert_eq!(s.password.as_str(), "ab");
         s.apply(KeyAction::Backspace);
         s.apply(KeyAction::Backspace);
         s.apply(KeyAction::Backspace); // no-op on empty
-        assert_eq!(s.username, "");
+        assert_eq!(s.password.as_str(), "");
     }
 
     #[test]
-    fn cycle_focus_toggles_between_username_and_password() {
+    fn cycle_focus_keeps_pin_field() {
         let mut s = LoginUiState::default();
         s.apply(KeyAction::CycleFocus);
         assert_eq!(s.focus, Field::Password);
         s.apply(KeyAction::CycleFocus);
-        assert_eq!(s.focus, Field::Username);
+        assert_eq!(s.focus, Field::Password);
     }
 
     #[test]
@@ -2264,6 +2230,6 @@ mod tests {
         for _ in 0..MAX_FIELD_LEN + 16 {
             s.apply(KeyAction::Insert("a".into()));
         }
-        assert_eq!(s.username.chars().count(), MAX_FIELD_LEN);
+        assert_eq!(s.password.chars().count(), MAX_FIELD_LEN);
     }
 }
