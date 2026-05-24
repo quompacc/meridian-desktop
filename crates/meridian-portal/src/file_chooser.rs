@@ -26,34 +26,33 @@ impl FileChooserImpl {
         let directory = bool_opt(&options, "directory");
         debug!("OpenFile title={title:?} multiple={multiple} directory={directory}");
 
-        let mut cmd = Command::new("/usr/bin/zenity");
-        cmd.arg("--file-selection").arg("--title").arg(title);
-        if multiple {
-            cmd.arg("--multiple").arg("--separator").arg("|");
-        }
-        if directory {
-            cmd.arg("--directory");
-        }
+        let mut cmd = Command::new("/usr/local/bin/meridian-file-picker");
+        cmd.arg("--title").arg(title);
+        if multiple { cmd.arg("--multiple"); }
+        if directory { cmd.arg("--directory"); }
         forward_env(&mut cmd);
 
         match cmd.output().await {
             Ok(out) if out.status.success() => {
                 let stdout = String::from_utf8_lossy(&out.stdout);
                 let uris: Vec<String> = stdout
-                    .trim()
-                    .split('|')
+                    .lines()
+                    .map(str::trim)
                     .filter(|s| !s.is_empty())
                     .map(|p| path_to_uri(p))
                     .collect();
                 info!("OpenFile: {} file(s) selected", uris.len());
                 (0, uris_asv(uris))
             }
-            Ok(_) => {
-                info!("OpenFile: cancelled");
+            Ok(out) => {
+                let code = out.status.code().unwrap_or(-1);
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                info!("OpenFile: cancelled (exit={code}) stderr={stderr:?} stdout={stdout:?}");
                 (1, Asv::new())
             }
             Err(e) => {
-                warn!("OpenFile: zenity error: {e}");
+                warn!("OpenFile: picker error: {e}");
                 (2, Asv::new())
             }
         }
@@ -70,8 +69,8 @@ impl FileChooserImpl {
         let current_name = str_opt(&options, "current_name").map(str::to_owned);
         debug!("SaveFile title={title:?}");
 
-        let mut cmd = Command::new("/usr/bin/zenity");
-        cmd.arg("--file-selection").arg("--save").arg("--title").arg(title);
+        let mut cmd = Command::new("/usr/local/bin/meridian-file-picker");
+        cmd.arg("--save").arg("--title").arg(title);
         if let Some(ref name) = current_name {
             cmd.arg("--filename").arg(name);
         }
@@ -89,7 +88,7 @@ impl FileChooserImpl {
             }
             Ok(_) => (1, Asv::new()),
             Err(e) => {
-                warn!("SaveFile: zenity error: {e}");
+                warn!("SaveFile: picker error: {e}");
                 (2, Asv::new())
             }
         }
@@ -104,11 +103,8 @@ impl FileChooserImpl {
         _options: Asv,
     ) -> (u32, Asv) {
         debug!("SaveFiles title={title:?} (directory picker)");
-        let mut cmd = Command::new("/usr/bin/zenity");
-        cmd.arg("--file-selection")
-            .arg("--directory")
-            .arg("--title")
-            .arg(title);
+        let mut cmd = Command::new("/usr/local/bin/meridian-file-picker");
+        cmd.arg("--directory").arg("--title").arg(title);
         forward_env(&mut cmd);
 
         match cmd.output().await {
@@ -122,7 +118,7 @@ impl FileChooserImpl {
             }
             Ok(_) => (1, Asv::new()),
             Err(e) => {
-                warn!("SaveFiles: zenity error: {e}");
+                warn!("SaveFiles: picker error: {e}");
                 (2, Asv::new())
             }
         }
@@ -172,10 +168,11 @@ fn path_to_uri(path: &str) -> String {
 }
 
 fn forward_env(cmd: &mut Command) {
-    for var in ["WAYLAND_DISPLAY", "DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"] {
+    for var in ["WAYLAND_DISPLAY", "DISPLAY", "XDG_RUNTIME_DIR"] {
         if let Ok(val) = std::env::var(var) {
             cmd.env(var, val);
         }
     }
+    // GTK3 GtkFileChooserDialog — never touches the portal.
     cmd.env("GDK_BACKEND", "wayland");
 }

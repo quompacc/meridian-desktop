@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""Minimal GTK3 file picker for meridian-portal — never calls xdg-desktop-portal."""
+import sys
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk
+
+args = sys.argv[1:]
+
+def has_flag(flag):
+    return flag in args
+
+def get_opt(flag):
+    try:
+        i = args.index(flag)
+        return args[i + 1]
+    except (ValueError, IndexError):
+        return None
+
+if has_flag('--directory') or has_flag('--save-dir'):
+    action = Gtk.FileChooserAction.SELECT_FOLDER
+elif has_flag('--save'):
+    action = Gtk.FileChooserAction.SAVE
+else:
+    action = Gtk.FileChooserAction.OPEN
+
+title = get_opt('--title') or ('Select Folder' if action == Gtk.FileChooserAction.SELECT_FOLDER else
+                                'Save File'    if action == Gtk.FileChooserAction.SAVE else
+                                'Open File')
+
+ok_label = get_opt('--ok-label') or (
+    'Select' if action == Gtk.FileChooserAction.SELECT_FOLDER else
+    'Save'   if action == Gtk.FileChooserAction.SAVE else
+    'Open'
+)
+
+dialog = Gtk.FileChooserDialog(title=title, parent=None, action=action)
+dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, ok_label, Gtk.ResponseType.OK)
+
+if has_flag('--multiple'):
+    dialog.set_select_multiple(True)
+
+if action == Gtk.FileChooserAction.SAVE:
+    dialog.set_do_overwrite_confirmation(True)
+    current = get_opt('--filename')
+    if current:
+        dialog.set_current_name(current)
+
+result = dialog.run()
+if result == Gtk.ResponseType.OK:
+    if dialog.get_select_multiple():
+        for path in dialog.get_filenames():
+            print(path)
+    else:
+        path = dialog.get_filename()
+        if path:
+            print(path)
+    dialog.destroy()
+    sys.exit(0)
+else:
+    dialog.destroy()
+    sys.exit(1)
