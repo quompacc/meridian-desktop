@@ -355,7 +355,34 @@ impl Widget for PanelChip {
         // speak for itself.
         let is_launcher = self.id == "panel-launcher";
 
-        if !is_launcher {
+        if is_launcher {
+            let halo_color = match state {
+                WidgetState::Idle => None,
+                WidgetState::Hovered => Some(
+                    theme
+                        .palette
+                        .accent
+                        .lerp(Color::rgb(0xff, 0xff, 0xff), 0.10),
+                ),
+                WidgetState::Pressed => Some(theme.palette.accent.lerp(Color::rgb(0, 0, 0), 0.18)),
+            };
+            if let Some(mut color) = halo_color {
+                color.a = match state {
+                    WidgetState::Hovered => 74,
+                    WidgetState::Pressed => 96,
+                    WidgetState::Idle => 0,
+                };
+                let halo = Rect {
+                    x: area.x + 1,
+                    y: 2,
+                    width: area.width - 2,
+                    height: PANEL_H - 4,
+                };
+                if let Some(ref path) = rounded_rect_path(halo, 8) {
+                    paint_fill(canvas, path, color);
+                }
+            }
+        } else {
             let bg = if self.active {
                 theme.palette.border
             } else {
@@ -382,7 +409,7 @@ impl Widget for PanelChip {
             // oversized rose extends slightly above/below the chip's
             // own rectangle, not just within it.
             let y = if is_launcher {
-                (PANEL_H - ih) / 2
+                (PANEL_H - ih) / 2 + if state == WidgetState::Pressed { 1 } else { 0 }
             } else {
                 area.y + (area.height - ACCENT_LINE_H - ih) / 2
             };
