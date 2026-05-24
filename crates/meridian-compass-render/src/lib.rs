@@ -201,15 +201,19 @@ impl<'a> CompassPainter<'a> {
         let cy = h / 2.0;
         let r = (w.min(h) * self.style.radius_factor).round();
         let needle_length = r * 0.78;
+        let visual_t = if opts.force_needle_north { SETTLE_T } else { t };
         let angle = if opts.force_needle_north {
             1080.0
         } else {
             needle_angle_deg(t)
         };
 
-        draw_background(pm, w, h, cx, cy, &self.style);
+        draw_background(pm, w, h, cx, cy, visual_t, &self.style);
+        draw_compass_shadow(pm, cx, cy, r, &self.style);
         draw_meridian_lines(pm, cx, cy, r, &self.style);
+        draw_sweep_glint(pm, cx, cy, r, visual_t, &self.style);
         draw_scale_ring(pm, cx, cy, r, &self.style);
+        draw_rose_shadow(pm, cx, cy, r * 0.72);
         draw_rose(pm, cx, cy, r * 0.72, &self.style);
         if opts.include_north_glow {
             draw_needle_glow(pm, cx, cy, needle_length, angle, &self.style);
@@ -362,9 +366,20 @@ pub fn needle_angle_deg(t: f32) -> f32 {
 
 // ---- internal layers ----
 
-fn draw_background(pm: &mut PixmapMut, w: f32, h: f32, cx: f32, cy: f32, style: &Style) {
+fn color_with_alpha(color: Color, alpha: u8) -> Color {
+    Color::from_rgba8(
+        (color.red() * 255.0) as u8,
+        (color.green() * 255.0) as u8,
+        (color.blue() * 255.0) as u8,
+        alpha,
+    )
+}
+
+fn draw_background(pm: &mut PixmapMut, w: f32, h: f32, cx: f32, cy: f32, t: f32, style: &Style) {
+    let drift_x = (t * 0.18).sin() * w.min(h) * 0.018;
+    let drift_y = (t * 0.14).cos() * w.min(h) * 0.014;
     let shader = tiny_skia::RadialGradient::new(
-        tiny_skia::Point::from_xy(cx, cy),
+        tiny_skia::Point::from_xy(cx + drift_x, cy + drift_y),
         tiny_skia::Point::from_xy(cx, cy),
         (w.max(h)) * 0.75,
         vec![
@@ -383,6 +398,74 @@ fn draw_background(pm: &mut PixmapMut, w: f32, h: f32, cx: f32, cy: f32, style: 
     };
     let rect = Rect::from_xywh(0.0, 0.0, w, h).unwrap();
     pm.fill_rect(rect, &paint, Transform::identity(), None);
+
+    let vignette = tiny_skia::RadialGradient::new(
+        tiny_skia::Point::from_xy(cx, cy),
+        tiny_skia::Point::from_xy(cx, cy),
+        (w.max(h)) * 0.62,
+        vec![
+            tiny_skia::GradientStop::new(0.0, Color::from_rgba8(0, 0, 0, 0)),
+            tiny_skia::GradientStop::new(0.72, Color::from_rgba8(0, 0, 0, 35)),
+            tiny_skia::GradientStop::new(1.0, Color::from_rgba8(0, 0, 0, 150)),
+        ],
+        tiny_skia::SpreadMode::Pad,
+        Transform::identity(),
+    )
+    .unwrap_or(Shader::SolidColor(Color::from_rgba8(0, 0, 0, 80)));
+    let vignette_paint = Paint {
+        shader: vignette,
+        blend_mode: BlendMode::SourceOver,
+        ..Default::default()
+    };
+    pm.fill_rect(rect, &vignette_paint, Transform::identity(), None);
+}
+
+fn draw_compass_shadow(pm: &mut PixmapMut, cx: f32, cy: f32, r: f32, style: &Style) {
+    for (offset_y, radius, alpha) in [(r * 0.10, r * 1.08, 46), (r * 0.05, r * 0.94, 34)] {
+        let Some(path) = PathBuilder::from_circle(cx, cy + offset_y, radius) else {
+            continue;
+        };
+        let mut paint = Paint::default();
+        paint.set_color(Color::from_rgba8(0, 0, 0, alpha));
+        paint.anti_alias = true;
+        pm.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+
+    let glass = tiny_skia::RadialGradient::new(
+        tiny_skia::Point::from_xy(cx - r * 0.28, cy - r * 0.34),
+        tiny_skia::Point::from_xy(cx, cy),
+        r * 1.08,
+        vec![
+            tiny_skia::GradientStop::new(0.0, color_with_alpha(style.north, 34)),
+            tiny_skia::GradientStop::new(0.44, Color::from_rgba8(34, 50, 84, 24)),
+            tiny_skia::GradientStop::new(1.0, Color::from_rgba8(0, 0, 0, 0)),
+        ],
+        tiny_skia::SpreadMode::Pad,
+        Transform::identity(),
+    )
+    .unwrap_or(Shader::SolidColor(Color::from_rgba8(0, 0, 0, 0)));
+    let Some(glass_path) = PathBuilder::from_circle(cx, cy, r * 1.02) else {
+        return;
+    };
+    let glass_paint = Paint {
+        shader: glass,
+        blend_mode: BlendMode::Screen,
+        anti_alias: true,
+        ..Default::default()
+    };
+    pm.fill_path(
+        &glass_path,
+        &glass_paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 }
 
 fn draw_meridian_lines(pm: &mut PixmapMut, cx: f32, cy: f32, r: f32, style: &Style) {
@@ -408,6 +491,22 @@ fn draw_meridian_lines(pm: &mut PixmapMut, cx: f32, cy: f32, r: f32, style: &Sty
 }
 
 fn draw_scale_ring(pm: &mut PixmapMut, cx: f32, cy: f32, r: f32, style: &Style) {
+    let mut lower_paint = Paint::default();
+    lower_paint.set_color(Color::from_rgba8(0, 0, 0, 95));
+    lower_paint.anti_alias = true;
+    let lower_stroke = Stroke {
+        width: 4.2,
+        ..Default::default()
+    };
+    let lower = PathBuilder::from_circle(cx + 1.5, cy + 2.5, r).unwrap();
+    pm.stroke_path(
+        &lower,
+        &lower_paint,
+        &lower_stroke,
+        Transform::identity(),
+        None,
+    );
+
     let mut ring_paint = Paint::default();
     ring_paint.set_color(style.ring);
     ring_paint.anti_alias = true;
@@ -428,6 +527,23 @@ fn draw_scale_ring(pm: &mut PixmapMut, cx: f32, cy: f32, r: f32, style: &Style) 
         &inner,
         &ring_paint,
         &ring_stroke,
+        Transform::identity(),
+        None,
+    );
+
+    let mut highlight_paint = Paint::default();
+    highlight_paint.set_color(Color::from_rgba8(255, 255, 255, 75));
+    highlight_paint.anti_alias = true;
+    highlight_paint.blend_mode = BlendMode::Screen;
+    let highlight_stroke = Stroke {
+        width: 1.0,
+        ..Default::default()
+    };
+    let highlight = PathBuilder::from_circle(cx - 1.0, cy - 1.5, r * 0.965).unwrap();
+    pm.stroke_path(
+        &highlight,
+        &highlight_paint,
+        &highlight_stroke,
         Transform::identity(),
         None,
     );
@@ -475,6 +591,88 @@ fn draw_scale_ring(pm: &mut PixmapMut, cx: f32, cy: f32, r: f32, style: &Style) 
                 &path,
                 &tick_paint_minor,
                 &stroke_minor,
+                Transform::identity(),
+                None,
+            );
+        }
+    }
+}
+
+fn draw_sweep_glint(pm: &mut PixmapMut, cx: f32, cy: f32, r: f32, t: f32, style: &Style) {
+    let deg = (t * 18.0) % 360.0;
+    let rad = (deg - 90.0).to_radians();
+    let width = 0.18_f32;
+    let inner = r * 0.18;
+    let outer = r * 0.98;
+    let p1 = (
+        cx + inner * (rad - width).cos(),
+        cy + inner * (rad - width).sin(),
+    );
+    let p2 = (cx + outer * rad.cos(), cy + outer * rad.sin());
+    let p3 = (
+        cx + inner * (rad + width).cos(),
+        cy + inner * (rad + width).sin(),
+    );
+
+    let mut pb = PathBuilder::new();
+    pb.move_to(p1.0, p1.1);
+    pb.line_to(p2.0, p2.1);
+    pb.line_to(p3.0, p3.1);
+    pb.close();
+    let Some(path) = pb.finish() else {
+        return;
+    };
+
+    let mut paint = Paint::default();
+    paint.set_color(color_with_alpha(style.north, 22));
+    paint.anti_alias = true;
+    paint.blend_mode = BlendMode::Screen;
+    pm.fill_path(
+        &path,
+        &paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
+}
+
+fn draw_rose_shadow(pm: &mut PixmapMut, cx: f32, cy: f32, len_main: f32) {
+    let len_filler = len_main * 0.55;
+    let offset = len_main * 0.018;
+    let mut paint = Paint::default();
+    paint.set_color(Color::from_rgba8(0, 0, 0, 72));
+    paint.anti_alias = true;
+
+    for i in 0..8 {
+        let deg = i as f32 * 45.0;
+        let rad = (deg - 90.0).to_radians();
+        let length = if i % 2 == 0 { len_main } else { len_filler };
+        let base_half = length * 0.13;
+        let ox = offset;
+        let oy = offset * 1.45;
+
+        let tip = (cx + ox + length * rad.cos(), cy + oy + length * rad.sin());
+        let perp = rad + std::f32::consts::FRAC_PI_2;
+        let b1 = (
+            cx + ox + base_half * perp.cos(),
+            cy + oy + base_half * perp.sin(),
+        );
+        let b2 = (
+            cx + ox - base_half * perp.cos(),
+            cy + oy - base_half * perp.sin(),
+        );
+
+        let mut pb = PathBuilder::new();
+        pb.move_to(cx + ox, cy + oy);
+        pb.line_to(b1.0, b1.1);
+        pb.line_to(tip.0, tip.1);
+        pb.line_to(b2.0, b2.1);
+        pb.close();
+        if let Some(path) = pb.finish() {
+            pm.fill_path(
+                &path,
+                &paint,
+                FillRule::Winding,
                 Transform::identity(),
                 None,
             );
@@ -556,6 +754,26 @@ fn draw_needle(pm: &mut PixmapMut, cx: f32, cy: f32, length: f32, compass_deg: f
     let b1 = (cx + base_half * perp.cos(), cy + base_half * perp.sin());
     let b2 = (cx - base_half * perp.cos(), cy - base_half * perp.sin());
 
+    let shadow_offset = length * 0.012;
+    let mut shadow_paint = Paint::default();
+    shadow_paint.set_color(Color::from_rgba8(0, 0, 0, 92));
+    shadow_paint.anti_alias = true;
+    let mut pb_shadow = PathBuilder::new();
+    pb_shadow.move_to(b1.0 + shadow_offset, b1.1 + shadow_offset);
+    pb_shadow.line_to(tip_n.0 + shadow_offset, tip_n.1 + shadow_offset);
+    pb_shadow.line_to(b2.0 + shadow_offset, b2.1 + shadow_offset);
+    pb_shadow.line_to(tip_s.0 + shadow_offset, tip_s.1 + shadow_offset);
+    pb_shadow.close();
+    if let Some(path) = pb_shadow.finish() {
+        pm.fill_path(
+            &path,
+            &shadow_paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+
     let mut pb_n = PathBuilder::new();
     pb_n.move_to(b1.0, b1.1);
     pb_n.line_to(tip_n.0, tip_n.1);
@@ -589,6 +807,21 @@ fn draw_needle(pm: &mut PixmapMut, cx: f32, cy: f32, length: f32, compass_deg: f
         Transform::identity(),
         None,
     );
+
+    let mut highlight = Paint::default();
+    highlight.set_color(Color::from_rgba8(255, 255, 255, 90));
+    highlight.anti_alias = true;
+    highlight.blend_mode = BlendMode::Screen;
+    let stroke = Stroke {
+        width: 1.2,
+        ..Default::default()
+    };
+    let mut pb_hi = PathBuilder::new();
+    pb_hi.move_to(b1.0, b1.1);
+    pb_hi.line_to(tip_n.0, tip_n.1);
+    if let Some(path) = pb_hi.finish() {
+        pm.stroke_path(&path, &highlight, &stroke, Transform::identity(), None);
+    }
 }
 
 fn draw_needle_glow(
@@ -630,9 +863,24 @@ fn draw_needle_glow(
 
 fn draw_pivot(pm: &mut PixmapMut, cx: f32, cy: f32, style: &Style) {
     let outer = PathBuilder::from_circle(cx, cy, 8.0).unwrap();
-    let mut p_outer = Paint::default();
-    p_outer.set_color(style.pivot_outer);
-    p_outer.anti_alias = true;
+    let pivot_shader = tiny_skia::RadialGradient::new(
+        tiny_skia::Point::from_xy(cx - 3.0, cy - 4.0),
+        tiny_skia::Point::from_xy(cx, cy),
+        12.0,
+        vec![
+            tiny_skia::GradientStop::new(0.0, Color::from_rgba8(255, 255, 255, 210)),
+            tiny_skia::GradientStop::new(0.42, style.pivot_inner),
+            tiny_skia::GradientStop::new(1.0, style.pivot_outer),
+        ],
+        tiny_skia::SpreadMode::Pad,
+        Transform::identity(),
+    )
+    .unwrap_or(Shader::SolidColor(style.pivot_outer));
+    let p_outer = Paint {
+        shader: pivot_shader,
+        anti_alias: true,
+        ..Default::default()
+    };
     pm.fill_path(
         &outer,
         &p_outer,
