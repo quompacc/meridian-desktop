@@ -386,6 +386,7 @@ pub(crate) fn initialize(
         thumbnail_popup_window_ids: Vec::new(),
         thumbnail_cache: std::collections::HashMap::new(),
         thumbnail_icon_center: None,
+        armed_power: None,
         notifications: std::collections::VecDeque::new(),
         notification_dirty: false,
         settings_category: crate::settings_view::SettingsCategory::default(),

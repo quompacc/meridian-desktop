@@ -25,6 +25,9 @@ pub struct Button {
     height: i32,
     id: Option<&'static str>,
     icon: Option<Pixmap>,
+    /// Countdown-arm progress: 0.0 = just armed (full ring), 1.0 = about to time out
+    /// (empty ring). `None` = idle (no ring drawn).
+    armed_progress: Option<f32>,
 }
 
 impl Button {
@@ -36,6 +39,7 @@ impl Button {
             height,
             id: None,
             icon: None,
+            armed_progress: None,
         }
     }
 
@@ -53,6 +57,7 @@ impl Button {
             height,
             id: Some(id),
             icon: None,
+            armed_progress: None,
         }
     }
 
@@ -71,7 +76,16 @@ impl Button {
             height,
             id: Some(id),
             icon,
+            armed_progress: None,
         }
+    }
+
+    /// Mark the button as armed (1st click of a destructive confirm-twice
+    /// action). `progress` runs 0.0 (just armed, full ring) → 1.0 (timeout,
+    /// empty ring). `None` resets to idle.
+    pub fn with_armed_progress(mut self, progress: Option<f32>) -> Self {
+        self.armed_progress = progress.map(|p| p.clamp(0.0, 1.0));
+        self
     }
 
     pub fn label(&self) -> &'static str {
@@ -107,13 +121,20 @@ impl Widget for Button {
     }
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
-        let body_color = match state {
-            WidgetState::Idle => theme.palette.surface,
-            WidgetState::Hovered => theme
-                .palette
-                .surface
-                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15),
-            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
+        let body_color = if self.armed_progress.is_some() {
+            // Armed: shift the body toward the accent so the button reads as
+            // "hot — second click commits". Mix with black to keep contrast
+            // against the icon.
+            self.accent.lerp(Color::rgb(0x10, 0x10, 0x10), 0.40)
+        } else {
+            match state {
+                WidgetState::Idle => theme.palette.surface,
+                WidgetState::Hovered => theme
+                    .palette
+                    .surface
+                    .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15),
+                WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
+            }
         };
         paint_metro_surface(canvas, area, body_color, self.accent, theme, STRIPE_HEIGHT);
         if self.icon.is_none() {
@@ -141,7 +162,58 @@ impl Widget for Button {
                 None,
             );
         }
+
+        if let Some(progress) = self.armed_progress {
+            paint_progress_ring(canvas, area, self.accent, progress);
+        }
     }
+}
+
+/// Draw a circular progress arc inside `area`, starting at 12 o'clock and
+/// sweeping clockwise. `progress` runs 0.0 (full circle) → 1.0 (no arc), so
+/// it visualises a countdown that drains.
+fn paint_progress_ring(
+    canvas: &mut PixmapMut<'_>,
+    area: Rect,
+    color: Color,
+    progress: f32,
+) {
+    use std::f32::consts::PI;
+    use tiny_skia::{LineCap, Paint, PathBuilder, Stroke};
+
+    if progress >= 1.0 {
+        return;
+    }
+    let radius = (area.width.min(area.height) as f32 / 2.0) - 3.0;
+    if radius <= 0.0 {
+        return;
+    }
+    let cx = area.x as f32 + area.width as f32 / 2.0;
+    let cy = area.y as f32 + area.height as f32 / 2.0;
+    let sweep = (1.0 - progress.max(0.0)) * 2.0 * PI;
+    let start = -PI / 2.0; // 12 o'clock
+
+    let mut pb = PathBuilder::new();
+    pb.move_to(cx + radius * start.cos(), cy + radius * start.sin());
+    let segments = 64;
+    for i in 1..=segments {
+        let t = i as f32 / segments as f32;
+        let angle = start + sweep * t;
+        pb.line_to(cx + radius * angle.cos(), cy + radius * angle.sin());
+    }
+    let Some(path) = pb.finish() else { return };
+
+    let mut paint = Paint {
+        anti_alias: true,
+        ..Paint::default()
+    };
+    paint.set_color(tiny_skia::Color::from_rgba8(color.r, color.g, color.b, 0xFF));
+    let stroke = Stroke {
+        width: 3.0,
+        line_cap: LineCap::Round,
+        ..Stroke::default()
+    };
+    canvas.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
 }
 
 #[cfg(test)]

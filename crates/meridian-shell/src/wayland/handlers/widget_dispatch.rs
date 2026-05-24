@@ -15,6 +15,23 @@ impl MeridianShell {
         action: crate::widget_action::WidgetAction,
     ) {
         use crate::widget_action::WidgetAction;
+
+        // Cancel an armed power button on any non-power action — the user
+        // changed their mind by clicking somewhere else. Power actions are
+        // skipped here; their own handler arms or consumes the armed state.
+        let is_power = matches!(
+            action,
+            WidgetAction::PowerOff
+                | WidgetAction::PowerRestart
+                | WidgetAction::PowerSleep
+                | WidgetAction::PowerLock
+                | WidgetAction::PowerLogout
+        );
+        if !is_power && self.armed_power.is_some() {
+            self.armed_power = None;
+            self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
+        }
+
         match action {
             WidgetAction::ToggleUiPreview => {
                 self.app_view_open = true;
@@ -125,24 +142,44 @@ impl MeridianShell {
                 self.spawn_file_picker();
             }
             WidgetAction::PowerOff => {
-                self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
-                std::thread::spawn(|| { let _ = std::process::Command::new("systemctl").arg("poweroff").status(); });
+                if self.try_consume_armed_power("power-off") {
+                    self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
+                    std::thread::spawn(|| { let _ = std::process::Command::new("systemctl").arg("poweroff").status(); });
+                } else {
+                    self.arm_power(qh, "power-off");
+                }
             }
             WidgetAction::PowerRestart => {
-                self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
-                std::thread::spawn(|| { let _ = std::process::Command::new("systemctl").arg("reboot").status(); });
+                if self.try_consume_armed_power("power-restart") {
+                    self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
+                    std::thread::spawn(|| { let _ = std::process::Command::new("systemctl").arg("reboot").status(); });
+                } else {
+                    self.arm_power(qh, "power-restart");
+                }
             }
             WidgetAction::PowerSleep => {
-                self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
-                std::thread::spawn(|| { let _ = std::process::Command::new("systemctl").arg("suspend").status(); });
+                if self.try_consume_armed_power("power-sleep") {
+                    self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
+                    std::thread::spawn(|| { let _ = std::process::Command::new("systemctl").arg("suspend").status(); });
+                } else {
+                    self.arm_power(qh, "power-sleep");
+                }
             }
             WidgetAction::PowerLock => {
-                self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
-                std::thread::spawn(|| { let _ = std::process::Command::new("loginctl").arg("lock-session").status(); });
+                if self.try_consume_armed_power("power-lock") {
+                    self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
+                    std::thread::spawn(|| { let _ = std::process::Command::new("loginctl").arg("lock-session").status(); });
+                } else {
+                    self.arm_power(qh, "power-lock");
+                }
             }
             WidgetAction::PowerLogout => {
-                tracing::info!("power: logout requested — exiting shell");
-                std::process::exit(0);
+                if self.try_consume_armed_power("power-logout") {
+                    tracing::info!("power: logout requested — exiting shell");
+                    std::process::exit(0);
+                } else {
+                    self.arm_power(qh, "power-logout");
+                }
             }
             WidgetAction::PinnedMoveUp(idx) => {
                 if idx > 0 && idx < self.pinned_apps.len() {

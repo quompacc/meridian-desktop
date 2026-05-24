@@ -379,6 +379,11 @@ impl MeridianShell {
             let lw = LAUNCHER_WIDTH as usize;
             let lh = LAUNCHER_HEIGHT as usize;
             let mut content = vec![0u8; lw * lh * 4];
+            let armed_power: Option<(&str, f32)> = self.armed_power.as_ref().map(|(id, at)| {
+                let p = (at.elapsed().as_millis() as f32 / crate::POWER_ARM_TIMEOUT_MS as f32)
+                    .clamp(0.0, 1.0);
+                (id.as_str(), p)
+            });
             if self.launcher_settings_open {
                 crate::settings_view::draw_settings_launcher(
                     &mut content,
@@ -395,6 +400,7 @@ impl MeridianShell {
                     self.settings_pinned_adding,
                     &self.launcher_state.apps,
                     &self.icon_cache,
+                    armed_power,
                     &state_fn,
                 );
             } else if self.app_view_open {
@@ -408,6 +414,7 @@ impl MeridianShell {
                     &state_fn,
                     &self.search_query,
                     self.app_view_scroll_y,
+                    armed_power,
                 );
             } else {
                 ui_preview::draw_ui_preview_sandbox(
@@ -416,6 +423,7 @@ impl MeridianShell {
                     LAUNCHER_HEIGHT,
                     &self.launcher_state.apps,
                     &self.icon_cache,
+                    armed_power,
                     &state_fn,
                 );
             }

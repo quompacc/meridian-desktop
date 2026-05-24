@@ -274,6 +274,9 @@ pub(crate) struct MeridianShell {
     pub(crate) thumbnail_cache: std::collections::HashMap<String, (u32, u32, Vec<u8>)>,
     // Icon center x for the currently open popup, used to recenter on resize
     pub(crate) thumbnail_icon_center: Option<i32>,
+    // Power-button arming for confirm-twice destructive actions.
+    // Stores button id + arm timestamp. None = no button is armed.
+    pub(crate) armed_power: Option<(String, std::time::Instant)>,
     /// Queue of in-flight notifications. v1 renders only the front entry;
     /// stacking + cascade animation is A1.3+ polish.
     pub(crate) notifications: std::collections::VecDeque<crate::notifications::Notification>,

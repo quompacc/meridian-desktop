@@ -148,6 +148,7 @@ impl PointerHandler for MeridianShell {
                             self.settings_pinned_adding,
                             &self.launcher_state.apps,
                             &self.icon_cache,
+                            None,
                         )
                     } else if self.app_view_open {
                         crate::app_view::build_app_view_widget_tree(
@@ -158,6 +159,7 @@ impl PointerHandler for MeridianShell {
                             &self.icon_cache,
                             &self.search_query,
                             self.app_view_scroll_y,
+                            None,
                         )
                     } else {
                         crate::ui_preview::build_ui_preview_widget_tree(
@@ -165,6 +167,7 @@ impl PointerHandler for MeridianShell {
                             crate::LAUNCHER_HEIGHT,
                             &self.launcher_state.apps,
                             &self.icon_cache,
+                            None,
                         )
                     };
                     let pixel_size = meridian_ui::PixelSize {
@@ -435,6 +438,7 @@ impl PointerHandler for MeridianShell {
                             &self.icon_cache,
                             &self.search_query,
                             self.app_view_scroll_y,
+                            None,
                         )
                     } else {
                         crate::ui_preview::build_ui_preview_widget_tree(
@@ -442,6 +446,7 @@ impl PointerHandler for MeridianShell {
                             crate::LAUNCHER_HEIGHT,
                             &self.launcher_state.apps,
                             &self.icon_cache,
+                            None,
                         )
                     };
                     let pixel_size = meridian_ui::PixelSize {

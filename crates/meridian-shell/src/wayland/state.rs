@@ -434,6 +434,19 @@ impl MeridianShell {
         if self.thumbnail_dirty && self.thumbnail_popup_open {
             self.refresh_thumbnail_popup(qh);
         }
+
+        // Drive the power-button countdown ring: on timeout, clear the armed
+        // state and redraw so the ring vanishes; while armed, redraw every
+        // tick so the ring visibly drains.
+        if let Some((_, armed_at)) = &self.armed_power {
+            let elapsed = armed_at.elapsed().as_millis();
+            if elapsed >= crate::POWER_ARM_TIMEOUT_MS {
+                self.armed_power = None;
+                self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
+            } else {
+                self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
+            }
+        }
     }
 
     pub(crate) fn poll_ipc(&mut self) -> bool {
@@ -977,6 +990,31 @@ impl MeridianShell {
         self.thumbnail_popup_open = false;
         self.thumbnail_popup_window_ids.clear();
         self.unmap_thumbnail_popup(reason);
+    }
+
+    /// Returns true (and clears the armed state) if `id` matches the
+    /// currently-armed power button and it is still within the timeout
+    /// window. Caller should then execute the destructive action.
+    pub(crate) fn try_consume_armed_power(&mut self, id: &str) -> bool {
+        let armed_now = self
+            .armed_power
+            .as_ref()
+            .map(|(armed_id, t)| {
+                armed_id == id && t.elapsed().as_millis() < crate::POWER_ARM_TIMEOUT_MS
+            })
+            .unwrap_or(false);
+        if armed_now {
+            self.armed_power = None;
+        }
+        armed_now
+    }
+
+    /// Arm a power button (1st click of a confirm-twice action). Replaces any
+    /// previously-armed button and triggers a launcher repaint so the user
+    /// sees the countdown ring start filling.
+    pub(crate) fn arm_power(&mut self, qh: &QueueHandle<Self>, id: &str) {
+        self.armed_power = Some((id.to_string(), std::time::Instant::now()));
+        self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
     }
 
     pub(crate) fn close_launcher_after_launch(

@@ -57,6 +57,7 @@ pub const THUMBNAIL_CARD_GAP: u32 = 8;
 pub const THUMBNAIL_CARD_PAD: u32 = 12;
 pub const THUMBNAIL_HOVER_DELAY_MS: u128 = 400;
 pub const THUMBNAIL_OPEN_TIMEOUT_MS: u128 = 1200;
+pub const POWER_ARM_TIMEOUT_MS: u128 = 4000;
 pub const THUMBNAIL_MAX_WINDOWS: usize = 3;
 pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
     vec![

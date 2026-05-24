@@ -512,6 +512,7 @@ pub(crate) fn build_settings_widget_tree(
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
+    armed_power: Option<(&str, f32)>,
 ) -> Box<dyn Widget> {
     let pal = Palette::TOKYO_NIGHT_METRO;
 
@@ -751,12 +752,13 @@ pub(crate) fn build_settings_widget_tree(
         )) as Box<dyn Widget>,
     ];
 
+    let armed_for = |id: &str| armed_power.and_then(|(a, p)| if a == id { Some(p) } else { None });
     let footer_right = vec![
-        Box::new(Button::with_id_and_icon("power-off",     "Off",  pal.error,      FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_off_icon))     as Box<dyn Widget>,
-        Box::new(Button::with_id_and_icon("power-restart", "Rst",  pal.warning,    FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_restart_icon)) as Box<dyn Widget>,
-        Box::new(Button::with_id_and_icon("power-sleep",   "Zzz",  pal.accent,     FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_sleep_icon))   as Box<dyn Widget>,
-        Box::new(Button::with_id_and_icon("power-lock",    "Lock", pal.accent_alt, FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_lock_icon))    as Box<dyn Widget>,
-        Box::new(Button::with_id_and_icon("power-logout",  "Out",  pal.success,    FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_logout_icon))  as Box<dyn Widget>,
+        Box::new(Button::with_id_and_icon("power-off",     "Off",  pal.error,      FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_off_icon).with_armed_progress(armed_for("power-off")))         as Box<dyn Widget>,
+        Box::new(Button::with_id_and_icon("power-restart", "Rst",  pal.warning,    FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_restart_icon).with_armed_progress(armed_for("power-restart"))) as Box<dyn Widget>,
+        Box::new(Button::with_id_and_icon("power-sleep",   "Zzz",  pal.accent,     FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_sleep_icon).with_armed_progress(armed_for("power-sleep")))     as Box<dyn Widget>,
+        Box::new(Button::with_id_and_icon("power-lock",    "Lock", pal.accent_alt, FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_lock_icon).with_armed_progress(armed_for("power-lock")))       as Box<dyn Widget>,
+        Box::new(Button::with_id_and_icon("power-logout",  "Out",  pal.success,    FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_logout_icon).with_armed_progress(armed_for("power-logout")))   as Box<dyn Widget>,
     ];
 
     let footer = Container::footer_row(
@@ -802,6 +804,7 @@ pub(crate) fn draw_settings_launcher(
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
+    armed_power: Option<(&str, f32)>,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
 ) {
     let expected = (width as usize).saturating_mul(height as usize).saturating_mul(4);
@@ -816,7 +819,7 @@ pub(crate) fn draw_settings_launcher(
         theme.palette.background.b,
         theme.palette.background.a,
     ));
-    let root = build_settings_widget_tree(width, height, selected, available_themes, current_theme, available_wallpapers, wallpaper_thumbnails, current_wallpaper, wallpaper_mode, pinned_apps, pinned_adding, all_apps, icon_cache);
+    let root = build_settings_widget_tree(width, height, selected, available_themes, current_theme, available_wallpapers, wallpaper_thumbnails, current_wallpaper, wallpaper_mode, pinned_apps, pinned_adding, all_apps, icon_cache, armed_power);
     if let Ok(layout) = meridian_ui::compute_layout(&*root, meridian_ui::PixelSize { width, height }) {
         let mut pm = pixmap.as_mut();
         let _ = meridian_ui::render(&*root, &layout, &mut pm, &theme, state_fn);
