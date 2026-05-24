@@ -20,6 +20,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -76,6 +77,9 @@ const UI_FADE_END_MS: u64 = 2000;
 const GLOW_HIDE_MS: u64 = 1700;
 const GLOW_FINAL_SCALE: f32 = 4.0;
 const MAX_FIELD_LEN: usize = 128;
+
+type Rect = (f32, f32, f32, f32);
+type PowerButtonRects = (Rect, Rect);
 
 // Card shake animation on auth failure (classic "wrong password" feedback)
 const FAILED_DURATION_MS: u64 = 600;
@@ -140,6 +144,15 @@ enum ControlFlow {
     Continue,
     Submit,
     Cancel,
+    PowerOff,
+    Reboot,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum ClickTarget {
+    Field(Field),
+    PowerOff,
+    Reboot,
 }
 
 impl LoginUiState {
@@ -370,6 +383,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     drop(pointers);
     info!("released input devices");
 
+    if matches!(exit, ControlFlow::PowerOff | ControlFlow::Reboot) {
+        match card.release_master_lock() {
+            Ok(()) => info!("released drm master before power action"),
+            Err(e) => warn!(error = %e, "release_master before power action failed"),
+        }
+        drop(card);
+        run_power_action(exit);
+        return Ok(());
+    }
+
     // On successful auth, spawn the compositor as the authenticated user
     // BEFORE releasing master so the new process is already running by the
     // time we let go of the display. Phase 8 will add an IPC handshake to
@@ -405,6 +428,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("login cancelled");
             None
         }
+        ControlFlow::PowerOff | ControlFlow::Reboot => None,
         ControlFlow::Continue => {
             info!("inactivity timeout reached");
             None
@@ -686,6 +710,7 @@ fn run_animation(
                         ui_state.start_auth();
                         break;
                     }
+                    ControlFlow::PowerOff | ControlFlow::Reboot => {}
                 }
             }
 
@@ -714,8 +739,17 @@ fn run_animation(
                 }
                 match action {
                     PointerAction::LeftPress { x, y } => {
-                        if let Some(field) = input_field_at(w as f32, h as f32, x, y, shake_dx) {
-                            ui_state.focus = field;
+                        match click_target_at(w as f32, h as f32, x, y, shake_dx) {
+                            Some(ClickTarget::Field(field)) => ui_state.focus = field,
+                            Some(ClickTarget::PowerOff) => {
+                                exit = ControlFlow::PowerOff;
+                                break;
+                            }
+                            Some(ClickTarget::Reboot) => {
+                                exit = ControlFlow::Reboot;
+                                break;
+                            }
+                            None => {}
                         }
                     }
                 }
@@ -793,7 +827,7 @@ fn run_animation(
     Ok(exit)
 }
 
-fn input_field_at(w: f32, h: f32, x: f32, y: f32, shake_dx: f32) -> Option<Field> {
+fn click_target_at(w: f32, h: f32, x: f32, y: f32, shake_dx: f32) -> Option<ClickTarget> {
     let (card_left_raw, card_top, cw, _) = card_rect(w, h);
     let card_left = card_left_raw + shake_dx;
     let pad = 32.0;
@@ -801,16 +835,177 @@ fn input_field_at(w: f32, h: f32, x: f32, y: f32, shake_dx: f32) -> Option<Field
     let inner_top = card_top + pad;
     let inner_w = cw - 2.0 * pad;
     let box_h = 36.0;
-    let user_box_top = inner_top + 96.0;
-    let pwd_box_top = inner_top + 168.0;
+    let user_box_top = inner_top + 88.0;
+    let pwd_box_top = inner_top + 150.0;
 
     if point_in_rect(x, y, inner_left, user_box_top, inner_w, box_h) {
-        Some(Field::Username)
+        Some(ClickTarget::Field(Field::Username))
     } else if point_in_rect(x, y, inner_left, pwd_box_top, inner_w, box_h) {
-        Some(Field::Password)
+        Some(ClickTarget::Field(Field::Password))
     } else {
-        None
+        let (restart, poweroff) = power_button_rects(w, h, shake_dx);
+        if point_in_rect(x, y, restart.0, restart.1, restart.2, restart.3) {
+            Some(ClickTarget::Reboot)
+        } else if point_in_rect(x, y, poweroff.0, poweroff.1, poweroff.2, poweroff.3) {
+            Some(ClickTarget::PowerOff)
+        } else {
+            None
+        }
     }
+}
+
+fn power_button_rects(w: f32, h: f32, shake_dx: f32) -> PowerButtonRects {
+    let (card_left_raw, card_top, cw, ch) = card_rect(w, h);
+    let card_left = card_left_raw + shake_dx;
+    let button_w = 116.0;
+    let button_h = 34.0;
+    let gap = 12.0;
+    let total_w = button_w * 2.0 + gap;
+    let x0 = card_left + cw / 2.0 - total_w / 2.0;
+    let y = card_top + ch - 32.0 - button_h;
+    (
+        (x0, y, button_w, button_h),
+        (x0 + button_w + gap, y, button_w, button_h),
+    )
+}
+
+fn run_power_action(action: ControlFlow) {
+    let arg = match action {
+        ControlFlow::PowerOff => "poweroff",
+        ControlFlow::Reboot => "reboot",
+        _ => return,
+    };
+    info!(action = arg, "requesting system power action");
+    match Command::new("systemctl").arg(arg).status() {
+        Ok(status) if status.success() => info!(action = arg, "system power action accepted"),
+        Ok(status) => warn!(action = arg, status = ?status, "system power action failed"),
+        Err(err) => warn!(action = arg, error = %err, "failed to invoke systemctl"),
+    }
+}
+
+fn color_with_alpha(c: Color, alpha: u8) -> Color {
+    Color::from_rgba8(
+        (c.red() * 255.0) as u8,
+        (c.green() * 255.0) as u8,
+        (c.blue() * 255.0) as u8,
+        alpha,
+    )
+}
+
+fn mix_color(a: Color, b: Color, t: f32, alpha: u8) -> Color {
+    let lerp = |x: f32, y: f32| ((x + (y - x) * t) * 255.0).clamp(0.0, 255.0) as u8;
+    Color::from_rgba8(
+        lerp(a.red(), b.red()),
+        lerp(a.green(), b.green()),
+        lerp(a.blue(), b.blue()),
+        alpha,
+    )
+}
+
+fn draw_soft_card_shadow(pm: &mut PixmapMut, left: f32, top: f32, w: f32, h: f32, alpha: f32) {
+    for (dy, spread, opacity) in [(12.0, 9.0, 76u8), (5.0, 3.0, 58u8)] {
+        let path = rounded_rect_path(left - spread / 2.0, top + dy, w + spread, h, 22.0);
+        let mut paint = Paint::default();
+        paint.set_color(Color::from_rgba8(0, 0, 0, (alpha * opacity as f32) as u8));
+        paint.anti_alias = true;
+        pm.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+}
+
+fn draw_card_stroke(pm: &mut PixmapMut, path: &tiny_skia::Path, color: Color, width: f32) {
+    let mut paint = Paint::default();
+    paint.set_color(color);
+    paint.anti_alias = true;
+    let stroke = Stroke {
+        width,
+        ..Default::default()
+    };
+    pm.stroke_path(path, &paint, &stroke, Transform::identity(), None);
+}
+
+fn draw_card_highlight(pm: &mut PixmapMut, left: f32, top: f32, w: f32, alpha: f32) {
+    let mut pb = PathBuilder::new();
+    pb.move_to(left + 22.0, top + 8.0);
+    pb.line_to(left + w - 22.0, top + 8.0);
+    let Some(path) = pb.finish() else {
+        return;
+    };
+    let mut paint = Paint::default();
+    paint.set_color(Color::from_rgba8(255, 255, 255, (alpha * 72.0) as u8));
+    paint.anti_alias = true;
+    let stroke = Stroke {
+        width: 1.2,
+        ..Default::default()
+    };
+    pm.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+}
+
+fn draw_login_button(
+    pm: &mut PixmapMut,
+    painter: &CompassPainter,
+    rect: Rect,
+    label: &str,
+    accent: Color,
+    alpha: f32,
+) {
+    let path = rounded_rect_path(rect.0, rect.1, rect.2, rect.3, 8.0);
+    let fill = mix_color(
+        Color::from_rgba8(48, 60, 96, 255),
+        accent,
+        0.20,
+        (alpha * 214.0) as u8,
+    );
+    let mut fill_paint = Paint::default();
+    fill_paint.set_color(fill);
+    fill_paint.anti_alias = true;
+    pm.fill_path(
+        &path,
+        &fill_paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
+
+    draw_card_stroke(
+        pm,
+        &path,
+        color_with_alpha(accent, (alpha * 150.0) as u8),
+        1.2,
+    );
+    painter.render_text_centered(
+        pm,
+        TextStyle::SansBold(13.0),
+        label,
+        rect.0 + rect.2 / 2.0,
+        rect.1 + rect.3 / 2.0,
+        Color::from_rgba8(238, 244, 252, (alpha * 235.0) as u8),
+    );
+}
+
+fn draw_power_buttons(
+    pm: &mut PixmapMut,
+    w: f32,
+    h: f32,
+    painter: &CompassPainter,
+    alpha: f32,
+    shake_dx: f32,
+) {
+    let (restart, poweroff) = power_button_rects(w, h, shake_dx);
+    draw_login_button(
+        pm,
+        painter,
+        restart,
+        "Neustart",
+        painter.style().north,
+        alpha,
+    );
+    draw_login_button(pm, painter, poweroff, "Aus", painter.style().south, alpha);
 }
 
 fn point_in_rect(px: f32, py: f32, x: f32, y: f32, w: f32, h: f32) -> bool {
@@ -826,23 +1021,41 @@ fn draw_card(
     shake_dx: f32,
 ) {
     let (left, top, cw, ch) = card_rect(w, h);
-    let path = rounded_rect_path(left + shake_dx, top, cw, ch, 20.0);
+    let left = left + shake_dx;
+    let path = rounded_rect_path(left, top, cw, ch, 20.0);
+    draw_soft_card_shadow(pm, left, top, cw, ch, alpha);
 
     let mut fill = Paint::default();
-    fill.set_color(Color::from_rgba8(32, 42, 76, (alpha * 235.0) as u8));
+    fill.set_color(Color::from_rgba8(56, 70, 112, (alpha * 242.0) as u8));
     fill.anti_alias = true;
     pm.fill_path(&path, &fill, FillRule::Winding, Transform::identity(), None);
 
+    let top_glow = rounded_rect_path(left + 8.0, top + 8.0, cw - 16.0, ch * 0.42, 16.0);
+    let mut glow_paint = Paint::default();
+    glow_paint.set_color(Color::from_rgba8(92, 112, 160, (alpha * 96.0) as u8));
+    glow_paint.anti_alias = true;
+    pm.fill_path(
+        &top_glow,
+        &glow_paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
+
     let north = painter.style().north;
-    let stroke_color = rgba_with_alpha(north, (alpha * 220.0) as u8);
-    let mut stroke_paint = Paint::default();
-    stroke_paint.set_color(stroke_color);
-    stroke_paint.anti_alias = true;
-    let stroke = Stroke {
-        width: 2.0,
-        ..Default::default()
-    };
-    pm.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
+    draw_card_stroke(
+        pm,
+        &path,
+        rgba_with_alpha(north, (alpha * 205.0) as u8),
+        2.0,
+    );
+    draw_card_stroke(
+        pm,
+        &rounded_rect_path(left + 2.0, top + 2.0, cw - 4.0, ch - 4.0, 18.0),
+        Color::from_rgba8(255, 255, 255, (alpha * 58.0) as u8),
+        1.0,
+    );
+    draw_card_highlight(pm, left, top, cw, alpha);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -856,7 +1069,7 @@ fn draw_login_ui(
     caret_on: bool,
     shake_dx: f32,
 ) {
-    let (card_left_raw, card_top, cw, ch) = card_rect(w, h);
+    let (card_left_raw, card_top, cw, _ch) = card_rect(w, h);
     let card_left = card_left_raw + shake_dx;
     let pad = 32.0;
     let inner_left = card_left + pad;
@@ -865,13 +1078,13 @@ fn draw_login_ui(
     let cx = card_left + cw / 2.0;
 
     let north = painter.style().north;
-    let text_color = Color::from_rgba8(225, 230, 240, (alpha * 240.0) as u8);
-    let label_color = Color::from_rgba8(180, 195, 220, (alpha * 200.0) as u8);
-    let hint_color = Color::from_rgba8(180, 195, 220, (alpha * 150.0) as u8);
-    let title_color = Color::from_rgba8(230, 236, 248, (alpha * 220.0) as u8);
+    let text_color = Color::from_rgba8(240, 245, 252, (alpha * 246.0) as u8);
+    let label_color = Color::from_rgba8(205, 218, 240, (alpha * 220.0) as u8);
+    let hint_color = Color::from_rgba8(202, 216, 238, (alpha * 172.0) as u8);
+    let title_color = Color::from_rgba8(248, 251, 255, (alpha * 236.0) as u8);
     let caret_color = rgba_with_alpha(north, (alpha * 220.0) as u8);
-    let box_fill = Color::from_rgba8(8, 12, 22, (alpha * 200.0) as u8);
-    let box_outline = rgba_with_alpha(north, (alpha * 70.0) as u8);
+    let box_fill = Color::from_rgba8(18, 26, 48, (alpha * 218.0) as u8);
+    let box_outline = rgba_with_alpha(north, (alpha * 96.0) as u8);
 
     // Title
     painter.render_text_centered(
@@ -888,7 +1101,7 @@ fn draw_login_ui(
     let text_size = 22.0;
 
     // Username row
-    let user_label_y = inner_top + 84.0;
+    let user_label_y = inner_top + 76.0;
     painter.render_text_left(
         pm,
         TextStyle::SansBold(label_size),
@@ -897,7 +1110,7 @@ fn draw_login_ui(
         user_label_y,
         label_color,
     );
-    let user_box_top = inner_top + 96.0;
+    let user_box_top = inner_top + 88.0;
     draw_input_box(
         pm,
         inner_left,
@@ -922,7 +1135,7 @@ fn draw_login_ui(
     }
 
     // Password row
-    let pwd_label_y = inner_top + 156.0;
+    let pwd_label_y = inner_top + 138.0;
     painter.render_text_left(
         pm,
         TextStyle::SansBold(label_size),
@@ -931,7 +1144,7 @@ fn draw_login_ui(
         pwd_label_y,
         label_color,
     );
-    let pwd_box_top = inner_top + 168.0;
+    let pwd_box_top = inner_top + 150.0;
     draw_input_box(
         pm,
         inner_left,
@@ -957,7 +1170,8 @@ fn draw_login_ui(
     }
 
     // Bottom hint — text depends on phase (Editing vs Failed)
-    let hint_y = card_top + ch - pad + 4.0;
+    let (restart_rect, _) = power_button_rects(w, h, shake_dx);
+    let hint_y = restart_rect.1 - 16.0;
     let hint_text = ui.hint();
     let hint_color_phase = match ui.phase {
         InputPhase::Failed(_) => rgba_with_alpha(painter.style().south, (alpha * 220.0) as u8),
@@ -971,6 +1185,7 @@ fn draw_login_ui(
         hint_y,
         hint_color_phase,
     );
+    draw_power_buttons(pm, w, h, painter, alpha, shake_dx);
 }
 
 fn draw_input_box(pm: &mut PixmapMut, x: f32, y: f32, w: f32, h: f32, fill: Color, outline: Color) {
@@ -1045,7 +1260,7 @@ fn draw_pointer_cursor(pm: &mut PixmapMut, x: f32, y: f32, alpha: f32) {
 
 fn card_rect(w: f32, h: f32) -> (f32, f32, f32, f32) {
     let cw = (w * 0.32).clamp(360.0, 720.0);
-    let ch = (h * 0.22).clamp(220.0, 380.0);
+    let ch = (h * 0.28).clamp(300.0, 420.0);
     let left = w / 2.0 - cw / 2.0;
     let top = h / 2.0 - ch / 2.0;
     (left, top, cw, ch)
@@ -1244,7 +1459,23 @@ mod tests {
     fn card_rect_clamped_dimensions() {
         let (_, _, cw, ch) = card_rect(1920.0, 1440.0);
         assert!((360.0..=720.0).contains(&cw));
-        assert!((220.0..=380.0).contains(&ch));
+        assert!((300.0..=420.0).contains(&ch));
+    }
+
+    #[test]
+    fn power_buttons_are_click_targets() {
+        let (restart, poweroff) = power_button_rects(1920.0, 1080.0, 0.0);
+        let restart_center = (restart.0 + restart.2 / 2.0, restart.1 + restart.3 / 2.0);
+        let poweroff_center = (poweroff.0 + poweroff.2 / 2.0, poweroff.1 + poweroff.3 / 2.0);
+
+        assert_eq!(
+            click_target_at(1920.0, 1080.0, restart_center.0, restart_center.1, 0.0),
+            Some(ClickTarget::Reboot)
+        );
+        assert_eq!(
+            click_target_at(1920.0, 1080.0, poweroff_center.0, poweroff_center.1, 0.0),
+            Some(ClickTarget::PowerOff)
+        );
     }
 
     #[test]

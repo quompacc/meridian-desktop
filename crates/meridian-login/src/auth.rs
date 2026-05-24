@@ -31,8 +31,8 @@ use libc::{calloc, free, size_t, strdup};
 use pam_sys::{
     pam_acct_mgmt, pam_authenticate, pam_close_session, pam_conv, pam_end, pam_getenvlist,
     pam_handle_t, pam_message, pam_open_session, pam_response, pam_set_item, pam_start,
-    PAM_BUF_ERR, PAM_CONV_ERR, PAM_ERROR_MSG, PAM_PROMPT_ECHO_OFF, PAM_PROMPT_ECHO_ON,
-    PAM_SUCCESS, PAM_TEXT_INFO, PAM_TTY,
+    PAM_BUF_ERR, PAM_CONV_ERR, PAM_ERROR_MSG, PAM_PROMPT_ECHO_OFF, PAM_PROMPT_ECHO_ON, PAM_SUCCESS,
+    PAM_TEXT_INFO, PAM_TTY,
 };
 use tracing::{debug, warn};
 use zeroize::Zeroizing;
@@ -104,7 +104,13 @@ pub fn start_auth_session(
         run_pam_session(&username, password, &result_tx, &close_rx);
     });
 
-    (result_rx, AuthDriver { close_tx, join: Some(join) })
+    (
+        result_rx,
+        AuthDriver {
+            close_tx,
+            join: Some(join),
+        },
+    )
 }
 
 /// Conversation-handler state. Lives on the heap (Box) so its address is
@@ -153,8 +159,10 @@ unsafe extern "C" fn conv_cb(
     if num_msg <= 0 || appdata_ptr.is_null() || msg.is_null() || out_resp.is_null() {
         return PAM_CONV_ERR;
     }
-    let resp = calloc(num_msg as usize, std::mem::size_of::<pam_response>() as size_t)
-        as *mut pam_response;
+    let resp = calloc(
+        num_msg as usize,
+        std::mem::size_of::<pam_response>() as size_t,
+    ) as *mut pam_response;
     if resp.is_null() {
         return PAM_BUF_ERR;
     }
@@ -368,7 +376,7 @@ fn run_pam_session(
     }
     guard.last_status = rc;
     drop(guard); // triggers pam_end
-    // SAFETY: libpam no longer references appdata_ptr after pam_end.
+                 // SAFETY: libpam no longer references appdata_ptr after pam_end.
     unsafe { drop(Box::from_raw(conv_data_ptr)) };
     debug!(user = %username, "PAM session closed");
 }
