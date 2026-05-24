@@ -77,9 +77,25 @@ const UI_FADE_END_MS: u64 = 2000;
 const GLOW_HIDE_MS: u64 = 1700;
 const GLOW_FINAL_SCALE: f32 = 4.0;
 const MAX_FIELD_LEN: usize = 128;
+const POWER_CONFIRM_WINDOW: Duration = Duration::from_secs(3);
 
 type Rect = (f32, f32, f32, f32);
 type PowerButtonRects = (Rect, Rect);
+
+const CARD_PAD: f32 = 32.0;
+const TITLE_OFFSET_Y: f32 = 32.0;
+const USER_LABEL_OFFSET_Y: f32 = 76.0;
+const USER_BOX_OFFSET_Y: f32 = 88.0;
+const PASSWORD_LABEL_OFFSET_Y: f32 = 138.0;
+const PASSWORD_BOX_OFFSET_Y: f32 = 150.0;
+const INPUT_BOX_HEIGHT: f32 = 36.0;
+const INPUT_TEXT_PAD_X: f32 = 12.0;
+const INPUT_BASELINE_PAD_BOTTOM: f32 = 12.0;
+const POWER_BUTTON_WIDTH: f32 = 116.0;
+const POWER_BUTTON_HEIGHT: f32 = 34.0;
+const POWER_BUTTON_GAP: f32 = 12.0;
+const POWER_BUTTON_BOTTOM_PAD: f32 = 32.0;
+const HINT_POWER_GAP: f32 = 16.0;
 
 // Card shake animation on auth failure (classic "wrong password" feedback)
 const FAILED_DURATION_MS: u64 = 600;
@@ -117,6 +133,7 @@ struct LoginUiState {
     /// pam_open_session. Forwarded into the compositor environment so it
     /// inherits XDG_SESSION_ID / XDG_SEAT / XDG_VTNR from pam_systemd.
     pam_env: Vec<(String, String)>,
+    pending_power: Option<PendingPowerAction>,
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -155,8 +172,36 @@ enum ClickTarget {
     Reboot,
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum PowerAction {
+    PowerOff,
+    Reboot,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct PendingPowerAction {
+    action: PowerAction,
+    since: Instant,
+}
+
+impl PowerAction {
+    fn control_flow(self) -> ControlFlow {
+        match self {
+            PowerAction::PowerOff => ControlFlow::PowerOff,
+            PowerAction::Reboot => ControlFlow::Reboot,
+        }
+    }
+}
+
+impl PendingPowerAction {
+    fn is_active(self) -> bool {
+        self.since.elapsed() <= POWER_CONFIRM_WINDOW
+    }
+}
+
 impl LoginUiState {
     fn apply(&mut self, action: KeyAction) -> ControlFlow {
+        self.pending_power = None;
         match action {
             KeyAction::Insert(s) => {
                 let target: &mut String = match self.focus {
@@ -232,6 +277,39 @@ impl LoginUiState {
         }
     }
 
+    fn confirm_power_action(&mut self, action: PowerAction) -> Option<ControlFlow> {
+        if self
+            .pending_power
+            .is_some_and(|pending| pending.action == action && pending.is_active())
+        {
+            self.pending_power = None;
+            return Some(action.control_flow());
+        }
+        self.pending_power = Some(PendingPowerAction {
+            action,
+            since: Instant::now(),
+        });
+        None
+    }
+
+    fn clear_expired_power_confirmation(&mut self) -> bool {
+        if self
+            .pending_power
+            .is_some_and(|pending| !pending.is_active())
+        {
+            self.pending_power = None;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn pending_power_action(&self) -> Option<PowerAction> {
+        self.pending_power
+            .filter(|pending| pending.is_active())
+            .map(|pending| pending.action)
+    }
+
     fn reject(&mut self) {
         // Wipe the fields and reset focus so the next try starts clean.
         self.username.clear();
@@ -260,6 +338,12 @@ impl LoginUiState {
     }
 
     fn hint(&self) -> &'static str {
+        if let Some(action) = self.pending_power_action() {
+            return match action {
+                PowerAction::PowerOff => "Nochmal klicken zum Ausschalten",
+                PowerAction::Reboot => "Nochmal klicken für Neustart",
+            };
+        }
         match self.phase {
             InputPhase::Editing => "Enter zum Anmelden",
             InputPhase::Authenticating => "Anmelden …",
@@ -637,6 +721,13 @@ fn compute_anim_frame(t_anim_secs: f32, painter: &CompassPainter, w: f32, h: f32
     }
 }
 
+fn anim_frame_is_steady(af: &AnimFrame) -> bool {
+    af.watermark_alpha == WATERMARK_FINAL_ALPHA
+        && !af.glow_visible
+        && (af.card_alpha - 1.0).abs() < f32::EPSILON
+        && (af.ui_alpha - 1.0).abs() < f32::EPSILON
+}
+
 fn ramp_u8(t: u64, start: u64, end: u64, from: u8, to: u8) -> u8 {
     if t <= start {
         from
@@ -678,17 +769,27 @@ fn run_animation(
     let frame_dur = Duration::from_micros(1_000_000 / refresh_hz as u64);
     let mut frame_idx: u64 = 0;
     let mut exit = ControlFlow::Continue;
+    let mut steady_frame_drawn = false;
 
     while exit == ControlFlow::Continue {
         let t = anim_start.elapsed();
         let t_secs = t.as_secs_f32();
         let af = compute_anim_frame(t_secs, painter, w as f32, h as f32);
+        let animating = !anim_frame_is_steady(&af);
+        let mut redraw = animating || !steady_frame_drawn;
 
         // Read keyboard once the UI is fully faded in. Polling earlier would
         // queue keystrokes the user typed against the still-animating splash.
         if af.ui_alpha >= 1.0 {
+            let was_failed = matches!(ui_state.phase, InputPhase::Failed(_));
             // Failed-state shake decays back to Editing in tick()
             ui_state.tick();
+            if was_failed != matches!(ui_state.phase, InputPhase::Failed(_)) {
+                redraw = true;
+            }
+            if ui_state.clear_expired_power_confirmation() {
+                redraw = true;
+            }
 
             // Ignore key events during Authenticating or Failed — they would
             // queue up against the next Editing window otherwise.
@@ -697,6 +798,7 @@ fn run_animation(
                 if !accept_input {
                     continue;
                 }
+                redraw = true;
                 match ui_state.apply(action) {
                     ControlFlow::Continue => {}
                     ControlFlow::Cancel => {
@@ -716,6 +818,7 @@ fn run_animation(
 
             // Check if the auth thread reported back this frame.
             if let Some(result) = ui_state.poll_auth() {
+                redraw = true;
                 match result {
                     AuthResult::Ok(env) => {
                         ui_state.pam_env = env;
@@ -731,23 +834,45 @@ fn run_animation(
         }
 
         let shake_dx = ui_state.shake_offset();
+        if matches!(ui_state.phase, InputPhase::Failed(_)) {
+            redraw = true;
+        }
         if af.ui_alpha >= 1.0 {
             let accept_pointer = matches!(ui_state.phase, InputPhase::Editing);
-            for action in poll_pointers(pointers, pointer) {
+            let pointer_before = (pointer.x, pointer.y);
+            let pointer_actions = poll_pointers(pointers, pointer);
+            if (pointer.x, pointer.y) != pointer_before {
+                redraw = true;
+            }
+            for action in pointer_actions {
                 if !accept_pointer {
                     continue;
                 }
                 match action {
                     PointerAction::LeftPress { x, y } => {
                         match click_target_at(w as f32, h as f32, x, y, shake_dx) {
-                            Some(ClickTarget::Field(field)) => ui_state.focus = field,
+                            Some(ClickTarget::Field(field)) => {
+                                ui_state.focus = field;
+                                ui_state.pending_power = None;
+                                redraw = true;
+                            }
                             Some(ClickTarget::PowerOff) => {
-                                exit = ControlFlow::PowerOff;
-                                break;
+                                redraw = true;
+                                if let Some(flow) =
+                                    ui_state.confirm_power_action(PowerAction::PowerOff)
+                                {
+                                    exit = flow;
+                                    break;
+                                }
                             }
                             Some(ClickTarget::Reboot) => {
-                                exit = ControlFlow::Reboot;
-                                break;
+                                redraw = true;
+                                if let Some(flow) =
+                                    ui_state.confirm_power_action(PowerAction::Reboot)
+                                {
+                                    exit = flow;
+                                    break;
+                                }
                             }
                             None => {}
                         }
@@ -758,9 +883,20 @@ fn run_animation(
             let _ = poll_pointers(pointers, pointer);
         }
 
-        let caret_on = matches!(ui_state.phase, InputPhase::Editing)
-            && af.ui_alpha >= 1.0
-            && ((t_secs * 2.0) as i64) % 2 == 0;
+        let caret_on = matches!(ui_state.phase, InputPhase::Editing) && af.ui_alpha >= 1.0;
+
+        if exit != ControlFlow::Continue {
+            break;
+        }
+
+        if !redraw {
+            frame_idx += 1;
+            let next = anim_start + frame_dur * frame_idx as u32;
+            if let Some(wait) = next.checked_duration_since(Instant::now()) {
+                std::thread::sleep(wait);
+            }
+            continue;
+        }
 
         {
             let mut mapping = card.map_dumb_buffer(db)?;
@@ -817,6 +953,9 @@ fn run_animation(
 
         let clip = ClipRect::new(0, 0, w as u16, h as u16);
         let _ = card.dirty_framebuffer(fb, &[clip]);
+        if !animating {
+            steady_frame_drawn = true;
+        }
 
         frame_idx += 1;
         let next = anim_start + frame_dur * frame_idx as u32;
@@ -830,17 +969,15 @@ fn run_animation(
 fn click_target_at(w: f32, h: f32, x: f32, y: f32, shake_dx: f32) -> Option<ClickTarget> {
     let (card_left_raw, card_top, cw, _) = card_rect(w, h);
     let card_left = card_left_raw + shake_dx;
-    let pad = 32.0;
-    let inner_left = card_left + pad;
-    let inner_top = card_top + pad;
-    let inner_w = cw - 2.0 * pad;
-    let box_h = 36.0;
-    let user_box_top = inner_top + 88.0;
-    let pwd_box_top = inner_top + 150.0;
+    let inner_left = card_left + CARD_PAD;
+    let inner_top = card_top + CARD_PAD;
+    let inner_w = cw - 2.0 * CARD_PAD;
+    let user_box_top = inner_top + USER_BOX_OFFSET_Y;
+    let pwd_box_top = inner_top + PASSWORD_BOX_OFFSET_Y;
 
-    if point_in_rect(x, y, inner_left, user_box_top, inner_w, box_h) {
+    if point_in_rect(x, y, inner_left, user_box_top, inner_w, INPUT_BOX_HEIGHT) {
         Some(ClickTarget::Field(Field::Username))
-    } else if point_in_rect(x, y, inner_left, pwd_box_top, inner_w, box_h) {
+    } else if point_in_rect(x, y, inner_left, pwd_box_top, inner_w, INPUT_BOX_HEIGHT) {
         Some(ClickTarget::Field(Field::Password))
     } else {
         let (restart, poweroff) = power_button_rects(w, h, shake_dx);
@@ -857,15 +994,17 @@ fn click_target_at(w: f32, h: f32, x: f32, y: f32, shake_dx: f32) -> Option<Clic
 fn power_button_rects(w: f32, h: f32, shake_dx: f32) -> PowerButtonRects {
     let (card_left_raw, card_top, cw, ch) = card_rect(w, h);
     let card_left = card_left_raw + shake_dx;
-    let button_w = 116.0;
-    let button_h = 34.0;
-    let gap = 12.0;
-    let total_w = button_w * 2.0 + gap;
+    let total_w = POWER_BUTTON_WIDTH * 2.0 + POWER_BUTTON_GAP;
     let x0 = card_left + cw / 2.0 - total_w / 2.0;
-    let y = card_top + ch - 32.0 - button_h;
+    let y = card_top + ch - POWER_BUTTON_BOTTOM_PAD - POWER_BUTTON_HEIGHT;
     (
-        (x0, y, button_w, button_h),
-        (x0 + button_w + gap, y, button_w, button_h),
+        (x0, y, POWER_BUTTON_WIDTH, POWER_BUTTON_HEIGHT),
+        (
+            x0 + POWER_BUTTON_WIDTH + POWER_BUTTON_GAP,
+            y,
+            POWER_BUTTON_WIDTH,
+            POWER_BUTTON_HEIGHT,
+        ),
     )
 }
 
@@ -953,13 +1092,14 @@ fn draw_login_button(
     label: &str,
     accent: Color,
     alpha: f32,
+    selected: bool,
 ) {
     let path = rounded_rect_path(rect.0, rect.1, rect.2, rect.3, 8.0);
     let fill = mix_color(
         Color::from_rgba8(48, 60, 96, 255),
         accent,
-        0.20,
-        (alpha * 214.0) as u8,
+        if selected { 0.44 } else { 0.20 },
+        (alpha * if selected { 232.0 } else { 214.0 }) as u8,
     );
     let mut fill_paint = Paint::default();
     fill_paint.set_color(fill);
@@ -975,8 +1115,8 @@ fn draw_login_button(
     draw_card_stroke(
         pm,
         &path,
-        color_with_alpha(accent, (alpha * 150.0) as u8),
-        1.2,
+        color_with_alpha(accent, (alpha * if selected { 230.0 } else { 150.0 }) as u8),
+        if selected { 1.8 } else { 1.2 },
     );
     painter.render_text_centered(
         pm,
@@ -995,17 +1135,35 @@ fn draw_power_buttons(
     painter: &CompassPainter,
     alpha: f32,
     shake_dx: f32,
+    pending: Option<PowerAction>,
 ) {
     let (restart, poweroff) = power_button_rects(w, h, shake_dx);
     draw_login_button(
         pm,
         painter,
         restart,
-        "Neustart",
+        if pending == Some(PowerAction::Reboot) {
+            "Bestätigen"
+        } else {
+            "Neustart"
+        },
         painter.style().north,
         alpha,
+        pending == Some(PowerAction::Reboot),
     );
-    draw_login_button(pm, painter, poweroff, "Aus", painter.style().south, alpha);
+    draw_login_button(
+        pm,
+        painter,
+        poweroff,
+        if pending == Some(PowerAction::PowerOff) {
+            "Bestätigen"
+        } else {
+            "Aus"
+        },
+        painter.style().south,
+        alpha,
+        pending == Some(PowerAction::PowerOff),
+    );
 }
 
 fn point_in_rect(px: f32, py: f32, x: f32, y: f32, w: f32, h: f32) -> bool {
@@ -1071,10 +1229,9 @@ fn draw_login_ui(
 ) {
     let (card_left_raw, card_top, cw, _ch) = card_rect(w, h);
     let card_left = card_left_raw + shake_dx;
-    let pad = 32.0;
-    let inner_left = card_left + pad;
-    let inner_top = card_top + pad;
-    let inner_w = cw - 2.0 * pad;
+    let inner_left = card_left + CARD_PAD;
+    let inner_top = card_top + CARD_PAD;
+    let inner_w = cw - 2.0 * CARD_PAD;
     let cx = card_left + cw / 2.0;
 
     let north = painter.style().north;
@@ -1092,16 +1249,15 @@ fn draw_login_ui(
         TextStyle::Script(44.0),
         "Willkommen",
         cx,
-        inner_top + 32.0,
+        inner_top + TITLE_OFFSET_Y,
         title_color,
     );
 
-    let box_h = 36.0;
     let label_size = 14.0;
     let text_size = 22.0;
 
     // Username row
-    let user_label_y = inner_top + 76.0;
+    let user_label_y = inner_top + USER_LABEL_OFFSET_Y;
     painter.render_text_left(
         pm,
         TextStyle::SansBold(label_size),
@@ -1110,18 +1266,18 @@ fn draw_login_ui(
         user_label_y,
         label_color,
     );
-    let user_box_top = inner_top + 88.0;
+    let user_box_top = inner_top + USER_BOX_OFFSET_Y;
     draw_input_box(
         pm,
         inner_left,
         user_box_top,
         inner_w,
-        box_h,
+        INPUT_BOX_HEIGHT,
         box_fill,
         box_outline,
     );
-    let user_text_x = inner_left + 12.0;
-    let user_baseline = user_box_top + box_h - 12.0;
+    let user_text_x = inner_left + INPUT_TEXT_PAD_X;
+    let user_baseline = user_box_top + INPUT_BOX_HEIGHT - INPUT_BASELINE_PAD_BOTTOM;
     let after_user = painter.render_text_left(
         pm,
         TextStyle::SansBold(text_size),
@@ -1135,7 +1291,7 @@ fn draw_login_ui(
     }
 
     // Password row
-    let pwd_label_y = inner_top + 138.0;
+    let pwd_label_y = inner_top + PASSWORD_LABEL_OFFSET_Y;
     painter.render_text_left(
         pm,
         TextStyle::SansBold(label_size),
@@ -1144,18 +1300,18 @@ fn draw_login_ui(
         pwd_label_y,
         label_color,
     );
-    let pwd_box_top = inner_top + 150.0;
+    let pwd_box_top = inner_top + PASSWORD_BOX_OFFSET_Y;
     draw_input_box(
         pm,
         inner_left,
         pwd_box_top,
         inner_w,
-        box_h,
+        INPUT_BOX_HEIGHT,
         box_fill,
         box_outline,
     );
-    let pwd_text_x = inner_left + 12.0;
-    let pwd_baseline = pwd_box_top + box_h - 12.0;
+    let pwd_text_x = inner_left + INPUT_TEXT_PAD_X;
+    let pwd_baseline = pwd_box_top + INPUT_BOX_HEIGHT - INPUT_BASELINE_PAD_BOTTOM;
     let dots = "•".repeat(ui.password.chars().count());
     let after_pwd = painter.render_text_left(
         pm,
@@ -1171,7 +1327,7 @@ fn draw_login_ui(
 
     // Bottom hint — text depends on phase (Editing vs Failed)
     let (restart_rect, _) = power_button_rects(w, h, shake_dx);
-    let hint_y = restart_rect.1 - 16.0;
+    let hint_y = restart_rect.1 - HINT_POWER_GAP;
     let hint_text = ui.hint();
     let hint_color_phase = match ui.phase {
         InputPhase::Failed(_) => rgba_with_alpha(painter.style().south, (alpha * 220.0) as u8),
@@ -1185,7 +1341,15 @@ fn draw_login_ui(
         hint_y,
         hint_color_phase,
     );
-    draw_power_buttons(pm, w, h, painter, alpha, shake_dx);
+    draw_power_buttons(
+        pm,
+        w,
+        h,
+        painter,
+        alpha,
+        shake_dx,
+        ui.pending_power_action(),
+    );
 }
 
 fn draw_input_box(pm: &mut PixmapMut, x: f32, y: f32, w: f32, h: f32, fill: Color, outline: Color) {
@@ -1449,6 +1613,14 @@ mod tests {
     }
 
     #[test]
+    fn anim_frame_reports_steady_after_intro() {
+        let painter = p();
+        let t = (UI_FADE_END_MS + 100) as f32 / 1000.0;
+        let af = compute_anim_frame(t, &painter, 1920.0, 1080.0);
+        assert!(anim_frame_is_steady(&af));
+    }
+
+    #[test]
     fn ramp_u8_clamps_outside_window() {
         assert_eq!(ramp_u8(50, 100, 200, 10, 90), 10);
         assert_eq!(ramp_u8(150, 100, 200, 10, 90), 50);
@@ -1476,6 +1648,36 @@ mod tests {
             click_target_at(1920.0, 1080.0, poweroff_center.0, poweroff_center.1, 0.0),
             Some(ClickTarget::PowerOff)
         );
+    }
+
+    #[test]
+    fn power_action_requires_second_matching_click() {
+        let mut s = LoginUiState::default();
+        assert_eq!(s.confirm_power_action(PowerAction::Reboot), None);
+        assert_eq!(s.pending_power_action(), Some(PowerAction::Reboot));
+        assert_eq!(
+            s.confirm_power_action(PowerAction::Reboot),
+            Some(ControlFlow::Reboot)
+        );
+    }
+
+    #[test]
+    fn power_confirmation_switches_and_expires() {
+        let mut s = LoginUiState::default();
+        assert_eq!(s.confirm_power_action(PowerAction::Reboot), None);
+        assert_eq!(s.confirm_power_action(PowerAction::PowerOff), None);
+        assert_eq!(s.pending_power_action(), Some(PowerAction::PowerOff));
+        assert_eq!(
+            s.confirm_power_action(PowerAction::PowerOff),
+            Some(ControlFlow::PowerOff)
+        );
+
+        s.pending_power = Some(PendingPowerAction {
+            action: PowerAction::Reboot,
+            since: Instant::now() - POWER_CONFIRM_WINDOW - Duration::from_millis(1),
+        });
+        assert!(s.clear_expired_power_confirmation());
+        assert_eq!(s.pending_power_action(), None);
     }
 
     #[test]
