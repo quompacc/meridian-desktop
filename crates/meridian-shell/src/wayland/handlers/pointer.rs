@@ -71,31 +71,11 @@ impl PointerHandler for MeridianShell {
             }
 
             if self.pointer_surface == SurfaceKind::Launcher {
-                // ── Step 0: Context-menu left-click — process before the widget tree so
-                //    clicking a menu item does not also fire the underlying tile handler.
-                if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
-                    if let Some(cm) = self.context_menu.take() {
-                        let items = context_menu::item_list(
-                            cm.is_terminal,
-                            cm.is_pinned,
-                            cm.running_window_id.is_some(),
-                        );
-                        let n = items.len();
-                        if let Some(idx) =
-                            context_menu::hit_item(&cm, n, event.position.0, event.position.1)
-                        {
-                            let action = items[idx].1;
-                            self.handle_context_menu_action(qh, action, &cm);
-                            self.draw_launcher(qh, RepaintReason::Pointer);
-                            continue;
-                        }
-                        // Click outside menu: dismiss and fall through to widget tree.
-                        self.draw_launcher(qh, RepaintReason::Pointer);
-                    }
-                }
-
-                // ── Step 1: Fullscreen mode — translate to launcher-local coords.
-                //    Any event outside the visual area is discarded (clicks close launcher).
+                // Translate to content-buffer coordinates first.
+                // In fullscreen mode the launcher surface covers the full screen but
+                // draw_overlay / hit tests operate on the fixed LAUNCHER_WxH content
+                // buffer, so we need coords relative to that buffer, not the surface.
+                // A click outside the visual area is discarded early.
                 let local_pos = if self.launcher_is_fullscreen {
                     let (px, py) = event.position;
                     let vx = self.launcher_visual_x as f64;
@@ -112,18 +92,41 @@ impl PointerHandler for MeridianShell {
                     event.position
                 };
 
-                // ── Step 2: Legacy hover selection (highlights tiles in tile-start view).
+                // ── Step 0: Context-menu left-click — before the widget tree so clicking
+                //    a menu item does not also fire the underlying tile.
+                if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
+                    if let Some(cm) = self.context_menu.take() {
+                        let items = context_menu::item_list(
+                            cm.is_terminal,
+                            cm.is_pinned,
+                            cm.running_window_id.is_some(),
+                        );
+                        let n = items.len();
+                        if let Some(idx) =
+                            context_menu::hit_item(&cm, n, local_pos.0, local_pos.1)
+                        {
+                            let action = items[idx].1;
+                            self.handle_context_menu_action(qh, action, &cm);
+                            self.draw_launcher(qh, RepaintReason::Pointer);
+                            continue;
+                        }
+                        // Click outside menu: dismiss and fall through to widget tree.
+                        self.draw_launcher(qh, RepaintReason::Pointer);
+                    }
+                }
+
+                // ── Step 1: Legacy hover selection.
                 if matches!(
                     event.kind,
                     PointerEventKind::Motion { .. } | PointerEventKind::Press { .. }
                 ) && self
                     .launcher_state
-                    .update_hover_selection(event.position.0, event.position.1)
+                    .update_hover_selection(local_pos.0, local_pos.1)
                 {
                     self.draw_launcher(qh, RepaintReason::Pointer);
                 }
 
-                // ── Step 3: Context-menu hover tracking.
+                // ── Step 2: Context-menu hover tracking.
                 if let PointerEventKind::Motion { .. } = event.kind {
                     if let Some(ref mut cm) = self.context_menu {
                         let items = context_menu::item_list(
@@ -133,7 +136,7 @@ impl PointerHandler for MeridianShell {
                         );
                         let n = items.len();
                         let new_hover =
-                            context_menu::hit_item(cm, n, event.position.0, event.position.1);
+                            context_menu::hit_item(cm, n, local_pos.0, local_pos.1);
                         if new_hover != cm.hover_idx {
                             cm.hover_idx = new_hover;
                             self.draw_launcher(qh, RepaintReason::Pointer);
@@ -141,22 +144,13 @@ impl PointerHandler for MeridianShell {
                     }
                 }
 
-                // ── Step 4: Right-click — open or replace context menu.
+                // ── Step 3: Right-click — open or replace context menu.
                 if let PointerEventKind::Press { button: 0x111, .. } = event.kind {
-                    tracing::info!(
-                        "right-click at ({:.0},{:.0}) surface={:?} launcher_open={} app_view={}",
-                        event.position.0,
-                        event.position.1,
-                        self.pointer_surface,
-                        self.launcher_state.open,
-                        self.app_view_open
-                    );
                     self.context_menu = None;
 
-                    // App grid direct hit test for right-click
                     if self.app_view_open {
-                        let cx = event.position.0 as i32;
-                        let cy = event.position.1 as i32;
+                        let cx = local_pos.0 as i32;
+                        let cy = local_pos.1 as i32;
                         let grid_start = crate::app_view::APP_GRID_HEADER_H;
                         let grid_end = crate::LAUNCHER_HEIGHT as i32
                             - crate::app_view::APP_GRID_FOOTER_H;
@@ -211,8 +205,8 @@ impl PointerHandler for MeridianShell {
                                             is_running,
                                         );
                                         let (mx, my) = context_menu::clamp_position(
-                                            event.position.0 as i32,
-                                            event.position.1 as i32,
+                                            local_pos.0 as i32,
+                                            local_pos.1 as i32,
                                             items.len(),
                                             crate::LAUNCHER_WIDTH as i32,
                                             crate::LAUNCHER_HEIGHT as i32,
@@ -262,8 +256,8 @@ impl PointerHandler for MeridianShell {
                     };
                     if let Ok(layout) = meridian_ui::compute_layout(&*tree, pixel_size) {
                         let pos = meridian_ui::PointerPosition {
-                            x: event.position.0 as i32,
-                            y: event.position.1 as i32,
+                            x: local_pos.0 as i32,
+                            y: local_pos.1 as i32,
                         };
                         let path = meridian_ui::hit_test(&layout, pos);
                         if let Some(path) = path {
@@ -309,8 +303,8 @@ impl PointerHandler for MeridianShell {
                                         is_running,
                                     );
                                     let (mx, my) = context_menu::clamp_position(
-                                        event.position.0 as i32,
-                                        event.position.1 as i32,
+                                        local_pos.0 as i32,
+                                        local_pos.1 as i32,
                                         items.len(),
                                         crate::LAUNCHER_WIDTH as i32,
                                         crate::LAUNCHER_HEIGHT as i32,
@@ -326,12 +320,6 @@ impl PointerHandler for MeridianShell {
                                             running_window_id,
                                             hover_idx: None,
                                         });
-                                    tracing::info!(
-                                        "context_menu opened for exec={:?} at ({},{})",
-                                        self.context_menu.as_ref().map(|c| c.exec.as_ref()),
-                                        mx,
-                                        my
-                                    );
                                     self.draw_launcher(qh, RepaintReason::Pointer);
                                 }
                             }
@@ -340,7 +328,7 @@ impl PointerHandler for MeridianShell {
                     continue;
                 }
 
-                // ── Step 5: Scroll in the launcher.
+                // ── Step 4: Scroll in the launcher.
                 if let PointerEventKind::Axis { vertical, .. } = event.kind {
                     if self.launcher_state.view()
                         == crate::launcher::LauncherView::TileStart
@@ -394,7 +382,7 @@ impl PointerHandler for MeridianShell {
                     }
                 }
 
-                // ── Step 6: App grid direct left-click hit test (bypasses widget tree).
+                // ── Step 5: App grid direct left-click hit test (bypasses widget tree).
                 if self.app_view_open {
                     if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
                         let cx = local_pos.0 as i32;
@@ -442,7 +430,7 @@ impl PointerHandler for MeridianShell {
                     }
                 }
 
-                // ── Step 7: Widget-tree pointer events (hover state + widget clicks).
+                // ── Step 6: Widget-tree pointer events (hover state + widget clicks).
                 if let Some(ev) = translate_pointer_event(&event.kind, local_pos) {
                     let tree = if self.launcher_settings_open {
                         crate::settings_view::build_settings_widget_tree(
@@ -545,7 +533,6 @@ impl PointerHandler for MeridianShell {
                 }
                 continue;
             }
-
             if self.pointer_surface == SurfaceKind::Panel {
                 if let Some(ev) = translate_pointer_event(&event.kind, event.position) {
                     let tree = crate::panel_view::build_panel_widget_tree(
