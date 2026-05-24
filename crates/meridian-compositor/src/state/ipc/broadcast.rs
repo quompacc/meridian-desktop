@@ -5,7 +5,7 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::wayland::seat::WaylandFocus;
 
 use super::conversions::index_to_legacy_ipc_workspace;
-use crate::state::{window_id, window_list_entry, MeridianState, OutputId, OutputInfo};
+use crate::state::{window_app_id, window_id, window_list_entry, MeridianState, OutputId, OutputInfo};
 
 fn build_output_workspace_snapshot(
     outputs: &[OutputInfo],
@@ -53,6 +53,7 @@ impl MeridianState {
                     id,
                     title,
                     minimized: false,
+                    app_id: window_app_id(window),
                 });
             }
         }
@@ -68,6 +69,7 @@ impl MeridianState {
                 id: id.clone(),
                 title,
                 minimized: true,
+                app_id: window_app_id(&minimized.window),
             });
         }
 

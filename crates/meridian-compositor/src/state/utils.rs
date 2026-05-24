@@ -40,6 +40,25 @@ pub(crate) fn window_list_entry(window: &Window) -> Option<(String, String)> {
     })
 }
 
+pub(crate) fn window_app_id(window: &Window) -> Option<String> {
+    if let Some(toplevel) = window.toplevel() {
+        return with_states(toplevel.wl_surface(), |states| {
+            states
+                .data_map
+                .get::<XdgToplevelSurfaceData>()?
+                .lock()
+                .ok()?
+                .app_id
+                .clone()
+        });
+    }
+    window.x11_surface().map(|x11| {
+        let class = x11.class();
+        let instance = x11.instance();
+        if !class.trim().is_empty() { class } else { instance }
+    })
+}
+
 pub(crate) fn toplevel_title(surface: &smithay::wayland::shell::xdg::ToplevelSurface) -> String {
     with_states(surface.wl_surface(), |states| {
         let data = states

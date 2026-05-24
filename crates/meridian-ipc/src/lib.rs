@@ -11,6 +11,8 @@ pub struct WindowSnapshotEntry {
     pub title: String,
     #[serde(default)]
     pub minimized: bool,
+    #[serde(default)]
+    pub app_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -256,6 +258,7 @@ mod tests {
             id: "win-1".to_string(),
             title: "Terminal".to_string(),
             minimized: false,
+            app_id: None,
         };
         assert_eq!(entry.workspace, 2);
         assert_eq!(entry.id, "win-1");
@@ -273,18 +276,21 @@ mod tests {
                     id: "a".to_string(),
                     title: "A".to_string(),
                     minimized: false,
+                    app_id: None,
                 },
                 WindowSnapshotEntry {
                     workspace: 3,
                     id: "b".to_string(),
                     title: "B".to_string(),
                     minimized: true,
+                    app_id: None,
                 },
                 WindowSnapshotEntry {
                     workspace: 9,
                     id: "c".to_string(),
                     title: "C".to_string(),
                     minimized: false,
+                    app_id: None,
                 },
             ],
         };

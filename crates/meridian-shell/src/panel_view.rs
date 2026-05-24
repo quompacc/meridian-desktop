@@ -315,6 +315,8 @@ struct PanelPinnedChip {
     icon: Option<Pixmap>,
     program: Box<str>,
     args: Vec<String>,
+    window_count: usize,
+    has_focused: bool,
 }
 
 impl Widget for PanelPinnedChip {
@@ -341,32 +343,32 @@ impl Widget for PanelPinnedChip {
     }
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
-        let bg = match state {
-            WidgetState::Idle => theme.palette.surface,
-            WidgetState::Hovered => theme
-                .palette
-                .surface
-                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12),
-            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.15),
+        // Background — subtle highlight when this app has the focused window
+        let bg = if self.has_focused {
+            match state {
+                WidgetState::Idle => theme.palette.surface.lerp(theme.palette.accent, 0.12),
+                WidgetState::Hovered => theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15),
+                WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.15),
+            }
+        } else {
+            match state {
+                WidgetState::Idle => theme.palette.surface,
+                WidgetState::Hovered => theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12),
+                WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.15),
+            }
         };
 
         if let Some(ref path) = rounded_rect_path(area, CHIP_RADIUS) {
             paint_fill(canvas, path, bg);
         }
 
+        // Icon (centered, shifted up slightly to leave room for indicator)
         if let Some(ref icon) = self.icon {
             let iw = icon.width() as i32;
             let ih = icon.height() as i32;
             let x = area.x + (area.width - iw) / 2;
             let y = area.y + (area.height - ACCENT_LINE_H - ih) / 2;
-            canvas.draw_pixmap(
-                x,
-                y,
-                icon.as_ref(),
-                &PixmapPaint::default(),
-                Transform::identity(),
-                None,
-            );
+            canvas.draw_pixmap(x, y, icon.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
         } else {
             let (text_w, _) = measure_text(&self.label, FONT_SIZE);
             let tx = area.x + (area.width - text_w) / 2;
@@ -374,15 +376,48 @@ impl Widget for PanelPinnedChip {
             paint_text(canvas, &self.label, tx, ty, FONT_SIZE, theme.palette.text);
         }
 
-        // accent line bottom
-        let line = Rect {
-            x: area.x,
-            y: area.y + area.height - ACCENT_LINE_H,
-            width: area.width,
-            height: ACCENT_LINE_H,
-        };
-        if let Some(ref path) = rounded_rect_path(line, 0) {
-            paint_fill(canvas, path, theme.palette.accent);
+        // Indicator: dot or pill at the bottom of the chip
+        let chip_cx = (area.x + area.width / 2) as f32;
+        let indicator_cy = (area.y + area.height - 2) as f32;  // 2px from chip bottom
+
+        match self.window_count {
+            0 => {
+                // No running window: dim accent line (subtle, just chip chrome)
+                let dim = Color::rgba(theme.palette.accent.r, theme.palette.accent.g, theme.palette.accent.b, 55);
+                let line = Rect {
+                    x: area.x + 4,
+                    y: area.y + area.height - ACCENT_LINE_H,
+                    width: area.width - 8,
+                    height: ACCENT_LINE_H,
+                };
+                if let Some(ref path) = rounded_rect_path(line, 1) {
+                    paint_fill(canvas, path, dim);
+                }
+            }
+            1 => {
+                // Single window: small dot
+                let dot_color = if self.has_focused {
+                    Color::rgba(theme.palette.text.r, theme.palette.text.g, theme.palette.text.b, 220)
+                } else {
+                    theme.palette.accent
+                };
+                draw_circle(canvas, chip_cx, indicator_cy, 2.5, dot_color);
+            }
+            n => {
+                // Multiple windows: pill with count
+                let dot_color = if self.has_focused { theme.palette.text } else { theme.palette.accent };
+                let label: Box<str> = if n > 9 { "9+".into() } else { n.to_string().into() };
+                let (text_w, _) = measure_text(&label, 9.0);
+                let pill_w = (text_w + 8).max(14);
+                let pill_h = 9;
+                let pill_x = area.x + (area.width - pill_w) / 2;
+                let pill_y = area.y + area.height - pill_h - 1;
+                if let Some(ref path) = rounded_rect_path(Rect { x: pill_x, y: pill_y, width: pill_w, height: pill_h }, 4) {
+                    paint_fill(canvas, path, dot_color);
+                }
+                let text_color = theme.palette.background;
+                paint_text(canvas, &label, pill_x + (pill_w - text_w) / 2, pill_y + pill_h - 1, 9.0, text_color);
+            }
         }
     }
 }
@@ -469,6 +504,49 @@ impl Widget for PanelWindowChip {
     }
 }
 
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+fn draw_circle(canvas: &mut PixmapMut<'_>, cx: f32, cy: f32, radius: f32, color: Color) {
+    use tiny_skia::{FillRule, Paint, PathBuilder, Transform};
+    let mut pb = PathBuilder::new();
+    pb.push_circle(cx, cy, radius);
+    if let Some(path) = pb.finish() {
+        let mut paint = Paint::default();
+        paint.anti_alias = true;
+        paint.set_color_rgba8(color.r, color.g, color.b, color.a);
+        canvas.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    }
+}
+
+fn windows_for_pinned_app(app: &PinnedApp, windows: &[PanelWindowEntry]) -> (usize, bool) {
+    let program_base = std::path::Path::new(&app.program)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(&app.program)
+        .to_lowercase();
+    let label_lower = app.label.to_lowercase();
+
+    windows.iter().fold((0usize, false), |(count, focused), w| {
+        let matches = if let Some(ref app_id) = w.app_id {
+            let aid = app_id.to_lowercase();
+            aid == program_base
+                || aid.ends_with(&format!(".{}", program_base))
+                || aid == label_lower
+                || aid.ends_with(&format!(".{}", label_lower))
+        } else {
+            // Fallback: title-based matching for when compositor hasn't sent app_id yet
+            let title_lower = w.title.to_lowercase();
+            !program_base.is_empty() && title_lower.contains(&program_base)
+                || !label_lower.is_empty() && title_lower.contains(&label_lower)
+        };
+        if matches {
+            (count + 1, focused || w.focused)
+        } else {
+            (count, focused)
+        }
+    })
+}
+
 // ── build_panel_widget_tree ─────────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
@@ -502,6 +580,7 @@ pub(crate) fn build_panel_widget_tree(
         false,
     )));
     for (idx, app) in pinned_apps.iter().enumerate() {
+        let (window_count, has_focused) = windows_for_pinned_app(app, window_entries);
         let icon = app
             .icon_name
             .as_deref()
@@ -513,6 +592,8 @@ pub(crate) fn build_panel_widget_tree(
             icon,
             program: app.program.clone().into_boxed_str(),
             args: app.args.clone(),
+            window_count,
+            has_focused,
         }));
     }
     let left_cluster = Container::new(
@@ -528,19 +609,8 @@ pub(crate) fn build_panel_widget_tree(
         left_children,
     );
 
-    // Center cluster
-    let mut center_children: Vec<Box<dyn Widget>> = Vec::new();
-    for entry in window_entries {
-        let title_width = entry.title.len() as i32 * 8 + 16;
-        let entry_w = title_width.clamp(60, 200);
-        center_children.push(Box::new(PanelWindowChip {
-            window_id: entry.id.clone().into_boxed_str(),
-            title: entry.title.clone().into_boxed_str(),
-            focused: entry.focused,
-            minimized: entry.minimized,
-            width: entry_w,
-        }));
-    }
+    // Center cluster — empty spacer; window indicators are now shown as badges on pinned icons
+    let center_children: Vec<Box<dyn Widget>> = Vec::new();
     let center_cluster = Container::new(
         WidgetStyle {
             flex_direction: FlexDirection::Row,
@@ -774,6 +844,8 @@ mod tests {
             icon: None,
             program: "prog".into(),
             args: vec![],
+            window_count: 0,
+            has_focused: false,
         };
         assert_eq!(chip.pinned_app_idx(), Some(2));
     }
@@ -786,6 +858,8 @@ mod tests {
             icon: None,
             program: "firefox".into(),
             args: vec![],
+            window_count: 0,
+            has_focused: false,
         };
         assert_eq!(chip.launch_info(), Some(("firefox", &vec![] as &[String])));
     }

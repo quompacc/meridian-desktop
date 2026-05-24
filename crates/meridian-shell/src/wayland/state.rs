@@ -162,6 +162,7 @@ fn apply_window_opened_state(
             title,
             workspace: workspace.unwrap_or(1),
             minimized: false,
+            app_id: None,
         });
     }
 }
@@ -199,6 +200,7 @@ fn apply_full_window_snapshot(
             title: window.title,
             workspace: normalize_workspace_1_based_u8(window.workspace),
             minimized: window.minimized,
+            app_id: window.app_id.clone(),
         });
     }
 }
@@ -1223,18 +1225,21 @@ mod tests {
                     id: "id-1".into(),
                     title: "A".into(),
                     minimized: false,
+                    app_id: None,
                 },
                 WindowSnapshotEntry {
                     workspace: 3,
                     id: "id-2".into(),
                     title: "B".into(),
                     minimized: false,
+                    app_id: None,
                 },
                 WindowSnapshotEntry {
                     workspace: 3,
                     id: "id-3".into(),
                     title: "C".into(),
                     minimized: true,
+                    app_id: None,
                 },
             ],
         );
@@ -1256,6 +1261,7 @@ mod tests {
             title: "stale".into(),
             workspace: 1,
             minimized: false,
+            app_id: None,
         }];
         let mut counts = [3u16; 9];
         apply_full_window_snapshot(&mut active, &mut windows, &mut counts, 1, Vec::new());
@@ -1281,6 +1287,7 @@ mod tests {
                 id: "id-1".into(),
                 title: "A".into(),
                 minimized: false,
+                app_id: None,
             }],
         );
 
@@ -1305,12 +1312,14 @@ mod tests {
                     id: "id-1".into(),
                     title: "A".into(),
                     minimized: false,
+                    app_id: None,
                 },
                 WindowSnapshotEntry {
                     workspace: 42, // overflow case
                     id: "id-2".into(),
                     title: "B".into(),
                     minimized: true,
+                    app_id: None,
                 },
             ],
         );
@@ -1331,6 +1340,7 @@ mod tests {
             title: "old".into(),
             workspace: 2,
             minimized: false,
+            app_id: None,
         }];
         apply_window_opened_state(&mut windows, "id-1".into(), "new".into(), None);
         assert_eq!(windows[0].title, "new");
@@ -1348,6 +1358,7 @@ mod tests {
             title: "A".into(),
             workspace: 1,
             minimized: false,
+            app_id: None,
         }];
         apply_window_closed_state(&mut windows, "missing");
         assert_eq!(windows.len(), 1);
@@ -1360,6 +1371,7 @@ mod tests {
             title: "A".into(),
             workspace: 1,
             minimized: false,
+            app_id: None,
         }];
         apply_window_closed_state(&mut windows, "id-1");
         assert!(windows.is_empty());
@@ -1381,12 +1393,14 @@ mod tests {
                     id: "id-1".into(),
                     title: "A".into(),
                     minimized: false,
+                    app_id: None,
                 },
                 WindowSnapshotEntry {
                     workspace: 3,
                     id: "id-2".into(),
                     title: "B".into(),
                     minimized: true,
+                    app_id: None,
                 },
             ],
         );
@@ -1403,6 +1417,7 @@ mod tests {
             title: "A".into(),
             workspace: 1,
             minimized: false,
+            app_id: None,
         }];
         let mut focused = Some("missing".to_string());
         clear_stale_focused_window_id(&mut focused, &windows);

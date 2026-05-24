@@ -19,6 +19,7 @@ pub struct PanelWindowEntry {
     pub title: String,
     pub focused: bool,
     pub minimized: bool,
+    pub app_id: Option<String>,
 }
 
 impl PanelState {
