@@ -5,6 +5,17 @@ to other systemd + Wayland-capable distros; package names vary.
 
 For day-to-day project status and history see `README.md` and `ROADMAP.md`.
 
+The full boot experience uses two sibling checkouts:
+
+```text
+~/bootsplash
+~/meridian-desktop
+```
+
+`bootsplash` owns the early DRM splash and hands over to `meridian-login`.
+`meridian-desktop` owns the login manager, compositor, shell, portal helpers,
+and the shared compass renderer used by both repositories.
+
 ## 1. Build-time dependencies (apt)
 
 ```bash
@@ -58,32 +69,50 @@ What each one is for:
 ```bash
 cd /path/to/meridian-desktop
 cargo build --release --workspace
+
+cd /path/to/bootsplash
+cargo build --release
 ```
 
 `cargo build -p meridian --release` alone is *not* enough — it does not pull
 in `meridian-shell` or `meridian-login`. Always use `--workspace` (or
 `scripts/smoke-drm.sh`, which does the right thing).
 
-The compositor will look for `meridian-shell` next to its own binary
-(`target/release/`), so building the workspace is enough — no install step
-needed for the shell binary to be picked up.
+The compositor looks for `meridian-shell` next to its own binary. During local
+development that is `target/release/`; for the systemd install below both
+`meridian` and `meridian-shell` are installed side by side in `/usr/local/bin`.
 
-## 4. Install login service
+## 4. Install binaries and services
 
 ```bash
-sudo cp crates/meridian-login/config/meridian-login.service \
-        /etc/systemd/system/meridian-login.service
-sudo cp crates/meridian-login/config/meridian-login.pam \
-        /etc/pam.d/meridian-login
+cd /path/to/meridian-desktop
+sudo install -Dm755 target/release/meridian /usr/local/bin/meridian
+sudo install -Dm755 target/release/meridian-shell /usr/local/bin/meridian-shell
+sudo install -Dm755 target/release/meridian-login /usr/local/bin/meridian-login
+sudo install -Dm755 scripts/meridian-file-picker /usr/local/bin/meridian-file-picker
+sudo install -Dm644 crates/meridian-login/config/meridian-login.service \
+    /etc/systemd/system/meridian-login.service
+sudo install -Dm644 crates/meridian-login/config/meridian-login.pam \
+    /etc/pam.d/meridian-login
+
+cd /path/to/bootsplash
+sudo install -Dm755 target/release/bootsplash /usr/local/bin/bootsplash
+sudo install -Dm644 systemd/bootsplash.service \
+    /etc/systemd/system/bootsplash.service
+
 sudo systemctl daemon-reload
 sudo systemctl disable getty@tty1.service
-sudo systemctl enable meridian-login.service
+sudo systemctl enable bootsplash.service meridian-login.service
 ```
 
-The unit:
-- runs on `tty1`, replaces `getty@tty1`
-- spawns `meridian` (the compositor) as the authenticated user after PAM
-- IPC-hands over to the compositor and the shell
+The boot chain:
+- `bootsplash.service` starts early from `basic.target`, opens `/dev/dri/card0`
+  as DRM master and listens on `/run/bootsplash.sock`.
+- `meridian-login.service` runs on `tty1`, replaces `getty@tty1`, asks
+  bootsplash for handover, renders the login card, then starts `meridian`
+  as the authenticated user after PAM.
+- `meridian` starts `meridian-shell`; the shell expects
+  `/usr/local/bin/meridian-file-picker` for portal file chooser requests.
 
 Recovery if `meridian-login.service` ever fails to start: `Ctrl+Alt+F2`
 brings up a regular getty on `tty2`.
@@ -140,6 +169,19 @@ sudo systemctl reboot
 
 You should land on the bootsplash compass, transition into the login card,
 and end up on the meridian desktop with panel + launcher.
+
+After SSH is back, verify the installed boot chain:
+
+```bash
+systemctl --failed --no-pager
+systemctl status --no-pager bootsplash.service meridian-login.service
+sudo journalctl -b -u bootsplash.service -u meridian-login.service --no-pager
+sudo scripts/test-login-uinput.py --prepare-user --run --lock-user
+```
+
+Expected: no failed units, `bootsplash.service` inactive after a successful
+handover, `meridian-login.service` active at the login card, and the uinput
+test reports `login smoke test passed`.
 
 ## Known optional packages
 
