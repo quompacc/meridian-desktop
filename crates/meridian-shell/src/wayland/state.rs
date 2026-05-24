@@ -1240,14 +1240,6 @@ impl MeridianShell {
                     }
                 }
             }
-            ClickAction::LaunchApp(index) => {
-                self.launcher_state.launch_app(index, &mut self.ipc);
-            }
-            ClickAction::LauncherAction { action, .. } => {
-                let _result = self.launcher_state.trigger_action(action, &mut self.ipc);
-            }
-            ClickAction::SetLauncherView(_) => {}
-            ClickAction::SelectLauncherCategory(_) => {}
             ClickAction::ToggleLauncher => {
                 self.toggle_launcher();
                 self.draw_panel(qh, RepaintReason::Pointer);
@@ -1356,42 +1348,7 @@ impl MeridianShell {
 
     pub(crate) fn handle_launcher_click(&mut self, qh: &QueueHandle<Self>, action: ClickAction) {
         match action {
-            ClickAction::LaunchApp(index) => {
-                if self.launcher_state.view() == crate::launcher::LauncherView::TileStart {
-                    self.launcher_state
-                        .launch_app_by_app_index(index, &mut self.ipc);
-                } else {
-                    self.launcher_state.set_selected_index(index);
-                    self.launcher_state
-                        .launch_app(self.launcher_state.selected_index, &mut self.ipc);
-                }
-                self.close_launcher_after_launch(qh, RepaintReason::Pointer);
-            }
             ClickAction::LaunchPinnedApp(_) => {}
-            ClickAction::LauncherAction { action, index } => {
-                self.launcher_state.set_selected_index(index);
-                match self.launcher_state.trigger_action(action, &mut self.ipc) {
-                    crate::launcher::LauncherActionTriggerResult::Armed => {
-                        self.draw_launcher(qh, RepaintReason::Pointer);
-                    }
-                    crate::launcher::LauncherActionTriggerResult::Sent => {
-                        self.close_launcher_after_launch(qh, RepaintReason::Pointer);
-                    }
-                    crate::launcher::LauncherActionTriggerResult::Failed => {
-                        self.draw_launcher(qh, RepaintReason::Pointer);
-                    }
-                }
-            }
-            ClickAction::SelectLauncherCategory(raw) => {
-                if self.launcher_state.set_sidebar_category_from_click(raw) {
-                    self.draw_launcher(qh, RepaintReason::Pointer);
-                }
-            }
-            ClickAction::SetLauncherView(view) => {
-                if self.launcher_state.set_view(view) {
-                    self.draw_launcher(qh, RepaintReason::Pointer);
-                }
-            }
             ClickAction::FocusWindow(_) => {}
             ClickAction::SwitchWorkspace(_) => {}
             ClickAction::ToggleLauncher => {}

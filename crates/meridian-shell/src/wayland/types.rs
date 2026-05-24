@@ -1,5 +1,3 @@
-use crate::launcher::{LauncherAction, LauncherView};
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SurfaceKind {
     None,
@@ -25,13 +23,6 @@ pub enum ClickAction {
     SwitchWorkspace(u8),
     FocusWindow(String),
     LaunchPinnedApp(usize),
-    SelectLauncherCategory(u8),
-    LaunchApp(usize),
-    LauncherAction {
-        action: LauncherAction,
-        index: usize,
-    },
-    SetLauncherView(LauncherView),
     ToggleLauncher,
     ToggleWorkspacePopup,
     ToggleNetworkPopup,

@@ -115,17 +115,6 @@ impl PointerHandler for MeridianShell {
                     }
                 }
 
-                // ── Step 1: Legacy hover selection.
-                if matches!(
-                    event.kind,
-                    PointerEventKind::Motion { .. } | PointerEventKind::Press { .. }
-                ) && self
-                    .launcher_state
-                    .update_hover_selection(local_pos.0, local_pos.1)
-                {
-                    self.draw_launcher(qh, RepaintReason::Pointer);
-                }
-
                 // ── Step 2: Context-menu hover tracking.
                 if let PointerEventKind::Motion { .. } = event.kind {
                     if let Some(ref mut cm) = self.context_menu {
@@ -362,23 +351,7 @@ impl PointerHandler for MeridianShell {
 
                 // ── Step 4: Scroll in the launcher.
                 if let PointerEventKind::Axis { vertical, .. } = event.kind {
-                    if self.launcher_state.view() == crate::launcher::LauncherView::TileStart {
-                        let step_px: i32 = 60;
-                        let delta_px = if vertical.discrete != 0 {
-                            vertical.discrete * step_px
-                        } else {
-                            vertical.absolute as i32
-                        };
-                        if delta_px != 0
-                            && self.launcher_state.scroll_tile_area(
-                                delta_px,
-                                self.launcher_state.tile_viewport_h_cache,
-                                self.launcher_state.tile_content_h_cache,
-                            )
-                        {
-                            self.draw_launcher(qh, RepaintReason::Pointer);
-                        }
-                    } else if self.app_view_open {
+                    if self.app_view_open {
                         let step_px: i32 = 60;
                         let delta_px = if vertical.discrete != 0 {
                             vertical.discrete * step_px
@@ -437,10 +410,13 @@ impl PointerHandler for MeridianShell {
                                         &self.hidden_execs,
                                     );
                                     if let Some(app) = filtered.get(idx) {
-                                        let exec = app.program.clone();
-                                        self.dispatch_widget_action(
+                                        crate::launcher::LauncherState::launch_desktop_app(
+                                            (*app).clone(),
+                                            &mut self.ipc,
+                                        );
+                                        self.close_launcher_after_launch(
                                             qh,
-                                            crate::widget_action::WidgetAction::LaunchExec(exec),
+                                            RepaintReason::Pointer,
                                         );
                                         continue;
                                     }
@@ -676,12 +652,7 @@ impl PointerHandler for MeridianShell {
                         .iter()
                         .find(|zone| zone.rect.contains(event.position.0, event.position.1))
                         .map(|zone| zone.action.clone()),
-                    SurfaceKind::Launcher => self
-                        .launcher_state
-                        .clicks
-                        .iter()
-                        .find(|zone| zone.rect.contains(event.position.0, event.position.1))
-                        .map(|zone| zone.action.clone()),
+                    SurfaceKind::Launcher => None,
                     SurfaceKind::WorkspacePopup => self
                         .workspace_state
                         .clicks
