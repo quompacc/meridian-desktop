@@ -257,24 +257,26 @@ pub(crate) fn build_ui_preview_widget_tree(
         Box::new(
             Button::with_id_and_icon(
                 "power-off",
-                "Off",
+                "Aus",
                 pal.error,
                 FOOTER_POWER_BUTTON_SIZE,
                 FOOTER_POWER_BUTTON_SIZE,
                 power_off_icon,
             )
-            .with_armed_progress(armed_for("power-off")),
+            .with_armed_progress(armed_for("power-off"))
+            .with_armed_label("OK?"),
         ) as Box<dyn Widget>,
         Box::new(
             Button::with_id_and_icon(
                 "power-restart",
-                "Rst",
+                "Neu",
                 pal.warning,
                 FOOTER_POWER_BUTTON_SIZE,
                 FOOTER_POWER_BUTTON_SIZE,
                 power_restart_icon,
             )
-            .with_armed_progress(armed_for("power-restart")),
+            .with_armed_progress(armed_for("power-restart"))
+            .with_armed_label("OK?"),
         ) as Box<dyn Widget>,
         Box::new(
             Button::with_id_and_icon(
@@ -285,7 +287,8 @@ pub(crate) fn build_ui_preview_widget_tree(
                 FOOTER_POWER_BUTTON_SIZE,
                 power_sleep_icon,
             )
-            .with_armed_progress(armed_for("power-sleep")),
+            .with_armed_progress(armed_for("power-sleep"))
+            .with_armed_label("OK?"),
         ) as Box<dyn Widget>,
         Box::new(
             Button::with_id_and_icon(
@@ -296,7 +299,8 @@ pub(crate) fn build_ui_preview_widget_tree(
                 FOOTER_POWER_BUTTON_SIZE,
                 power_lock_icon,
             )
-            .with_armed_progress(armed_for("power-lock")),
+            .with_armed_progress(armed_for("power-lock"))
+            .with_armed_label("OK?"),
         ) as Box<dyn Widget>,
         Box::new(
             Button::with_id_and_icon(
@@ -307,7 +311,8 @@ pub(crate) fn build_ui_preview_widget_tree(
                 FOOTER_POWER_BUTTON_SIZE,
                 power_logout_icon,
             )
-            .with_armed_progress(armed_for("power-logout")),
+            .with_armed_progress(armed_for("power-logout"))
+            .with_armed_label("OK?"),
         ) as Box<dyn Widget>,
     ];
     let footer = Container::footer_row(

@@ -4,7 +4,7 @@ use taffy::prelude::{length, Size, Style};
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, Transform};
 
 use crate::{
-    effect::{paint_metro_surface, paint_text},
+    effect::{measure_text, paint_metro_surface, paint_text},
     event::WidgetState,
     paint::Rect,
     style::{Color, Theme},
@@ -17,9 +17,12 @@ pub const BUTTON_DEFAULT_HEIGHT: i32 = 48;
 pub const BUTTON_LABEL_PADDING_X: i32 = 6;
 pub const BUTTON_LABEL_BASELINE_FROM_BOTTOM: i32 = 8;
 pub const BUTTON_LABEL_FONT_PX: f32 = 11.0;
+pub const BUTTON_ARMED_LABEL_FONT_PX: f32 = 14.0;
+const DEFAULT_ARMED_LABEL: &str = "OK?";
 
 pub struct Button {
     label: &'static str,
+    armed_label: Option<&'static str>,
     accent: Color,
     width: i32,
     height: i32,
@@ -34,6 +37,7 @@ impl Button {
     pub fn new(label: &'static str, accent: Color, width: i32, height: i32) -> Self {
         Self {
             label,
+            armed_label: None,
             accent,
             width,
             height,
@@ -52,6 +56,7 @@ impl Button {
     ) -> Self {
         Self {
             label,
+            armed_label: None,
             accent,
             width,
             height,
@@ -71,6 +76,7 @@ impl Button {
     ) -> Self {
         Self {
             label,
+            armed_label: None,
             accent,
             width,
             height,
@@ -85,6 +91,12 @@ impl Button {
     /// empty ring). `None` resets to idle.
     pub fn with_armed_progress(mut self, progress: Option<f32>) -> Self {
         self.armed_progress = progress.map(|p| p.clamp(0.0, 1.0));
+        self
+    }
+
+    /// Override the short confirmation label shown while the button is armed.
+    pub fn with_armed_label(mut self, label: &'static str) -> Self {
+        self.armed_label = Some(label);
         self
     }
 
@@ -137,7 +149,21 @@ impl Widget for Button {
             }
         };
         paint_metro_surface(canvas, area, body_color, self.accent, theme, STRIPE_HEIGHT);
-        if self.icon.is_none() {
+
+        if self.armed_progress.is_some() {
+            let label = self.armed_label.unwrap_or(DEFAULT_ARMED_LABEL);
+            let (text_w, text_h) = measure_text(label, BUTTON_ARMED_LABEL_FONT_PX);
+            let x = area.x + (area.width - text_w) / 2;
+            let baseline = area.y + (area.height + text_h) / 2 - 2;
+            paint_text(
+                canvas,
+                label,
+                x,
+                baseline,
+                BUTTON_ARMED_LABEL_FONT_PX,
+                theme.palette.text,
+            );
+        } else if self.icon.is_none() {
             paint_text(
                 canvas,
                 self.label,
@@ -148,19 +174,21 @@ impl Widget for Button {
             );
         }
 
-        if let Some(ref icon) = self.icon {
-            let iw = icon.width() as i32;
-            let ih = icon.height() as i32;
-            let x = area.x + (area.width - iw) / 2;
-            let y = area.y + (area.height - ih) / 2;
-            canvas.draw_pixmap(
-                x,
-                y,
-                icon.as_ref(),
-                &PixmapPaint::default(),
-                Transform::identity(),
-                None,
-            );
+        if self.armed_progress.is_none() {
+            if let Some(ref icon) = self.icon {
+                let iw = icon.width() as i32;
+                let ih = icon.height() as i32;
+                let x = area.x + (area.width - iw) / 2;
+                let y = area.y + (area.height - ih) / 2;
+                canvas.draw_pixmap(
+                    x,
+                    y,
+                    icon.as_ref(),
+                    &PixmapPaint::default(),
+                    Transform::identity(),
+                    None,
+                );
+            }
         }
 
         if let Some(progress) = self.armed_progress {
@@ -294,5 +322,38 @@ mod tests {
             WidgetState::Idle,
         );
         drop(canvas);
+    }
+
+    #[test]
+    fn armed_icon_button_draws_confirmation_label() {
+        let mut icon = Pixmap::new(16, 16).expect("icon");
+        icon.fill(tiny_skia::Color::from_rgba8(255, 255, 255, 255));
+        let button = Button::with_id_and_icon(
+            "power-off",
+            "Aus",
+            Palette::TOKYO_NIGHT_METRO.error,
+            48,
+            48,
+            Some(icon),
+        )
+        .with_armed_progress(Some(0.0))
+        .with_armed_label("OK?");
+        let mut pixmap = Pixmap::new(48, 48).expect("pixmap");
+        let mut canvas = pixmap.as_mut();
+        button.paint(
+            Rect {
+                x: 0,
+                y: 0,
+                width: 48,
+                height: 48,
+            },
+            &mut canvas,
+            &Theme::TOKYO_NIGHT_METRO,
+            WidgetState::Idle,
+        );
+        drop(canvas);
+
+        assert!(pixmap.pixel(24, 24).expect("center").alpha() > 0);
+        assert!(pixmap.pixel(24, 4).expect("ring").alpha() > 0);
     }
 }
