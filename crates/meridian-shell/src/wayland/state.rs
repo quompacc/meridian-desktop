@@ -269,35 +269,49 @@ fn resolve_shell_theme_from_config(
 }
 
 
-fn find_window_id_for_pinned_app(
+fn app_matches_window(program_base: &str, label_lower: &str, w: &WindowInfo) -> bool {
+    if let Some(ref app_id) = w.app_id {
+        let aid = app_id.to_lowercase();
+        aid == program_base
+            || aid.ends_with(&format!(".{}", program_base))
+            || aid == label_lower
+            || aid.ends_with(&format!(".{}", label_lower))
+    } else {
+        let t = w.title.to_lowercase();
+        (!program_base.is_empty() && t.contains(program_base))
+            || (!label_lower.is_empty() && t.contains(label_lower))
+    }
+}
+
+// Returns (first_unfocused_id, any_window_exists).
+// Drives focus-or-launch: focus an unfocused window, or launch when
+// the app is already in focus (second click = new instance).
+fn pinned_app_window_status(
     app: &crate::panel::PinnedApp,
     windows: &[WindowInfo],
     active_workspace: u8,
-) -> Option<String> {
+    focused_window_id: Option<&str>,
+) -> (Option<String>, bool) {
     let program_base = std::path::Path::new(&app.program)
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(&app.program)
         .to_lowercase();
     let label_lower = app.label.to_lowercase();
-    windows
-        .iter()
-        .filter(|w| w.workspace == active_workspace)
-        .find(|w| {
-            if let Some(ref app_id) = w.app_id {
-                let aid = app_id.to_lowercase();
-                aid == program_base
-                    || aid.ends_with(&format!(".{}", program_base))
-                    || aid == label_lower
-                    || aid.ends_with(&format!(".{}", label_lower))
-            } else {
-                let t = w.title.to_lowercase();
-                (!program_base.is_empty() && t.contains(&program_base))
-                    || (!label_lower.is_empty() && t.contains(&label_lower))
-            }
-        })
-        .map(|w| w.id.clone())
+    let mut first_unfocused: Option<String> = None;
+    let mut any = false;
+    for w in windows.iter().filter(|w| w.workspace == active_workspace) {
+        if !app_matches_window(&program_base, &label_lower, w) {
+            continue;
+        }
+        any = true;
+        if focused_window_id.map_or(true, |fid| fid != w.id) && first_unfocused.is_none() {
+            first_unfocused = Some(w.id.clone());
+        }
+    }
+    (first_unfocused, any)
 }
+
 
 impl MeridianShell {
     pub(crate) fn tick_commit_stats(&mut self) {
@@ -929,9 +943,20 @@ impl MeridianShell {
             ClickAction::LaunchPinnedApp(idx) => {
                 if let Some(app) = self.pinned_apps.get(idx).cloned() {
                     let ws = self.panel_active_workspace();
-                    if let Some(id) = find_window_id_for_pinned_app(&app, &self.windows, ws) {
+                    let (unfocused_id, any_window) = pinned_app_window_status(&app, &self.windows, ws, self.focused_window_id.as_deref());
+                    if let Some(id) = unfocused_id {
+                        // A window exists but is not focused: bring it to front.
                         self.ipc.send(&ShellCommand::FocusWindow { id });
+                    } else if any_window {
+                        // All windows are already focused: open a new instance.
+                        let command = ShellCommand::LaunchApp {
+                            program: app.program,
+                            args: app.args,
+                            terminal: app.terminal,
+                        };
+                        let _ = self.ipc.send(&command);
                     } else {
+                        // No window at all: launch.
                         let command = ShellCommand::LaunchApp {
                             program: app.program,
                             args: app.args,
