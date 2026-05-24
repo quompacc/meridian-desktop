@@ -313,10 +313,9 @@ impl LoginUiState {
     }
 
     fn reject(&mut self) {
-        // Wipe the fields and reset focus so the next try starts clean.
-        self.username.clear();
+        // Keep the username so retrying only requires the password again.
         self.password.clear();
-        self.focus = Field::Username;
+        self.focus = Field::Password;
         self.phase = InputPhase::Failed(Instant::now());
         // The worker thread already exited (Failed/Error path doesn't
         // open_session); dropping the driver here joins it cleanly so we
@@ -354,7 +353,7 @@ impl LoginUiState {
             }
             InputPhase::Editing => format!("Enter zum Anmelden - Layout {layout}"),
             InputPhase::Authenticating => "Anmelden …".to_string(),
-            InputPhase::Failed(_) => "Falsche Anmeldedaten".to_string(),
+            InputPhase::Failed(_) => "Passwort erneut eingeben".to_string(),
         }
     }
 }
@@ -1822,7 +1821,7 @@ mod tests {
     }
 
     #[test]
-    fn reject_clears_fields_and_resets_focus() {
+    fn reject_keeps_username_and_resets_password_focus() {
         let mut s = LoginUiState {
             username: "eduard".into(),
             password: Zeroizing::new("badpassword".into()),
@@ -1830,9 +1829,9 @@ mod tests {
             ..Default::default()
         };
         s.reject();
-        assert!(s.username.is_empty());
+        assert_eq!(s.username, "eduard");
         assert!(s.password.is_empty());
-        assert_eq!(s.focus, Field::Username);
+        assert_eq!(s.focus, Field::Password);
         assert!(matches!(s.phase, InputPhase::Failed(_)));
     }
 
@@ -1871,7 +1870,7 @@ mod tests {
         s.phase = InputPhase::Authenticating;
         assert_eq!(s.hint(), "Anmelden …");
         s.phase = InputPhase::Failed(Instant::now());
-        assert_eq!(s.hint(), "Falsche Anmeldedaten");
+        assert_eq!(s.hint(), "Passwort erneut eingeben");
     }
 
     #[test]
