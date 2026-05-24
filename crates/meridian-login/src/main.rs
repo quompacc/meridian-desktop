@@ -90,9 +90,9 @@ const METRO_STRIPE_HEIGHT: f32 = 4.0;
 const TITLE_OFFSET_Y: f32 = 31.0;
 const USER_BOX_OFFSET_Y: f32 = 88.0;
 const PASSWORD_BOX_OFFSET_Y: f32 = 150.0;
-const SMARTCARD_ICON_TOP: f32 = 52.0;
-const SMARTCARD_PIN_LABEL_OFFSET_Y: f32 = 148.0;
-const SMARTCARD_PIN_BOX_OFFSET_Y: f32 = 160.0;
+const SMARTCARD_ICON_TOP: f32 = 68.0;
+const SMARTCARD_PIN_LABEL_OFFSET_Y: f32 = 166.0;
+const SMARTCARD_PIN_BOX_OFFSET_Y: f32 = 178.0;
 const SMARTCARD_PIN_WIDTH: f32 = 168.0;
 const INPUT_BOX_HEIGHT: f32 = 36.0;
 const INPUT_TEXT_PAD_X: f32 = 12.0;
@@ -393,8 +393,8 @@ impl LoginUiState {
         let changed = self.security_key_present != present || self.smartcard_user != smartcard_user;
         self.security_key_present = present;
         self.smartcard_user = smartcard_user;
-        if self.smartcard_login_ready() {
-            self.username.clear();
+        if let Some(user) = self.smartcard_user.clone() {
+            self.username = user;
             self.focus = Field::Password;
         }
         changed
@@ -1739,7 +1739,7 @@ fn draw_pointer_cursor(pm: &mut PixmapMut, x: f32, y: f32, alpha: f32) {
 
 fn card_rect(w: f32, h: f32) -> (f32, f32, f32, f32) {
     let cw = (w * 0.32).clamp(360.0, 720.0);
-    let ch = (h * 0.28).clamp(300.0, 420.0);
+    let ch = (h * 0.28).clamp(340.0, 420.0);
     let left = w / 2.0 - cw / 2.0;
     let top = h / 2.0 - ch / 2.0;
     (left, top, cw, ch)
@@ -1937,7 +1937,7 @@ mod tests {
     fn card_rect_clamped_dimensions() {
         let (_, _, cw, ch) = card_rect(1920.0, 1440.0);
         assert!((360.0..=720.0).contains(&cw));
-        assert!((300.0..=420.0).contains(&ch));
+        assert!((340.0..=420.0).contains(&ch));
     }
 
     #[test]
