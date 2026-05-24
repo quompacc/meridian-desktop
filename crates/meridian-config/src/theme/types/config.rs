@@ -110,7 +110,7 @@ pub struct Cursor {
 impl Default for Cursor {
     fn default() -> Self {
         Self {
-            theme: "Vanilla-DMZ".to_string(),
+            theme: "Adwaita".to_string(),
             size: 24,
         }
     }
@@ -157,7 +157,7 @@ pub struct ThemeConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{Color, Decorations, Fonts, ThemeColors, ThemeConfig};
+    use super::{Color, Cursor, Decorations, Fonts, ThemeColors, ThemeConfig};
 
     #[test]
     fn test_theme_colors_default_tokyo_night() {
@@ -224,5 +224,12 @@ mod tests {
         let fonts = Fonts::default();
         assert_eq!(fonts.ui, "Adwaita Sans 11");
         assert_eq!(fonts.mono, "Adwaita Mono 10");
+    }
+
+    #[test]
+    fn test_cursor_default_uses_installed_theme() {
+        let cursor = Cursor::default();
+        assert_eq!(cursor.theme, "Adwaita");
+        assert_eq!(cursor.size, 24);
     }
 }
