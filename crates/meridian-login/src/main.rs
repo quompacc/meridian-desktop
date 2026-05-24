@@ -361,6 +361,9 @@ impl LoginUiState {
                 format!("Caps Lock aktiv - Layout {layout}")
             }
             InputPhase::Editing => format!("Enter zum Anmelden - Layout {layout}"),
+            InputPhase::Authenticating if self.security_key_present => {
+                "YubiKey berühren …".to_string()
+            }
             InputPhase::Authenticating => "Anmelden …".to_string(),
             InputPhase::Failed(_) => "Passwort erneut eingeben".to_string(),
         }
@@ -2089,6 +2092,16 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(s.hint(), "YubiKey erkannt - Passwort eingeben - Layout DE");
+    }
+
+    #[test]
+    fn hint_prompts_touch_while_authenticating_with_yubikey() {
+        let mut s = LoginUiState {
+            security_key_present: true,
+            ..Default::default()
+        };
+        s.phase = InputPhase::Authenticating;
+        assert_eq!(s.hint(), "YubiKey berühren …");
     }
 
     #[test]

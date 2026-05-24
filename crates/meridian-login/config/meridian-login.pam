@@ -3,7 +3,8 @@
 #
 # PAM stack for the meridian-login display manager.
 #
-# auth      — verify the password against /etc/shadow (pam_unix).
+# auth      — verify the password against /etc/shadow (pam_unix), then require
+#             a registered FIDO/U2F authenticator via pam_u2f.
 # account   — check account validity (not locked, not expired).
 # session   — pam_systemd registers a logind session (class=user,
 #             type=wayland) so the spawned compositor can acquire
@@ -20,7 +21,8 @@
 # the new logind session. Without that the seat would be empty and
 # libseat-logind would refuse the compositor's DRM acquire.
 
-auth      required   pam_unix.so
+auth      requisite  pam_unix.so
+auth      required   pam_u2f.so authfile=/etc/Yubico/u2f_keys origin=pam://meridian-login appid=pam://meridian-login cue
 account   required   pam_unix.so
 session   required   pam_systemd.so   class=user type=wayland
 session   required   pam_unix.so
