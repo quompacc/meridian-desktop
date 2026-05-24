@@ -106,6 +106,7 @@ Hinweis: `cargo test --workspace` und `cargo check --workspace` enthalten `merid
 - Login Realtest:
   - `sudo scripts/test-login-uinput.py --prepare-user --run --lock-user`
   - Nutzt `/dev/uinput` fuer echte Tastatureingabe am DRM-Login, prueft `auth ok`, `compositor spawned`, `ipc handover` und `ipc exit`, startet danach die Loginmaske neu und sperrt den Testnutzer wieder.
+  - Login plus Logout-Smoke: `sudo scripts/test-login-uinput.py --prepare-user --run --logout-ipc --lock-user`
 - ReloadConfig E2E:
   - Siehe `docs/DEBUGGING.md`, Abschnitt `Manueller E2E-Test: ReloadConfig`
 - Workspace Switch/Move:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import json
 import os
 import pwd
 import re
@@ -232,6 +233,13 @@ def pgrep_user(username: str, process: str) -> bool:
     return result.returncode == 0
 
 
+def user_uid(username: str) -> int:
+    try:
+        return pwd.getpwnam(username).pw_uid
+    except KeyError as exc:
+        raise TestFailure(f"user {username} does not exist") from exc
+
+
 def verify_login(username: str, since: str) -> None:
     log("checking spawned compositor processes")
     process_deadline = time.monotonic() + 6.0
@@ -262,6 +270,66 @@ def verify_login(username: str, since: str) -> None:
         raise TestFailure(f"forbidden journal markers found: {', '.join(hits)}\n{journal}")
 
 
+def send_logout_ipc(username: str) -> None:
+    uid = user_uid(username)
+    path = Path(f"/run/user/{uid}/meridian.sock")
+    deadline = time.monotonic() + 6.0
+    while not path.exists():
+        if time.monotonic() >= deadline:
+            raise TestFailure(f"meridian IPC socket not found: {path}")
+        time.sleep(0.2)
+
+    log(f"sending compositor quit via {path}")
+    payload = json.dumps({"type": "quit"}) + "\n"
+    code = (
+        "import socket, sys; "
+        "sock = socket.socket(socket.AF_UNIX); "
+        "sock.connect(sys.argv[1]); "
+        "sock.sendall(sys.argv[2].encode('utf-8')); "
+        "sock.close()"
+    )
+    run_cmd(["runuser", "-u", username, "--", "python3", "-c", code, str(path), payload])
+
+
+def verify_logout(username: str, since: str) -> None:
+    log("checking compositor processes stopped")
+    deadline = time.monotonic() + 10.0
+    while True:
+        running = [name for name in ("meridian", "meridian-shell") if pgrep_user(username, name)]
+        if not running:
+            break
+        if time.monotonic() >= deadline:
+            processes = run_cmd(["pgrep", "-a", "-u", username], check=False).stdout.strip()
+            raise TestFailure(f"processes still running after logout: {', '.join(running)}\n{processes}")
+        time.sleep(0.4)
+
+    log("checking meridian-login restarted")
+    active_deadline = time.monotonic() + 10.0
+    while True:
+        active = run_cmd(["systemctl", "is-active", "meridian-login.service"], check=False)
+        if active.stdout.strip() == "active":
+            break
+        if time.monotonic() >= active_deadline:
+            raise TestFailure(f"meridian-login.service is not active: {active.stdout.strip()}")
+        time.sleep(0.4)
+
+    required = ("compositor exited", "meridian-login starting")
+    journal_deadline = time.monotonic() + 10.0
+    while True:
+        journal = journal_since(since)
+        missing_markers = [marker for marker in required if marker not in journal]
+        if not missing_markers:
+            break
+        if time.monotonic() >= journal_deadline:
+            raise TestFailure(f"missing logout journal markers: {', '.join(missing_markers)}\n{journal}")
+        time.sleep(0.5)
+
+    forbidden = ("panic", "fatal drm startup failure")
+    hits = [marker for marker in forbidden if marker in journal.lower()]
+    if hits:
+        raise TestFailure(f"forbidden journal markers found after logout: {', '.join(hits)}\n{journal}")
+
+
 def run_login_test(args: argparse.Namespace) -> None:
     since = current_journal_time()
     with VirtualKeyboard() as keyboard:
@@ -280,12 +348,23 @@ def run_login_test(args: argparse.Namespace) -> None:
     log("login smoke test passed")
 
 
+def run_logout_ipc_test(args: argparse.Namespace) -> None:
+    if not pgrep_user(args.username, "meridian"):
+        raise TestFailure(f"no running meridian session for {args.username}; use --run with --keep-session first")
+
+    since = current_journal_time()
+    send_logout_ipc(args.username)
+    verify_logout(args.username, since)
+    log("logout ipc smoke test passed")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--username", default="fakeuser")
     parser.add_argument("--password", default="pass1234")
     parser.add_argument("--prepare-user", action="store_true")
     parser.add_argument("--run", action="store_true", help="run the virtual-keyboard login test")
+    parser.add_argument("--logout-ipc", action="store_true", help="send ShellCommand::Quit and verify login returns")
     parser.add_argument("--lock-user", action="store_true", help="lock the user after cleanup")
     parser.add_argument("--keep-session", action="store_true", help="leave the compositor session running")
     parser.add_argument("--no-restart-login", dest="restart_login", action="store_false")
@@ -311,8 +390,10 @@ def main() -> int:
             if args.run:
                 terminate_user(args.username)
                 run_login_test(args)
-            else:
-                log("nothing to run; pass --run")
+            if args.logout_ipc:
+                run_logout_ipc_test(args)
+            if not args.run and not args.logout_ipc:
+                log("nothing to run; pass --run and/or --logout-ipc")
         finally:
             if not args.keep_session:
                 restart_login()
