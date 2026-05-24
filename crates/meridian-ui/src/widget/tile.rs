@@ -277,8 +277,6 @@ mod tests {
             &Theme::TOKYO_NIGHT_METRO,
             WidgetState::Idle,
         );
-        drop(canvas);
-
         let stripe_px = pixmap.pixel((width / 2) as u32, 1).expect("stripe pixel");
         let body_px = pixmap
             .pixel((width / 2) as u32, (height / 2) as u32)
@@ -333,6 +331,5 @@ mod tests {
             &Theme::TOKYO_NIGHT_METRO,
             WidgetState::Idle,
         );
-        drop(canvas);
     }
 }

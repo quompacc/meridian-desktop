@@ -809,8 +809,8 @@ mod tests {
         data_section.extend_from_slice(payload);
 
         let mut tree_section = Vec::new();
-        for index in 0..node_count {
-            tree_section.extend_from_slice(&name_offsets[index].to_be_bytes());
+        for (index, name_offset) in name_offsets.iter().enumerate().take(node_count) {
+            tree_section.extend_from_slice(&name_offset.to_be_bytes());
             if index < node_count - 1 {
                 tree_section.extend_from_slice(&DIRECTORY_FLAG.to_be_bytes());
                 tree_section.extend_from_slice(&1u32.to_be_bytes());

@@ -292,8 +292,6 @@ mod tests {
             &Theme::TOKYO_NIGHT_METRO,
             WidgetState::Idle,
         );
-        drop(canvas);
-
         assert!(pixmap.pixel(36, 1).expect("stripe").alpha() > 0);
         assert!(pixmap.pixel(36, 20).expect("body").alpha() > 0);
     }
@@ -321,7 +319,6 @@ mod tests {
             &Theme::TOKYO_NIGHT_METRO,
             WidgetState::Idle,
         );
-        drop(canvas);
     }
 
     #[test]
@@ -351,8 +348,6 @@ mod tests {
             &Theme::TOKYO_NIGHT_METRO,
             WidgetState::Idle,
         );
-        drop(canvas);
-
         assert!(pixmap.pixel(24, 24).expect("center").alpha() > 0);
         assert!(pixmap.pixel(24, 4).expect("ring").alpha() > 0);
     }

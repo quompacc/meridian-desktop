@@ -269,6 +269,9 @@ impl Default for WallpaperToml {
     }
 }
 
+// Keep the large config parser/save tests near the parser fixtures they cover;
+// moving them below the save/wallpaper helpers would be a noisy-only diff.
+#[cfg_attr(test, allow(clippy::items_after_test_module))]
 #[cfg(test)]
 mod tests {
     use std::{fs, time::SystemTime};

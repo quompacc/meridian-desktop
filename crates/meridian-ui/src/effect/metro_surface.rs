@@ -68,8 +68,6 @@ mod tests {
             &theme,
             4,
         );
-        drop(canvas);
-
         let stripe_px = pixmap.pixel(48, 1).expect("stripe pixel");
         let body_px = pixmap.pixel(48, 48).expect("body pixel");
         assert!(stripe_px.alpha() > 0);

@@ -633,7 +633,7 @@ mod tests {
 
     #[test]
     fn draw_image_alpha_blending_respects_transparent_and_opaque_pixels() {
-        let mut data = vec![0u8; 2 * 1 * 4];
+        let mut data = vec![0u8; 8];
         let mut painter = Painter::new(&mut data, 2, 1);
         painter.clear(Color::rgb(20, 30, 40));
 

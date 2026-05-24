@@ -1053,7 +1053,7 @@ mod tests {
             window_count: 0,
             has_focused: false,
         };
-        assert_eq!(chip.launch_info(), Some(("firefox", &vec![] as &[String])));
+        assert_eq!(chip.launch_info(), Some(("firefox", &[] as &[String])));
     }
 
     #[test]

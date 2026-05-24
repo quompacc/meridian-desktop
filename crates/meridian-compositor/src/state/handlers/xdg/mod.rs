@@ -229,13 +229,14 @@ mod tests {
         gravity: Gravity,
         adjustment: ConstraintAdjustment,
     ) -> PositionerState {
-        let mut positioner = PositionerState::default();
-        positioner.rect_size = size.into();
-        positioner.anchor_rect = anchor_rect;
-        positioner.anchor_edges = anchor;
-        positioner.gravity = gravity;
-        positioner.constraint_adjustment = adjustment;
-        positioner
+        PositionerState {
+            rect_size: size.into(),
+            anchor_rect,
+            anchor_edges: anchor,
+            gravity,
+            constraint_adjustment: adjustment,
+            ..Default::default()
+        }
     }
 
     #[test]

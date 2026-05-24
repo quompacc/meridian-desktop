@@ -938,11 +938,13 @@ mod tests {
     #[test]
     fn apply_config_overrides_marks_cursor_change_when_cursor_override_differs() {
         let mut theme_manager = ThemeManager::new();
-        let mut config = MeridianConfig::default();
-        config.cursor = Some(CursorConfig {
-            theme: "Breeze".to_string(),
-            size: 32,
-        });
+        let config = MeridianConfig {
+            cursor: Some(CursorConfig {
+                theme: "Breeze".to_string(),
+                size: 32,
+            }),
+            ..Default::default()
+        };
 
         let changes = apply_config_overrides(&mut theme_manager, &config);
 
@@ -956,11 +958,13 @@ mod tests {
     #[test]
     fn apply_config_overrides_marks_wallpaper_change_and_updates_override() {
         let mut theme_manager = ThemeManager::new();
-        let mut config = MeridianConfig::default();
-        config.wallpaper = Some(WallpaperConfig {
-            path: "/tmp/wallpaper.png".to_string(),
-            mode: WallpaperMode::Tile,
-        });
+        let config = MeridianConfig {
+            wallpaper: Some(WallpaperConfig {
+                path: "/tmp/wallpaper.png".to_string(),
+                mode: WallpaperMode::Tile,
+            }),
+            ..Default::default()
+        };
 
         let changes = apply_config_overrides(&mut theme_manager, &config);
 

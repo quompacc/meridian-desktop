@@ -3372,7 +3372,7 @@ Exec=viewer %U
 
     #[test]
     fn filter_is_case_insensitive_and_checks_name_and_exec() {
-        let apps = vec![
+        let apps = [
             DesktopApp::new("Firefox".to_string(), vec!["firefox".to_string()], false),
             DesktopApp::new("Terminal".to_string(), vec!["foot".to_string()], true),
         ];

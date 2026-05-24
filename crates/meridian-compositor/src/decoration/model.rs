@@ -125,8 +125,7 @@ mod tests {
         assert!(a.set_hover(Some(HoveredButton::Close)));
         let any = [&mut a, &mut b]
             .into_iter()
-            .map(|deco| deco.set_hover(None))
-            .fold(false, |acc, changed| acc || changed);
+            .any(|deco| deco.set_hover(None));
         assert!(any);
     }
 }

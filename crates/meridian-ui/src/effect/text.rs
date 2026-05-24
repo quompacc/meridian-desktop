@@ -168,8 +168,6 @@ mod tests {
         let mut canvas = pixmap.as_mut();
         let color = Color::rgb(0xff, 0xff, 0xff);
         paint_text(&mut canvas, "X", 8, 22, 14.0, color);
-        drop(canvas);
-
         let any_drawn = (0..32)
             .any(|y| (0..64).any(|x| pixmap.pixel(x, y).map(|p| p.alpha() > 0).unwrap_or(false)));
         assert!(any_drawn, "paint_text must touch at least one pixel");
@@ -181,7 +179,6 @@ mod tests {
         let before = pixmap.data().to_vec();
         let mut canvas = pixmap.as_mut();
         paint_text(&mut canvas, "", 0, 12, 14.0, Color::rgb(0xff, 0xff, 0xff));
-        drop(canvas);
         assert_eq!(pixmap.data(), before.as_slice());
     }
 }

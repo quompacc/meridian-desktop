@@ -148,8 +148,6 @@ mod tests {
         let mut canvas = pixmap.as_mut();
         render_idle(&root, &layout, &mut canvas, &Theme::TOKYO_NIGHT_METRO)
             .expect("render completes");
-        drop(canvas);
-
         let top_px = pixmap.pixel(50, 5).expect("top pixel");
         assert_eq!(top_px.alpha(), 0, "spacer area must remain unpainted");
 
@@ -194,8 +192,6 @@ mod tests {
             &Theme::TOKYO_NIGHT_METRO,
             WidgetState::Idle,
         );
-        drop(idle_pix.as_mut());
-
         let mut hover_pix = Pixmap::new(w as u32, h as u32).expect("pixmap");
         tile.paint(
             crate::paint::Rect {
@@ -208,8 +204,6 @@ mod tests {
             &Theme::TOKYO_NIGHT_METRO,
             WidgetState::Hovered,
         );
-        drop(hover_pix.as_mut());
-
         let body_x = (w / 2) as u32;
         let body_y = (h / 2) as u32;
         assert_ne!(
@@ -244,8 +238,6 @@ mod tests {
             &Theme::TOKYO_NIGHT_METRO,
             WidgetState::Idle,
         );
-        drop(idle_pix.as_mut());
-
         let mut pressed_pix = Pixmap::new(w as u32, h as u32).expect("pixmap");
         tile.paint(
             crate::paint::Rect {
@@ -258,8 +250,6 @@ mod tests {
             &Theme::TOKYO_NIGHT_METRO,
             WidgetState::Pressed,
         );
-        drop(pressed_pix.as_mut());
-
         let body_x = (w / 2) as u32;
         let body_y = (h / 2) as u32;
         assert_ne!(
@@ -293,8 +283,6 @@ mod tests {
             &Theme::TOKYO_NIGHT_METRO,
             WidgetState::Idle,
         );
-        drop(idle_pix.as_mut());
-
         let mut hover_pix = Pixmap::new(72, 40).expect("pixmap");
         button.paint(
             crate::paint::Rect {
@@ -307,8 +295,6 @@ mod tests {
             &Theme::TOKYO_NIGHT_METRO,
             WidgetState::Hovered,
         );
-        drop(hover_pix.as_mut());
-
         let body_x = 36_u32;
         let body_y = 20_u32;
         assert_ne!(

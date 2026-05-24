@@ -41,27 +41,6 @@ pub(super) fn collect_layer_data(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use smithay::wayland::shell::wlr_layer::Layer as WlrLayer;
-
-    use super::is_upper_layer;
-
-    #[test]
-    fn launcher_namespace_forces_upper_bucket() {
-        assert!(is_upper_layer("meridian-launcher", WlrLayer::Background));
-        assert!(is_upper_layer("meridian-launcher", WlrLayer::Bottom));
-    }
-
-    #[test]
-    fn non_launcher_uses_layer_role() {
-        assert!(is_upper_layer("other", WlrLayer::Top));
-        assert!(is_upper_layer("other", WlrLayer::Overlay));
-        assert!(!is_upper_layer("other", WlrLayer::Background));
-        assert!(!is_upper_layer("other", WlrLayer::Bottom));
-    }
-}
-
 pub(super) fn render_layer_elements(
     renderer: &mut GlesRenderer,
     layer_data: &[LayerRenderData],
@@ -95,5 +74,26 @@ pub(super) fn send_layer_frames(
         layer.send_frame(output, time, Some(Duration::ZERO), |_, _| {
             Some(output.clone())
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use smithay::wayland::shell::wlr_layer::Layer as WlrLayer;
+
+    use super::is_upper_layer;
+
+    #[test]
+    fn launcher_namespace_forces_upper_bucket() {
+        assert!(is_upper_layer("meridian-launcher", WlrLayer::Background));
+        assert!(is_upper_layer("meridian-launcher", WlrLayer::Bottom));
+    }
+
+    #[test]
+    fn non_launcher_uses_layer_role() {
+        assert!(is_upper_layer("other", WlrLayer::Top));
+        assert!(is_upper_layer("other", WlrLayer::Overlay));
+        assert!(!is_upper_layer("other", WlrLayer::Background));
+        assert!(!is_upper_layer("other", WlrLayer::Bottom));
     }
 }

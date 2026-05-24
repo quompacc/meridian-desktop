@@ -75,32 +75,14 @@ pub mod launcher {
     pub const LIST_ROW_RADIUS: i32 = super::radius::SM;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{badge, launcher, panel, spacing};
-
-    #[test]
-    fn panel_workspace_button_stays_inside_height() {
-        assert!(panel::WORKSPACE_BUTTON_Y + panel::WORKSPACE_BUTTON_H <= 42);
-    }
-
-    #[test]
-    fn launcher_rows_are_taller_than_gaps() {
-        assert!(launcher::APP_ROW_H > launcher::ROW_GAP);
-        assert!(launcher::PINNED_CARD_H > launcher::PINNED_GRID_ROW_GAP);
-    }
-
-    #[test]
-    fn badge_is_larger_than_base_spacing() {
-        assert!(badge::SIZE > spacing::MD);
-        assert!(badge::CONTENT_GAP >= spacing::MD);
-    }
-
-    #[test]
-    fn surface_radii_follow_shell_hierarchy() {
-        assert!(launcher::CARD_RADIUS >= launcher::SEARCH_RADIUS);
-        assert!(panel::OUTER_RADIUS >= panel::GROUP_RADIUS);
-        assert!(panel::GROUP_RADIUS >= panel::BUTTON_RADIUS);
-        assert!(badge::RADIUS <= launcher::LIST_ROW_RADIUS);
-    }
-}
+const _: () = {
+    assert!(panel::WORKSPACE_BUTTON_Y + panel::WORKSPACE_BUTTON_H <= 42);
+    assert!(launcher::APP_ROW_H > launcher::ROW_GAP);
+    assert!(launcher::PINNED_CARD_H > launcher::PINNED_GRID_ROW_GAP);
+    assert!(badge::SIZE > spacing::MD);
+    assert!(badge::CONTENT_GAP >= spacing::MD);
+    assert!(launcher::CARD_RADIUS >= launcher::SEARCH_RADIUS);
+    assert!(panel::OUTER_RADIUS >= panel::GROUP_RADIUS);
+    assert!(panel::GROUP_RADIUS >= panel::BUTTON_RADIUS);
+    assert!(badge::RADIUS <= launcher::LIST_ROW_RADIUS);
+};

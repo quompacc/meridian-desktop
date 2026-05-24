@@ -1530,6 +1530,27 @@ fn hidden_apps_path() -> String {
     format!("{home}/.config/meridian/hidden_apps.txt")
 }
 
+fn load_wallpaper_thumbnail(path: &str, max_w: u32, max_h: u32) -> Option<(u32, u32, Vec<u8>)> {
+    let img = image::open(path).ok()?;
+    let thumb = img.thumbnail(max_w, max_h);
+    let rgba = thumb.to_rgba8();
+    let (w, h) = (rgba.width(), rgba.height());
+    let premul: Vec<u8> = rgba
+        .into_raw()
+        .chunks_exact(4)
+        .flat_map(|c| {
+            let a = c[3] as u16;
+            [
+                ((c[0] as u16 * a) / 255) as u8,
+                ((c[1] as u16 * a) / 255) as u8,
+                ((c[2] as u16 * a) / 255) as u8,
+                c[3],
+            ]
+        })
+        .collect();
+    Some((w, h, premul))
+}
+
 #[cfg(test)]
 mod tests {
     use meridian_config::{GeneralConfig, MeridianConfig, WallpaperConfig, WallpaperMode};
@@ -1770,18 +1791,20 @@ mod tests {
 
     #[test]
     fn resolve_shell_theme_from_config_applies_cursor_and_wallpaper_overrides() {
-        let mut config = MeridianConfig::default();
-        config.general = GeneralConfig {
-            theme: "default".to_string(),
+        let config = MeridianConfig {
+            general: GeneralConfig {
+                theme: "default".to_string(),
+            },
+            cursor: Some(meridian_config::CursorConfig {
+                theme: "default".to_string(),
+                size: 30,
+            }),
+            wallpaper: Some(WallpaperConfig {
+                path: "".to_string(),
+                mode: WallpaperMode::Tile,
+            }),
+            ..Default::default()
         };
-        config.cursor = Some(meridian_config::CursorConfig {
-            theme: "default".to_string(),
-            size: 30,
-        });
-        config.wallpaper = Some(WallpaperConfig {
-            path: "".to_string(),
-            mode: WallpaperMode::Tile,
-        });
 
         let (_name, theme) = resolve_shell_theme_from_config(&config).expect("resolve theme");
         assert_eq!(theme.cursor.size, 30);
@@ -1794,9 +1817,11 @@ mod tests {
 
     #[test]
     fn resolve_shell_theme_from_config_fails_for_unknown_theme() {
-        let mut config = MeridianConfig::default();
-        config.general = GeneralConfig {
-            theme: "definitely-not-a-theme".to_string(),
+        let config = MeridianConfig {
+            general: GeneralConfig {
+                theme: "definitely-not-a-theme".to_string(),
+            },
+            ..Default::default()
         };
         assert!(resolve_shell_theme_from_config(&config).is_err());
     }
@@ -2128,25 +2153,4 @@ mod tests {
         );
         assert_eq!(active, 9);
     }
-}
-
-fn load_wallpaper_thumbnail(path: &str, max_w: u32, max_h: u32) -> Option<(u32, u32, Vec<u8>)> {
-    let img = image::open(path).ok()?;
-    let thumb = img.thumbnail(max_w, max_h);
-    let rgba = thumb.to_rgba8();
-    let (w, h) = (rgba.width(), rgba.height());
-    let premul: Vec<u8> = rgba
-        .into_raw()
-        .chunks_exact(4)
-        .flat_map(|c| {
-            let a = c[3] as u16;
-            [
-                ((c[0] as u16 * a) / 255) as u8,
-                ((c[1] as u16 * a) / 255) as u8,
-                ((c[2] as u16 * a) / 255) as u8,
-                c[3],
-            ]
-        })
-        .collect();
-    Some((w, h, premul))
 }
