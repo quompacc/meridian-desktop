@@ -190,6 +190,7 @@ pub(crate) struct PanelRenderSignature {
     pub(crate) network_popup_open: bool,
     pub(crate) hover_widget_path: Option<Vec<usize>>,
     pub(crate) theme: ThemeRenderSignature,
+    pub(crate) pinned_apps: Vec<String>,
 }
 
 #[derive(Default)]

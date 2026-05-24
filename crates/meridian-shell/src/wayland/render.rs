@@ -101,6 +101,7 @@ impl MeridianShell {
                 .as_ref()
                 .map(|(path, _)| path.as_slice().to_vec()),
             theme: self.theme_render_signature(),
+            pinned_apps: self.pinned_apps.iter().map(|p| p.program.clone()).collect(),
         }
     }
 
