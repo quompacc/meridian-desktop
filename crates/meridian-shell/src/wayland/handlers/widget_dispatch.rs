@@ -189,6 +189,10 @@ impl MeridianShell {
                         icon_name: app.icon_name.clone(),
                     });
                     self.save_pinned_apps();
+                    if let Some(ref icon_name) = app.icon_name {
+                        self.icon_cache.warm(&[icon_name.as_str()], 22);
+                        self.icon_cache.warm(&[icon_name.as_str()], 24);
+                    }
                     self.settings_pinned_adding = false;
                     self.draw_panel(qh, RepaintReason::Pointer);
                     self.draw_launcher(qh, RepaintReason::Pointer);

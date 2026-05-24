@@ -274,12 +274,36 @@ pub(crate) fn initialize(
             .iter()
             .map(String::as_str)
             .collect::<Vec<_>>();
+        icon_cache.warm(&icon_refs, 22);
         icon_cache.warm(&icon_refs, 24);
         icon_cache.warm(&icon_refs, 96);
         icon_cache.warm(&icon_refs, 192);
     }
     let mut network_controller = NetworkController::new();
     network_controller.poll();
+
+    // Compute pinned apps early so we can warm their icons at panel size.
+    let pinned_apps: Vec<panel::PinnedApp> = if meridian_config.panel.pinned.is_empty() {
+        default_pinned_apps()
+    } else {
+        meridian_config.panel.pinned.iter().map(|app| panel::PinnedApp {
+            label: app.label.clone(),
+            program: app.program.clone(),
+            args: vec![],
+            terminal: false,
+            icon_name: app.icon.clone(),
+        }).collect()
+    };
+    {
+        let pinned_icons: Vec<&str> = pinned_apps.iter()
+            .filter_map(|a| a.icon_name.as_deref())
+            .filter(|n| !n.is_empty())
+            .collect();
+        if !pinned_icons.is_empty() {
+            icon_cache.warm(&pinned_icons, 22);
+            icon_cache.warm(&pinned_icons, 24);
+        }
+    }
 
     let commit_stats_enabled = std::env::var("MERIDIAN_SHELL_COMMIT_STATS")
         .map(|value| {
@@ -358,22 +382,7 @@ pub(crate) fn initialize(
         network_controller,
         ipc: IpcClient::connect(),
         panel_state: panel::PanelState::new(),
-        pinned_apps: if meridian_config.panel.pinned.is_empty() {
-            default_pinned_apps()
-        } else {
-            meridian_config
-                .panel
-                .pinned
-                .iter()
-                .map(|app| PinnedApp {
-                    label: app.label.clone(),
-                    program: app.program.clone(),
-                    args: vec![],
-                    terminal: false,
-                    icon_name: app.icon.clone(),
-                })
-                .collect()
-        },
+        pinned_apps,
         launcher_state: launcher::LauncherState::new_with_apps(launcher_apps),
         workspace_state: crate::workspaces::WorkspacePopupState::new(),
         focused_window_id: None,

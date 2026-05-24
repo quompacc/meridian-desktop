@@ -368,6 +368,7 @@ struct PinnedAppLabel {
     label: Box<str>,
     program: Box<str>,
     width: i32,
+    icon: Option<Pixmap>,
 }
 
 impl Widget for PinnedAppLabel {
@@ -384,8 +385,18 @@ impl Widget for PinnedAppLabel {
         if let Some(path) = rounded_rect_path(area, 0) {
             paint_fill(canvas, &path, theme.palette.surface);
         }
-        paint_text(canvas, &self.label,   area.x + 10, area.y + 16, 13.0, theme.palette.text);
-        paint_text(canvas, &self.program, area.x + 10, area.y + 34, 11.0, theme.palette.text_dim);
+        let text_x = if let Some(ref icon) = self.icon {
+            let iw = icon.width() as i32;
+            let ih = icon.height() as i32;
+            let ix = area.x + 6;
+            let iy = area.y + (area.height - ih) / 2;
+            canvas.draw_pixmap(ix, iy, icon.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+            area.x + 6 + iw + 6
+        } else {
+            area.x + 10
+        };
+        paint_text(canvas, &self.label,   text_x, area.y + 16, 13.0, theme.palette.text);
+        paint_text(canvas, &self.program, text_x, area.y + 32, 11.0, theme.palette.text_dim);
     }
 }
 
@@ -412,6 +423,7 @@ struct AddAppRow {
     name: Box<str>,
     accent: Color,
     row_width: i32,
+    icon: Option<Pixmap>,
 }
 
 impl Widget for AddAppRow {
@@ -435,7 +447,17 @@ impl Widget for AddAppRow {
         if let Some(path) = rounded_rect_path(area, 0) {
             paint_fill(canvas, &path, bg);
         }
-        paint_text(canvas, &self.name, area.x + 10, area.y + area.height - 14, 13.0, self.accent);
+        let text_x = if let Some(ref icon) = self.icon {
+            let iw = icon.width() as i32;
+            let ih = icon.height() as i32;
+            let ix = area.x + 6;
+            let iy = area.y + (area.height - ih) / 2;
+            canvas.draw_pixmap(ix, iy, icon.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+            area.x + 6 + iw + 6
+        } else {
+            area.x + 10
+        };
+        paint_text(canvas, &self.name, text_x, area.y + area.height - 14, 13.0, self.accent);
     }
 }
 
@@ -631,11 +653,15 @@ pub(crate) fn build_settings_widget_tree(
                     .take(PINNED_ADD_IDS.len())
                     .enumerate()
                     .map(|(i, app)| {
+                        let row_icon = app.icon_name.as_deref()
+                            .and_then(|n| icon_cache.lookup(n, 24))
+                            .and_then(icon_image_to_pixmap);
                         Box::new(AddAppRow {
                             index: i,
                             name: app.name.as_str().into(),
                             accent: pal.text,
                             row_width: content_w as i32,
+                            icon: row_icon,
                         }) as Box<dyn Widget>
                     })
                     .collect();
@@ -669,10 +695,14 @@ pub(crate) fn build_settings_widget_tree(
                         let is_last  = i + 1 == count;
                         let up_color = if is_first { pal.text_dim } else { pal.accent };
                         let dn_color = if is_last  { pal.text_dim } else { pal.accent };
+                        let app_icon = app.icon_name.as_deref()
+                            .and_then(|n| icon_cache.lookup(n, 24))
+                            .and_then(icon_image_to_pixmap);
                         let label = Box::new(PinnedAppLabel {
                             label:   app.label.clone().into(),
                             program: app.program.clone().into(),
                             width:   label_w,
+                            icon:    app_icon,
                         }) as Box<dyn Widget>;
                         let btn_up = Box::new(Button::with_id(PINNED_UP_IDS[i], "↑", up_color, PINNED_BTN_W, PINNED_ROW_H)) as Box<dyn Widget>;
                         let btn_dn = Box::new(Button::with_id(PINNED_DN_IDS[i], "↓", dn_color, PINNED_BTN_W, PINNED_ROW_H)) as Box<dyn Widget>;
