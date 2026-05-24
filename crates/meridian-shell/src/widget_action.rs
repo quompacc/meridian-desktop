@@ -1,4 +1,28 @@
-use crate::app_view::AppCategory;
+use crate::{app_view::AppCategory, settings_view::SettingsCategory};
+
+const SETTINGS_THEME_PREFIX: &str = "settings-theme-";
+const SETTINGS_WALLPAPER_PREFIX: &str = "settings-wallpaper-";
+const PINNED_MOVE_UP_PREFIX: &str = "pinned-move-up-";
+const PINNED_MOVE_DOWN_PREFIX: &str = "pinned-move-dn-";
+const PINNED_REMOVE_PREFIX: &str = "pinned-remove-";
+const PINNED_ADD_APP_PREFIX: &str = "pinned-add-app-";
+
+const CATEGORY_ACTIONS: &[(&str, AppCategory)] = &[
+    ("cat-internet", AppCategory::Internet),
+    ("cat-kreativ", AppCategory::Kreativ),
+    ("cat-buero", AppCategory::Buero),
+    ("cat-entwicklung", AppCategory::Entwicklung),
+    ("cat-system", AppCategory::System),
+    ("cat-spiele", AppCategory::Spiele),
+    ("cat-alle", AppCategory::Alle),
+];
+
+const SETTINGS_CATEGORY_ACTIONS: &[(&str, SettingsCategory)] = &[
+    ("settings-cat-theme", SettingsCategory::Theme),
+    ("settings-cat-cursor", SettingsCategory::Cursor),
+    ("settings-cat-wallpaper", SettingsCategory::Wallpaper),
+    ("settings-cat-pinned", SettingsCategory::PinnedApps),
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum WidgetAction {
@@ -30,16 +54,29 @@ pub(crate) enum WidgetAction {
 }
 
 pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
+    exact_action_for_id(id)
+        .or_else(|| category_action_for_id(id))
+        .or_else(|| settings_category_action_for_id(id))
+        .or_else(|| {
+            parse_indexed_action(id, SETTINGS_THEME_PREFIX, WidgetAction::ApplyThemeByIndex)
+        })
+        .or_else(|| {
+            parse_indexed_action(
+                id,
+                SETTINGS_WALLPAPER_PREFIX,
+                WidgetAction::ApplyWallpaperByIndex,
+            )
+        })
+        .or_else(|| parse_indexed_action(id, PINNED_MOVE_UP_PREFIX, WidgetAction::PinnedMoveUp))
+        .or_else(|| parse_indexed_action(id, PINNED_MOVE_DOWN_PREFIX, WidgetAction::PinnedMoveDown))
+        .or_else(|| parse_indexed_action(id, PINNED_REMOVE_PREFIX, WidgetAction::PinnedRemove))
+        .or_else(|| parse_indexed_action(id, PINNED_ADD_APP_PREFIX, WidgetAction::PinnedAddApp))
+}
+
+fn exact_action_for_id(id: &str) -> Option<WidgetAction> {
     match id {
         "apps-switch" => Some(WidgetAction::ToggleUiPreview),
         "show-tile-view" => Some(WidgetAction::ShowTileView),
-        "cat-internet" => Some(WidgetAction::SetCategory(AppCategory::Internet)),
-        "cat-kreativ" => Some(WidgetAction::SetCategory(AppCategory::Kreativ)),
-        "cat-buero" => Some(WidgetAction::SetCategory(AppCategory::Buero)),
-        "cat-entwicklung" => Some(WidgetAction::SetCategory(AppCategory::Entwicklung)),
-        "cat-system" => Some(WidgetAction::SetCategory(AppCategory::System)),
-        "cat-spiele" => Some(WidgetAction::SetCategory(AppCategory::Spiele)),
-        "cat-alle" => Some(WidgetAction::SetCategory(AppCategory::Alle)),
         "panel-launcher" => Some(WidgetAction::ToggleUiPreview),
         "panel-network" => Some(WidgetAction::ToggleNetworkPopup),
         "panel-workspace" => Some(WidgetAction::ToggleWorkspacePopup),
@@ -50,22 +87,6 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
         "power-lock" => Some(WidgetAction::PowerLock),
         "power-logout" => Some(WidgetAction::PowerLogout),
         "launcher-settings" => Some(WidgetAction::ToggleSettings),
-        "settings-cat-theme" => Some(WidgetAction::SetSettingsCategory(
-            crate::settings_view::SettingsCategory::Theme,
-        )),
-        "settings-cat-cursor" => Some(WidgetAction::SetSettingsCategory(
-            crate::settings_view::SettingsCategory::Cursor,
-        )),
-        "settings-cat-wallpaper" => Some(WidgetAction::SetSettingsCategory(
-            crate::settings_view::SettingsCategory::Wallpaper,
-        )),
-        "settings-cat-pinned" => Some(WidgetAction::SetSettingsCategory(
-            crate::settings_view::SettingsCategory::PinnedApps,
-        )),
-        id if id.starts_with("settings-theme-") => id["settings-theme-".len()..]
-            .parse::<usize>()
-            .ok()
-            .map(WidgetAction::ApplyThemeByIndex),
         "wallpaper-mode-fill" => Some(WidgetAction::SetWallpaperMode(
             meridian_config::WallpaperMode::Fill,
         )),
@@ -79,30 +100,32 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
             meridian_config::WallpaperMode::Tile,
         )),
         "wallpaper-browse" => Some(WidgetAction::BrowseWallpaper),
-        id if id.starts_with("settings-wallpaper-") => id["settings-wallpaper-".len()..]
-            .parse::<usize>()
-            .ok()
-            .map(WidgetAction::ApplyWallpaperByIndex),
-        id if id.starts_with("pinned-move-up-") => id["pinned-move-up-".len()..]
-            .parse::<usize>()
-            .ok()
-            .map(WidgetAction::PinnedMoveUp),
-        id if id.starts_with("pinned-move-dn-") => id["pinned-move-dn-".len()..]
-            .parse::<usize>()
-            .ok()
-            .map(WidgetAction::PinnedMoveDown),
-        id if id.starts_with("pinned-remove-") => id["pinned-remove-".len()..]
-            .parse::<usize>()
-            .ok()
-            .map(WidgetAction::PinnedRemove),
         "pinned-add-open" => Some(WidgetAction::PinnedOpenAdd),
         "pinned-add-close" => Some(WidgetAction::PinnedCloseAdd),
-        id if id.starts_with("pinned-add-app-") => id["pinned-add-app-".len()..]
-            .parse::<usize>()
-            .ok()
-            .map(WidgetAction::PinnedAddApp),
         _ => None,
     }
+}
+
+fn category_action_for_id(id: &str) -> Option<WidgetAction> {
+    CATEGORY_ACTIONS
+        .iter()
+        .find_map(|(candidate, category)| (*candidate == id).then_some(*category))
+        .map(WidgetAction::SetCategory)
+}
+
+fn settings_category_action_for_id(id: &str) -> Option<WidgetAction> {
+    SETTINGS_CATEGORY_ACTIONS
+        .iter()
+        .find_map(|(candidate, category)| (*candidate == id).then_some(*category))
+        .map(WidgetAction::SetSettingsCategory)
+}
+
+fn parse_indexed_action(
+    id: &str,
+    prefix: &str,
+    action: impl FnOnce(usize) -> WidgetAction,
+) -> Option<WidgetAction> {
+    id.strip_prefix(prefix)?.parse::<usize>().ok().map(action)
 }
 
 #[cfg(test)]
@@ -170,6 +193,51 @@ mod tests {
             action_for_id("power-logout"),
             Some(WidgetAction::PowerLogout)
         );
+    }
+
+    #[test]
+    fn action_for_id_settings_category() {
+        assert_eq!(
+            action_for_id("settings-cat-wallpaper"),
+            Some(WidgetAction::SetSettingsCategory(
+                crate::settings_view::SettingsCategory::Wallpaper
+            ))
+        );
+    }
+
+    #[test]
+    fn action_for_id_indexed_ids() {
+        assert_eq!(
+            action_for_id("settings-theme-12"),
+            Some(WidgetAction::ApplyThemeByIndex(12))
+        );
+        assert_eq!(
+            action_for_id("settings-wallpaper-3"),
+            Some(WidgetAction::ApplyWallpaperByIndex(3))
+        );
+        assert_eq!(
+            action_for_id("pinned-move-up-2"),
+            Some(WidgetAction::PinnedMoveUp(2))
+        );
+        assert_eq!(
+            action_for_id("pinned-move-dn-4"),
+            Some(WidgetAction::PinnedMoveDown(4))
+        );
+        assert_eq!(
+            action_for_id("pinned-remove-8"),
+            Some(WidgetAction::PinnedRemove(8))
+        );
+        assert_eq!(
+            action_for_id("pinned-add-app-5"),
+            Some(WidgetAction::PinnedAddApp(5))
+        );
+    }
+
+    #[test]
+    fn action_for_id_indexed_ids_reject_malformed_suffixes() {
+        assert_eq!(action_for_id("settings-theme-"), None);
+        assert_eq!(action_for_id("settings-theme-abc"), None);
+        assert_eq!(action_for_id("pinned-remove-x"), None);
     }
 
     #[test]
