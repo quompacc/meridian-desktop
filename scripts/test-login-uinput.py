@@ -82,6 +82,15 @@ KEYS = {
 }
 SUPPORTED_TEXT = re.compile(r"^[a-z0-9-]+$")
 
+LAUNCHER_WIDTH = 880
+LAUNCHER_HEIGHT = 620
+PANEL_HEIGHT = 42
+SHELL_POPUP_BOTTOM_MARGIN = 2
+LAUNCHER_MARGIN_LEFT = 8
+FOOTER_HEIGHT = 56
+FOOTER_PADDING_X = 28
+FOOTER_POWER_BUTTON_SIZE = 48
+
 
 @dataclass
 class CmdResult:
@@ -440,6 +449,16 @@ def run_logout_ipc_test(args: argparse.Namespace) -> None:
     log("logout ipc smoke test passed")
 
 
+def logout_button_center(width: int, height: int) -> tuple[int, int]:
+    if width < LAUNCHER_WIDTH + LAUNCHER_MARGIN_LEFT or height < LAUNCHER_HEIGHT + PANEL_HEIGHT:
+        raise TestFailure(f"ui size too small for launcher smoke: {width}x{height}")
+    launcher_x = LAUNCHER_MARGIN_LEFT
+    launcher_y = height - LAUNCHER_HEIGHT - PANEL_HEIGHT - SHELL_POPUP_BOTTOM_MARGIN
+    button_x = LAUNCHER_WIDTH - FOOTER_PADDING_X - FOOTER_POWER_BUTTON_SIZE // 2
+    button_y = LAUNCHER_HEIGHT - FOOTER_HEIGHT + FOOTER_HEIGHT // 2
+    return launcher_x + button_x, launcher_y + button_y
+
+
 def run_logout_ui_test(args: argparse.Namespace) -> None:
     if not pgrep_user(args.username, "meridian"):
         raise TestFailure(f"no running meridian session for {args.username}; use --run first")
@@ -451,10 +470,11 @@ def run_logout_ui_test(args: argparse.Namespace) -> None:
         keyboard.combo(KEY_LEFTMETA, KEY_SPACE)
         time.sleep(args.ui_ready_delay)
 
-        log(f"clicking power logout twice at {args.logout_ui_x},{args.logout_ui_y}")
-        pointer.click(args.logout_ui_x, args.logout_ui_y)
+        x, y = logout_button_center(args.ui_width, args.ui_height)
+        log(f"clicking power logout twice at {x},{y}")
+        pointer.click(x, y)
         time.sleep(args.ui_confirm_delay)
-        pointer.click(args.logout_ui_x, args.logout_ui_y)
+        pointer.click(x, y)
 
     verify_logout(args.username, since)
     log("logout ui smoke test passed")
@@ -475,8 +495,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--verify-delay", type=float, default=5.0)
     parser.add_argument("--ui-width", type=int, default=1280)
     parser.add_argument("--ui-height", type=int, default=800)
-    parser.add_argument("--logout-ui-x", type=int, default=836)
-    parser.add_argument("--logout-ui-y", type=int, default=724)
     parser.add_argument("--ui-device-ready-delay", type=float, default=1.0)
     parser.add_argument("--ui-ready-delay", type=float, default=1.0)
     parser.add_argument("--ui-confirm-delay", type=float, default=0.6)
