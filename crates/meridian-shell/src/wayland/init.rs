@@ -339,6 +339,7 @@ pub(crate) fn initialize(
         notifications: std::collections::VecDeque::new(),
         notification_dirty: false,
         settings_category: crate::settings_view::SettingsCategory::default(),
+        settings_pinned_adding: false,
         keyboard: None,
         keyboard_focus: SurfaceKind::None,
         pointer: None,

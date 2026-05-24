@@ -9,6 +9,7 @@ use meridian_ui::{
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, PixmapRef, Transform};
 
 use crate::icons::{IconCache, IconImage};
+use crate::launcher::DesktopApp;
 use crate::panel::PinnedApp;
 use meridian_config::{WallpaperEntry, WallpaperMode};
 
@@ -122,6 +123,12 @@ const PINNED_RM_IDS: [&str; 16] = [
     "pinned-remove-4",  "pinned-remove-5",  "pinned-remove-6",  "pinned-remove-7",
     "pinned-remove-8",  "pinned-remove-9",  "pinned-remove-10", "pinned-remove-11",
     "pinned-remove-12", "pinned-remove-13", "pinned-remove-14", "pinned-remove-15",
+];
+const PINNED_ADD_IDS: [&str; 16] = [
+    "pinned-add-app-0",  "pinned-add-app-1",  "pinned-add-app-2",  "pinned-add-app-3",
+    "pinned-add-app-4",  "pinned-add-app-5",  "pinned-add-app-6",  "pinned-add-app-7",
+    "pinned-add-app-8",  "pinned-add-app-9",  "pinned-add-app-10", "pinned-add-app-11",
+    "pinned-add-app-12", "pinned-add-app-13", "pinned-add-app-14", "pinned-add-app-15",
 ];
 
 struct SettingsHeader {
@@ -400,6 +407,38 @@ impl Widget for SettingsPlaceholder {
     }
 }
 
+struct AddAppRow {
+    index: usize,
+    name: Box<str>,
+    accent: Color,
+    row_width: i32,
+}
+
+impl Widget for AddAppRow {
+    fn id(&self) -> Option<&'static str> {
+        PINNED_ADD_IDS.get(self.index).copied()
+    }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize { width: ui_length(self.row_width as f32), height: ui_length(PINNED_ROW_H as f32) },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let bg = match state {
+            WidgetState::Idle    => theme.palette.surface_alt,
+            WidgetState::Hovered => theme.palette.surface_alt.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
+            WidgetState::Pressed => theme.palette.surface_alt.lerp(Color::rgb(0, 0, 0), 0.15),
+        };
+        if let Some(path) = rounded_rect_path(area, 0) {
+            paint_fill(canvas, &path, bg);
+        }
+        paint_text(canvas, &self.name, area.x + 10, area.y + area.height - 14, 13.0, self.accent);
+    }
+}
+
 struct Divider {
     width: i32,
     color: Color,
@@ -448,6 +487,8 @@ pub(crate) fn build_settings_widget_tree(
     current_wallpaper: Option<&str>,
     wallpaper_mode: WallpaperMode,
     pinned_apps: &[PinnedApp],
+    pinned_adding: bool,
+    all_apps: &[DesktopApp],
     icon_cache: &IconCache,
 ) -> Box<dyn Widget> {
     let pal = Palette::TOKYO_NIGHT_METRO;
@@ -572,31 +613,81 @@ pub(crate) fn build_settings_widget_tree(
             ))
         }
         SettingsCategory::PinnedApps => {
-            let count = pinned_apps.len().min(PINNED_MAX);
-            if count == 0 {
-                Box::new(Container::centered_viewport(content_w, content_h,
-                    vec![Box::new(SettingsPlaceholder { width: content_w as i32, text: "No pinned apps. Right-click an app in the launcher to pin it." }) as Box<dyn Widget>],
-                ))
-            } else {
-                let rows: Vec<Box<dyn Widget>> = pinned_apps.iter().take(PINNED_MAX).enumerate().map(|(i, app)| {
-                    let label_w = content_w as i32 - PINNED_BTN_W * 3;
-                    let is_first = i == 0;
-                    let is_last = i + 1 == count;
-                    let up_color = if is_first { pal.text_dim } else { pal.accent };
-                    let dn_color = if is_last  { pal.text_dim } else { pal.accent };
-                    let label = Box::new(PinnedAppLabel {
-                        label: app.label.as_str().into(),
-                        program: app.program.as_str().into(),
-                        width: label_w,
-                    }) as Box<dyn Widget>;
-                    let btn_up = Box::new(Button::with_id(PINNED_UP_IDS[i], "↑", up_color, PINNED_BTN_W, PINNED_ROW_H)) as Box<dyn Widget>;
-                    let btn_dn = Box::new(Button::with_id(PINNED_DN_IDS[i], "↓", dn_color, PINNED_BTN_W, PINNED_ROW_H)) as Box<dyn Widget>;
-                    let btn_rm = Box::new(Button::with_id(PINNED_RM_IDS[i], "×", pal.error,  PINNED_BTN_W, PINNED_ROW_H)) as Box<dyn Widget>;
-                    Box::new(Container::row(0, vec![label, btn_up, btn_dn, btn_rm])) as Box<dyn Widget>
-                }).collect();
-                Box::new(Container::centered_viewport(content_w, content_h,
+            if pinned_adding {
+                // ── Add-app sub-view ──
+                let pinned_programs: std::collections::HashSet<&str> =
+                    pinned_apps.iter().map(|p| p.program.as_str()).collect();
+                let mut addable: Vec<&DesktopApp> = all_apps.iter()
+                    .filter(|a| !pinned_programs.contains(a.program.as_str()))
+                    .collect();
+                addable.sort_by(|a, b| a.name.cmp(&b.name));
+
+                let back_btn = Box::new(Button::with_id(
+                    "pinned-add-close", "← Back", pal.accent,
+                    content_w as i32, 36,
+                )) as Box<dyn Widget>;
+
+                let rows: Vec<Box<dyn Widget>> = addable.iter()
+                    .take(PINNED_ADD_IDS.len())
+                    .enumerate()
+                    .map(|(i, app)| {
+                        Box::new(AddAppRow {
+                            index: i,
+                            name: app.name.as_str().into(),
+                            accent: pal.text,
+                            row_width: content_w as i32,
+                        }) as Box<dyn Widget>
+                    })
+                    .collect();
+
+                let list_h = content_h.saturating_sub(40);
+                let list = Box::new(Container::centered_viewport(
+                    content_w, list_h,
                     vec![Box::new(Container::column(2, rows)) as Box<dyn Widget>],
-                ))
+                )) as Box<dyn Widget>;
+
+                Box::new(Container::column(0, vec![back_btn, list]))
+            } else {
+                // ── Normal pinned list ──
+                let count = pinned_apps.len().min(PINNED_MAX);
+
+                let add_btn = Box::new(Button::with_id(
+                    "pinned-add-open", "+ Add App", pal.accent,
+                    content_w as i32, 36,
+                )) as Box<dyn Widget>;
+
+                if count == 0 {
+                    let placeholder = Box::new(SettingsPlaceholder {
+                        width: content_w as i32,
+                        text: "No pinned apps. Use + Add App or right-click in the launcher.",
+                    }) as Box<dyn Widget>;
+                    Box::new(Container::column(4, vec![add_btn, placeholder]))
+                } else {
+                    let rows: Vec<Box<dyn Widget>> = pinned_apps.iter().take(PINNED_MAX).enumerate().map(|(i, app)| {
+                        let label_w = content_w as i32 - PINNED_BTN_W * 3;
+                        let is_first = i == 0;
+                        let is_last  = i + 1 == count;
+                        let up_color = if is_first { pal.text_dim } else { pal.accent };
+                        let dn_color = if is_last  { pal.text_dim } else { pal.accent };
+                        let label = Box::new(PinnedAppLabel {
+                            label:   app.label.clone().into(),
+                            program: app.program.clone().into(),
+                            width:   label_w,
+                        }) as Box<dyn Widget>;
+                        let btn_up = Box::new(Button::with_id(PINNED_UP_IDS[i], "↑", up_color, PINNED_BTN_W, PINNED_ROW_H)) as Box<dyn Widget>;
+                        let btn_dn = Box::new(Button::with_id(PINNED_DN_IDS[i], "↓", dn_color, PINNED_BTN_W, PINNED_ROW_H)) as Box<dyn Widget>;
+                        let btn_rm = Box::new(Button::with_id(PINNED_RM_IDS[i], "×", pal.error,  PINNED_BTN_W, PINNED_ROW_H)) as Box<dyn Widget>;
+                        Box::new(Container::row(0, vec![label, btn_up, btn_dn, btn_rm])) as Box<dyn Widget>
+                    }).collect();
+
+                    let list_h = content_h.saturating_sub(40);
+                    let list = Box::new(Container::centered_viewport(
+                        content_w, list_h,
+                        vec![Box::new(Container::column(2, rows)) as Box<dyn Widget>],
+                    )) as Box<dyn Widget>;
+
+                    Box::new(Container::column(4, vec![add_btn, list]))
+                }
             }
         }
         other => Box::new(Container::centered_viewport(
@@ -678,6 +769,8 @@ pub(crate) fn draw_settings_launcher(
     current_wallpaper: Option<&str>,
     wallpaper_mode: WallpaperMode,
     pinned_apps: &[PinnedApp],
+    pinned_adding: bool,
+    all_apps: &[DesktopApp],
     icon_cache: &IconCache,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
 ) {
@@ -693,7 +786,7 @@ pub(crate) fn draw_settings_launcher(
         theme.palette.background.b,
         theme.palette.background.a,
     ));
-    let root = build_settings_widget_tree(width, height, selected, available_themes, current_theme, available_wallpapers, wallpaper_thumbnails, current_wallpaper, wallpaper_mode, pinned_apps, icon_cache);
+    let root = build_settings_widget_tree(width, height, selected, available_themes, current_theme, available_wallpapers, wallpaper_thumbnails, current_wallpaper, wallpaper_mode, pinned_apps, pinned_adding, all_apps, icon_cache);
     if let Ok(layout) = meridian_ui::compute_layout(&*root, meridian_ui::PixelSize { width, height }) {
         let mut pm = pixmap.as_mut();
         let _ = meridian_ui::render(&*root, &layout, &mut pm, &theme, state_fn);

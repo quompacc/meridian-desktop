@@ -263,6 +263,7 @@ pub(crate) struct MeridianShell {
     pub(crate) notifications: std::collections::VecDeque<crate::notifications::Notification>,
     pub(crate) notification_dirty: bool,
     pub(crate) settings_category: crate::settings_view::SettingsCategory,
+    pub(crate) settings_pinned_adding: bool,
     pub(crate) keyboard: Option<wl_keyboard::WlKeyboard>,
     pub(crate) keyboard_focus: SurfaceKind,
     pub(crate) pointer: Option<wl_pointer::WlPointer>,

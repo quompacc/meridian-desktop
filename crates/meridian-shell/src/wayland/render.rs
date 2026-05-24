@@ -391,6 +391,8 @@ impl MeridianShell {
                     self.wallpaper_path.as_deref(),
                     self.wallpaper_mode,
                     &self.pinned_apps,
+                    self.settings_pinned_adding,
+                    &self.launcher_state.apps,
                     &self.icon_cache,
                     &state_fn,
                 );

@@ -774,6 +774,7 @@ impl MeridianShell {
         }
         self.launcher_state.close();
         self.launcher_settings_open = false;
+        self.settings_pinned_adding = false;
         self.app_view_open = false;
         self.launcher_layer
             .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);

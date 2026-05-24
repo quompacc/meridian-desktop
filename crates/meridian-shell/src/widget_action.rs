@@ -26,6 +26,9 @@ pub(crate) enum WidgetAction {
     PinnedMoveUp(usize),
     PinnedMoveDown(usize),
     PinnedRemove(usize),
+    PinnedOpenAdd,
+    PinnedCloseAdd,
+    PinnedAddApp(usize),
 }
 
 #[allow(dead_code)]
@@ -73,6 +76,11 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
         }
         id if id.starts_with("pinned-remove-") => {
             id["pinned-remove-".len()..].parse::<usize>().ok().map(WidgetAction::PinnedRemove)
+        }
+        "pinned-add-open" => Some(WidgetAction::PinnedOpenAdd),
+        "pinned-add-close" => Some(WidgetAction::PinnedCloseAdd),
+        id if id.starts_with("pinned-add-app-") => {
+            id["pinned-add-app-".len()..].parse::<usize>().ok().map(WidgetAction::PinnedAddApp)
         }
         _ => None,
     }

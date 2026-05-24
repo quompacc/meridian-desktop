@@ -145,6 +145,7 @@ impl MeridianShell {
                 if idx > 0 && idx < self.pinned_apps.len() {
                     self.pinned_apps.swap(idx - 1, idx);
                     self.save_pinned_apps();
+                    self.draw_panel(qh, RepaintReason::Pointer);
                     self.draw_launcher(qh, RepaintReason::Pointer);
                 }
             }
@@ -152,6 +153,7 @@ impl MeridianShell {
                 if idx + 1 < self.pinned_apps.len() {
                     self.pinned_apps.swap(idx, idx + 1);
                     self.save_pinned_apps();
+                    self.draw_panel(qh, RepaintReason::Pointer);
                     self.draw_launcher(qh, RepaintReason::Pointer);
                 }
             }
@@ -159,6 +161,35 @@ impl MeridianShell {
                 if idx < self.pinned_apps.len() {
                     self.pinned_apps.remove(idx);
                     self.save_pinned_apps();
+                    self.draw_panel(qh, RepaintReason::Pointer);
+                    self.draw_launcher(qh, RepaintReason::Pointer);
+                }
+            }
+            WidgetAction::PinnedOpenAdd => {
+                self.settings_pinned_adding = true;
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::PinnedCloseAdd => {
+                self.settings_pinned_adding = false;
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::PinnedAddApp(idx) => {
+                let pinned_programs: std::collections::HashSet<&str> =
+                    self.pinned_apps.iter().map(|p| p.program.as_str()).collect();
+                let mut addable: Vec<&crate::launcher::DesktopApp> = self.launcher_state.apps.iter()
+                    .filter(|a| !pinned_programs.contains(a.program.as_str()))
+                    .collect();
+                addable.sort_by(|a, b| a.name.cmp(&b.name));
+                if let Some(app) = addable.get(idx) {
+                    self.pinned_apps.push(crate::panel::PinnedApp {
+                        label: app.name.clone(),
+                        program: app.program.clone(),
+                        args: app.args.clone(),
+                        terminal: app.terminal,
+                        icon_name: app.icon_name.clone(),
+                    });
+                    self.save_pinned_apps();
+                    self.settings_pinned_adding = false;
                     self.draw_panel(qh, RepaintReason::Pointer);
                     self.draw_launcher(qh, RepaintReason::Pointer);
                 }
