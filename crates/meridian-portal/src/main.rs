@@ -1,21 +1,9 @@
-use meridian_portal::start_dbus_service;
-use tracing::{info, warn};
-
-fn main() {
+#[tokio::main]
+async fn main() {
     tracing_subscriber::fmt::init();
-
-    info!("meridian-portal starting");
-    let service = match start_dbus_service() {
-        Ok(service) => service,
-        Err(err) => {
-            warn!("portal backend scaffold failed to initialize: {}", err);
-            return;
-        }
-    };
-
-    if service.state.ready {
-        info!("portal backend scaffold ready");
+    tracing::info!("meridian-portal starting");
+    if let Err(e) = meridian_portal::run().await {
+        tracing::error!("portal failed: {e}");
+        std::process::exit(1);
     }
-
-    service.run();
 }

@@ -7,4 +7,5 @@ edition = "2021"
 meridian-ipc = { path = "../meridian-ipc" }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-zbus = "5"
+zbus = { version = "5", features = ["tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time"] }
