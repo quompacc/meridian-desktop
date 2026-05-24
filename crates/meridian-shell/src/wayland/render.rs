@@ -118,7 +118,6 @@ impl MeridianShell {
             CommitReason::ConfigureAck => "configure_ack",
             CommitReason::DrawPanel => "draw_panel",
             CommitReason::DrawLauncher => "draw_launcher",
-            CommitReason::FrameCallback => "frame_callback",
             CommitReason::EventLoopTick => "event_loop_tick",
             CommitReason::Input => "input",
             CommitReason::UnknownOther => "unknown_other",

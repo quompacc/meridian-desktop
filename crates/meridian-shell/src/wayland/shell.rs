@@ -41,13 +41,11 @@ pub(crate) enum CommitSurfaceKind {
 }
 
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
 pub(crate) enum CommitReason {
     InitialCreate,
     ConfigureAck,
     DrawPanel,
     DrawLauncher,
-    FrameCallback,
     EventLoopTick,
     Input,
     UnknownOther,
@@ -59,7 +57,6 @@ pub(crate) struct CommitReasonCounts {
     pub(crate) configure_ack: u64,
     pub(crate) draw_panel: u64,
     pub(crate) draw_launcher: u64,
-    pub(crate) frame_callback: u64,
     pub(crate) event_loop_tick: u64,
     pub(crate) input: u64,
     pub(crate) unknown_other: u64,
@@ -72,7 +69,6 @@ impl CommitReasonCounts {
             CommitReason::ConfigureAck => self.configure_ack += 1,
             CommitReason::DrawPanel => self.draw_panel += 1,
             CommitReason::DrawLauncher => self.draw_launcher += 1,
-            CommitReason::FrameCallback => self.frame_callback += 1,
             CommitReason::EventLoopTick => self.event_loop_tick += 1,
             CommitReason::Input => self.input += 1,
             CommitReason::UnknownOther => self.unknown_other += 1,
@@ -84,7 +80,6 @@ impl CommitReasonCounts {
             + self.configure_ack
             + self.draw_panel
             + self.draw_launcher
-            + self.frame_callback
             + self.event_loop_tick
             + self.input
             + self.unknown_other

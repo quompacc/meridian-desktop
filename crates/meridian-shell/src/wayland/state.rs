@@ -1424,13 +1424,12 @@ impl MeridianShell {
             return;
         }
         info!(
-            "shell commit summary: total={} panel(initial_create={} configure_ack={} draw_panel={} draw_launcher={} frame_callback={} event_loop_tick={} input={} other={}) launcher(initial_create={} configure_ack={} draw_panel={} draw_launcher={} frame_callback={} event_loop_tick={} input={} other={})",
+            "shell commit summary: total={} panel(initial_create={} configure_ack={} draw_panel={} draw_launcher={} event_loop_tick={} input={} other={}) launcher(initial_create={} configure_ack={} draw_panel={} draw_launcher={} event_loop_tick={} input={} other={})",
             self.commit_stats.total(),
             self.commit_stats.panel.initial_create,
             self.commit_stats.panel.configure_ack,
             self.commit_stats.panel.draw_panel,
             self.commit_stats.panel.draw_launcher,
-            self.commit_stats.panel.frame_callback,
             self.commit_stats.panel.event_loop_tick,
             self.commit_stats.panel.input,
             self.commit_stats.panel.unknown_other,
@@ -1438,7 +1437,6 @@ impl MeridianShell {
             self.commit_stats.launcher.configure_ack,
             self.commit_stats.launcher.draw_panel,
             self.commit_stats.launcher.draw_launcher,
-            self.commit_stats.launcher.frame_callback,
             self.commit_stats.launcher.event_loop_tick,
             self.commit_stats.launcher.input,
             self.commit_stats.launcher.unknown_other

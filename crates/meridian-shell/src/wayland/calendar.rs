@@ -1,8 +1,6 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[allow(dead_code)]
 pub(crate) enum WeekStart {
     Monday,
-    Sunday,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -21,7 +19,6 @@ impl Default for CalendarDisplayPolicy {
 pub(crate) fn weekday_labels(week_start: WeekStart) -> [&'static str; 7] {
     match week_start {
         WeekStart::Monday => ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"],
-        WeekStart::Sunday => ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"],
     }
 }
 
@@ -83,7 +80,6 @@ fn is_leap_year(year: i32) -> bool {
 fn weekday_col0_from_sunday0(sunday0: u8, week_start: WeekStart) -> u8 {
     match week_start {
         WeekStart::Monday => (sunday0 + 6) % 7,
-        WeekStart::Sunday => sunday0,
     }
 }
 
@@ -149,20 +145,6 @@ mod tests {
     }
 
     #[test]
-    fn first_weekday_uses_sunday_zero_mapping_when_sunday_is_selected() {
-        let feb_2024 = CalendarMonthModel::for_month(2024, 2, None, WeekStart::Sunday)
-            .expect("valid month model");
-        let feb_2025 = CalendarMonthModel::for_month(2025, 2, None, WeekStart::Sunday)
-            .expect("valid month model");
-        let mar_2026 = CalendarMonthModel::for_month(2026, 3, None, WeekStart::Sunday)
-            .expect("valid month model");
-
-        assert_eq!(feb_2024.first_weekday_col0, 4);
-        assert_eq!(feb_2025.first_weekday_col0, 6);
-        assert_eq!(mar_2026.first_weekday_col0, 0);
-    }
-
-    #[test]
     fn cells_place_days_in_expected_positions_for_monday_start() {
         let model = CalendarMonthModel::for_month(2025, 2, None, WeekStart::Monday)
             .expect("valid month model");
@@ -172,31 +154,6 @@ mod tests {
         assert_eq!(model.cells[32], Some(28));
         assert_eq!(model.cells[33], None);
         assert_eq!(model.cells.iter().flatten().count(), 28);
-    }
-
-    #[test]
-    fn cells_place_days_in_expected_positions_for_sunday_start() {
-        let model = CalendarMonthModel::for_month(2025, 2, None, WeekStart::Sunday)
-            .expect("valid month model");
-
-        assert_eq!(model.cells[5], None);
-        assert_eq!(model.cells[6], Some(1));
-        assert_eq!(model.cells[33], Some(28));
-        assert_eq!(model.cells[34], None);
-        assert_eq!(model.cells.iter().flatten().count(), 28);
-    }
-
-    #[test]
-    fn today_day_and_day_count_are_unchanged_across_week_start_modes() {
-        let monday = CalendarMonthModel::for_month(2025, 2, Some(14), WeekStart::Monday)
-            .expect("valid monday model");
-        let sunday = CalendarMonthModel::for_month(2025, 2, Some(14), WeekStart::Sunday)
-            .expect("valid sunday model");
-
-        assert_eq!(monday.today_day, Some(14));
-        assert_eq!(sunday.today_day, Some(14));
-        assert_eq!(monday.cells.iter().flatten().count(), 28);
-        assert_eq!(sunday.cells.iter().flatten().count(), 28);
     }
 
     #[test]
@@ -224,10 +181,6 @@ mod tests {
         assert_eq!(
             weekday_labels(WeekStart::Monday),
             ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
-        );
-        assert_eq!(
-            weekday_labels(WeekStart::Sunday),
-            ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
         );
     }
 }

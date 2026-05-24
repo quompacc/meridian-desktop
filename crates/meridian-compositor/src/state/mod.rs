@@ -268,7 +268,6 @@ pub(crate) fn normal_window_workarea_from_rect(
     )
 }
 
-#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn half_snap_client_placement_from_output(
     output_geometry: OutputGeometry,
     direction: HalfSnapDirection,
