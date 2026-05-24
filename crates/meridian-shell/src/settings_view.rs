@@ -66,6 +66,9 @@ impl Default for SettingsCategory {
 // ─── Widget-based launcher sub-page ─────────────────────────────────────────
 
 const HEADER_HEIGHT: u32 = 44;
+const CHIPS_BAR_HEIGHT: u32 = 44;
+const ROOT_CHIP_W: i32 = 120;
+const ROOT_CHIP_H: i32 = 32;
 const SIDEBAR_W: u32 = 160;
 const SIDEBAR_ROW_H: i32 = 44;
 const FOOTER_HEIGHT: u32 = 56;
@@ -402,11 +405,30 @@ pub(crate) fn build_settings_widget_tree(
 
     let header = Box::new(SettingsHeader { width: width as i32 }) as Box<dyn Widget>;
 
+    // Root-category chip bar — "Appearance" is the only root for now.
+    // Future roots (System, Network, …) get added here as more chips.
+    let root_chips: Vec<Box<dyn Widget>> = vec![
+        Box::new(Button::with_id(
+            "settings-root-appearance",
+            "Appearance",
+            pal.accent,
+            ROOT_CHIP_W,
+            ROOT_CHIP_H,
+        )) as Box<dyn Widget>,
+    ];
+    let chip_bar = Container::centered_viewport(
+        width,
+        CHIPS_BAR_HEIGHT,
+        vec![Box::new(Container::row(8, root_chips)) as Box<dyn Widget>],
+    );
+
     let divider_color = Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 180);
-    let content_h = height.saturating_sub(HEADER_HEIGHT + FOOTER_HEIGHT + 2 * DIVIDER_HEIGHT);
+    let content_h = height.saturating_sub(
+        HEADER_HEIGHT + CHIPS_BAR_HEIGHT + FOOTER_HEIGHT + 2 * DIVIDER_HEIGHT,
+    );
     let content_w = width.saturating_sub(SIDEBAR_W + 1);
 
-    // Left sidebar — one clickable row per sub-category
+    // Left sidebar — sub-categories of the selected root category
     let sidebar_rows: Vec<Box<dyn Widget>> = SettingsCategory::ALL
         .iter()
         .map(|cat| {
@@ -556,6 +578,7 @@ pub(crate) fn build_settings_widget_tree(
         0,
         vec![
             header,
+            Box::new(chip_bar) as Box<dyn Widget>,
             make_divider(),
             body,
             make_divider(),
@@ -563,6 +586,7 @@ pub(crate) fn build_settings_widget_tree(
         ],
     ))
 }
+
 
 
 pub(crate) fn draw_settings_launcher(
