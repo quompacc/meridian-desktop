@@ -138,6 +138,12 @@ pub(super) fn collect_layer_data(
             lower.push((layer_surface.clone(), geo));
         }
     }
+    // Render Overlay surfaces before Top so they appear above the panel.
+    // Lower index in the render elements slice = drawn on top (first element wins in DRM z-order).
+    upper.sort_by_key(|(s, _)| match s.layer() {
+        WlrLayer::Overlay => 0u8,
+        _ => 1,
+    });
 }
 
 pub(super) fn render_layer_elements(
