@@ -948,6 +948,21 @@ fn compute_tile_grid_geometry(area: Rect) -> TileGridGeometry {
 }
 
 impl LauncherState {
+    /// Shuffle app_sections into random order using a time-based seed.
+    pub fn reshuffle(&mut self) {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos() as u64 ^ d.as_secs().wrapping_mul(0x9e37_79b9))
+            .unwrap_or(0xdead_beef);
+        let mut rng = seed;
+        let n = self.app_sections.len();
+        for i in (1..n).rev() {
+            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let j = (rng >> 33) as usize % (i + 1);
+            self.app_sections.swap(i, j);
+        }
+    }
+
     #[allow(dead_code)]
     pub fn new() -> Self {
         Self::new_with_apps(DesktopApp::load_system())

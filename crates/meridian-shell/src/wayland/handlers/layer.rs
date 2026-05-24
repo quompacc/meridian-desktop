@@ -114,16 +114,31 @@ impl LayerShellHandler for MeridianShell {
                 LAUNCHER_WIDTH,
                 LAUNCHER_HEIGHT
             );
-            self.launcher_layer
-                .set_anchor(Anchor::BOTTOM | Anchor::LEFT);
-            self.launcher_layer
-                .set_margin(0, 0, crate::SHELL_POPUP_BOTTOM_MARGIN, 8);
-            self.launcher_layer.set_exclusive_zone(0);
-            self.launcher_layer
-                .set_size(LAUNCHER_WIDTH, LAUNCHER_HEIGHT);
-            self.launcher_configured = true;
-            self.launcher_width = LAUNCHER_WIDTH;
-            self.launcher_height = LAUNCHER_HEIGHT;
+            if self.launcher_is_fullscreen {
+                // Full-screen mode: accept compositor-provided size as-is.
+                let w = configure.new_size.0.max(1);
+                let h = configure.new_size.1.max(1);
+                self.launcher_configured = true;
+                self.launcher_width = w;
+                self.launcher_height = h;
+                self.launcher_visual_x = 8;
+                self.launcher_visual_y = h as i32
+                    - crate::LAUNCHER_HEIGHT as i32
+                    - crate::SHELL_POPUP_BOTTOM_MARGIN;
+                tracing::debug!("launcher fullscreen: {}x{} visual@({},{})",
+                    w, h, self.launcher_visual_x, self.launcher_visual_y);
+            } else {
+                self.launcher_layer
+                    .set_anchor(Anchor::BOTTOM | Anchor::LEFT);
+                self.launcher_layer
+                    .set_margin(0, 0, crate::SHELL_POPUP_BOTTOM_MARGIN, 8);
+                self.launcher_layer.set_exclusive_zone(0);
+                self.launcher_layer
+                    .set_size(LAUNCHER_WIDTH, LAUNCHER_HEIGHT);
+                self.launcher_configured = true;
+                self.launcher_width = LAUNCHER_WIDTH;
+                self.launcher_height = LAUNCHER_HEIGHT;
+            }
             if self.launcher_state.open {
                 self.draw_launcher(qh, RepaintReason::LayerConfigure);
             }

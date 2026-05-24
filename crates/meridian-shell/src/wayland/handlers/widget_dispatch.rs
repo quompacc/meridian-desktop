@@ -121,12 +121,25 @@ impl MeridianShell {
                 self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
                 self.spawn_file_picker();
             }
-            WidgetAction::PowerOff
-            | WidgetAction::PowerRestart
-            | WidgetAction::PowerSleep
-            | WidgetAction::PowerLock
-            | WidgetAction::PowerLogout => {
-                tracing::info!("power action requested: {:?}", action);
+            WidgetAction::PowerOff => {
+                self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
+                std::thread::spawn(|| { let _ = std::process::Command::new("systemctl").arg("poweroff").status(); });
+            }
+            WidgetAction::PowerRestart => {
+                self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
+                std::thread::spawn(|| { let _ = std::process::Command::new("systemctl").arg("reboot").status(); });
+            }
+            WidgetAction::PowerSleep => {
+                self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
+                std::thread::spawn(|| { let _ = std::process::Command::new("systemctl").arg("suspend").status(); });
+            }
+            WidgetAction::PowerLock => {
+                self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
+                std::thread::spawn(|| { let _ = std::process::Command::new("loginctl").arg("lock-session").status(); });
+            }
+            WidgetAction::PowerLogout => {
+                tracing::info!("power: logout requested — exiting shell");
+                std::process::exit(0);
             }
         }
     }

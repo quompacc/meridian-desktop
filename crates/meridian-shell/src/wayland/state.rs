@@ -543,19 +543,22 @@ impl MeridianShell {
         self.launcher_state.toggle();
         let open_after = self.launcher_state.open;
         if self.launcher_state.open {
+            // Full-screen transparent surface so outside-clicks reach the shell.
             self.launcher_layer
-                .set_anchor(Anchor::BOTTOM | Anchor::LEFT);
-            self.launcher_layer
-                .set_margin(0, 0, crate::SHELL_POPUP_BOTTOM_MARGIN, 8);
-            self.launcher_layer.set_exclusive_zone(0);
-            self.launcher_layer
-                .set_size(crate::LAUNCHER_WIDTH, crate::LAUNCHER_HEIGHT);
+                .set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+            self.launcher_layer.set_margin(0, 0, 0, 0);
+            self.launcher_layer.set_exclusive_zone(-1);
+            self.launcher_layer.set_size(0, 0);
             self.launcher_layer
                 .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
-            tracing::debug!("launcher focus request: keyboard_interactivity=Exclusive");
-            self.launcher_width = crate::LAUNCHER_WIDTH;
-            self.launcher_height = crate::LAUNCHER_HEIGHT;
+            tracing::debug!("launcher focus request: keyboard_interactivity=Exclusive (fullscreen)");
+            self.launcher_is_fullscreen = true;
+            self.launcher_state.reshuffle();
         } else {
+            self.launcher_is_fullscreen = false;
+            self.launcher_settings_open = false;
+            self.app_view_open = false;
+            self.settings_category = crate::settings_view::SettingsCategory::default();
             self.launcher_layer
                 .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
             tracing::debug!("launcher focus release: keyboard_interactivity=OnDemand");

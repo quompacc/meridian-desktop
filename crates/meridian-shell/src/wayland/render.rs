@@ -325,8 +325,8 @@ impl MeridianShell {
         }
         self.repaint_stats.record_launcher(reason);
 
-        let width = LAUNCHER_WIDTH;
-        let height = LAUNCHER_HEIGHT;
+        let width = if self.launcher_is_fullscreen { self.launcher_width } else { LAUNCHER_WIDTH };
+        let height = if self.launcher_is_fullscreen { self.launcher_height } else { LAUNCHER_HEIGHT };
         debug!(
             "draw_launcher size: configured={}x{} effective={}x{} desired={}x{}",
             self.launcher_width,
@@ -373,11 +373,16 @@ impl MeridianShell {
                     _ => meridian_ui::WidgetState::Idle,
                 }
             };
+
+            // Render launcher content to a fixed-size buffer.
+            let lw = LAUNCHER_WIDTH as usize;
+            let lh = LAUNCHER_HEIGHT as usize;
+            let mut content = vec![0u8; lw * lh * 4];
             if self.launcher_settings_open {
                 crate::settings_view::draw_settings_launcher(
-                    canvas,
-                    width,
-                    height,
+                    &mut content,
+                    LAUNCHER_WIDTH,
+                    LAUNCHER_HEIGHT,
                     self.settings_category,
                     &self.available_themes,
                     &self.theme_name,
@@ -390,9 +395,9 @@ impl MeridianShell {
                 );
             } else if self.app_view_open {
                 crate::app_view::draw_app_view(
-                    canvas,
-                    width,
-                    height,
+                    &mut content,
+                    LAUNCHER_WIDTH,
+                    LAUNCHER_HEIGHT,
                     &self.launcher_state.apps,
                     self.app_view_category,
                     &self.icon_cache,
@@ -401,19 +406,35 @@ impl MeridianShell {
                 );
             } else {
                 ui_preview::draw_ui_preview_sandbox(
-                    canvas,
-                    width,
-                    height,
+                    &mut content,
+                    LAUNCHER_WIDTH,
+                    LAUNCHER_HEIGHT,
                     &self.launcher_state.apps,
                     &self.icon_cache,
                     &state_fn,
                 );
             }
-
             if let Some(ref cm) = self.context_menu {
                 let items =
                     crate::context_menu::item_list(cm.is_terminal, cm.is_pinned);
-                crate::context_menu::draw_overlay(canvas, width, height, cm, &items);
+                crate::context_menu::draw_overlay(&mut content, LAUNCHER_WIDTH, LAUNCHER_HEIGHT, cm, &items);
+            }
+
+            if self.launcher_is_fullscreen {
+                // Blit LAUNCHER_WxH content into the full-screen canvas at visual offset.
+                let fw = width as usize;
+                let vx = self.launcher_visual_x.max(0) as usize;
+                let vy = self.launcher_visual_y.max(0) as usize;
+                canvas.fill(0);
+                for y in 0..lh {
+                    let src = &content[y * lw * 4..(y + 1) * lw * 4];
+                    let dst = (vy + y) * fw * 4 + vx * 4;
+                    if dst + lw * 4 <= canvas.len() {
+                        canvas[dst..dst + lw * 4].copy_from_slice(src);
+                    }
+                }
+            } else {
+                canvas[..lw * lh * 4].copy_from_slice(&content);
             }
 
             self.launcher_layer

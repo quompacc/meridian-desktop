@@ -64,7 +64,24 @@ impl PointerHandler for MeridianShell {
             }
 
             if self.pointer_surface == SurfaceKind::Launcher {
-                if let Some(ev) = translate_pointer_event(&event.kind, event.position) {
+                // In fullscreen mode, translate position to launcher-local coords.
+                // A click outside the visual launcher area dismisses it.
+                let local_pos = if self.launcher_is_fullscreen {
+                    let (px, py) = event.position;
+                    let vx = self.launcher_visual_x as f64;
+                    let vy = self.launcher_visual_y as f64;
+                    let (lw, lh) = (crate::LAUNCHER_WIDTH as f64, crate::LAUNCHER_HEIGHT as f64);
+                    if px < vx || px >= vx + lw || py < vy || py >= vy + lh {
+                        if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
+                            self.close_launcher_after_launch(qh, RepaintReason::Pointer);
+                        }
+                        continue;
+                    }
+                    (px - vx, py - vy)
+                } else {
+                    event.position
+                };
+                if let Some(ev) = translate_pointer_event(&event.kind, local_pos) {
                     let tree = if self.launcher_settings_open {
                         crate::settings_view::build_settings_widget_tree(
                             crate::LAUNCHER_WIDTH,
@@ -103,8 +120,8 @@ impl PointerHandler for MeridianShell {
                     match layout {
                         Ok(layout) => {
                             let pos = meridian_ui::PointerPosition {
-                                x: event.position.0 as i32,
-                                y: event.position.1 as i32,
+                                x: local_pos.0 as i32,
+                                y: local_pos.1 as i32,
                             };
                             let path = meridian_ui::hit_test(&layout, pos);
                             let clicked_path = super::pointer_state::detect_click(
