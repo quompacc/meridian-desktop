@@ -174,6 +174,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
 
         let mut decoration_element_count = 0usize;
         let mut space_element_count = 0usize;
+        #[cfg(debug_assertions)]
         let mut cursor_count = 0usize;
         if !state.lock_manager.is_locked_or_pending() {
             for window in out.scratch_windows.iter().rev() {
@@ -351,7 +352,10 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                 .as_ref()
                 .map(WallpaperGpuCache::render_element);
 
-            cursor_count = out.scratch_cursor.len();
+            #[cfg(debug_assertions)]
+            {
+                cursor_count = out.scratch_cursor.len();
+            }
             {
                 let (
                     scratch_final,
