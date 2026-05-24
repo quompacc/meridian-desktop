@@ -555,7 +555,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut card_opt: Option<Card> = Some(card);
     let mut master_released = false;
     let mut first_frame_seen = false;
-    let handover_at = Instant::now();
+    let spawn_wait_started_at = Instant::now();
+    let mut handover_received_at: Option<Instant> = None;
 
     // Two-stage release mirroring the bootsplash → login pattern:
     //   1. on `handover`: drop DRM master but keep the fd open so the
@@ -594,18 +595,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if let Some(card) = card_opt.as_ref() {
                             match card.release_master_lock() {
                                 Ok(()) => {
-                                    info!("ipc handover: released drm master (fd kept alive)")
+                                    info!(
+                                        spawn_to_handover_ms =
+                                            spawn_wait_started_at.elapsed().as_millis() as u64,
+                                        "ipc handover: released drm master (fd kept alive)"
+                                    );
                                 }
                                 Err(e) => warn!(error = %e, "release_master failed"),
                             }
                         }
                         master_released = true;
                     }
+                    handover_received_at.get_or_insert_with(Instant::now);
                 }
                 Ok(IpcEvent::Exit) => {
                     if !first_frame_seen {
                         info!(
-                            handover_to_first_frame_ms = handover_at.elapsed().as_millis() as u64,
+                            spawn_to_first_frame_ms =
+                                spawn_wait_started_at.elapsed().as_millis() as u64,
+                            handover_to_first_frame_ms =
+                                handover_received_at.map(|at| at.elapsed().as_millis() as u64),
                             "ipc exit: compositor first frame on screen; closing card0 fd"
                         );
                         first_frame_seen = true;
@@ -615,7 +624,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
-                    if handover_at.elapsed() >= HANDOVER_DEADLINE {
+                    if spawn_wait_started_at.elapsed() >= HANDOVER_DEADLINE {
                         if !master_released {
                             if let Some(card) = card_opt.as_ref() {
                                 warn!(
