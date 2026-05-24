@@ -431,6 +431,7 @@ pub(crate) fn initialize(
         ui_preview_widget_state: None,
         panel_widget_state: None,
         app_view_open: false,
+        hovered_app_card_idx: None,
         app_view_scroll_y: 0,
         launcher_settings_open: false,
         app_view_category: Default::default(),

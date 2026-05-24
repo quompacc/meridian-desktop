@@ -1,5 +1,5 @@
 use meridian_ui::{
-    effect::{paint_fill, paint_text, rounded_rect_path},
+    effect::{paint_fill, paint_text, rounded_rect_path, truncate_to_fit},
     paint::Rect,
     style::{Color, Palette},
     widget::{Button, Container, Widget},
@@ -518,6 +518,7 @@ pub(crate) fn draw_app_view(
     scroll_y: i32,
     armed_power: Option<(&str, f32)>,
     hidden_execs: &std::collections::HashSet<String>,
+    hovered_app_card_idx: Option<usize>,
 ) {
     let expected_len = (width as usize)
         .saturating_mul(height as usize)
@@ -577,8 +578,14 @@ pub(crate) fn draw_app_view(
                         };
 
                         // draw card background
+                        let global_idx = row_idx * APP_GRID_COLS + col_idx;
+                        let bg_color = if hovered_app_card_idx == Some(global_idx) {
+                            theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15)
+                        } else {
+                            theme.palette.surface
+                        };
                         if let Some(path) = rounded_rect_path(card_rect, APP_CARD_CORNER_RADIUS) {
-                            paint_fill(&mut gpm, &path, theme.palette.surface);
+                            paint_fill(&mut gpm, &path, bg_color);
                         }
 
                         // draw icon
@@ -602,7 +609,9 @@ pub(crate) fn draw_app_view(
                         // draw label
                         let tx = card_x + 10 + APP_CARD_ICON_SIZE as i32 + 8;
                         let ty = row_y + APP_CARD_HEIGHT - 10;
-                        paint_text(&mut gpm, &app.name, tx, ty, 13.0, theme.palette.text);
+                        let max_label_w = APP_CARD_WIDTH - 10 - APP_CARD_ICON_SIZE as i32 - 8 - 8;
+                        let label = truncate_to_fit(&app.name, max_label_w, 13.0);
+                        paint_text(&mut gpm, &label, tx, ty, 13.0, theme.palette.text);
                     }
                 }
 

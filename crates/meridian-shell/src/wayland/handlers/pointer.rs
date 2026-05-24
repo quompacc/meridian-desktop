@@ -56,6 +56,7 @@ impl PointerHandler for MeridianShell {
                         if self.ui_preview_widget_state.is_some() {
                             self.ui_preview_widget_state = None;
                         }
+                        self.hovered_app_card_idx = None;
                         self.draw_launcher(qh, RepaintReason::Pointer)
                     }
                     SurfaceKind::WorkspacePopup => {
@@ -141,6 +142,54 @@ impl PointerHandler for MeridianShell {
                             cm.hover_idx = new_hover;
                             self.draw_launcher(qh, RepaintReason::Pointer);
                         }
+                    }
+                }
+
+                // ── Step 2b: App-card hover tracking (app-view direct rendering).
+                if let PointerEventKind::Motion { .. } = event.kind {
+                    let new_hovered = if self.app_view_open {
+                        let cx = local_pos.0 as i32;
+                        let cy = local_pos.1 as i32;
+                        let grid_start = crate::app_view::APP_GRID_HEADER_H;
+                        let grid_end = crate::LAUNCHER_HEIGHT as i32
+                            - crate::app_view::APP_GRID_FOOTER_H;
+                        if cy >= grid_start && cy < grid_end {
+                            let grid_x =
+                                crate::app_view::app_grid_content_x(crate::LAUNCHER_WIDTH);
+                            let rel_y = cy - grid_start + self.app_view_scroll_y;
+                            let rel_x = cx - grid_x;
+                            if rel_x >= 0
+                                && rel_x < crate::app_view::APP_GRID_CONTENT_W
+                                && rel_y >= 0
+                            {
+                                let row = (rel_y / crate::app_view::APP_GRID_ROW_H) as usize;
+                                let col =
+                                    (rel_x / (crate::app_view::APP_CARD_WIDTH + 8)) as usize;
+                                if col < crate::app_view::APP_GRID_COLS {
+                                    let idx = row * crate::app_view::APP_GRID_COLS + col;
+                                    let filtered = crate::app_view::collect_filtered_apps(
+                                        &self.launcher_state.apps,
+                                        self.app_view_category,
+                                        &self.search_query,
+                                        &self.icon_cache,
+                                        &self.hidden_execs,
+                                    );
+                                    if idx < filtered.len() { Some(idx) } else { None }
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    if new_hovered != self.hovered_app_card_idx {
+                        self.hovered_app_card_idx = new_hovered;
+                        self.draw_launcher(qh, RepaintReason::Pointer);
                     }
                 }
 

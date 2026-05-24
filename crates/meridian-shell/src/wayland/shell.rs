@@ -323,6 +323,7 @@ pub(crate) struct MeridianShell {
     pub(crate) ui_preview_widget_state: Option<(meridian_ui::WidgetPath, meridian_ui::WidgetState)>,
     pub(crate) panel_widget_state: Option<(meridian_ui::WidgetPath, meridian_ui::WidgetState)>,
     pub(crate) app_view_open: bool,
+    pub(crate) hovered_app_card_idx: Option<usize>,
     pub(crate) app_view_scroll_y: i32,
     pub(crate) launcher_settings_open: bool,
     pub(crate) app_view_category: crate::app_view::AppCategory,

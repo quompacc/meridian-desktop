@@ -416,6 +416,7 @@ impl MeridianShell {
                     self.app_view_scroll_y,
                     armed_power,
                     &self.hidden_execs,
+                    self.hovered_app_card_idx,
                 );
             } else {
                 ui_preview::draw_ui_preview_sandbox(

@@ -11,7 +11,7 @@ use meridian_ui::{
     PixelSize, Theme, TileSize, WidgetState,
 };
 use meridian_ui::{
-    effect::{dominant_color, paint_fill, paint_metro_surface, paint_text, rounded_rect_path},
+    effect::{dominant_color, paint_fill, paint_metro_surface, paint_text, rounded_rect_path, truncate_to_fit},
     paint::Rect,
     style::Color,
 };
@@ -110,9 +110,11 @@ impl Widget for DynTile {
             TileSize::Small => TILE_LABEL_FONT_SMALL_PX,
             _ => TILE_LABEL_FONT_DEFAULT_PX,
         };
+        let max_text_w = area.width - 2 * TILE_LABEL_PADDING_X;
+        let label_text = truncate_to_fit(&self.label, max_text_w, font_size);
         paint_text(
             canvas,
-            &self.label,
+            &label_text,
             area.x + TILE_LABEL_PADDING_X,
             area.y + area.height - TILE_LABEL_BASELINE_FROM_BOTTOM,
             font_size,
