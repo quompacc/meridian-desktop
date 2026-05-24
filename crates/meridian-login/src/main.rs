@@ -7,7 +7,6 @@
 //   1.70..2.00s  card content (title, labels, boxes) fades in
 //   2.00s..      keyboard input loop — typed chars appear in the focused
 //                field, Tab cycles focus, Enter submits, Esc cancels.
-//                A 60s inactivity safety also exits the loop.
 //
 // Phase 5b does not actually authenticate; Submit just logs the username
 // and password length and exits. Phase 6 will wire PAM.
@@ -35,7 +34,10 @@ use tracing::{info, warn};
 use zeroize::Zeroizing;
 
 use auth::{start_auth_session, AuthDriver, AuthResult};
-use input::{open_keyboards, poll_keyboards, KeyAction, Keyboard};
+use input::{
+    open_keyboards, open_pointers, poll_keyboards, poll_pointers, KeyAction, Keyboard,
+    PointerAction, PointerState,
+};
 use meridian_boot_common::{
     cleanup_socket_path, secure_socket_permissions, select_boot_mode, SocketIdentity,
 };
@@ -73,8 +75,6 @@ const UI_FADE_START_MS: u64 = 1700;
 const UI_FADE_END_MS: u64 = 2000;
 const GLOW_HIDE_MS: u64 = 1700;
 const GLOW_FINAL_SCALE: f32 = 4.0;
-// Safety: even if user walks away, exit after this. Submit / Cancel exit sooner.
-const MAX_INACTIVITY_MS: u64 = 60_000;
 const MAX_FIELD_LEN: usize = 128;
 
 // Card shake animation on auth failure (classic "wrong password" feedback)
@@ -164,6 +164,13 @@ impl LoginUiState {
                 ControlFlow::Continue
             }
             KeyAction::CycleFocus => {
+                self.focus = match self.focus {
+                    Field::Username => Field::Password,
+                    Field::Password => Field::Username,
+                };
+                ControlFlow::Continue
+            }
+            KeyAction::CycleFocusBack => {
                 self.focus = match self.focus {
                     Field::Username => Field::Password,
                     Field::Password => Field::Username,
@@ -332,7 +339,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut ui_state = LoginUiState::default();
     let mut keyboards = open_keyboards()?;
+    let mut pointers = open_pointers()?;
     let mut keyboard = Keyboard::new().map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+    let mut pointer = PointerState::new(w, h);
 
     let exit = run_animation(
         &card,
@@ -345,6 +354,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut ui_state,
         &mut keyboards,
         &mut keyboard,
+        &mut pointers,
+        &mut pointer,
     )?;
 
     // Release the keyboards BEFORE we spawn the compositor and enter the
@@ -356,7 +367,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // the user type into apps immediately after auth.
     drop(keyboards);
     drop(keyboard);
-    info!("released keyboards (EVIOCGRAB cleared)");
+    drop(pointers);
+    info!("released input devices");
 
     // On successful auth, spawn the compositor as the authenticated user
     // BEFORE releasing master so the new process is already running by the
@@ -635,14 +647,15 @@ fn run_animation(
     ui_state: &mut LoginUiState,
     keyboards: &mut [evdev::Device],
     keyboard: &mut Keyboard,
+    pointers: &mut [input::PointerDevice],
+    pointer: &mut PointerState,
 ) -> Result<ControlFlow, Box<dyn std::error::Error>> {
     let anim_start = Instant::now();
     let frame_dur = Duration::from_micros(1_000_000 / refresh_hz as u64);
-    let safety_timeout = Duration::from_millis(UI_FADE_END_MS + MAX_INACTIVITY_MS);
     let mut frame_idx: u64 = 0;
     let mut exit = ControlFlow::Continue;
 
-    while exit == ControlFlow::Continue && anim_start.elapsed() < safety_timeout {
+    while exit == ControlFlow::Continue {
         let t = anim_start.elapsed();
         let t_secs = t.as_secs_f32();
         let af = compute_anim_frame(t_secs, painter, w as f32, h as f32);
@@ -692,10 +705,28 @@ fn run_animation(
             }
         }
 
+        let shake_dx = ui_state.shake_offset();
+        if af.ui_alpha >= 1.0 {
+            let accept_pointer = matches!(ui_state.phase, InputPhase::Editing);
+            for action in poll_pointers(pointers, pointer) {
+                if !accept_pointer {
+                    continue;
+                }
+                match action {
+                    PointerAction::LeftPress { x, y } => {
+                        if let Some(field) = input_field_at(w as f32, h as f32, x, y, shake_dx) {
+                            ui_state.focus = field;
+                        }
+                    }
+                }
+            }
+        } else {
+            let _ = poll_pointers(pointers, pointer);
+        }
+
         let caret_on = matches!(ui_state.phase, InputPhase::Editing)
             && af.ui_alpha >= 1.0
             && ((t_secs * 2.0) as i64) % 2 == 0;
-        let shake_dx = ui_state.shake_offset();
 
         {
             let mut mapping = card.map_dumb_buffer(db)?;
@@ -742,6 +773,7 @@ fn run_animation(
                     caret_on,
                     shake_dx,
                 );
+                draw_pointer_cursor(&mut pm, pointer.x, pointer.y, af.ui_alpha);
             }
 
             for px in buf.chunks_exact_mut(4) {
@@ -759,6 +791,30 @@ fn run_animation(
         }
     }
     Ok(exit)
+}
+
+fn input_field_at(w: f32, h: f32, x: f32, y: f32, shake_dx: f32) -> Option<Field> {
+    let (card_left_raw, card_top, cw, _) = card_rect(w, h);
+    let card_left = card_left_raw + shake_dx;
+    let pad = 32.0;
+    let inner_left = card_left + pad;
+    let inner_top = card_top + pad;
+    let inner_w = cw - 2.0 * pad;
+    let box_h = 36.0;
+    let user_box_top = inner_top + 96.0;
+    let pwd_box_top = inner_top + 168.0;
+
+    if point_in_rect(x, y, inner_left, user_box_top, inner_w, box_h) {
+        Some(Field::Username)
+    } else if point_in_rect(x, y, inner_left, pwd_box_top, inner_w, box_h) {
+        Some(Field::Password)
+    } else {
+        None
+    }
+}
+
+fn point_in_rect(px: f32, py: f32, x: f32, y: f32, w: f32, h: f32) -> bool {
+    px >= x && px < x + w && py >= y && py < y + h
 }
 
 fn draw_card(
@@ -955,6 +1011,36 @@ fn draw_caret(pm: &mut PixmapMut, x: f32, baseline_y: f32, font_size: f32, color
         ..Default::default()
     };
     pm.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+}
+
+fn draw_pointer_cursor(pm: &mut PixmapMut, x: f32, y: f32, alpha: f32) {
+    let alpha = (alpha * 255.0) as u8;
+    let mut pb = PathBuilder::new();
+    pb.move_to(x, y);
+    pb.line_to(x, y + 22.0);
+    pb.line_to(x + 5.5, y + 17.0);
+    pb.line_to(x + 9.0, y + 25.0);
+    pb.line_to(x + 13.0, y + 23.0);
+    pb.line_to(x + 9.5, y + 15.5);
+    pb.line_to(x + 17.0, y + 15.5);
+    pb.close();
+    let Some(path) = pb.finish() else {
+        return;
+    };
+
+    let mut fill = Paint::default();
+    fill.set_color(Color::from_rgba8(235, 241, 252, alpha));
+    fill.anti_alias = true;
+    pm.fill_path(&path, &fill, FillRule::Winding, Transform::identity(), None);
+
+    let mut stroke_paint = Paint::default();
+    stroke_paint.set_color(Color::from_rgba8(5, 8, 14, alpha));
+    stroke_paint.anti_alias = true;
+    let stroke = Stroke {
+        width: 1.25,
+        ..Default::default()
+    };
+    pm.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
 }
 
 fn card_rect(w: f32, h: f32) -> (f32, f32, f32, f32) {
