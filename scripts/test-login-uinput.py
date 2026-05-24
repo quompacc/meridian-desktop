@@ -26,14 +26,21 @@ from typing import Iterable
 
 EV_SYN = 0
 EV_KEY = 1
+EV_ABS = 3
 SYN_REPORT = 0
+ABS_X = 0
+ABS_Y = 1
+BTN_LEFT = 0x110
 UI_SET_EVBIT = 0x40045564
 UI_SET_KEYBIT = 0x40045565
+UI_SET_ABSBIT = 0x40045567
 UI_DEV_CREATE = 0x5501
 UI_DEV_DESTROY = 0x5502
 
 KEY_TAB = 15
 KEY_ENTER = 28
+KEY_SPACE = 57
+KEY_LEFTMETA = 125
 KEYS = {
     "1": 2,
     "2": 3,
@@ -167,7 +174,7 @@ class VirtualKeyboard:
         self._file = Path("/dev/uinput").open("wb", buffering=0)
         fcntl.ioctl(self._file, UI_SET_EVBIT, EV_KEY)
         fcntl.ioctl(self._file, UI_SET_EVBIT, EV_SYN)
-        for code in sorted(set(KEYS.values()) | {KEY_TAB, KEY_ENTER}):
+        for code in sorted(set(KEYS.values()) | {KEY_TAB, KEY_ENTER, KEY_SPACE, KEY_LEFTMETA}):
             fcntl.ioctl(self._file, UI_SET_KEYBIT, code)
 
         name = b"meridian-login-smoke-keyboard"
@@ -192,16 +199,91 @@ class VirtualKeyboard:
         self._file.write(struct.pack("llHHi", 0, 0, ev_type, code, value))
 
     def tap(self, code: int) -> None:
+        self.key_down(code)
+        time.sleep(0.025)
+        self.key_up(code)
+        time.sleep(0.045)
+
+    def key_down(self, code: int) -> None:
         self.emit(EV_KEY, code, 1)
         self.emit(EV_SYN, SYN_REPORT, 0)
-        time.sleep(0.025)
+
+    def key_up(self, code: int) -> None:
         self.emit(EV_KEY, code, 0)
         self.emit(EV_SYN, SYN_REPORT, 0)
-        time.sleep(0.045)
 
     def type_text(self, text: str) -> None:
         for char in text:
             self.tap(KEYS[char])
+
+    def combo(self, modifier: int, key: int) -> None:
+        self.key_down(modifier)
+        time.sleep(0.04)
+        self.tap(key)
+        time.sleep(0.04)
+        self.key_up(modifier)
+        time.sleep(0.2)
+
+
+class VirtualPointer:
+    def __init__(self, width: int, height: int) -> None:
+        self.width = width
+        self.height = height
+        self._file = None
+
+    def __enter__(self) -> "VirtualPointer":
+        self._file = Path("/dev/uinput").open("wb", buffering=0)
+        fcntl.ioctl(self._file, UI_SET_EVBIT, EV_KEY)
+        fcntl.ioctl(self._file, UI_SET_EVBIT, EV_ABS)
+        fcntl.ioctl(self._file, UI_SET_EVBIT, EV_SYN)
+        fcntl.ioctl(self._file, UI_SET_KEYBIT, BTN_LEFT)
+        fcntl.ioctl(self._file, UI_SET_ABSBIT, ABS_X)
+        fcntl.ioctl(self._file, UI_SET_ABSBIT, ABS_Y)
+
+        name = b"meridian-login-smoke-pointer"
+        user_dev = struct.pack("80sHHHHi", name, 3, 0x1234, 0x5679, 1, 0)
+        absmax = [0] * 64
+        absmin = [0] * 64
+        absfuzz = [0] * 64
+        absflat = [0] * 64
+        absmax[ABS_X] = max(1, self.width - 1)
+        absmax[ABS_Y] = max(1, self.height - 1)
+        body = struct.pack("64i64i64i64i", *absmax, *absmin, *absfuzz, *absflat)
+        self._file.write(user_dev + body)
+        fcntl.ioctl(self._file, UI_DEV_CREATE)
+        time.sleep(0.4)
+        return self
+
+    def __exit__(self, _exc_type, _exc, _tb) -> None:
+        if self._file is None:
+            return
+        try:
+            fcntl.ioctl(self._file, UI_DEV_DESTROY)
+        finally:
+            self._file.close()
+            self._file = None
+
+    def emit(self, ev_type: int, code: int, value: int) -> None:
+        if self._file is None:
+            raise TestFailure("virtual pointer is not open")
+        self._file.write(struct.pack("llHHi", 0, 0, ev_type, code, value))
+
+    def move_to(self, x: int, y: int) -> None:
+        x = min(max(0, x), self.width - 1)
+        y = min(max(0, y), self.height - 1)
+        self.emit(EV_ABS, ABS_X, x)
+        self.emit(EV_ABS, ABS_Y, y)
+        self.emit(EV_SYN, SYN_REPORT, 0)
+        time.sleep(0.08)
+
+    def click(self, x: int, y: int) -> None:
+        self.move_to(x, y)
+        self.emit(EV_KEY, BTN_LEFT, 1)
+        self.emit(EV_SYN, SYN_REPORT, 0)
+        time.sleep(0.05)
+        self.emit(EV_KEY, BTN_LEFT, 0)
+        self.emit(EV_SYN, SYN_REPORT, 0)
+        time.sleep(0.2)
 
 
 def current_journal_time() -> str:
@@ -358,6 +440,26 @@ def run_logout_ipc_test(args: argparse.Namespace) -> None:
     log("logout ipc smoke test passed")
 
 
+def run_logout_ui_test(args: argparse.Namespace) -> None:
+    if not pgrep_user(args.username, "meridian"):
+        raise TestFailure(f"no running meridian session for {args.username}; use --run first")
+
+    since = current_journal_time()
+    with VirtualKeyboard() as keyboard, VirtualPointer(args.ui_width, args.ui_height) as pointer:
+        log("opening launcher via Super+Space")
+        time.sleep(args.ui_device_ready_delay)
+        keyboard.combo(KEY_LEFTMETA, KEY_SPACE)
+        time.sleep(args.ui_ready_delay)
+
+        log(f"clicking power logout twice at {args.logout_ui_x},{args.logout_ui_y}")
+        pointer.click(args.logout_ui_x, args.logout_ui_y)
+        time.sleep(args.ui_confirm_delay)
+        pointer.click(args.logout_ui_x, args.logout_ui_y)
+
+    verify_logout(args.username, since)
+    log("logout ui smoke test passed")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--username", default="fakeuser")
@@ -365,11 +467,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prepare-user", action="store_true")
     parser.add_argument("--run", action="store_true", help="run the virtual-keyboard login test")
     parser.add_argument("--logout-ipc", action="store_true", help="send ShellCommand::Quit and verify login returns")
+    parser.add_argument("--logout-ui", action="store_true", help="open launcher and double-click power logout")
     parser.add_argument("--lock-user", action="store_true", help="lock the user after cleanup")
     parser.add_argument("--keep-session", action="store_true", help="leave the compositor session running")
     parser.add_argument("--no-restart-login", dest="restart_login", action="store_false")
     parser.add_argument("--login-ready-delay", type=float, default=3.2)
     parser.add_argument("--verify-delay", type=float, default=5.0)
+    parser.add_argument("--ui-width", type=int, default=1280)
+    parser.add_argument("--ui-height", type=int, default=800)
+    parser.add_argument("--logout-ui-x", type=int, default=836)
+    parser.add_argument("--logout-ui-y", type=int, default=724)
+    parser.add_argument("--ui-device-ready-delay", type=float, default=1.0)
+    parser.add_argument("--ui-ready-delay", type=float, default=1.0)
+    parser.add_argument("--ui-confirm-delay", type=float, default=0.6)
     parser.set_defaults(restart_login=True)
     return parser.parse_args()
 
@@ -392,8 +502,10 @@ def main() -> int:
                 run_login_test(args)
             if args.logout_ipc:
                 run_logout_ipc_test(args)
-            if not args.run and not args.logout_ipc:
-                log("nothing to run; pass --run and/or --logout-ipc")
+            if args.logout_ui:
+                run_logout_ui_test(args)
+            if not args.run and not args.logout_ipc and not args.logout_ui:
+                log("nothing to run; pass --run, --logout-ipc and/or --logout-ui")
         finally:
             if not args.keep_session:
                 restart_login()
