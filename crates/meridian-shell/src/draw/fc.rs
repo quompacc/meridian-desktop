@@ -1,6 +1,6 @@
 #![allow(non_camel_case_types, non_upper_case_globals)]
 
-use libc::{c_char, c_int, c_uchar, c_void};
+use libc::{c_char, c_int, c_uchar};
 
 pub type FcChar8 = c_uchar;
 pub type FcBool = c_int;
@@ -35,6 +35,3 @@ extern "C" {
     ) -> FcResult;
     pub fn FcPatternDestroy(pattern: *mut FcPattern);
 }
-
-#[allow(dead_code)]
-type _KeepVoid = c_void;

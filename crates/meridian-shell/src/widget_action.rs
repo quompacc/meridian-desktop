@@ -1,6 +1,5 @@
 use crate::app_view::AppCategory;
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum WidgetAction {
     ToggleUiPreview,
@@ -8,7 +7,6 @@ pub(crate) enum WidgetAction {
     SetCategory(AppCategory),
     LaunchApp { program: String, args: Vec<String> },
     LaunchExec(String),
-    FocusWindow(String),
     ToggleCalendar,
     ToggleNetworkPopup,
     ToggleWorkspacePopup,
@@ -31,7 +29,6 @@ pub(crate) enum WidgetAction {
     PinnedAddApp(usize),
 }
 
-#[allow(dead_code)]
 pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
     match id {
         "apps-switch" => Some(WidgetAction::ToggleUiPreview),

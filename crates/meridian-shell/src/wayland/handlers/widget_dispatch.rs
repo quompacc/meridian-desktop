@@ -8,7 +8,6 @@ use crate::{
 };
 
 impl MeridianShell {
-    #[allow(dead_code)]
     pub(super) fn dispatch_widget_action(
         &mut self,
         qh: &QueueHandle<MeridianShell>,
@@ -76,10 +75,6 @@ impl MeridianShell {
                     }
                 }
                 self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
-            }
-            WidgetAction::FocusWindow(id) => {
-                self.ipc
-                    .send(&meridian_ipc::ShellCommand::FocusWindow { id });
             }
             WidgetAction::ToggleCalendar => {
                 self.toggle_calendar_popup(CommitReason::Input);

@@ -10,9 +10,6 @@ use super::{fc, ft, painter::Painter};
 
 pub(crate) const ADWAITA_SANS_REGULAR: &[u8] =
     include_bytes!("../../assets/fonts/AdwaitaSans-Regular.ttf");
-#[allow(dead_code)]
-pub(crate) const ADWAITA_MONO_REGULAR: &[u8] =
-    include_bytes!("../../assets/fonts/AdwaitaMono-Regular.ttf");
 
 pub struct TextRenderer {
     face: ft::Face,

@@ -1,6 +1,5 @@
 use meridian_ui::{Widget, WidgetPath};
 
-#[allow(dead_code)]
 pub(crate) fn find_widget_at_path<'a>(
     root: &'a dyn Widget,
     path: &WidgetPath,

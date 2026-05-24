@@ -966,7 +966,7 @@ impl LauncherState {
         self.app_sections = pack_app_sections(&self.apps);
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn new() -> Self {
         Self::new_with_apps(DesktopApp::load_system())
     }

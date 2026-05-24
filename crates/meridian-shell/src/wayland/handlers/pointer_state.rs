@@ -28,7 +28,6 @@ pub(super) fn apply_pointer_event(
     }
 }
 
-#[allow(dead_code)]
 pub(super) fn detect_click(
     prev: Option<&(WidgetPath, WidgetState)>,
     event: &Event,

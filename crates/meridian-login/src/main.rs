@@ -50,10 +50,7 @@ const DEFAULT_DRM_CARD: &str = "/dev/dri/card0";
 // No client-side sleep needed: bootsplash's `handover` ack is now
 // synchronous — it only writes "ok handover" after drmDropMaster has
 // completed, so our set_crtc is race-free immediately after the call
-// returns. Kept the constant for backward-compat documentation but it
-// is unused.
-#[allow(dead_code)]
-const HANDOVER_SETTLE_MS: u64 = 0;
+// returns.
 
 // Phase 8: IPC server that the spawned compositor uses to hand the screen
 // over and announce its first committed frame. Mirror of the bootsplash IPC

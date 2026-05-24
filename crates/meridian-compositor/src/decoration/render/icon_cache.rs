@@ -51,11 +51,6 @@ impl IconCache {
         })
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn invalidate(&mut self) {
-        self.buffers.clear();
-    }
-
     #[cfg(test)]
     fn len(&self) -> usize {
         self.buffers.len()

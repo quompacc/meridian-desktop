@@ -38,26 +38,6 @@ impl NetworkState {
             Self::Offline => "network-offline-symbolic",
         }
     }
-
-    #[allow(dead_code)]
-    pub fn summary(&self) -> String {
-        match self {
-            Self::Connected {
-                kind,
-                connection_name,
-            } => {
-                let kind_label = match kind {
-                    ConnectionKind::Ethernet => "Ethernet",
-                    ConnectionKind::Wifi { .. } => "WiFi",
-                    ConnectionKind::Vpn => "VPN",
-                    ConnectionKind::Other => "Network",
-                };
-                format!("{kind_label}: {connection_name}")
-            }
-            Self::Disconnected => "Disconnected".to_string(),
-            Self::Offline => "Offline".to_string(),
-        }
-    }
 }
 
 #[cfg(test)]

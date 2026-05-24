@@ -173,71 +173,6 @@ pub(crate) fn collect_filtered_apps<'a>(
         .collect()
 }
 
-#[allow(dead_code)]
-pub(crate) struct AppCard {
-    pub(crate) label: Box<str>,
-    pub(crate) exec: Box<str>,
-    pub(crate) icon: Option<Pixmap>,
-    #[allow(dead_code)]
-    pub(crate) accent: Color,
-}
-
-impl Widget for AppCard {
-    fn style(&self) -> meridian_ui::WidgetStyle {
-        meridian_ui::WidgetStyle {
-            size: meridian_ui::UiSize {
-                width: meridian_ui::ui_length(APP_CARD_WIDTH as f32),
-                height: meridian_ui::ui_length(APP_CARD_HEIGHT as f32),
-            },
-            ..Default::default()
-        }
-    }
-
-    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
-        let body_color = match state {
-            WidgetState::Idle => theme.palette.surface,
-            WidgetState::Hovered => theme
-                .palette
-                .surface
-                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15),
-            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
-        };
-
-        if let Some(path) = rounded_rect_path(area, APP_CARD_CORNER_RADIUS) {
-            paint_fill(canvas, &path, body_color);
-        }
-
-        if let Some(ref icon) = self.icon {
-            let ih = icon.height() as i32;
-            let x = area.x + 10;
-            let y = area.y + (area.height - ih) / 2;
-            canvas.draw_pixmap(
-                x,
-                y,
-                icon.as_ref(),
-                &PixmapPaint::default(),
-                Transform::identity(),
-                None,
-            );
-        }
-
-        let text_x = area.x + 10 + 24 + 8;
-        let text_baseline = area.y + area.height - 10;
-        paint_text(
-            canvas,
-            &self.label,
-            text_x,
-            text_baseline,
-            13.0,
-            theme.palette.text,
-        );
-    }
-
-    fn launch_exec(&self) -> Option<&str> {
-        Some(&self.exec)
-    }
-}
-
 struct Divider {
     width: i32,
     color: Color,
@@ -757,10 +692,9 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use super::{build_app_view_widget_tree, AppCard, AppCategory, SearchBar};
+    use super::{build_app_view_widget_tree, AppCategory, SearchBar};
     use crate::icons::{IconCache, IconLoader};
     use crate::launcher::DesktopApp;
-    use meridian_ui::style::Color;
     use meridian_ui::Widget;
 
     struct TempDir {
@@ -868,17 +802,6 @@ mod tests {
         assert_eq!(AppCategory::System.chip_id(), "cat-system");
         assert_eq!(AppCategory::Spiele.chip_id(), "cat-spiele");
         assert_eq!(AppCategory::Alle.chip_id(), "cat-alle");
-    }
-
-    #[test]
-    fn app_card_launch_exec() {
-        let card = AppCard {
-            label: "Firefox".into(),
-            exec: "firefox".into(),
-            icon: None,
-            accent: Color::rgb(0, 0, 0),
-        };
-        assert_eq!(card.launch_exec(), Some("firefox"));
     }
 
     #[test]
