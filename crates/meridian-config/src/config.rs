@@ -1018,6 +1018,41 @@ impl MeridianConfig {
         }
     }
 
+    /// Write (or update) the [panel] section in config.toml with the current pinned apps.
+    pub fn save_pinned_apps(apps: &[PinnedAppConfig]) {
+        let config_path = config_directory().join("config.toml");
+        let raw = if config_path.exists() {
+            fs::read_to_string(&config_path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let stripped = strip_toml_section(&raw, "panel");
+        let mut out = stripped;
+        if !out.ends_with('\n') && !out.is_empty() {
+            out.push('\n');
+        }
+        out.push_str("\n[panel]\npinned = [\n");
+        for app in apps {
+            let icon_part = app.icon.as_deref()
+                .map_or(String::new(), |i| format!(", icon = {:?}", i));
+            out.push_str(&format!(
+                "  {{ label = {:?}, program = {:?}{} }},\n",
+                app.label, app.program, icon_part
+            ));
+        }
+        out.push_str("]\n");
+
+        if let Some(parent) = config_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Err(e) = fs::write(&config_path, out.as_bytes()) {
+            warn!("Failed to write pinned apps to config: {}", e);
+        } else {
+            info!("Saved {} pinned app(s) to {:?}", apps.len(), config_path);
+        }
+    }
+
     /// Scan standard wallpaper directories; group resolution variants into one entry per pack.
     pub fn scan_wallpaper_dirs() -> Vec<WallpaperEntry> {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());

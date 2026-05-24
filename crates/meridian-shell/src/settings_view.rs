@@ -9,6 +9,7 @@ use meridian_ui::{
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, PixmapRef, Transform};
 
 use crate::icons::{IconCache, IconImage};
+use crate::panel::PinnedApp;
 use meridian_config::{WallpaperEntry, WallpaperMode};
 
 // ─── SettingsCategory ────────────────────────────────────────────────────────
@@ -81,6 +82,9 @@ const POWER_ICON_SIZE: u32 = 32;
 const DIVIDER_HEIGHT: u32 = 2;
 const THEME_ROW_H: i32 = 44;
 const THEME_ROW_CORNER: i32 = 4;
+const PINNED_ROW_H: i32 = 44;
+const PINNED_BTN_W: i32 = 30;
+const PINNED_MAX: usize = 16;
 
 pub(crate) const THEME_WIDGET_IDS: &[&'static str] = &[
     "settings-theme-0",  "settings-theme-1",  "settings-theme-2",  "settings-theme-3",
@@ -99,6 +103,25 @@ pub(crate) const WALLPAPER_WIDGET_IDS: &[&'static str] = &[
     "settings-wallpaper-25", "settings-wallpaper-26", "settings-wallpaper-27", "settings-wallpaper-28", "settings-wallpaper-29",
     "settings-wallpaper-30", "settings-wallpaper-31", "settings-wallpaper-32", "settings-wallpaper-33", "settings-wallpaper-34",
     "settings-wallpaper-35", "settings-wallpaper-36", "settings-wallpaper-37", "settings-wallpaper-38", "settings-wallpaper-39",
+];
+
+const PINNED_UP_IDS: [&str; 16] = [
+    "pinned-move-up-0",  "pinned-move-up-1",  "pinned-move-up-2",  "pinned-move-up-3",
+    "pinned-move-up-4",  "pinned-move-up-5",  "pinned-move-up-6",  "pinned-move-up-7",
+    "pinned-move-up-8",  "pinned-move-up-9",  "pinned-move-up-10", "pinned-move-up-11",
+    "pinned-move-up-12", "pinned-move-up-13", "pinned-move-up-14", "pinned-move-up-15",
+];
+const PINNED_DN_IDS: [&str; 16] = [
+    "pinned-move-dn-0",  "pinned-move-dn-1",  "pinned-move-dn-2",  "pinned-move-dn-3",
+    "pinned-move-dn-4",  "pinned-move-dn-5",  "pinned-move-dn-6",  "pinned-move-dn-7",
+    "pinned-move-dn-8",  "pinned-move-dn-9",  "pinned-move-dn-10", "pinned-move-dn-11",
+    "pinned-move-dn-12", "pinned-move-dn-13", "pinned-move-dn-14", "pinned-move-dn-15",
+];
+const PINNED_RM_IDS: [&str; 16] = [
+    "pinned-remove-0",  "pinned-remove-1",  "pinned-remove-2",  "pinned-remove-3",
+    "pinned-remove-4",  "pinned-remove-5",  "pinned-remove-6",  "pinned-remove-7",
+    "pinned-remove-8",  "pinned-remove-9",  "pinned-remove-10", "pinned-remove-11",
+    "pinned-remove-12", "pinned-remove-13", "pinned-remove-14", "pinned-remove-15",
 ];
 
 struct SettingsHeader {
@@ -334,6 +357,31 @@ impl Widget for WallpaperBrowseRow {
 }
 
 
+struct PinnedAppLabel {
+    label: Box<str>,
+    program: Box<str>,
+    width: i32,
+}
+
+impl Widget for PinnedAppLabel {
+    fn id(&self) -> Option<&'static str> { None }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize { width: ui_length(self.width as f32), height: ui_length(PINNED_ROW_H as f32) },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+        if let Some(path) = rounded_rect_path(area, 0) {
+            paint_fill(canvas, &path, theme.palette.surface);
+        }
+        paint_text(canvas, &self.label,   area.x + 10, area.y + 16, 13.0, theme.palette.text);
+        paint_text(canvas, &self.program, area.x + 10, area.y + 34, 11.0, theme.palette.text_dim);
+    }
+}
+
 struct SettingsPlaceholder {
     width: i32,
     text: &'static str,
@@ -399,6 +447,7 @@ pub(crate) fn build_settings_widget_tree(
     wallpaper_thumbnails: &[Option<(u32, u32, Vec<u8>)>],
     current_wallpaper: Option<&str>,
     wallpaper_mode: WallpaperMode,
+    pinned_apps: &[PinnedApp],
     icon_cache: &IconCache,
 ) -> Box<dyn Widget> {
     let pal = Palette::TOKYO_NIGHT_METRO;
@@ -522,6 +571,34 @@ pub(crate) fn build_settings_widget_tree(
                 ],
             ))
         }
+        SettingsCategory::PinnedApps => {
+            let count = pinned_apps.len().min(PINNED_MAX);
+            if count == 0 {
+                Box::new(Container::centered_viewport(content_w, content_h,
+                    vec![Box::new(SettingsPlaceholder { width: content_w as i32, text: "No pinned apps. Right-click an app in the launcher to pin it." }) as Box<dyn Widget>],
+                ))
+            } else {
+                let rows: Vec<Box<dyn Widget>> = pinned_apps.iter().take(PINNED_MAX).enumerate().map(|(i, app)| {
+                    let label_w = content_w as i32 - PINNED_BTN_W * 3;
+                    let is_first = i == 0;
+                    let is_last = i + 1 == count;
+                    let up_color = if is_first { pal.text_dim } else { pal.accent };
+                    let dn_color = if is_last  { pal.text_dim } else { pal.accent };
+                    let label = Box::new(PinnedAppLabel {
+                        label: app.label.as_str().into(),
+                        program: app.program.as_str().into(),
+                        width: label_w,
+                    }) as Box<dyn Widget>;
+                    let btn_up = Box::new(Button::with_id(PINNED_UP_IDS[i], "↑", up_color, PINNED_BTN_W, PINNED_ROW_H)) as Box<dyn Widget>;
+                    let btn_dn = Box::new(Button::with_id(PINNED_DN_IDS[i], "↓", dn_color, PINNED_BTN_W, PINNED_ROW_H)) as Box<dyn Widget>;
+                    let btn_rm = Box::new(Button::with_id(PINNED_RM_IDS[i], "×", pal.error,  PINNED_BTN_W, PINNED_ROW_H)) as Box<dyn Widget>;
+                    Box::new(Container::row(0, vec![label, btn_up, btn_dn, btn_rm])) as Box<dyn Widget>
+                }).collect();
+                Box::new(Container::centered_viewport(content_w, content_h,
+                    vec![Box::new(Container::column(2, rows)) as Box<dyn Widget>],
+                ))
+            }
+        }
         other => Box::new(Container::centered_viewport(
             content_w,
             content_h,
@@ -600,6 +677,7 @@ pub(crate) fn draw_settings_launcher(
     wallpaper_thumbnails: &[Option<(u32, u32, Vec<u8>)>],
     current_wallpaper: Option<&str>,
     wallpaper_mode: WallpaperMode,
+    pinned_apps: &[PinnedApp],
     icon_cache: &IconCache,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
 ) {
@@ -615,7 +693,7 @@ pub(crate) fn draw_settings_launcher(
         theme.palette.background.b,
         theme.palette.background.a,
     ));
-    let root = build_settings_widget_tree(width, height, selected, available_themes, current_theme, available_wallpapers, wallpaper_thumbnails, current_wallpaper, wallpaper_mode, icon_cache);
+    let root = build_settings_widget_tree(width, height, selected, available_themes, current_theme, available_wallpapers, wallpaper_thumbnails, current_wallpaper, wallpaper_mode, pinned_apps, icon_cache);
     if let Ok(layout) = meridian_ui::compute_layout(&*root, meridian_ui::PixelSize { width, height }) {
         let mut pm = pixmap.as_mut();
         let _ = meridian_ui::render(&*root, &layout, &mut pm, &theme, state_fn);

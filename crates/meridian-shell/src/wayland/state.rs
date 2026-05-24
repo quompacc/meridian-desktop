@@ -797,6 +797,17 @@ impl MeridianShell {
         }
     }
 
+    pub(crate) fn save_pinned_apps(&self) {
+        let configs: Vec<meridian_config::PinnedAppConfig> = self.pinned_apps.iter().map(|a| {
+            meridian_config::PinnedAppConfig {
+                label: a.label.clone(),
+                program: a.program.clone(),
+                icon: a.icon_name.clone(),
+            }
+        }).collect();
+        meridian_config::MeridianConfig::save_pinned_apps(&configs);
+    }
+
 
     pub(crate) fn load_wallpaper_thumbnails(&mut self) {
         self.wallpaper_thumbnails = self.available_wallpapers.iter().map(|entry| {

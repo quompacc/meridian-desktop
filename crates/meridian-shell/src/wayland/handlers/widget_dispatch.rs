@@ -141,6 +141,28 @@ impl MeridianShell {
                 tracing::info!("power: logout requested — exiting shell");
                 std::process::exit(0);
             }
+            WidgetAction::PinnedMoveUp(idx) => {
+                if idx > 0 && idx < self.pinned_apps.len() {
+                    self.pinned_apps.swap(idx - 1, idx);
+                    self.save_pinned_apps();
+                    self.draw_launcher(qh, RepaintReason::Pointer);
+                }
+            }
+            WidgetAction::PinnedMoveDown(idx) => {
+                if idx + 1 < self.pinned_apps.len() {
+                    self.pinned_apps.swap(idx, idx + 1);
+                    self.save_pinned_apps();
+                    self.draw_launcher(qh, RepaintReason::Pointer);
+                }
+            }
+            WidgetAction::PinnedRemove(idx) => {
+                if idx < self.pinned_apps.len() {
+                    self.pinned_apps.remove(idx);
+                    self.save_pinned_apps();
+                    self.draw_panel(qh, RepaintReason::Pointer);
+                    self.draw_launcher(qh, RepaintReason::Pointer);
+                }
+            }
         }
     }
 

@@ -23,6 +23,9 @@ pub(crate) enum WidgetAction {
     ApplyWallpaperByIndex(usize),
     SetWallpaperMode(meridian_config::WallpaperMode),
     BrowseWallpaper,
+    PinnedMoveUp(usize),
+    PinnedMoveDown(usize),
+    PinnedRemove(usize),
 }
 
 #[allow(dead_code)]
@@ -61,6 +64,15 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
         "wallpaper-browse" => Some(WidgetAction::BrowseWallpaper),
         id if id.starts_with("settings-wallpaper-") => {
             id["settings-wallpaper-".len()..].parse::<usize>().ok().map(WidgetAction::ApplyWallpaperByIndex)
+        }
+        id if id.starts_with("pinned-move-up-") => {
+            id["pinned-move-up-".len()..].parse::<usize>().ok().map(WidgetAction::PinnedMoveUp)
+        }
+        id if id.starts_with("pinned-move-dn-") => {
+            id["pinned-move-dn-".len()..].parse::<usize>().ok().map(WidgetAction::PinnedMoveDown)
+        }
+        id if id.starts_with("pinned-remove-") => {
+            id["pinned-remove-".len()..].parse::<usize>().ok().map(WidgetAction::PinnedRemove)
         }
         _ => None,
     }
