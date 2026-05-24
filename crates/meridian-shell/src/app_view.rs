@@ -128,12 +128,50 @@ fn icon_image_to_pixmap(img: &IconImage) -> Option<Pixmap> {
     Some(pixmap)
 }
 
-const APP_CARD_WIDTH: i32 = 268;
+pub(crate) const APP_CARD_WIDTH: i32 = 268;
 const APP_CARD_HEIGHT: i32 = 52;
 const APP_CARD_ICON_SIZE: u32 = 24;
 const APP_CARD_CORNER_RADIUS: i32 = 4;
 const DIVIDER_HEIGHT: i32 = 2;
 
+pub(crate) const APP_GRID_HEADER_H: i32 =
+    SEARCH_BAR_HEIGHT as i32 + CHIPS_BAR_HEIGHT as i32 + DIVIDER_HEIGHT;
+pub(crate) const APP_GRID_FOOTER_H: i32 = FOOTER_HEIGHT as i32 + DIVIDER_HEIGHT;
+pub(crate) const APP_GRID_ROW_H: i32 = APP_CARD_HEIGHT + 8;
+pub(crate) const APP_GRID_COLS: usize = 3;
+const APP_CARD_COL_STRIDE: i32 = APP_CARD_WIDTH + 8;
+pub(crate) const APP_GRID_CONTENT_W: i32 =
+    APP_GRID_COLS as i32 * APP_CARD_WIDTH + (APP_GRID_COLS as i32 - 1) * 8;
+
+pub(crate) fn app_grid_content_x(launcher_width: u32) -> i32 {
+    (launcher_width as i32 - APP_GRID_CONTENT_W) / 2
+}
+
+pub(crate) fn collect_filtered_apps<'a>(
+    apps: &'a [DesktopApp],
+    category: AppCategory,
+    search_query: &str,
+    icon_cache: &IconCache,
+) -> Vec<&'a DesktopApp> {
+    apps.iter()
+        .filter(|app| {
+            !app.terminal
+                && app
+                    .icon_name
+                    .as_deref()
+                    .and_then(|name| icon_cache.lookup(name, 24))
+                    .is_some()
+                && category.matches(app)
+                && (search_query.is_empty()
+                    || app
+                        .name
+                        .to_lowercase()
+                        .contains(&search_query.to_lowercase()))
+        })
+        .collect()
+}
+
+#[allow(dead_code)]
 pub(crate) struct AppCard {
     pub(crate) label: Box<str>,
     pub(crate) exec: Box<str>,
@@ -295,13 +333,33 @@ const FOOTER_PADDING_X: i32 = 28;
 const FOOTER_CLUSTER_GAP: i32 = 8;
 const POWER_ICON_SIZE: u32 = 32;
 
+struct GridPlaceholder {
+    width: i32,
+    height: i32,
+}
+
+impl Widget for GridPlaceholder {
+    fn style(&self) -> meridian_ui::WidgetStyle {
+        meridian_ui::WidgetStyle {
+            size: meridian_ui::UiSize {
+                width: meridian_ui::ui_length(self.width as f32),
+                height: meridian_ui::ui_length(self.height as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, _area: Rect, _canvas: &mut PixmapMut<'_>, _theme: &Theme, _state: WidgetState) {}
+}
+
 pub(crate) fn build_app_view_widget_tree(
     width: u32,
     height: u32,
-    apps: &[DesktopApp],
+    _apps: &[DesktopApp],
     category: AppCategory,
     icon_cache: &IconCache,
     search_query: &str,
+    _scroll_y: i32,
 ) -> Box<dyn Widget> {
     let pal = Palette::TOKYO_NIGHT_METRO;
 
@@ -335,48 +393,6 @@ pub(crate) fn build_app_view_widget_tree(
         vec![Box::new(Container::row(8, chips)) as Box<dyn Widget>],
     );
 
-    let filtered: Vec<&DesktopApp> = apps
-        .iter()
-        .filter(|app| {
-            !app.terminal
-                && app
-                    .icon_name
-                    .as_deref()
-                    .and_then(|name| icon_cache.lookup(name, 24))
-                    .is_some()
-                && category.matches(app)
-                && (search_query.is_empty()
-                    || app
-                        .name
-                        .to_lowercase()
-                        .contains(&search_query.to_lowercase()))
-        })
-        .take(21)
-        .collect();
-
-    let mut cards: Vec<Box<dyn Widget>> = filtered
-        .iter()
-        .map(|app| {
-            let icon_name = app.icon_name.as_deref().unwrap_or("");
-            let maybe_pixmap = icon_cache
-                .lookup(icon_name, APP_CARD_ICON_SIZE)
-                .and_then(icon_image_to_pixmap);
-            Box::new(AppCard {
-                label: app.name.clone().into_boxed_str(),
-                exec: app.program.clone().into_boxed_str(),
-                icon: maybe_pixmap,
-                accent: active_accent,
-            }) as Box<dyn Widget>
-        })
-        .collect();
-
-    let mut row_widgets: Vec<Box<dyn Widget>> = Vec::new();
-    while !cards.is_empty() {
-        let end = 3.min(cards.len());
-        let row_cards: Vec<Box<dyn Widget>> = cards.drain(0..end).collect();
-        row_widgets.push(Box::new(Container::row(8, row_cards)) as Box<dyn Widget>);
-    }
-
     const DIVIDER_COUNT: u32 = 2;
     let grid_height = height.saturating_sub(
         SEARCH_BAR_HEIGHT
@@ -388,7 +404,10 @@ pub(crate) fn build_app_view_widget_tree(
     let grid = Container::centered_viewport(
         width,
         grid_height,
-        vec![Box::new(Container::column(8, row_widgets)) as Box<dyn Widget>],
+        vec![Box::new(GridPlaceholder {
+            width: width as i32,
+            height: grid_height as i32,
+        }) as Box<dyn Widget>],
     );
 
     let settings_icon = icon_cache
@@ -512,6 +531,7 @@ pub(crate) fn draw_app_view(
     icon_cache: &IconCache,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
     search_query: &str,
+    scroll_y: i32,
 ) {
     let expected_len = (width as usize)
         .saturating_mul(height as usize)
@@ -527,13 +547,139 @@ pub(crate) fn draw_app_view(
     let theme = Theme::TOKYO_NIGHT_METRO;
     pixmap.fill(to_tiny_skia_color(theme.palette.background));
 
-    let root = build_app_view_widget_tree(width, height, apps, category, icon_cache, search_query);
+    let root = build_app_view_widget_tree(width, height, apps, category, icon_cache, search_query, scroll_y);
 
     if let Ok(layout) =
         meridian_ui::compute_layout(&*root, meridian_ui::PixelSize { width, height })
     {
         let mut pixmap_canvas = pixmap.as_mut();
         let _ = meridian_ui::render(&*root, &layout, &mut pixmap_canvas, &theme, state_fn);
+    }
+
+    // Direct grid rendering with scroll support
+    {
+        let grid_start_y = APP_GRID_HEADER_H;
+        let grid_end_y = height as i32 - APP_GRID_FOOTER_H;
+        let grid_h = (grid_end_y - grid_start_y).max(0) as u32;
+        let grid_x = app_grid_content_x(width);
+
+        let filtered = collect_filtered_apps(apps, category, search_query, icon_cache);
+        let rows = (filtered.len() + APP_GRID_COLS - 1) / APP_GRID_COLS;
+        let content_h = rows as i32 * APP_GRID_ROW_H;
+
+        if let Some(mut grid_pix) = Pixmap::new(width, grid_h) {
+            grid_pix.fill(to_tiny_skia_color(theme.palette.background));
+            {
+                let mut gpm = grid_pix.as_mut();
+
+                for (row_idx, chunk) in filtered.chunks(APP_GRID_COLS).enumerate() {
+                    let row_y = row_idx as i32 * APP_GRID_ROW_H - scroll_y;
+                    if row_y + APP_GRID_ROW_H <= 0 {
+                        continue;
+                    }
+                    if row_y >= grid_h as i32 {
+                        break;
+                    }
+
+                    for (col_idx, app) in chunk.iter().enumerate() {
+                        let card_x = grid_x + col_idx as i32 * APP_CARD_COL_STRIDE;
+                        let card_rect = Rect {
+                            x: card_x,
+                            y: row_y,
+                            width: APP_CARD_WIDTH,
+                            height: APP_CARD_HEIGHT,
+                        };
+
+                        // draw card background
+                        if let Some(path) = rounded_rect_path(card_rect, APP_CARD_CORNER_RADIUS) {
+                            paint_fill(&mut gpm, &path, theme.palette.surface);
+                        }
+
+                        // draw icon
+                        if let Some(name) = app.icon_name.as_deref() {
+                            if let Some(img) = icon_cache.lookup(name, APP_CARD_ICON_SIZE) {
+                                if let Some(pix) = icon_image_to_pixmap(img) {
+                                    let ix = card_x + 10;
+                                    let iy = row_y + (APP_CARD_HEIGHT - pix.height() as i32) / 2;
+                                    gpm.draw_pixmap(
+                                        ix,
+                                        iy,
+                                        pix.as_ref(),
+                                        &PixmapPaint::default(),
+                                        Transform::identity(),
+                                        None,
+                                    );
+                                }
+                            }
+                        }
+
+                        // draw label
+                        let tx = card_x + 10 + APP_CARD_ICON_SIZE as i32 + 8;
+                        let ty = row_y + APP_CARD_HEIGHT - 10;
+                        paint_text(&mut gpm, &app.name, tx, ty, 13.0, theme.palette.text);
+                    }
+                }
+
+                // draw scrollbar if needed
+                if content_h > grid_h as i32 {
+                    let track_x = width as i32 - 8;
+                    let track_h = grid_h as i32 - 8;
+                    let thumb_h = ((track_h * grid_h as i32) / content_h)
+                        .max(20)
+                        .min(track_h);
+                    let max_scroll = content_h - grid_h as i32;
+                    let thumb_y = 4
+                        + if max_scroll > 0 {
+                            scroll_y * (track_h - thumb_h) / max_scroll
+                        } else {
+                            0
+                        };
+                    let track_col = Color::rgba(
+                        theme.palette.text.r,
+                        theme.palette.text.g,
+                        theme.palette.text.b,
+                        25,
+                    );
+                    let thumb_col = Color::rgba(
+                        theme.palette.accent.r,
+                        theme.palette.accent.g,
+                        theme.palette.accent.b,
+                        180,
+                    );
+                    if let Some(path) = rounded_rect_path(
+                        Rect {
+                            x: track_x,
+                            y: 4,
+                            width: 4,
+                            height: track_h,
+                        },
+                        2,
+                    ) {
+                        paint_fill(&mut gpm, &path, track_col);
+                    }
+                    if let Some(path) = rounded_rect_path(
+                        Rect {
+                            x: track_x,
+                            y: thumb_y,
+                            width: 4,
+                            height: thumb_h,
+                        },
+                        2,
+                    ) {
+                        paint_fill(&mut gpm, &path, thumb_col);
+                    }
+                }
+            }
+
+            pixmap.draw_pixmap(
+                0,
+                grid_start_y,
+                grid_pix.as_ref(),
+                &PixmapPaint::default(),
+                Transform::identity(),
+                None,
+            );
+        }
     }
 
     blit_rgba_to_argb(pixmap.data(), canvas);
@@ -691,7 +837,7 @@ mod tests {
     #[test]
     fn build_app_view_widget_tree_empty_apps() {
         let icon_cache = IconCache::new();
-        let tree = build_app_view_widget_tree(880, 620, &[], AppCategory::Alle, &icon_cache, "");
+        let tree = build_app_view_widget_tree(880, 620, &[], AppCategory::Alle, &icon_cache, "", 0);
         let children = tree.children();
         assert_eq!(
             children.len(),
@@ -711,20 +857,15 @@ mod tests {
             AppCategory::Internet,
             &icon_cache,
             "fire",
+            0,
         );
         let children = tree.children();
         assert_eq!(children.len(), 6);
-        // child[3] is the grid container
+        // child[3] is the grid container (now contains a GridPlaceholder)
         let grid = &children[3];
         let grid_children = grid.children();
-        // grid has 1 child: the column container
+        // grid viewport has 1 child: the GridPlaceholder
         assert_eq!(grid_children.len(), 1);
-        let column = &grid_children[0];
-        // column has rows; with 1 matching app there should be at least 1 row
-        assert!(
-            !column.children().is_empty(),
-            "should have at least one row with an AppCard"
-        );
     }
 
     #[test]
@@ -738,17 +879,14 @@ mod tests {
             AppCategory::Internet,
             &icon_cache,
             "zzznomatch",
+            0,
         );
         let children = tree.children();
         assert_eq!(children.len(), 6);
-        // child[3] is the grid container
+        // child[3] is the grid container (now contains a GridPlaceholder)
         let grid = &children[3];
         let grid_children = grid.children();
+        // grid viewport has 1 child: the GridPlaceholder
         assert_eq!(grid_children.len(), 1);
-        let column = &grid_children[0];
-        assert!(
-            column.children().is_empty(),
-            "should have no rows when no app matches search query"
-        );
     }
 }

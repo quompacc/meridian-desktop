@@ -20,6 +20,7 @@ impl MeridianShell {
                 self.app_view_open = true;
                 self.launcher_settings_open = false;
                 self.ui_preview_widget_state = None;
+                self.app_view_scroll_y = 0;
                 self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
             }
             WidgetAction::ShowTileView => {
@@ -27,12 +28,14 @@ impl MeridianShell {
                 self.launcher_settings_open = false;
                 self.search_query.clear();
                 self.ui_preview_widget_state = None;
+                self.app_view_scroll_y = 0;
                 self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
             }
             WidgetAction::SetCategory(cat) => {
                 self.app_view_category = cat;
                 self.search_query.clear();
                 self.ui_preview_widget_state = None;
+                self.app_view_scroll_y = 0;
                 self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
             }
             WidgetAction::LaunchApp { program, args } => {

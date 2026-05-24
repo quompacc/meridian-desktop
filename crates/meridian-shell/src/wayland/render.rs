@@ -406,6 +406,7 @@ impl MeridianShell {
                     &self.icon_cache,
                     &state_fn,
                     &self.search_query,
+                    self.app_view_scroll_y,
                 );
             } else {
                 ui_preview::draw_ui_preview_sandbox(

@@ -81,6 +81,50 @@ impl PointerHandler for MeridianShell {
                 } else {
                     event.position
                 };
+                // App grid direct hit test (left-click in grid area, bypasses widget tree)
+                if self.app_view_open {
+                    if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
+                        let cx = local_pos.0 as i32;
+                        let cy = local_pos.1 as i32;
+                        let grid_start = crate::app_view::APP_GRID_HEADER_H;
+                        let grid_end = crate::LAUNCHER_HEIGHT as i32
+                            - crate::app_view::APP_GRID_FOOTER_H;
+                        if cy >= grid_start && cy < grid_end {
+                            let grid_x = crate::app_view::app_grid_content_x(
+                                crate::LAUNCHER_WIDTH,
+                            );
+                            let rel_y = cy - grid_start + self.app_view_scroll_y;
+                            let rel_x = cx - grid_x;
+                            if rel_x >= 0
+                                && rel_x < crate::app_view::APP_GRID_CONTENT_W
+                                && rel_y >= 0
+                            {
+                                let row = (rel_y / crate::app_view::APP_GRID_ROW_H) as usize;
+                                let col = (rel_x
+                                    / (crate::app_view::APP_CARD_WIDTH + 8))
+                                    as usize;
+                                if col < crate::app_view::APP_GRID_COLS {
+                                    let idx = row * crate::app_view::APP_GRID_COLS + col;
+                                    let filtered = crate::app_view::collect_filtered_apps(
+                                        &self.launcher_state.apps,
+                                        self.app_view_category,
+                                        &self.search_query,
+                                        &self.icon_cache,
+                                    );
+                                    if let Some(app) = filtered.get(idx) {
+                                        let exec = app.program.clone();
+                                        self.dispatch_widget_action(
+                                            qh,
+                                            crate::widget_action::WidgetAction::LaunchExec(exec),
+                                        );
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if let Some(ev) = translate_pointer_event(&event.kind, local_pos) {
                     let tree = if self.launcher_settings_open {
                         crate::settings_view::build_settings_widget_tree(
@@ -106,6 +150,7 @@ impl PointerHandler for MeridianShell {
                             self.app_view_category,
                             &self.icon_cache,
                             &self.search_query,
+                            self.app_view_scroll_y,
                         )
                     } else {
                         crate::ui_preview::build_ui_preview_widget_tree(
@@ -251,6 +296,70 @@ impl PointerHandler for MeridianShell {
                 if let PointerEventKind::Press { button: 0x111, .. } = event.kind {
                     // Right-click: open or replace context menu for the hovered app.
                     self.context_menu = None;
+
+                    // App grid direct hit test for right-click
+                    if self.app_view_open {
+                        let cx = event.position.0 as i32;
+                        let cy = event.position.1 as i32;
+                        let grid_start = crate::app_view::APP_GRID_HEADER_H;
+                        let grid_end = crate::LAUNCHER_HEIGHT as i32
+                            - crate::app_view::APP_GRID_FOOTER_H;
+                        if cy >= grid_start && cy < grid_end {
+                            let grid_x =
+                                crate::app_view::app_grid_content_x(crate::LAUNCHER_WIDTH);
+                            let rel_y = cy - grid_start + self.app_view_scroll_y;
+                            let rel_x = cx - grid_x;
+                            if rel_x >= 0
+                                && rel_x < crate::app_view::APP_GRID_CONTENT_W
+                                && rel_y >= 0
+                            {
+                                let row =
+                                    (rel_y / crate::app_view::APP_GRID_ROW_H) as usize;
+                                let col =
+                                    (rel_x / (crate::app_view::APP_CARD_WIDTH + 8)) as usize;
+                                if col < crate::app_view::APP_GRID_COLS {
+                                    let idx = row * crate::app_view::APP_GRID_COLS + col;
+                                    let filtered = crate::app_view::collect_filtered_apps(
+                                        &self.launcher_state.apps,
+                                        self.app_view_category,
+                                        &self.search_query,
+                                        &self.icon_cache,
+                                    );
+                                    if let Some(app) = filtered.get(idx) {
+                                        let exec: Box<str> = app.program.clone().into();
+                                        let app_name: Box<str> = app.name.clone().into();
+                                        let is_terminal = app.terminal;
+                                        let is_pinned = self
+                                            .pinned_apps
+                                            .iter()
+                                            .any(|p| p.program == exec.as_ref());
+                                        let items =
+                                            context_menu::item_list(is_terminal, is_pinned);
+                                        let (mx, my) = context_menu::clamp_position(
+                                            event.position.0 as i32,
+                                            event.position.1 as i32,
+                                            items.len(),
+                                            crate::LAUNCHER_WIDTH as i32,
+                                            crate::LAUNCHER_HEIGHT as i32,
+                                        );
+                                        self.context_menu =
+                                            Some(context_menu::ContextMenuState {
+                                                x: mx,
+                                                y: my,
+                                                app_name,
+                                                exec,
+                                                is_terminal,
+                                                is_pinned,
+                                                hover_idx: None,
+                                            });
+                                        self.draw_launcher(qh, RepaintReason::Pointer);
+                                        continue;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     let tree = if self.app_view_open {
                         crate::app_view::build_app_view_widget_tree(
                             crate::LAUNCHER_WIDTH,
@@ -259,6 +368,7 @@ impl PointerHandler for MeridianShell {
                             self.app_view_category,
                             &self.icon_cache,
                             &self.search_query,
+                            self.app_view_scroll_y,
                         )
                     } else {
                         crate::ui_preview::build_ui_preview_widget_tree(
@@ -344,6 +454,34 @@ impl PointerHandler for MeridianShell {
                         )
                     {
                         self.draw_launcher(qh, RepaintReason::Pointer);
+                    }
+                } else if self.pointer_surface == SurfaceKind::Launcher && self.app_view_open {
+                    let step_px: i32 = 60;
+                    let delta_px = if vertical.discrete != 0 {
+                        vertical.discrete * step_px
+                    } else {
+                        vertical.absolute as i32
+                    };
+                    if delta_px != 0 {
+                        let filtered = crate::app_view::collect_filtered_apps(
+                            &self.launcher_state.apps,
+                            self.app_view_category,
+                            &self.search_query,
+                            &self.icon_cache,
+                        );
+                        let content_h = ((filtered.len() + crate::app_view::APP_GRID_COLS - 1)
+                            / crate::app_view::APP_GRID_COLS) as i32
+                            * crate::app_view::APP_GRID_ROW_H;
+                        let grid_h = crate::LAUNCHER_HEIGHT as i32
+                            - crate::app_view::APP_GRID_HEADER_H
+                            - crate::app_view::APP_GRID_FOOTER_H;
+                        let max_scroll = (content_h - grid_h).max(0);
+                        let new_scroll =
+                            (self.app_view_scroll_y + delta_px).clamp(0, max_scroll);
+                        if new_scroll != self.app_view_scroll_y {
+                            self.app_view_scroll_y = new_scroll;
+                            self.draw_launcher(qh, RepaintReason::Pointer);
+                        }
                     }
                 }
             }
