@@ -168,6 +168,14 @@ mod tests {
     }
 
     #[test]
+    fn action_for_id_power_logout() {
+        assert_eq!(
+            action_for_id("power-logout"),
+            Some(WidgetAction::PowerLogout)
+        );
+    }
+
+    #[test]
     fn action_for_id_unknown() {
         assert_eq!(action_for_id("unknown-id"), None);
     }

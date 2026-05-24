@@ -191,8 +191,12 @@ impl MeridianShell {
             }
             WidgetAction::PowerLogout => {
                 if self.try_consume_armed_power("power-logout") {
-                    tracing::info!("power: logout requested — exiting shell");
-                    std::process::exit(0);
+                    self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
+                    tracing::info!("power: logout requested - requesting compositor quit");
+                    if !self.ipc.send(&meridian_ipc::ShellCommand::Quit) {
+                        tracing::warn!("power: logout request failed - compositor IPC unavailable");
+                        self.arm_power(qh, "power-logout");
+                    }
                 } else {
                     self.arm_power(qh, "power-logout");
                 }
