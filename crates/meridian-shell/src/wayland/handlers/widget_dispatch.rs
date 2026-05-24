@@ -117,6 +117,8 @@ impl MeridianShell {
                 }
             }
             WidgetAction::BrowseWallpaper => {
+                // Close launcher so the file dialog opens in the foreground.
+                self.close_launcher_after_launch(qh, crate::wayland::RepaintReason::Pointer);
                 self.spawn_file_picker();
             }
             WidgetAction::PowerOff
