@@ -66,9 +66,8 @@ impl Default for SettingsCategory {
 // ─── Widget-based launcher sub-page ─────────────────────────────────────────
 
 const HEADER_HEIGHT: u32 = 44;
-const CHIPS_BAR_HEIGHT: u32 = 52;
-const CHIP_WIDTH: i32 = 120;
-const CHIP_HEIGHT: i32 = 36;
+const SIDEBAR_W: u32 = 160;
+const SIDEBAR_ROW_H: i32 = 44;
 const FOOTER_HEIGHT: u32 = 56;
 const FOOTER_SWITCH_WIDTH: i32 = 144;
 const FOOTER_SWITCH_HEIGHT: i32 = 48;
@@ -120,6 +119,67 @@ impl Widget for SettingsHeader {
         let strip = Rect { x: area.x + 20, y: area.y + area.height - 2, width: 52, height: 2 };
         if let Some(path) = rounded_rect_path(strip, 0) {
             paint_fill(canvas, &path, theme.palette.accent);
+        }
+    }
+}
+
+
+struct SettingsSidebarRow {
+    cat: SettingsCategory,
+    is_selected: bool,
+    accent: Color,
+    row_width: i32,
+}
+
+impl Widget for SettingsSidebarRow {
+    fn id(&self) -> Option<&'static str> {
+        Some(self.cat.chip_id())
+    }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize { width: ui_length(self.row_width as f32), height: ui_length(SIDEBAR_ROW_H as f32) },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let bg = match state {
+            WidgetState::Idle if self.is_selected => theme.palette.surface_alt,
+            WidgetState::Idle    => theme.palette.surface,
+            WidgetState::Hovered => theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
+            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.15),
+        };
+        if let Some(path) = rounded_rect_path(area, 0) {
+            paint_fill(canvas, &path, bg);
+        }
+        if self.is_selected {
+            let strip = Rect { x: area.x, y: area.y + 8, width: 3, height: area.height - 16 };
+            if let Some(path) = rounded_rect_path(strip, 1) {
+                paint_fill(canvas, &path, self.accent);
+            }
+        }
+        let text_color = if self.is_selected { self.accent } else { theme.palette.text };
+        paint_text(canvas, self.cat.label(), area.x + 14, area.y + area.height - 14, 12.5, text_color);
+    }
+}
+
+struct VerticalDivider {
+    height: i32,
+    color: Color,
+}
+
+impl Widget for VerticalDivider {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize { width: ui_length(1.0), height: ui_length(self.height as f32) },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, _theme: &Theme, _state: WidgetState) {
+        if let Some(path) = rounded_rect_path(area, 0) {
+            paint_fill(canvas, &path, self.color);
         }
     }
 }
@@ -342,29 +402,33 @@ pub(crate) fn build_settings_widget_tree(
 
     let header = Box::new(SettingsHeader { width: width as i32 }) as Box<dyn Widget>;
 
-    let chips: Vec<Box<dyn Widget>> = SettingsCategory::ALL
+    let divider_color = Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 180);
+    let content_h = height.saturating_sub(HEADER_HEIGHT + FOOTER_HEIGHT + 2 * DIVIDER_HEIGHT);
+    let content_w = width.saturating_sub(SIDEBAR_W + 1);
+
+    // Left sidebar — one clickable row per sub-category
+    let sidebar_rows: Vec<Box<dyn Widget>> = SettingsCategory::ALL
         .iter()
         .map(|cat| {
-            let accent = if *cat == selected { pal.accent } else { pal.surface };
-            Box::new(Button::with_id(cat.chip_id(), cat.label(), accent, CHIP_WIDTH, CHIP_HEIGHT))
-                as Box<dyn Widget>
+            Box::new(SettingsSidebarRow {
+                cat: *cat,
+                is_selected: *cat == selected,
+                accent: pal.accent,
+                row_width: SIDEBAR_W as i32,
+            }) as Box<dyn Widget>
         })
         .collect();
+    let sidebar = Box::new(Container::centered_viewport(
+        SIDEBAR_W,
+        content_h,
+        vec![Box::new(Container::column(0, sidebar_rows)) as Box<dyn Widget>],
+    )) as Box<dyn Widget>;
 
-    let chip_bar = Container::centered_viewport(
-        width,
-        CHIPS_BAR_HEIGHT,
-        vec![Box::new(Container::row(8, chips)) as Box<dyn Widget>],
-    );
-
-    let divider_color = Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 180);
-    let content_h = height.saturating_sub(
-        HEADER_HEIGHT + CHIPS_BAR_HEIGHT + FOOTER_HEIGHT + 2 * DIVIDER_HEIGHT,
-    );
+    let vsep = Box::new(VerticalDivider { height: content_h as i32, color: divider_color }) as Box<dyn Widget>;
 
     let content: Box<dyn Widget> = match selected {
         SettingsCategory::Theme => {
-            let row_w = width as i32;
+            let row_w = content_w as i32;
             let rows: Vec<Box<dyn Widget>> = available_themes
                 .iter()
                 .take(THEME_WIDGET_IDS.len())
@@ -380,7 +444,7 @@ pub(crate) fn build_settings_widget_tree(
                 })
                 .collect();
             Box::new(Container::centered_viewport(
-                width,
+                content_w,
                 content_h,
                 vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
             ))
@@ -393,19 +457,16 @@ pub(crate) fn build_settings_widget_tree(
                 ("wallpaper-mode-tile",   "Tile",   WallpaperMode::Tile),
             ].iter().map(|(id, label, mode)| {
                 let accent = if *mode == wallpaper_mode { pal.accent } else { pal.surface };
-                Box::new(Button::with_id(id, label, accent, CHIP_WIDTH, CHIP_HEIGHT)) as Box<dyn Widget>
+                Box::new(Button::with_id(id, label, accent, 80, 32)) as Box<dyn Widget>
             }).collect();
             let mode_bar = Container::centered_viewport(
-                width, WALLPAPER_MODE_BAR_H,
+                content_w, WALLPAPER_MODE_BAR_H,
                 vec![Box::new(Container::row(8, mode_chips)) as Box<dyn Widget>],
             );
             let list_h = content_h.saturating_sub(WALLPAPER_MODE_BAR_H);
-            // Cap rows to what actually fits so the list never overflows footer/header.
-            // Each row takes WALLPAPER_ROW_H + 2px gap (column gap) except the last.
             let max_visible = ((list_h + 2) / (WALLPAPER_ROW_H as u32 + 2))
                 .min(WALLPAPER_WIDGET_IDS.len() as u32) as usize;
-            let row_w = width as i32;
-            // Row 0 is always the Browse button; remaining slots are wallpaper entries.
+            let row_w = content_w as i32;
             let mut rows: Vec<Box<dyn Widget>> = Vec::new();
             rows.push(Box::new(WallpaperBrowseRow { row_width: row_w, accent: pal.accent }));
             let entry_slots = max_visible.saturating_sub(1);
@@ -427,9 +488,8 @@ pub(crate) fn build_settings_widget_tree(
                     }));
                 }
             }
-            let rows: Vec<Box<dyn Widget>> = rows;
             let wallpaper_list = Container::centered_viewport(
-                width, list_h,
+                content_w, list_h,
                 vec![Box::new(Container::column(2, rows)) as Box<dyn Widget>],
             );
             Box::new(Container::column(
@@ -441,21 +501,25 @@ pub(crate) fn build_settings_widget_tree(
             ))
         }
         other => Box::new(Container::centered_viewport(
-            width,
+            content_w,
             content_h,
             vec![Box::new(SettingsPlaceholder {
-                width: width as i32,
+                width: content_w as i32,
                 text: other.placeholder(),
             }) as Box<dyn Widget>],
         )),
     };
 
-    // Footer — same power buttons as app_view, "← Home" on the left.
-    let power_off_icon = icon_cache.lookup("system-shutdown", POWER_ICON_SIZE).and_then(icon_image_to_pixmap);
-    let power_restart_icon = icon_cache.lookup("system-reboot", POWER_ICON_SIZE).and_then(icon_image_to_pixmap);
-    let power_sleep_icon = icon_cache.lookup("system-suspend", POWER_ICON_SIZE).and_then(icon_image_to_pixmap);
-    let power_lock_icon = icon_cache.lookup("system-lock-screen", POWER_ICON_SIZE).and_then(icon_image_to_pixmap);
-    let power_logout_icon = icon_cache.lookup("system-log-out", POWER_ICON_SIZE).and_then(icon_image_to_pixmap);
+    let body = Box::new(Container::row(
+        0,
+        vec![sidebar, vsep, content],
+    )) as Box<dyn Widget>;
+
+    let power_off_icon     = icon_cache.lookup("system-shutdown",    POWER_ICON_SIZE).and_then(icon_image_to_pixmap);
+    let power_restart_icon = icon_cache.lookup("system-reboot",      POWER_ICON_SIZE).and_then(icon_image_to_pixmap);
+    let power_sleep_icon   = icon_cache.lookup("system-suspend",     POWER_ICON_SIZE).and_then(icon_image_to_pixmap);
+    let power_lock_icon    = icon_cache.lookup("system-lock-screen", POWER_ICON_SIZE).and_then(icon_image_to_pixmap);
+    let power_logout_icon  = icon_cache.lookup("system-log-out",     POWER_ICON_SIZE).and_then(icon_image_to_pixmap);
 
     let footer_left = vec![
         Box::new(Button::with_id(
@@ -468,11 +532,11 @@ pub(crate) fn build_settings_widget_tree(
     ];
 
     let footer_right = vec![
-        Box::new(Button::with_id_and_icon("power-off",     "Off",  pal.error,    FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_off_icon))     as Box<dyn Widget>,
-        Box::new(Button::with_id_and_icon("power-restart", "Rst",  pal.warning,  FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_restart_icon)) as Box<dyn Widget>,
-        Box::new(Button::with_id_and_icon("power-sleep",   "Zzz",  pal.accent,   FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_sleep_icon))   as Box<dyn Widget>,
-        Box::new(Button::with_id_and_icon("power-lock",    "Lock", pal.accent_alt, FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_lock_icon))  as Box<dyn Widget>,
-        Box::new(Button::with_id_and_icon("power-logout",  "Out",  pal.success,  FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_logout_icon))  as Box<dyn Widget>,
+        Box::new(Button::with_id_and_icon("power-off",     "Off",  pal.error,      FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_off_icon))     as Box<dyn Widget>,
+        Box::new(Button::with_id_and_icon("power-restart", "Rst",  pal.warning,    FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_restart_icon)) as Box<dyn Widget>,
+        Box::new(Button::with_id_and_icon("power-sleep",   "Zzz",  pal.accent,     FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_sleep_icon))   as Box<dyn Widget>,
+        Box::new(Button::with_id_and_icon("power-lock",    "Lock", pal.accent_alt, FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_lock_icon))    as Box<dyn Widget>,
+        Box::new(Button::with_id_and_icon("power-logout",  "Out",  pal.success,    FOOTER_POWER_BUTTON_SIZE, FOOTER_POWER_BUTTON_SIZE, power_logout_icon))  as Box<dyn Widget>,
     ];
 
     let footer = Container::footer_row(
@@ -492,14 +556,14 @@ pub(crate) fn build_settings_widget_tree(
         0,
         vec![
             header,
-            Box::new(chip_bar) as Box<dyn Widget>,
             make_divider(),
-            content,
+            body,
             make_divider(),
             Box::new(footer) as Box<dyn Widget>,
         ],
     ))
 }
+
 
 pub(crate) fn draw_settings_launcher(
     canvas: &mut [u8],
