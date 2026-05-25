@@ -179,6 +179,24 @@ impl MeridianShell {
         }
     }
 
+    /// Eased progress (0..1) of the panel entrance; 1.0 once finished.
+    /// Starts the clock on the first call and latches done at the end.
+    fn panel_intro_progress(&mut self) -> f32 {
+        if self.panel_intro_done {
+            return 1.0;
+        }
+        let start = *self
+            .panel_intro_start
+            .get_or_insert_with(std::time::Instant::now);
+        let p = (start.elapsed().as_secs_f32() / crate::PANEL_INTRO_SECS).clamp(0.0, 1.0);
+        if p >= 1.0 {
+            self.panel_intro_start = None;
+            self.panel_intro_done = true;
+            return 1.0;
+        }
+        1.0 - (1.0 - p).powi(3)
+    }
+
     pub(crate) fn draw_panel(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
         debug!(
             "draw_panel: reason={:?} configured={} width={} panel_dirty={} launcher_open={} commit_expected={}",
@@ -199,6 +217,9 @@ impl MeridianShell {
         }
         self.repaint_stats.record_panel(reason);
 
+        let intro_progress = self.panel_intro_progress();
+        let intro_active = intro_progress < 1.0;
+
         let panel_active_workspace = self.panel_active_workspace();
         let panel_window_entries = self.panel_window_entries(panel_active_workspace);
         let width = self.width;
@@ -209,7 +230,7 @@ impl MeridianShell {
             self.last_clock.clone()
         };
         let signature = self.panel_render_signature(width, height, panel_active_workspace, &clock);
-        if self.panel_last_signature.as_ref() == Some(&signature) {
+        if !intro_active && self.panel_last_signature.as_ref() == Some(&signature) {
             self.render_stats.panel.skips += 1;
             debug!(
                 "draw_panel skipped: reason={:?} commit=no signature_unchanged=true",
@@ -295,6 +316,7 @@ impl MeridianShell {
                 &self.theme,
                 &state_fn,
                 &mut self.panel_state.clicks,
+                intro_progress,
             );
             if self.workspace_indicator_dirty {
                 tracing::debug!(

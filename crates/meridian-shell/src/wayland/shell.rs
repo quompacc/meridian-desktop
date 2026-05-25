@@ -345,6 +345,10 @@ pub(crate) struct MeridianShell {
     pub(crate) workspace_ipc_unavailable_logged: bool,
     pub(crate) occupied_unavailable_logged: bool,
     pub(crate) panel_dirty: bool,
+    /// Login->desktop panel entrance: start time (set on the first
+    /// configured draw) plus a done-latch so it plays exactly once.
+    pub(crate) panel_intro_start: Option<std::time::Instant>,
+    pub(crate) panel_intro_done: bool,
     pub(crate) launcher_dirty: bool,
     pub(crate) ui_preview_widget_state: Option<(meridian_ui::WidgetPath, meridian_ui::WidgetState)>,
     pub(crate) panel_widget_state: Option<(meridian_ui::WidgetPath, meridian_ui::WidgetState)>,

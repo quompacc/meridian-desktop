@@ -550,6 +550,8 @@ pub(crate) fn initialize(
             },
         last_clock: String::new(),
         last_tick: Instant::now(),
+        panel_intro_start: None,
+        panel_intro_done: false,
         exit: false,
         screencopy_manager,
         capture_source_manager,

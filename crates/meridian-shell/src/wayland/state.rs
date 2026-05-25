@@ -379,6 +379,9 @@ fn first_minimized_pinned_app_window_id(
 
 impl MeridianShell {
     pub(crate) fn tick_timer_interval(&self) -> Duration {
+        if !self.panel_intro_done {
+            return Duration::from_millis(16);
+        }
         if self.needs_fast_tick() {
             Duration::from_millis(250)
         } else {
@@ -423,6 +426,9 @@ impl MeridianShell {
                     self.draw_calendar_popup(qh, RepaintReason::Clock);
                 }
             }
+        }
+        if !self.panel_intro_done && self.panel_configured {
+            self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
         }
         self.maybe_log_repaint_stats(now);
         self.maybe_log_commit_stats(now);

@@ -1115,6 +1115,7 @@ pub(crate) fn draw_panel_ui(
     theme_config: &meridian_config::ThemeConfig,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
     clicks_out: &mut Vec<ClickZone>,
+    intro_progress: f32,
 ) {
     let expected_len = (width as usize)
         .saturating_mul(height as usize)
@@ -1160,7 +1161,28 @@ pub(crate) fn draw_panel_ui(
     let mut pixmap_canvas = pixmap.as_mut();
     let _ = render(&*root, &layout, &mut pixmap_canvas, &theme, state_fn);
 
-    blit_rgba_to_argb(pixmap.data(), canvas);
+    if intro_progress < 1.0 {
+        // Login->desktop entrance: slide the panel up from the screen
+        // bottom and fade it in. The area above the rising bar stays
+        // transparent, so the compass wallpaper shows through.
+        let offset_y = ((1.0 - intro_progress) * height as f32).round() as i32;
+        if let Some(mut out) = Pixmap::new(width, height) {
+            out.as_mut().draw_pixmap(
+                0,
+                offset_y,
+                pixmap.as_ref(),
+                &PixmapPaint {
+                    opacity: intro_progress,
+                    ..Default::default()
+                },
+                Transform::identity(),
+                None,
+            );
+            blit_rgba_to_argb(out.data(), canvas);
+        }
+    } else {
+        blit_rgba_to_argb(pixmap.data(), canvas);
+    }
 
     clicks_out.clear();
     collect_click_zones(&*root, &layout.root, 0, 0, clicks_out);
@@ -1313,6 +1335,7 @@ mod tests {
             &meridian_config::ThemeConfig::default(),
             &state_fn,
             &mut clicks,
+            1.0,
         );
 
         assert!(canvas.iter().any(|byte| *byte != 0));
