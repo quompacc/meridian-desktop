@@ -1,0 +1,37 @@
+[colors]
+background = "#ece4d3"
+surface = "#f4efe3"
+surface_alt = "#e3d9c4"
+accent = "#2f6299"
+accent_alt = "#244f7d"
+text = "#1e2b38"
+text_dim = "#5d6b78"
+border = "#c9bca0"
+error = "#9a4636"
+warning = "#8a6a30"
+success = "#3f7d5e"
+
+[decorations]
+border_width = 1
+corner_radius = 0
+shadow = false
+shadow_radius = 16
+shadow_radius_top = 8
+shadow_alpha = 0.18
+shadow_offset_y = 0
+gap = 8
+
+[fonts]
+ui = "Adwaita Sans 11"
+mono = "Adwaita Mono 10"
+
+[icons]
+theme = "Papirus"
+
+[cursor]
+theme = "Breeze_Light"
+size = 24
+
+[wallpaper]
+path = "assets/wallpaper.png"
+mode = "fill"

@@ -11,7 +11,7 @@ use meridian_ui::{
 };
 use meridian_ui::{
     effect::{
-        dominant_color, paint_fill, paint_metro_surface, paint_text, rounded_rect_path,
+        paint_fill, paint_metro_surface, paint_text, rounded_rect_path,
         truncate_to_fit,
     },
     paint::Rect,
@@ -178,10 +178,9 @@ pub(crate) fn build_ui_preview_widget_tree(
             let maybe_pixmap = icon_cache
                 .lookup(icon_name, icon_lookup_size)
                 .and_then(icon_image_to_pixmap);
-            let accent = maybe_pixmap
-                .as_ref()
-                .map(|pm| dominant_color(pm, pal.accent))
-                .unwrap_or(pal.accent);
+            // Uniform: tile stripes use the single theme accent (no per-icon
+            // dominant-colour extraction) to keep the desktop near-monochrome.
+            let accent = pal.accent;
             Box::new(DynTile {
                 label: app.name.clone().into_boxed_str(),
                 exec: app.program.clone().into_boxed_str(),
