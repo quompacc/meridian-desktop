@@ -29,30 +29,30 @@ impl MeridianShell {
     }
 
     fn theme_render_signature(&self) -> ThemeRenderSignature {
+        let colors = [
+            self.theme.colors.background,
+            self.theme.colors.surface,
+            self.theme.colors.surface_alt,
+            self.theme.colors.accent,
+            self.theme.colors.accent_alt,
+            self.theme.colors.text,
+            self.theme.colors.text_dim,
+            self.theme.colors.border,
+            self.theme.colors.error,
+            self.theme.colors.warning,
+            self.theme.colors.success,
+        ];
+        let mut bytes = [0; 44];
+        for (idx, color) in colors.iter().enumerate() {
+            let offset = idx * 4;
+            bytes[offset] = color.r;
+            bytes[offset + 1] = color.g;
+            bytes[offset + 2] = color.b;
+            bytes[offset + 3] = color.a;
+        }
         ThemeRenderSignature {
             font_ui: self.theme.fonts.ui.clone(),
-            colors: [
-                self.theme.colors.background.r,
-                self.theme.colors.background.g,
-                self.theme.colors.background.b,
-                self.theme.colors.background.a,
-                self.theme.colors.surface.r,
-                self.theme.colors.surface.g,
-                self.theme.colors.surface.b,
-                self.theme.colors.surface.a,
-                self.theme.colors.accent.r,
-                self.theme.colors.accent.g,
-                self.theme.colors.accent.b,
-                self.theme.colors.accent.a,
-                self.theme.colors.text.r,
-                self.theme.colors.text.g,
-                self.theme.colors.text.b,
-                self.theme.colors.text.a,
-                self.theme.colors.border.r,
-                self.theme.colors.border.g,
-                self.theme.colors.border.b,
-                self.theme.colors.border.a,
-            ],
+            colors: bytes,
         }
     }
 

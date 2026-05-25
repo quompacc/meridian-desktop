@@ -10,6 +10,7 @@ use png::{BitDepth, ColorType, Decoder, Transformations};
 use tracing::info;
 
 use super::{
+    lookup_default_theme,
     rcc::RccArchive,
     svg::decode_svg_with_symbolic_color,
     theme_index::{parse_index_theme, IconDirectory, IconDirectoryType, IconTheme},
@@ -95,6 +96,14 @@ impl IconLoader {
             return None;
         }
 
+        self.load_icon_by_name(name, requested_size).or_else(|| {
+            icon_aliases(name)
+                .iter()
+                .find_map(|alias| self.load_icon_by_name(alias, requested_size))
+        })
+    }
+
+    fn load_icon_by_name(&self, name: &str, requested_size: u32) -> Option<IconImage> {
         for theme_name in self.theme_chain() {
             if let Some(icon) = self.load_icon_from_theme(&theme_name, name, requested_size) {
                 return Some(icon);
@@ -216,6 +225,10 @@ impl IconLoader {
             }
         }
 
+        let fallback = lookup_default_theme().trim();
+        if !fallback.is_empty() && fallback != "hicolor" && !visited.contains(fallback) {
+            chain.push(fallback.to_string());
+        }
         chain.push("hicolor".to_string());
         chain
     }
@@ -306,6 +319,13 @@ impl IconLoader {
             height: requested_size,
             bgra: resized,
         })
+    }
+}
+
+fn icon_aliases(name: &str) -> &'static [&'static str] {
+    match name {
+        "mini.xterm" | "xterm" | "uxterm" => &["utilities-terminal"],
+        _ => &[],
     }
 }
 
@@ -876,6 +896,55 @@ mod tests {
         assert_eq!(icon.width, 22);
         assert_eq!(icon.height, 22);
         assert_eq!(&icon.bgra[0..4], &[0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn lookup_falls_back_to_default_theme_before_hicolor() {
+        let temp = TempDir::new("default-theme-fallback");
+        let icons_root = temp.path().join("icons");
+        fs::create_dir_all(&icons_root).expect("create icons root");
+
+        make_theme_root(&icons_root, "Papirus", &["22x22/apps"], "");
+        make_theme_root(&icons_root, "breeze", &["22x22/actions"], "");
+        write_png_rgba(
+            &icons_root
+                .join("breeze")
+                .join("22x22/actions")
+                .join("system-shutdown.png"),
+            22,
+            22,
+            [1, 2, 3, 255],
+        );
+
+        let loader = IconLoader::new_for_tests("Papirus", vec![icons_root], vec![]);
+        let icon = loader
+            .load_icon("system-shutdown", 22)
+            .expect("fallback icon");
+        assert_eq!(icon.width, 22);
+        assert_eq!(icon.height, 22);
+        assert_eq!(&icon.bgra[0..4], &[3, 2, 1, 255]);
+    }
+
+    #[test]
+    fn lookup_uses_terminal_alias_for_mini_xterm() {
+        let temp = TempDir::new("terminal-alias");
+        let icons_root = temp.path().join("icons");
+        fs::create_dir_all(&icons_root).expect("create icons root");
+
+        make_theme_root(&icons_root, "Papirus", &["22x22/apps"], "");
+        write_png_rgba(
+            &icons_root
+                .join("Papirus")
+                .join("22x22/apps")
+                .join("utilities-terminal.png"),
+            22,
+            22,
+            [4, 5, 6, 255],
+        );
+
+        let loader = IconLoader::new_for_tests("Papirus", vec![icons_root], vec![]);
+        let icon = loader.load_icon("mini.xterm", 22).expect("alias icon");
+        assert_eq!(&icon.bgra[0..4], &[6, 5, 4, 255]);
     }
 
     #[test]

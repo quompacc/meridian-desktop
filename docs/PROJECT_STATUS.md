@@ -1,25 +1,23 @@
 # Project Status
 
-Stand: 2026-05-25, auditiert gegen `master` bei `2e7a2ed`.
+Stand: 2026-05-25, auditiert gegen `master` nach Theme-/Icon-Patch auf Basis von `0b6166f`.
 
 Dieses Dokument ist der kompakte Ist-Stand. Aeltere Phasenlisten in anderen
 Dokumenten koennen historischen Kontext enthalten; bei Widerspruch gilt hier
 der Code-Stand plus `AGENTS.md`.
 
 ## Validierter Basisstand
-- Git-Stand: `master...origin/master`, Arbeitsbaum vor dem Audit sauber.
-- Dokumentationsaudit gegen `2e7a2ed`; anschliessend Shell-Idle-Slice im
-  Arbeitsbaum umgesetzt.
-- `cargo check --workspace --manifest-path /home/eduard/meridian-desktop/Cargo.toml`: gruen.
-- `cargo test --workspace --manifest-path /home/eduard/meridian-desktop/Cargo.toml`: gruen.
-- `cargo clippy --workspace --manifest-path /home/eduard/meridian-desktop/Cargo.toml -- -D warnings`: gruen.
-- Live-DRM-Session: Release-`meridian-shell` installiert, Shell PID blieb
-  stabil nach Popup-/Notification-Smokes; Idle danach 20-31 voluntary context
-  switches pro 10s und 0 CPU-Ticks.
-- Window-/Thumbnail-/Screenshot-Smoke fand einen Compositor-Zombie im
-  Launch-Pfad; Fix im Arbeitsbaum reapt gestartete App-Prozesse per
-  Reaper-Thread. Live-Bestaetigung nach Compositor-Neustart ist gruen:
-  30 kurzlebige `/bin/true`-Launches hinterliessen keine Zombie-Children.
+- Git-Stand: Theme-/Icon-Patch als Nachfolger von `0b6166f`.
+- Audit-Report: `docs/AUDIT_2026-05-25.md`.
+- `cargo fmt --all`: gruen.
+- `cargo check --workspace`: gruen.
+- `cargo test --workspace`: gruen.
+- `cargo build --release -p meridian-shell`: gruen.
+- `git diff --check`: gruen.
+- Live-DRM-Session: Release-`meridian-shell` nach `/usr/local/bin` installiert
+  und vom Compositor-Watchdog neu gestartet; zuletzt PID `36430`.
+- Theme-Assets wurden systemweit nach `/usr/local/share/meridian/themes`
+  gespiegelt; der Repo-Stand liegt unter `themes/`.
 
 ## Aktueller Ist-Stand
 
@@ -63,7 +61,8 @@ der Code-Stand plus `AGENTS.md`.
   gefuellt.
 - Power-Footer ist aktiv: Poweroff/Reboot/Suspend/Lock via Systemtools,
   Logout via `ShellCommand::Quit` an den Compositor. Power-Aktionen sind
-  bewusst arming-basiert.
+  bewusst arming-basiert. Fehlende Power-Icons in Papirus/Papirus-Dark fallen
+  ueber den IconLoader auf Breeze zurueck.
 - Notifications: `org.freedesktop.Notifications` v1 laeuft im Shell-Prozess
   auf einem D-Bus-Thread; Notify/CloseNotification/GetCapabilities/
   GetServerInformation sind implementiert, die UI zeigt derzeit eine
@@ -83,6 +82,14 @@ der Code-Stand plus `AGENTS.md`.
   Network/Audio-Layer-Surface gerendert. Linksklick auf einen aktivierten
   Menueintrag sendet `com.canonical.dbusmenu.Event(id, "clicked", ...)`.
   Submenu-/Scroll-Politur bleibt Folgearbeit.
+- Themes: Builtin-Theme-Dateien liegen im Repo unter `themes/`. `ThemeManager`
+  scannt User-Themes, `MERIDIAN_THEME_DIR(S)`, XDG-Datenpfade,
+  `/usr/local/share/meridian/themes`, `/usr/share/meridian/themes` und den
+  Dev-Repo-Pfad. Runtime-Themewechsel baut den Shell-IconCache neu auf,
+  aktualisiert `available_themes` und markiert Panel/Launcher/Popups dirty.
+- Icons: Theme-SVGs koennen symbolisch mit Theme-Textfarbe eingefarbt werden.
+  Der Loader nutzt das konfigurierte Icon-Theme, faellt danach auf Breeze und
+  `hicolor` zurueck und hat Aliase fuer XTerm/UXTerm auf `utilities-terminal`.
 - Screenshots: Panel-Screenshot nutzt clientseitig `ext-image-copy-capture`
   und schreibt PNGs in `~/Pictures/Screenshots`.
 - Window-Thumbnails: Shell fordert Thumbnails ueber IPC an, Compositor rendert
@@ -123,9 +130,13 @@ der Code-Stand plus `AGENTS.md`.
   Wallpaper, Output-Layout und Panel-Pinned-Apps.
 - Runtime-Reload ist aktiv: Theme, Cursor, Wallpaper, Keybinds und Output-
   Layout werden ueber `ReloadConfig` neu angewendet; Shell erhaelt
-  `ConfigReloaded`.
+  `ConfigReloaded`. Theme-Reload umfasst inzwischen auch IconCache-Rebuild und
+  Theme-Liste.
 - Shell-seitige Settings schreiben Pinned Apps in die Meridian-Config und
   versteckte Apps separat nach `~/.config/meridian/hidden_apps.txt`.
+- Wallpaper-Browse nutzt zuerst `/usr/local/bin/meridian-file-picker` und erst
+  als Fallback `zenity`, weil `zenity` in der aktuellen Meridian-Session sofort
+  mit Status 1 beendet.
 
 ### Workspaces, Outputs und Hotplug
 - OutputRegistry ist die zentrale Metadaten-Quelle fuer OutputId, Name,
@@ -165,6 +176,8 @@ der Code-Stand plus `AGENTS.md`.
 - Shell-Idle-Last ist verbessert, aber noch nicht abgeschlossen; naechster
   sinnvoller Fokus sind laengere Burn-in-Messungen und die Frage, ob weitere
   Popup-/Notification-Pfade Signaturen statt Voll-Redraws brauchen.
+- Theme-Assets sind im Repo und unter `/usr/local/share` nutzbar; ein echter
+  Packaging-Installationspfad fuer Arch/Debian/Fedora ist noch offen.
 - Runtime-Hotplug braucht weiterhin einen dokumentierten realen E2E-Lauf.
 - Login ist live mit Passwort-Fallback und YubiKey-Hotplug validiert; die
   Host-/VM-USB-Durchreichung bleibt eine externe Fehlerquelle.
@@ -179,11 +192,13 @@ der Code-Stand plus `AGENTS.md`.
 1. Runtime-Hotplug H5d auf echter DRM-Hardware erneut ausfuehren und
    Ergebnisse in `docs/MULTI_MONITOR.md`/`docs/NVIDIA_PASSTHROUGH.md`
    eintragen.
-2. StatusNotifierItem-Tray weiter ausbauen: DBusMenu-Submenus, Scrollen,
+2. Theme-/Asset-Packaging definieren: installierbare Theme-Ziele,
+   Dependency-Liste und Cross-Distro-Pfade dokumentieren.
+3. StatusNotifierItem-Tray weiter ausbauen: DBusMenu-Submenus, Scrollen,
    Hover-State und sauberere Positionierung pro Tray-Icon polieren.
-3. Portal-Scope entscheiden: FileChooser haerten oder Screenshot-Permission-
+4. Portal-Scope entscheiden: FileChooser haerten oder Screenshot-Permission-
    Pfad spezifizieren, nicht beides in einem Slice.
-4. Login-Installationspfad dokumentieren: PAM-Dateien und Host-/VM-USB-
+5. Login-Installationspfad dokumentieren: PAM-Dateien und Host-/VM-USB-
    Durchreichung fuer YubiKey stabil beschreiben.
 
 ## Manuelle Testhinweise

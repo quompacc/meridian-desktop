@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashSet, time::Instant};
 
-use meridian_config::{MeridianConfig, ThemeManager};
+use meridian_config::{MeridianConfig, ThemeConfig, ThemeManager};
 use smithay_client_toolkit::{
     compositor::CompositorState,
     output::OutputState,
@@ -33,6 +33,103 @@ use super::{
     calendar::CalendarDisplayPolicy, CommitReason, CommitStats, CommitSurfaceKind, IpcClient,
     MeridianShell, SurfaceKind,
 };
+
+pub(crate) fn build_icon_cache(
+    theme: &ThemeConfig,
+    launcher_apps: &[launcher::DesktopApp],
+    pinned_apps: &[panel::PinnedApp],
+) -> IconCache {
+    let mut icon_cache = IconCache::new_for_theme(&theme.icons.theme, &theme.colors.text.to_hex());
+    // Panel pinned-app icons at 22px. Includes both chromium (the new
+    // default Web entry) and firefox so users with the older custom
+    // config still get an icon. Without warming, IconCache::lookup
+    // returns None even if the file exists on disk.
+    icon_cache.warm(
+        &[
+            "utilities-terminal",
+            "chromium",
+            "firefox",
+            "org.kde.dolphin",
+        ],
+        22,
+    );
+    icon_cache.warm(
+        &[
+            "network-wired-symbolic",
+            "network-wired-disconnected-symbolic",
+            "network-wireless-signal-excellent-symbolic",
+            "network-wireless-signal-good-symbolic",
+            "network-wireless-signal-none-symbolic",
+            "network-wireless-disconnected-symbolic",
+            "network-vpn-symbolic",
+            "network-offline-symbolic",
+            "camera-photo-symbolic",
+            "audio-volume-high-symbolic",
+            "audio-volume-medium-symbolic",
+            "audio-volume-low-symbolic",
+            "audio-volume-muted-symbolic",
+        ],
+        22,
+    );
+    icon_cache.warm(
+        &[
+            "thunderbird",
+            "chromium",
+            "system-file-manager",
+            "gwenview",
+            "amarok",
+            "marble",
+            "akregator",
+            "org.kde.discover",
+            "org.kde.korganizer",
+            "org.kde.kweather",
+            "org.kde.knotes",
+        ],
+        64,
+    );
+    icon_cache.warm(
+        &[
+            "system-shutdown",
+            "system-reboot",
+            "system-suspend",
+            "system-lock-screen",
+            "system-log-out",
+        ],
+        32,
+    );
+
+    let mut seen_icons = HashSet::new();
+    let mut launcher_icons = Vec::new();
+    for app in launcher_apps {
+        if let Some(icon_name) = app.icon_name.as_deref() {
+            if !icon_name.is_empty() && seen_icons.insert(icon_name.to_string()) {
+                launcher_icons.push(icon_name.to_string());
+            }
+        }
+    }
+    if !launcher_icons.is_empty() {
+        let icon_refs = launcher_icons
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        icon_cache.warm(&icon_refs, 22);
+        icon_cache.warm(&icon_refs, 24);
+        icon_cache.warm(&icon_refs, 96);
+        icon_cache.warm(&icon_refs, 192);
+    }
+
+    let pinned_icons: Vec<&str> = pinned_apps
+        .iter()
+        .filter_map(|a| a.icon_name.as_deref())
+        .filter(|n| !n.is_empty())
+        .collect();
+    if !pinned_icons.is_empty() {
+        icon_cache.warm(&pinned_icons, 22);
+        icon_cache.warm(&pinned_icons, 24);
+    }
+
+    icon_cache
+}
 
 pub(crate) fn initialize(
     event_loop: &mut EventLoop<'_, MeridianShell>,
@@ -248,88 +345,8 @@ pub(crate) fn initialize(
 
     let font = TextRenderer::new(&theme.fonts.ui, 13);
     let pool = SlotPool::new(1024 * 1024 * 4, &shm)?;
-    let mut icon_cache = IconCache::new_for_theme(&theme.icons.theme, &theme.colors.text.to_hex());
-    // Panel pinned-app icons at 22px. Includes both chromium (the new
-    // default Web entry) and firefox so users with the older custom
-    // config still get an icon. Without warming, IconCache::lookup
-    // returns None even if the file exists on disk.
-    icon_cache.warm(
-        &[
-            "utilities-terminal",
-            "chromium",
-            "firefox",
-            "org.kde.dolphin",
-        ],
-        22,
-    );
-    icon_cache.warm(
-        &[
-            "network-wired-symbolic",
-            "network-wired-disconnected-symbolic",
-            "network-wireless-signal-excellent-symbolic",
-            "network-wireless-signal-good-symbolic",
-            "network-wireless-signal-none-symbolic",
-            "network-wireless-disconnected-symbolic",
-            "network-vpn-symbolic",
-            "network-offline-symbolic",
-            "camera-photo-symbolic",
-            "audio-volume-high-symbolic",
-            "audio-volume-medium-symbolic",
-            "audio-volume-low-symbolic",
-            "audio-volume-muted-symbolic",
-        ],
-        22,
-    );
-    icon_cache.warm(
-        &[
-            "thunderbird",
-            "chromium",
-            "system-file-manager",
-            "gwenview",
-            "amarok",
-            "marble",
-            "akregator",
-            "org.kde.discover",
-            "org.kde.korganizer",
-            "org.kde.kweather",
-            "org.kde.knotes",
-        ],
-        64,
-    );
-    icon_cache.warm(
-        &[
-            "system-shutdown",
-            "system-reboot",
-            "system-suspend",
-            "system-lock-screen",
-            "system-log-out",
-        ],
-        32,
-    );
     let launcher_apps = launcher::DesktopApp::load_system();
-    let mut seen_icons = HashSet::new();
-    let mut launcher_icons = Vec::new();
-    for app in &launcher_apps {
-        if let Some(icon_name) = app.icon_name.as_deref() {
-            if !icon_name.is_empty() && seen_icons.insert(icon_name.to_string()) {
-                launcher_icons.push(icon_name.to_string());
-            }
-        }
-    }
-    if !launcher_icons.is_empty() {
-        let icon_refs = launcher_icons
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>();
-        icon_cache.warm(&icon_refs, 22);
-        icon_cache.warm(&icon_refs, 24);
-        icon_cache.warm(&icon_refs, 96);
-        icon_cache.warm(&icon_refs, 192);
-    }
-    let mut network_controller = NetworkController::new();
-    network_controller.poll();
 
-    // Compute pinned apps early so we can warm their icons at panel size.
     let pinned_apps: Vec<panel::PinnedApp> = if meridian_config.panel.pinned.is_empty() {
         default_pinned_apps()
     } else {
@@ -346,17 +363,9 @@ pub(crate) fn initialize(
             })
             .collect()
     };
-    {
-        let pinned_icons: Vec<&str> = pinned_apps
-            .iter()
-            .filter_map(|a| a.icon_name.as_deref())
-            .filter(|n| !n.is_empty())
-            .collect();
-        if !pinned_icons.is_empty() {
-            icon_cache.warm(&pinned_icons, 22);
-            icon_cache.warm(&pinned_icons, 24);
-        }
-    }
+    let icon_cache = build_icon_cache(&theme, &launcher_apps, &pinned_apps);
+    let mut network_controller = NetworkController::new();
+    network_controller.poll();
 
     let commit_stats_enabled = std::env::var("MERIDIAN_SHELL_COMMIT_STATS")
         .map(|value| {

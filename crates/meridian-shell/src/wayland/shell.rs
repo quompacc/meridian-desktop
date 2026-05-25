@@ -169,7 +169,7 @@ impl RepaintStats {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct ThemeRenderSignature {
     pub(crate) font_ui: String,
-    pub(crate) colors: [u8; 20],
+    pub(crate) colors: [u8; 44],
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

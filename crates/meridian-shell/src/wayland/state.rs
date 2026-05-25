@@ -230,37 +230,34 @@ fn compute_occupied_workspaces(workspace_window_counts: &[u16; 9]) -> [bool; 9] 
     occupied
 }
 
-fn panel_theme_signature(theme: &ThemeConfig) -> (String, [u8; 20]) {
-    (
-        theme.fonts.ui.clone(),
-        [
-            theme.colors.background.r,
-            theme.colors.background.g,
-            theme.colors.background.b,
-            theme.colors.background.a,
-            theme.colors.surface.r,
-            theme.colors.surface.g,
-            theme.colors.surface.b,
-            theme.colors.surface.a,
-            theme.colors.accent.r,
-            theme.colors.accent.g,
-            theme.colors.accent.b,
-            theme.colors.accent.a,
-            theme.colors.text.r,
-            theme.colors.text.g,
-            theme.colors.text.b,
-            theme.colors.text.a,
-            theme.colors.border.r,
-            theme.colors.border.g,
-            theme.colors.border.b,
-            theme.colors.border.a,
-        ],
-    )
+fn panel_theme_signature(theme: &ThemeConfig) -> (String, [u8; 44]) {
+    let colors = [
+        theme.colors.background,
+        theme.colors.surface,
+        theme.colors.surface_alt,
+        theme.colors.accent,
+        theme.colors.accent_alt,
+        theme.colors.text,
+        theme.colors.text_dim,
+        theme.colors.border,
+        theme.colors.error,
+        theme.colors.warning,
+        theme.colors.success,
+    ];
+    let mut bytes = [0; 44];
+    for (idx, color) in colors.iter().enumerate() {
+        let offset = idx * 4;
+        bytes[offset] = color.r;
+        bytes[offset + 1] = color.g;
+        bytes[offset + 2] = color.b;
+        bytes[offset + 3] = color.a;
+    }
+    (theme.fonts.ui.clone(), bytes)
 }
 
 fn resolve_shell_theme_from_config(
     config: &MeridianConfig,
-) -> Result<(String, ThemeConfig), String> {
+) -> Result<(String, ThemeConfig, Vec<String>), String> {
     let mut theme_manager = ThemeManager::new();
     let requested_theme = if config.general.theme.trim().is_empty() {
         "default"
@@ -282,6 +279,7 @@ fn resolve_shell_theme_from_config(
     Ok((
         theme_manager.current().name.clone(),
         theme_manager.current().config.clone(),
+        theme_manager.available_themes(),
     ))
 }
 
@@ -317,6 +315,31 @@ pub(crate) fn pinned_app_window_ids(
         .filter(|w| w.workspace == workspace && app_matches_window(&program_base, &label_lower, w))
         .map(|w| w.id.clone())
         .collect()
+}
+
+struct WallpaperPickerCommand {
+    program: &'static str,
+    args: &'static [&'static str],
+}
+
+fn wallpaper_picker_command() -> WallpaperPickerCommand {
+    const MERIDIAN_ARGS: &[&str] = &["--title", "Choose Wallpaper"];
+    const ZENITY_ARGS: &[&str] = &[
+        "--file-selection",
+        "--title=Choose Wallpaper",
+        "--file-filter=Images | *.jpg *.jpeg *.png *.webp",
+    ];
+
+    if std::path::Path::new("/usr/local/bin/meridian-file-picker").is_file() {
+        return WallpaperPickerCommand {
+            program: "/usr/local/bin/meridian-file-picker",
+            args: MERIDIAN_ARGS,
+        };
+    }
+    WallpaperPickerCommand {
+        program: "/usr/bin/zenity",
+        args: ZENITY_ARGS,
+    }
 }
 
 fn app_matches_window(program_base: &str, label_lower: &str, w: &WindowInfo) -> bool {
@@ -701,7 +724,7 @@ impl MeridianShell {
         }
 
         match resolve_shell_theme_from_config(&config) {
-            Ok((theme_name, new_theme)) => {
+            Ok((theme_name, new_theme, available_themes)) => {
                 let old_sig = panel_theme_signature(&self.theme);
                 let new_sig = panel_theme_signature(&new_theme);
                 let theme_changed = old_sig != new_sig || self.theme_name != theme_name;
@@ -716,6 +739,7 @@ impl MeridianShell {
                 let font_changed = self.theme.fonts.ui != new_theme.fonts.ui;
                 self.theme_name = theme_name;
                 self.theme = new_theme;
+                self.available_themes = available_themes;
 
                 if font_changed {
                     if let Some(renderer) = TextRenderer::new(&self.theme.fonts.ui, 13) {
@@ -728,9 +752,19 @@ impl MeridianShell {
                     }
                 }
 
-                self.panel_dirty = true;
-                debug!("panel marked dirty after reload");
                 self.launcher_state.apps = launcher::DesktopApp::load_system();
+                self.icon_cache = super::init::build_icon_cache(
+                    &self.theme,
+                    &self.launcher_state.apps,
+                    &self.pinned_apps,
+                );
+                self.panel_dirty = true;
+                self.launcher_dirty = true;
+                self.calendar_dirty = true;
+                self.workspace_dirty = true;
+                self.network_dirty = true;
+                self.audio_dirty = true;
+                self.thumbnail_dirty |= self.thumbnail_popup_open;
                 debug!("shell config reload succeeded");
             }
             Err(err) => {
@@ -1387,14 +1421,10 @@ impl MeridianShell {
         let wayland_display =
             std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "wayland-1".into());
         std::thread::spawn(move || {
-            let out = std::process::Command::new("/usr/bin/zenity")
-                .args([
-                    "--file-selection",
-                    "--title=Choose Wallpaper",
-                    "--file-filter=Images | *.jpg *.jpeg *.png *.webp",
-                ])
+            let picker = wallpaper_picker_command();
+            let out = std::process::Command::new(picker.program)
+                .args(picker.args)
                 .env("WAYLAND_DISPLAY", &wayland_display)
-                .env("GDK_BACKEND", "wayland")
                 .output();
             match out {
                 Ok(o) if o.status.success() => {
@@ -1404,11 +1434,11 @@ impl MeridianShell {
                     }
                 }
                 Ok(o) => tracing::warn!(
-                    "zenity exited {:?}: {}",
+                    "wallpaper picker exited {:?}: {}",
                     o.status,
                     String::from_utf8_lossy(&o.stderr).trim()
                 ),
-                Err(e) => tracing::warn!("zenity spawn failed: {}", e),
+                Err(e) => tracing::warn!("wallpaper picker spawn failed: {}", e),
             }
         });
     }
@@ -1435,12 +1465,24 @@ impl MeridianShell {
         }
         self.theme = theme_manager.current().config.clone();
         self.theme_name = name.clone();
+        self.available_themes = theme_manager.available_themes();
+        self.icon_cache = super::init::build_icon_cache(
+            &self.theme,
+            &self.launcher_state.apps,
+            &self.pinned_apps,
+        );
         meridian_config::MeridianConfig::save_theme(&name);
         self.ipc.send(&ShellCommand::ReloadConfig);
         tracing::info!("Theme applied: {}", name);
         self.panel_dirty = true;
+        self.launcher_dirty = true;
+        self.calendar_dirty = true;
+        self.workspace_dirty = true;
+        self.network_dirty = true;
+        self.audio_dirty = true;
+        self.thumbnail_dirty |= self.thumbnail_popup_open;
         self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
-        if self.launcher_settings_open {
+        if self.launcher_state.open {
             self.draw_launcher(qh, crate::wayland::RepaintReason::Pointer);
         }
     }
@@ -2118,7 +2160,8 @@ mod tests {
             ..Default::default()
         };
 
-        let (_name, theme) = resolve_shell_theme_from_config(&config).expect("resolve theme");
+        let (_name, theme, _available) =
+            resolve_shell_theme_from_config(&config).expect("resolve theme");
         assert_eq!(theme.cursor.size, 30);
         assert_eq!(theme.cursor.theme, "default");
         assert_eq!(
@@ -2141,7 +2184,8 @@ mod tests {
     #[test]
     fn panel_theme_signature_changes_when_theme_changes() {
         let config = MeridianConfig::default();
-        let (_name, mut theme) = resolve_shell_theme_from_config(&config).expect("resolve theme");
+        let (_name, mut theme, _available) =
+            resolve_shell_theme_from_config(&config).expect("resolve theme");
         let sig_a = panel_theme_signature(&theme);
         theme.colors.accent = meridian_config::Color::rgb(0, 0, 0);
         let sig_b = panel_theme_signature(&theme);
@@ -2149,9 +2193,21 @@ mod tests {
     }
 
     #[test]
+    fn panel_theme_signature_changes_when_surface_alt_changes() {
+        let config = MeridianConfig::default();
+        let (_name, mut theme, _available) =
+            resolve_shell_theme_from_config(&config).expect("resolve theme");
+        let sig_a = panel_theme_signature(&theme);
+        theme.colors.surface_alt = meridian_config::Color::rgb(0, 0, 0);
+        let sig_b = panel_theme_signature(&theme);
+        assert_ne!(sig_a, sig_b);
+    }
+
+    #[test]
     fn panel_theme_signature_changes_when_border_changes() {
         let config = MeridianConfig::default();
-        let (_name, mut theme) = resolve_shell_theme_from_config(&config).expect("resolve theme");
+        let (_name, mut theme, _available) =
+            resolve_shell_theme_from_config(&config).expect("resolve theme");
         let sig_a = panel_theme_signature(&theme);
         theme.colors.border = meridian_config::Color::rgb(0, 0, 0);
         let sig_b = panel_theme_signature(&theme);
