@@ -165,6 +165,35 @@ impl Default for Style {
     }
 }
 
+impl Style {
+    /// Light "chart paper" palette: cream ground, navy-ink linework. The
+    /// luminance counterpart to [`Style::default`] (midnight navy).
+    pub fn chart() -> Self {
+        Self {
+            north: Color::from_rgba8(47, 98, 153, 255),
+            south: Color::from_rgba8(154, 63, 47, 255),
+            bg_stops: [
+                Color::from_rgba8(243, 236, 221, 255),
+                Color::from_rgba8(236, 227, 208, 255),
+                Color::from_rgba8(224, 213, 189, 255),
+            ],
+            meridian: Color::from_rgba8(47, 98, 153, 36),
+            ring: Color::from_rgba8(60, 72, 86, 170),
+            tick_minor: Color::from_rgba8(90, 104, 120, 120),
+            tick_major: Color::from_rgba8(40, 55, 70, 205),
+            rose_main_light: Color::from_rgba8(250, 246, 238, 235),
+            rose_main_dark: Color::from_rgba8(60, 80, 110, 235),
+            rose_filler_light: Color::from_rgba8(185, 172, 150, 200),
+            rose_filler_dark: Color::from_rgba8(120, 110, 95, 200),
+            pivot_outer: Color::from_rgba8(60, 72, 86, 240),
+            pivot_inner: Color::from_rgba8(40, 55, 75, 255),
+            signature: Color::from_rgba8(60, 72, 86, 150),
+            cardinal_other: Color::from_rgba8(50, 62, 76, 240),
+            ..Self::default()
+        }
+    }
+}
+
 /// Stateless renderer of the compass mark. Holds parsed fonts and a style;
 /// can be reused across frames at any resolution.
 pub struct CompassPainter<'a> {
@@ -191,6 +220,12 @@ impl<'a> CompassPainter<'a> {
 
     pub fn style(&self) -> &Style {
         &self.style
+    }
+
+    /// Mutable access to the style so callers can animate fields (e.g.
+    /// `radius_factor`) between frames without rebuilding the painter.
+    pub fn style_mut(&mut self) -> &mut Style {
+        &mut self.style
     }
 
     /// Draw one frame of the compass into `pm`. `t` is the animation time in

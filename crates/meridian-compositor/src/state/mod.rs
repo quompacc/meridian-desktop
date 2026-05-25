@@ -338,6 +338,9 @@ pub struct MeridianState {
     pub popups: PopupManager,
     pub theme_manager: ThemeManager,
     pub wallpaper_manager: WallpaperManager,
+    /// Set once the login->desktop compass zoom-out countdown has begun
+    /// (on the first committed frame). `None` until then or after it settles.
+    pub intro_start: Option<Instant>,
     pub wm_workspaces: Vec<WmWorkspace>,
     pub ipc: IpcServer,
     pub keybind_config: KeybindConfig,

@@ -172,6 +172,33 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
     let kms_node_path = drm.kms_node_path.clone();
     let kms_is_primary_node = drm.kms_is_primary_node;
 
+    // Drive the login->desktop compass zoom-out. The intro is armed at
+    // setup (the wallpaper already shows the compass at login size); start
+    // the countdown on the first committed frame, then shrink the compass
+    // to wallpaper size and settle onto the static image.
+    if state.wallpaper_manager.intro_active() {
+        const INTRO_SECS: f32 = 0.7;
+        const START_RF: f32 = 0.32;
+        const END_RF: f32 = 0.19;
+        if state.intro_start.is_none() && kms_first_commit_verified {
+            state.intro_start = Some(Instant::now());
+        }
+        if let Some(started) = state.intro_start {
+            let p = (started.elapsed().as_secs_f32() / INTRO_SECS).clamp(0.0, 1.0);
+            let eased = 1.0 - (1.0 - p).powi(3);
+            state
+                .wallpaper_manager
+                .set_intro_radius(START_RF + (END_RF - START_RF) * eased);
+            if p >= 1.0 {
+                state.wallpaper_manager.end_intro();
+                state.intro_start = None;
+            }
+            for out in outputs.iter_mut() {
+                out.needs_repaint = true;
+            }
+        }
+    }
+
     let pointer_location = state
         .seat
         .get_pointer()

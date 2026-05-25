@@ -10,6 +10,8 @@ libc = "0.2"
 meridian-config = { path = "../meridian-config" }
 meridian-ipc = { path = "../meridian-ipc" }
 meridian-wm = { path = "../meridian-wm" }
+meridian-compass-render = { path = "../meridian-compass-render" }
+tiny-skia = { workspace = true }
 smallvec = "1"
 smithay = { workspace = true }
 tracing = { workspace = true }
