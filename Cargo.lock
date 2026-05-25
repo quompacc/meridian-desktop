@@ -1399,6 +1399,7 @@ dependencies = [
  "bitflags 2.11.1",
  "image",
  "libc",
+ "meridian-boot-common",
  "meridian-compass-render",
  "meridian-config",
  "meridian-ipc",

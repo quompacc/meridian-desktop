@@ -11,6 +11,7 @@ meridian-config = { path = "../meridian-config" }
 meridian-ipc = { path = "../meridian-ipc" }
 meridian-wm = { path = "../meridian-wm" }
 meridian-compass-render = { path = "../meridian-compass-render" }
+meridian-boot-common = { path = "../meridian-boot-common" }
 tiny-skia = { workspace = true }
 smallvec = "1"
 smithay = { workspace = true }

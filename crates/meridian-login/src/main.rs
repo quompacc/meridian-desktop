@@ -29,7 +29,7 @@ use drm::buffer::DrmFourcc;
 use drm::control::{connector, ClipRect, Device as ControlDevice};
 use drm::Device as DrmDevice;
 
-use meridian_compass_render::{CompassPainter, Fonts, FrameOpts, TextStyle, SETTLE_T};
+use meridian_compass_render::{CompassPainter, Fonts, FrameOpts, Style, TextStyle, SETTLE_T};
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, PixmapMut, Stroke, Transform};
 use tracing::{info, warn};
 use zeroize::Zeroizing;
@@ -532,8 +532,22 @@ fn keyboard_layout_label(status: &KeyboardStatus) -> String {
     }
 }
 
+/// Light appearance, read once from the boot-chain marker at startup and
+/// consulted by the metro_* card colours and the compass style so the
+/// login matches the active desktop theme.
+static LIGHT_APPEARANCE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn light_appearance() -> bool {
+    LIGHT_APPEARANCE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
+    LIGHT_APPEARANCE.store(
+        meridian_boot_common::read_appearance().is_light(),
+        std::sync::atomic::Ordering::Relaxed,
+    );
     info!("meridian-login starting (Phase 7)");
 
     match bootsplash_handover() {
@@ -575,7 +589,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut db = card.create_dumb_buffer((w, h), DrmFourcc::Xrgb8888, 32)?;
     let fb = card.add_framebuffer(&db, 24, 32)?;
 
-    let painter = CompassPainter::new(Fonts::quompacc())?;
+    let painter = if light_appearance() {
+        CompassPainter::new(Fonts::quompacc())?.with_style(Style::chart())
+    } else {
+        CompassPainter::new(Fonts::quompacc())?
+    };
 
     // Pre-fill the dumb buffer with the settle frame BEFORE set_crtc so
     // the kernel never scans out a zeroed (black) buffer. Without this,
@@ -1280,40 +1298,47 @@ fn alpha_byte(alpha: f32, max: f32) -> u8 {
     (alpha.clamp(0.0, 1.0) * max).clamp(0.0, 255.0) as u8
 }
 
+/// Card colours mirror the meridian (dark) / meridian-light (chart) themes;
+/// the variant is chosen by the boot-chain appearance marker at startup.
+fn metro_color(alpha: f32, dark: (u8, u8, u8), light: (u8, u8, u8), base: f32) -> Color {
+    let (r, g, b) = if light_appearance() { light } else { dark };
+    Color::from_rgba8(r, g, b, alpha_byte(alpha, base))
+}
+
 fn metro_surface(alpha: f32) -> Color {
-    Color::from_rgba8(0x24, 0x28, 0x3b, alpha_byte(alpha, 244.0))
+    metro_color(alpha, (0x24, 0x28, 0x3b), (0xf4, 0xef, 0xe3), 244.0)
 }
 
 fn metro_surface_alt(alpha: f32) -> Color {
-    Color::from_rgba8(0x1f, 0x23, 0x35, alpha_byte(alpha, 242.0))
+    metro_color(alpha, (0x1f, 0x23, 0x35), (0xe3, 0xd9, 0xc4), 242.0)
 }
 
 fn metro_background(alpha: f32) -> Color {
-    Color::from_rgba8(0x1a, 0x1b, 0x26, alpha_byte(alpha, 238.0))
+    metro_color(alpha, (0x1a, 0x1b, 0x26), (0xec, 0xe4, 0xd3), 238.0)
 }
 
 fn metro_accent(alpha: f32) -> Color {
-    Color::from_rgba8(0x7a, 0xa2, 0xf7, alpha_byte(alpha, 255.0))
+    metro_color(alpha, (0x7a, 0xa2, 0xf7), (0x2f, 0x62, 0x99), 255.0)
 }
 
 fn metro_text(alpha: f32) -> Color {
-    Color::from_rgba8(0xc0, 0xca, 0xf5, alpha_byte(alpha, 255.0))
+    metro_color(alpha, (0xc0, 0xca, 0xf5), (0x1e, 0x2b, 0x38), 255.0)
 }
 
 fn metro_text_dim(alpha: f32) -> Color {
-    Color::from_rgba8(0xa9, 0xb1, 0xd6, alpha_byte(alpha, 230.0))
+    metro_color(alpha, (0xa9, 0xb1, 0xd6), (0x5d, 0x6b, 0x78), 230.0)
 }
 
 fn metro_border(alpha: f32) -> Color {
-    Color::from_rgba8(0x41, 0x48, 0x68, alpha_byte(alpha, 230.0))
+    metro_color(alpha, (0x41, 0x48, 0x68), (0xc9, 0xbc, 0xa0), 230.0)
 }
 
 fn metro_error(alpha: f32) -> Color {
-    Color::from_rgba8(0xf7, 0x76, 0x8e, alpha_byte(alpha, 255.0))
+    metro_color(alpha, (0xf7, 0x76, 0x8e), (0x9a, 0x46, 0x36), 255.0)
 }
 
 fn metro_success(alpha: f32) -> Color {
-    Color::from_rgba8(0x9e, 0xce, 0x6a, alpha_byte(alpha, 255.0))
+    metro_color(alpha, (0x9e, 0xce, 0x6a), (0x3f, 0x7d, 0x5e), 255.0)
 }
 
 fn draw_soft_card_shadow(pm: &mut PixmapMut, left: f32, top: f32, w: f32, h: f32, alpha: f32) {

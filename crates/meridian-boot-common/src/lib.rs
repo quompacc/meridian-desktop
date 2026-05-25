@@ -64,6 +64,65 @@ pub fn select_boot_mode(modes: &[drm::control::Mode]) -> Option<drm::control::Mo
     filtered.first().copied().or_else(|| modes.first().copied())
 }
 
+
+/// Persisted desktop appearance, read by the boot chain (bootsplash, login) so
+/// the compass and login chrome match the active desktop theme. Written by the
+/// compositor when the theme is (re)loaded. Defaults to Dark when absent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Appearance {
+    #[default]
+    Dark,
+    Light,
+}
+
+impl Appearance {
+    pub fn is_light(self) -> bool {
+        matches!(self, Appearance::Light)
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Appearance::Dark => "dark",
+            Appearance::Light => "light",
+        }
+    }
+
+    fn parse(s: &str) -> Appearance {
+        match s.trim() {
+            "light" => Appearance::Light,
+            _ => Appearance::Dark,
+        }
+    }
+}
+
+/// System-wide appearance marker. Under /var/lib so it survives reboots and is
+/// readable by the (root) boot chain regardless of which user logs in.
+pub const APPEARANCE_PATH: &str = "/var/lib/meridian/appearance";
+
+/// Read the persisted appearance; Dark on any error (missing/unreadable).
+pub fn read_appearance() -> Appearance {
+    read_appearance_from(Path::new(APPEARANCE_PATH))
+}
+
+pub fn read_appearance_from(path: &Path) -> Appearance {
+    match fs::read_to_string(path) {
+        Ok(contents) => Appearance::parse(&contents),
+        Err(_) => Appearance::Dark,
+    }
+}
+
+/// Persist the appearance (best-effort). Creates the parent dir if needed.
+pub fn write_appearance(appearance: Appearance) -> io::Result<()> {
+    write_appearance_to(Path::new(APPEARANCE_PATH), appearance)
+}
+
+pub fn write_appearance_to(path: &Path, appearance: Appearance) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    fs::write(path, appearance.as_str())
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
@@ -117,5 +176,33 @@ mod tests {
 
         let _ = fs::remove_file(&path);
         let _ = fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod appearance_tests {
+    use super::*;
+
+    #[test]
+    fn parse_defaults_to_dark() {
+        assert_eq!(Appearance::parse("nonsense"), Appearance::Dark);
+        assert_eq!(Appearance::parse(""), Appearance::Dark);
+        assert_eq!(Appearance::parse(" light\n"), Appearance::Light);
+    }
+
+    #[test]
+    fn roundtrip_via_file() {
+        let path = std::env::temp_dir().join(format!(
+            "meridian-appearance-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        assert_eq!(read_appearance_from(&path), Appearance::Dark);
+        write_appearance_to(&path, Appearance::Light).unwrap();
+        assert_eq!(read_appearance_from(&path), Appearance::Light);
+        let _ = fs::remove_file(&path);
     }
 }

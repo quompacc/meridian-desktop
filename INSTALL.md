@@ -91,6 +91,11 @@ sudo install -Dm755 target/release/meridian /usr/local/bin/meridian
 sudo install -Dm755 target/release/meridian-shell /usr/local/bin/meridian-shell
 sudo install -Dm755 target/release/meridian-login /usr/local/bin/meridian-login
 sudo install -Dm755 scripts/meridian-file-picker /usr/local/bin/meridian-file-picker
+
+# Appearance marker dir: the compositor (running as your user) writes the
+# light/dark choice here; the boot chain (bootsplash, login) reads it. Must be
+# writable by the desktop user. Replace "$USER" with the login user.
+sudo install -d -o "$USER" -g "$USER" -m 0755 /var/lib/meridian
 sudo install -Dm644 crates/meridian-login/config/meridian-login.service \
     /etc/systemd/system/meridian-login.service
 sudo install -Dm644 crates/meridian-login/config/meridian-login.pam \

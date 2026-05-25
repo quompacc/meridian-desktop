@@ -151,6 +151,9 @@ impl MeridianState {
                 "theme override changed: {}",
                 self.theme_manager.current().name
             );
+            let _ = meridian_boot_common::write_appearance(
+                super::super::setup::theme_appearance(self.theme_manager.current()),
+            );
         }
         if changes.wallpaper_changed {
             tracing::info!("wallpaper override changed");
