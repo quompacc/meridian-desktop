@@ -22,10 +22,11 @@ use wayland_protocols::ext::{
 
 use crate::{
     default_pinned_apps, icons::IconCache, launcher, network::NetworkController, panel,
-    TextRenderer, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
-    NETWORK_POPUP_HEIGHT, NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, PANEL_HEIGHT,
-    SHELL_POPUP_BOTTOM_MARGIN, THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH,
-    WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
+    TextRenderer, AUDIO_POPUP_HEIGHT, AUDIO_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT,
+    CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT,
+    NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, PANEL_HEIGHT, SHELL_POPUP_BOTTOM_MARGIN,
+    THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT,
+    WORKSPACE_POPUP_WIDTH,
 };
 
 use super::{
@@ -244,6 +245,10 @@ pub(crate) fn initialize(
             "network-vpn-symbolic",
             "network-offline-symbolic",
             "camera-photo-symbolic",
+            "audio-volume-high-symbolic",
+            "audio-volume-medium-symbolic",
+            "audio-volume-low-symbolic",
+            "audio-volume-muted-symbolic",
         ],
         22,
     );
@@ -362,6 +367,7 @@ pub(crate) fn initialize(
         notification_configured: false,
         thumbnail_configured: false,
         thumbnail_popup_open: false,
+        audio_popup_open: false,
         panel_buffer: None,
         launcher_buffer: None,
         calendar_buffer: None,
@@ -382,6 +388,8 @@ pub(crate) fn initialize(
         workspace_height: WORKSPACE_POPUP_HEIGHT,
         network_width: NETWORK_POPUP_WIDTH,
         network_height: NETWORK_POPUP_HEIGHT,
+        audio_width: AUDIO_POPUP_WIDTH,
+        audio_height: AUDIO_POPUP_HEIGHT,
         notification_width: crate::NOTIFICATION_WIDTH,
         notification_height: crate::NOTIFICATION_HEIGHT,
         thumbnail_width: 0,
@@ -395,8 +403,11 @@ pub(crate) fn initialize(
         armed_power: None,
         notifications: std::collections::VecDeque::new(),
         notification_dirty: false,
+        status_notifier_items: Vec::new(),
         settings_category: crate::settings_view::SettingsCategory::default(),
         settings_pinned_adding: false,
+        printer_snapshot: crate::printers::PrinterSnapshot::poll(),
+        audio_snapshot: crate::audio::AudioSnapshot::poll(),
         keyboard: None,
         keyboard_focus: SurfaceKind::None,
         pointer: None,
@@ -422,6 +433,7 @@ pub(crate) fn initialize(
         pinned_apps,
         launcher_state: launcher::LauncherState::new_with_apps(launcher_apps),
         workspace_state: crate::workspaces::WorkspacePopupState::new(),
+        workspace_hover_idx: None,
         focused_window_id: None,
         focused_title: None,
         windows: Vec::new(),
@@ -451,11 +463,13 @@ pub(crate) fn initialize(
         calendar_dirty: true,
         workspace_dirty: true,
         network_dirty: true,
+        audio_dirty: true,
         calendar_popup_open: false,
         workspace_popup_open: false,
         network_popup_open: false,
         calendar_display_policy: CalendarDisplayPolicy::default(),
         panel_last_signature: None,
+        panel_click_zones_snapshot: None,
         repaint_stats: Default::default(),
         repaint_stats_enabled: std::env::var("MERIDIAN_SHELL_REPAINT_STATS")
             .map(|value| {

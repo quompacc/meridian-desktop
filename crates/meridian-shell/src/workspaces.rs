@@ -22,7 +22,33 @@ pub struct WorkspacePopupInput {
     pub active_workspace: u32,
     pub total_workspaces: u32,
     pub occupied: [bool; 9],
-    pub hover_pos: Option<(f64, f64)>,
+    pub hovered_idx: Option<usize>,
+}
+
+pub fn workspace_popup_hover_idx(x: f64, y: f64) -> Option<usize> {
+    const PADDING: i32 = 16;
+    const GAP: i32 = 8;
+    let width = WORKSPACE_POPUP_WIDTH as i32;
+    let height = WORKSPACE_POPUP_HEIGHT as i32;
+    let grid_w = width - (2 * PADDING);
+    let grid_h = height - (2 * PADDING);
+    let tile_w = (grid_w - 2 * GAP) / 3;
+    let tile_h = (grid_h - 2 * GAP) / 3;
+
+    for i in 0_usize..9 {
+        let col = (i % 3) as i32;
+        let row = (i / 3) as i32;
+        let rect = Rect {
+            x: PADDING + col * (tile_w + GAP),
+            y: PADDING + row * (tile_h + GAP),
+            w: tile_w,
+            h: tile_h,
+        };
+        if rect.contains(x, y) {
+            return Some(i);
+        }
+    }
+    None
 }
 
 pub fn draw_workspace_popup(
@@ -69,10 +95,7 @@ pub fn draw_workspace_popup(
 
         let is_active = ws_id == input.active_workspace;
         let is_occupied = input.occupied[i];
-        let is_hovered = input
-            .hover_pos
-            .map(|(px, py)| rect.contains(px, py))
-            .unwrap_or(false);
+        let is_hovered = input.hovered_idx == Some(i);
 
         let bg = if is_hovered {
             colors.border
@@ -96,6 +119,7 @@ pub fn draw_workspace_popup(
         };
         painter.text_centered(font, &ws_id.to_string(), rect, text_color);
         state.clicks.push(ClickZone {
+            id: Some(format!("workspace-popup-{ws_id}")),
             rect,
             action: ClickAction::SwitchWorkspace(ws_id.clamp(1, total_workspaces) as u8),
         });
@@ -106,7 +130,9 @@ pub fn draw_workspace_popup(
 mod tests {
     use crate::ClickAction;
 
-    use super::{draw_workspace_popup, WorkspacePopupInput, WorkspacePopupState};
+    use super::{
+        draw_workspace_popup, workspace_popup_hover_idx, WorkspacePopupInput, WorkspacePopupState,
+    };
 
     #[test]
     fn workspace_popup_generates_nine_switch_click_zones() {
@@ -129,7 +155,7 @@ mod tests {
                 active_workspace: 3,
                 total_workspaces: 9,
                 occupied: [false; 9],
-                hover_pos: None,
+                hovered_idx: None,
             },
             &mut state,
         );
@@ -143,5 +169,14 @@ mod tests {
             state.clicks[8].action,
             ClickAction::SwitchWorkspace(9)
         ));
+    }
+
+    #[test]
+    fn workspace_popup_hover_idx_reports_tiles_and_gaps() {
+        assert_eq!(workspace_popup_hover_idx(17.0, 17.0), Some(0));
+        assert_eq!(workspace_popup_hover_idx(102.0, 17.0), Some(1));
+        assert_eq!(workspace_popup_hover_idx(17.0, 92.0), Some(3));
+        assert_eq!(workspace_popup_hover_idx(0.0, 0.0), None);
+        assert_eq!(workspace_popup_hover_idx(96.0, 20.0), None);
     }
 }

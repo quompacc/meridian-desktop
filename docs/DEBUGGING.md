@@ -236,32 +236,37 @@ Bei zukünftigen XDG-Portal-Bugs zuerst trennen:
 
 Referenzplan: `docs/XDG_PORTALS.md`
 
-## Screenshot-Bridge (deny-only)
+## Portal FileChooser
 Aktueller Zustand:
-- `meridian-portal` sendet `ScreenshotBridgeMessage::ScreenshotRequest` an den bestehenden IPC-Socket.
-- Compositor beantwortet mit `ScreenshotBridgeMessage::ScreenshotResponse`.
-- Antwort bleibt absichtlich deny-only (`PermissionDenied`/`Unsupported`), ohne Capture.
-- Requests laufen im Compositor immer durch `ScreenshotPolicy`.
+- `meridian-portal` stellt `org.freedesktop.impl.portal.desktop.meridian`
+  auf `/org/freedesktop/portal/desktop` bereit.
+- Implementiert ist `org.freedesktop.impl.portal.FileChooser`.
+- `OpenFile`, `SaveFile` und `SaveFiles` delegieren an
+  `MERIDIAN_FILE_PICKER` oder `/usr/local/bin/meridian-file-picker`.
+- Screenshot-Portal ist derzeit nicht ueber `meridian-portal` exponiert;
+  die Screenshot-Bridge-Typen existieren nur als deny-only Compositor-Pfad.
 
-Erwartete Logs:
-- Portal: `portal screenshot bridge request sent`
-- Compositor: `compositor screenshot bridge request received`
-- Compositor: `screenshot policy evaluating request`
-- Compositor: `screenshot policy decision: deny|unsupported|invalid`
-- optional: `requester identity unknown/untrusted`
-- Compositor: `screenshot bridge denied/unsupported`
-- Portal (offline): `compositor unavailable`
-
-### Manueller E2E-Test (deny-only)
-1. Compositor starten: `RUST_LOG=info cargo run`
-2. Portal starten: `RUST_LOG=info cargo run -p meridian-portal`
-3. Screenshot-Request auslösen, z. B. per D-Bus:
-   - `busctl --user call org.meridian.Portal1 /org/meridian/portal org.meridian.portal.Screenshot1 screenshot ssb "req-manual-1" "eDP-1" true`
+### Manueller FileChooser-Smoke
+1. Portal starten:
+   `RUST_LOG=debug cargo run -p meridian-portal`
+2. Sicherstellen, dass `MERIDIAN_FILE_PICKER` gesetzt ist oder
+   `/usr/local/bin/meridian-file-picker` existiert.
+3. Einen echten `xdg-desktop-portal`-Client gegen den Meridian-Backend-Namen
+   testen.
 4. Erwartung:
-   - Portal loggt `portal screenshot bridge request sent`
-   - Compositor loggt Request-Eingang + Policy-Evaluierung
-   - Policy entscheidet `deny` (oder `unsupported` für Region-ähnliche Invalid-Fälle)
-   - Auf D-Bus-Seite: `AccessDenied` oder `NotSupported`
+   - Portal loggt `portal service ready`.
+   - Picker wird mit Wayland-/Runtime-Umgebung gestartet.
+   - Bei Auswahl liefert `OpenFile` `uris`, `SaveFile` `uri`,
+     `SaveFiles` `destination`.
+   - Cancel liefert Response-Code `1`, Picker-Fehler `2`.
+
+### Screenshot-Bridge (intern, deny-only)
+- Compositor kann `ScreenshotBridgeMessage::ScreenshotRequest` ueber den
+  bestehenden IPC-Socket parsen und antwortet mit
+  `ScreenshotBridgeMessage::ScreenshotResponse`.
+- Policy bleibt deny-only (`PermissionDenied` fuer valide Requests,
+  `Unsupported` fuer Region, `InvalidRequest` fuer ungueltige Requests).
+- Es gibt aktuell keinen passenden `busctl`-Smoke ueber `meridian-portal`.
 
 ## Manueller E2E-Test: ReloadConfig
 Vorbereitung:

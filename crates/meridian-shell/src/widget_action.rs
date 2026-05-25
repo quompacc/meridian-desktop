@@ -1,4 +1,7 @@
-use crate::{app_view::AppCategory, settings_view::SettingsCategory};
+use crate::{
+    app_view::AppCategory,
+    settings_view::{SettingsCategory, SettingsRootCategory},
+};
 
 const SETTINGS_THEME_PREFIX: &str = "settings-theme-";
 const SETTINGS_WALLPAPER_PREFIX: &str = "settings-wallpaper-";
@@ -6,6 +9,7 @@ const PINNED_MOVE_UP_PREFIX: &str = "pinned-move-up-";
 const PINNED_MOVE_DOWN_PREFIX: &str = "pinned-move-dn-";
 const PINNED_REMOVE_PREFIX: &str = "pinned-remove-";
 const PINNED_ADD_APP_PREFIX: &str = "pinned-add-app-";
+const DISPLAY_PRIMARY_PREFIX: &str = "display-primary-";
 
 const CATEGORY_ACTIONS: &[(&str, AppCategory)] = &[
     ("cat-internet", AppCategory::Internet),
@@ -20,8 +24,20 @@ const CATEGORY_ACTIONS: &[(&str, AppCategory)] = &[
 const SETTINGS_CATEGORY_ACTIONS: &[(&str, SettingsCategory)] = &[
     ("settings-cat-theme", SettingsCategory::Theme),
     ("settings-cat-cursor", SettingsCategory::Cursor),
+    ("settings-cat-display", SettingsCategory::Display),
     ("settings-cat-wallpaper", SettingsCategory::Wallpaper),
     ("settings-cat-pinned", SettingsCategory::PinnedApps),
+    (
+        "settings-cat-system-overview",
+        SettingsCategory::SystemOverview,
+    ),
+    ("settings-cat-network", SettingsCategory::Network),
+    ("settings-cat-bluetooth", SettingsCategory::Bluetooth),
+    ("settings-cat-sound", SettingsCategory::Sound),
+    ("settings-cat-printers", SettingsCategory::Printers),
+    ("settings-cat-power", SettingsCategory::Power),
+    ("settings-cat-users", SettingsCategory::Users),
+    ("settings-cat-updates", SettingsCategory::Updates),
 ];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,6 +67,7 @@ pub(crate) enum WidgetAction {
     PinnedOpenAdd,
     PinnedCloseAdd,
     PinnedAddApp(usize),
+    SetPrimaryOutput(usize),
 }
 
 pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
@@ -71,6 +88,9 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
         .or_else(|| parse_indexed_action(id, PINNED_MOVE_DOWN_PREFIX, WidgetAction::PinnedMoveDown))
         .or_else(|| parse_indexed_action(id, PINNED_REMOVE_PREFIX, WidgetAction::PinnedRemove))
         .or_else(|| parse_indexed_action(id, PINNED_ADD_APP_PREFIX, WidgetAction::PinnedAddApp))
+        .or_else(|| {
+            parse_indexed_action(id, DISPLAY_PRIMARY_PREFIX, WidgetAction::SetPrimaryOutput)
+        })
 }
 
 fn exact_action_for_id(id: &str) -> Option<WidgetAction> {
@@ -87,6 +107,12 @@ fn exact_action_for_id(id: &str) -> Option<WidgetAction> {
         "power-lock" => Some(WidgetAction::PowerLock),
         "power-logout" => Some(WidgetAction::PowerLogout),
         "launcher-settings" => Some(WidgetAction::ToggleSettings),
+        "settings-root-desktop" => Some(WidgetAction::SetSettingsCategory(
+            SettingsRootCategory::Desktop.first_category(),
+        )),
+        "settings-root-system" => Some(WidgetAction::SetSettingsCategory(
+            SettingsRootCategory::System.first_category(),
+        )),
         "wallpaper-mode-fill" => Some(WidgetAction::SetWallpaperMode(
             meridian_config::WallpaperMode::Fill,
         )),
@@ -198,9 +224,33 @@ mod tests {
     #[test]
     fn action_for_id_settings_category() {
         assert_eq!(
+            action_for_id("settings-root-desktop"),
+            Some(WidgetAction::SetSettingsCategory(
+                crate::settings_view::SettingsCategory::Theme
+            ))
+        );
+        assert_eq!(
+            action_for_id("settings-root-system"),
+            Some(WidgetAction::SetSettingsCategory(
+                crate::settings_view::SettingsCategory::SystemOverview
+            ))
+        );
+        assert_eq!(
+            action_for_id("settings-cat-display"),
+            Some(WidgetAction::SetSettingsCategory(
+                crate::settings_view::SettingsCategory::Display
+            ))
+        );
+        assert_eq!(
             action_for_id("settings-cat-wallpaper"),
             Some(WidgetAction::SetSettingsCategory(
                 crate::settings_view::SettingsCategory::Wallpaper
+            ))
+        );
+        assert_eq!(
+            action_for_id("settings-cat-printers"),
+            Some(WidgetAction::SetSettingsCategory(
+                crate::settings_view::SettingsCategory::Printers
             ))
         );
     }
@@ -230,6 +280,10 @@ mod tests {
         assert_eq!(
             action_for_id("pinned-add-app-5"),
             Some(WidgetAction::PinnedAddApp(5))
+        );
+        assert_eq!(
+            action_for_id("display-primary-1"),
+            Some(WidgetAction::SetPrimaryOutput(1))
         );
     }
 

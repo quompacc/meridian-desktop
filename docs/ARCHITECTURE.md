@@ -1,47 +1,101 @@
 # Architecture
 
+Stand: 2026-05-25, auditiert gegen `master` bei `2e7a2ed`.
+
 ## Workspace-Struktur
-- `src/main.rs`: Startpunkt (Backend-Wahl, XWayland, Timers, Shell-Watchdog).
-- `crates/meridian-compositor`: Wayland-Compositor, Backends, State, Render, Input.
-- `crates/meridian-shell`: Panel/Launcher (Layer-Shell Client).
-- `crates/meridian-config`: Theme/Keybind-Konfiguration.
-- `crates/meridian-ipc`: IPC-Protokoll (`ShellCommand`, `ShellEvent`) + gemeinsame Screenshot-Bridge-Contract-Typen.
+- `src/main.rs`: Startpunkt, Backend-Wahl, XWayland, IPC-Timer und
+  Shell-Watchdog.
+- `crates/meridian-compositor`: Wayland-Compositor, Backends, State,
+  Rendering, Input, Output-/Workspace-Policy.
+- `crates/meridian-shell`: separater Layer-Shell-Client fuer Panel,
+  Launcher, Popups, Settings, Notifications und Screenshots.
+- `crates/meridian-login`: root-seitiger DRM-Login mit PAM/logind,
+  YubiKey/PIN-Flow, Passwort-Fallback und Compositor-Handover.
+- `crates/meridian-config`: TOML-Konfiguration, Themes, Wallpaper,
+  Keybinds, Outputs und Panel-Pinned-Apps.
+- `crates/meridian-ipc`: JSON-Line IPC fuer Shell/Compositor plus
+  gemeinsame Screenshot-Bridge-Typen.
+- `crates/meridian-portal`: D-Bus Portal-Backend; aktuell FileChooser
+  delegiert an einen externen Picker.
 - `crates/meridian-wm`: Tiling/Floating-Workspace-Logik.
-- `crates/meridian-portal`: separates Portal-Backend-Binary (D-Bus-Skeleton + deny-only Screenshot-Bridge über bestehenden IPC-Pfad).
-- `crates/meridian-boot-common`: gemeinsame Boot-Chain-Helfer für `bootsplash`/`meridian-login` (Socket-Cleanup, Boot-Mode-Auswahl).
+- `crates/meridian-ui`: gemeinsam nutzbare UI-Primitives.
+- `crates/meridian-compass-render`: gemeinsamer Compass-Renderer fuer
+  Bootsplash/Login.
+- `crates/meridian-boot-common`: Boot-Chain-Helfer fuer Socket-Cleanup,
+  sichere Socket-Rechte und Boot-Mode-Auswahl.
 
-## Modulstruktur (aktuell)
-- `meridian-compositor/backend/drm/*`: Init/GPU/Render (inkl. `render/layers.rs`, `render/stack.rs`)
-- `meridian-compositor/backend/winit/*`: Winit-Init, Layer-Erfassung, Scene-Komposition
-- `meridian-compositor/state/*`: `setup`, `utils`, `layout/*`, `ipc/*`, `handlers/*`
-- `meridian-compositor/wallpaper/*`: `manager`, `compose`, `gpu`
-- `meridian-shell/wayland/*`: `init`, `render`, `state`, `handlers/*`, `ipc`
-- `meridian-shell/draw/*`: `painter`, `text`, `bitmap`, `ft`, `fc`
-- `meridian-portal/*`: `main` (Bootstrap/Runloop), `lib` (D-Bus-Screenshot-Interface + Bridge-Request/Response-Mapping)
+## Modulstruktur
+- `meridian-compositor/backend/drm/*`: DRM-Init, GPU/Mode-Auswahl, Hotplug,
+  Timing-Diagnostik und Render-Pipeline.
+- `meridian-compositor/backend/winit/*`: Entwicklungsbackend, Winit-Output
+  und Scene-Komposition.
+- `meridian-compositor/state/*`: Smithay-State, Setup, Layout, IPC,
+  Handler, OutputRegistry, WorkspaceOutputState, Lock/Idle/Output-Power.
+- `meridian-compositor/input/*`: Keyboard-/Pointer-Verarbeitung,
+  Keybind-Ausfuehrung und Output-Fokuspflege.
+- `meridian-compositor/decoration/*`: Server-Side Decorations, Icons,
+  Shadow-/Icon-Caches und Hit-Testing.
+- `meridian-compositor/wallpaper/*`: Wallpaper-Compose und GPU-Cache.
+- `meridian-shell/wayland/*`: Client-Init, State, Render, IPC,
+  Screencopy und Wayland-Handler.
+- `meridian-shell/icons/*`: Icon-Theme, SVG/RCC-Loader und Cache.
+- `meridian-shell/draw/*`: tiny-skia Painter, Text, FreeType/fontconfig.
+- `meridian-shell/*_view.rs`, `*_popup.rs`: App-Grid, Settings, Panel,
+  Power-Footer, Network/Notification/Thumbnail-Popups.
+- `meridian-login/src/*`: Auth, Input, Session-Spawn und DRM/Login-UI.
+- `meridian-portal/src/*`: D-Bus Service und FileChooser-Implementierung.
 
-## Startpfad
+## Startpfade
+
+### Desktop
 1. `src/main.rs`
-2. `backend::drm::init_drm` oder `backend::winit::init_winit`
-3. `state::MeridianState` + Handler
-4. Renderpfad (`backend/drm/render/*` oder `backend/winit/*`)
+2. `MeridianState::new`
+3. `backend::drm::init_drm` ohne Parent-Display, sonst `init_winit`
+4. XWayland-Start
+5. IPC-Poll-Timer
+6. `meridian-shell` Watchdog, ausser `MERIDIAN_DRM_DISABLE_SHELL=1` oder
+   `MERIDIAN_NO_SHELL=1`
+
+### Login
+1. `meridian-login`
+2. Bootsplash-Handover ueber `/run/bootsplash.sock`
+3. PAM/logind-Session nach erfolgreichem Smartcard- oder Passwort-Login
+4. Compositor-Spawn als User
+5. Handover ueber `/run/meridian-login.sock`
 
 ## Compositor / Shell / IPC
-- `meridian-compositor` verwaltet Surfaces, Input, Workspaces, Rendering.
-- Output-Metadaten werden zusätzlich zentral in `OutputRegistry` gespiegelt (read-only), während `outputs: Vec<Output>` unverändert bestehen bleibt.
-- `meridian-shell` rendert Panel/Launcher als Layer-Surfaces.
-- IPC koppelt beide:
-  - Compositor -> Shell: Workspace/Window/Focus/ToggleLauncher Events.
-  - Shell -> Compositor: SwitchWorkspace/FocusWindow/LaunchApp/ReloadConfig.
-- Aktueller Workspace-IPC-Stand:
-  - legacy/global: `WorkspaceChanged { workspace }`
-  - snapshot-basiert: `WindowSnapshot { active_workspace, windows[] }`
-- Geplante Phase 4d (Spezifikation):
-  - output-aware Workspace-Kontext zusätzlich zu legacy einführen (Parallelbetrieb).
-  - Zielpfad: Shell/Panel lesen per-output Active-Workspace-State aus output-aware Snapshot/Event.
-  - Details und Übergangsregeln: `docs/WORKSPACES.md` Abschnitt `Phase 4d IPC-Workspace-Kontext (Spezifikation)`.
+- `meridian-compositor` verwaltet Surfaces, Focus, Workspaces, Outputs,
+  Rendering und Shell-Kommandos.
+- `meridian-shell` rendert Panel/Launcher/Popups als Layer-Surfaces.
+- IPC-Kommandos Shell -> Compositor:
+  - `SwitchWorkspace`
+  - `FocusWindow`
+  - `LaunchApp`
+  - `ReloadConfig`
+  - `Quit`
+  - `CaptureWindowThumbnail`
+- IPC-Events Compositor -> Shell:
+  - legacy Workspace- und Window-Events
+  - `WindowSnapshot`
+  - output-aware Workspace-Events/Snapshots
+  - `ConfigReloaded`
+  - `ToggleLauncher`
+  - `WindowThumbnail`
+- Screenshot-Bridge-Messages sind im IPC-Typensystem vorhanden, werden
+  compositorseitig aber deny-only behandelt.
+
+## Shell-Oberflaeche
+- Panel: Launcher, Workspaces, pinned Apps, Network, Screenshot, Clock.
+- Launcher: App-Grid, Kategorien, Suche, Kontextmenues, versteckte Apps,
+  Pinned-App-Management.
+- Settings: Theme, Cursor-Kategorie, Wallpaper-Auswahl/Picker/Modus,
+  Pinned-Apps. Display/Keyboard/Audio sind noch offen.
+- Popups: Calendar, Workspace, Network, Notifications, Window-Thumbnails.
+- Power-Footer: Poweroff/Reboot/Suspend/Lock via Systemtools, Logout via
+  Compositor-IPC.
 
 ## Backends
-- `drm`: KMS/GBM/GLES, Hauptpfad für echte Session.
+- `drm`: KMS/GBM/GLES, Hauptpfad fuer echte Sessions.
 - `winit`: Fallback/Embedded-Session, gleiche State- und Renderprinzipien.
 
 ## Wayland-Protokolle
@@ -52,64 +106,52 @@
 - Output/XDG-Output
 - Data Device / DnD
 - XWayland Shell
+- linux-dmabuf
+- linux-drm-syncobj
+- ext-image-copy-capture / ext-image-capture-source
+- session-lock
+- output-power-management
+- idle-inhibit / idle-notify
 
-## Layer-Shell-Orte
-- Server-seitig: `crates/meridian-compositor/src/state/handlers/core/layer_shell.rs`
-- Client-seitig (Shell): `crates/meridian-shell/src/wayland/handlers/layer.rs`
-- Status: Layer-Shell ist funktionsfähig genug für sichtbares Panel und Launcher.
-
-## Render-Layer-Reihenfolge (Korrektheitsregel)
-Die visuelle Stapelung ist verbindlich:
+## Render-Layer-Reihenfolge
+Die visuelle Stapelung ist Korrektheit, nicht Stilfrage:
 1. background / wallpaper
 2. bottom layer surfaces
 3. normal application windows
 4. top layer surfaces / panel
-5. overlay surfaces / launcher
+5. overlay surfaces / launcher / popups
 6. cursor
 
 ## Keybinding-Orte
 - Parsing/Defaults: `crates/meridian-config/src/keybind/*`
-- Ausführung: `crates/meridian-compositor/src/input/keyboard.rs`
+- Ausfuehrung: `crates/meridian-compositor/src/input/keyboard.rs`
 - Runtime-Reload: `crates/meridian-compositor/src/state/ipc/commands.rs`
 
 ## Performance-sensitive Bereiche
 - `backend/drm/render/*`
 - `backend/winit/*`
 - `decoration/render/*`
-- `wallpaper/*` (CPU compose + GPU upload)
-- `state/handlers/*` (Commit/Input-Frequenzpfade)
+- `wallpaper/*`
+- `state/handlers/*`
+- `meridian-shell/wayland/render.rs`
+- Shell-Timer und Popups, besonders Notifications/Thumbnails/Screenshots
 
-## XDG-Portal Architektur (Plan)
-- Referenz: `docs/XDG_PORTALS.md`
-- Empfehlung:
-  - eigener Portal-Prozess statt Integration in den Compositor-Renderpfad.
-  - Compositor bleibt für Capture-/State-Quellen zuständig, nicht für D-Bus-Policy.
-  - Portal-Policy, Prompting und Session-Lifecycle liegen im Portal-Backend.
-- Benötigte Meridian-Daten für spätere Portals:
-  - Screenshot/ScreenCast: Output-Infos + kontrollierter Framezugriff.
-  - Settings/Appearance: read-only Theme/Appearance-Werte.
-  - OpenURI/FileChooser: Delegationspfad über Shell/externe Handler.
-- Sicherheitsregel:
-  - minimale Datenfreigabe pro Request, kein globaler Freigabepfad.
-- Aktueller Screenshot-Bridge-Contract:
-  - `ScreenshotBridgeRequest` mit `request_id`, `kind=full-output`, optionalem `output`, `include_cursor`, optional `region`.
-  - `ScreenshotBridgeError` mit `Unsupported`, `PermissionDenied`, `CompositorUnavailable`, `InvalidRequest`, `Internal`.
-  - Vorerst kein Capture-Transport; Portal bleibt deny-only/unsupported.
+## XDG-Portals
+- `meridian-portal` ist ein separater Prozess.
+- Aktuell implementiert: FileChooser-Backend unter
+  `org.freedesktop.impl.portal.desktop.meridian`.
+- FileChooser delegiert an `MERIDIAN_FILE_PICKER` oder
+  `/usr/local/bin/meridian-file-picker`.
+- Screenshot/ScreenCast/Settings/OpenURI bleiben offene Portal-Slices.
+- Referenz: `docs/XDG_PORTALS.md`.
 
-## Multi-Monitor (Audit)
-- Referenz: `docs/MULTI_MONITOR.md`
-- Workspace-Policy-Referenz: `docs/WORKSPACES.md`
-- Aktueller Kern:
-  - Outputs werden in `MeridianState.outputs` gehalten.
-  - Rendering läuft pro DRM-Output, Workspace-State ist aktuell noch global aktiv.
-  - First-output-Fallback-Pfade in Pointer/Surface/Maximize/Fullscreen/Tiling/Layer-Shell sind auf OutputRegistry-Policy migriert.
-- Architekturentscheidung spezifiziert:
-  - Zielmodell ist Hybrid (`active_workspace_by_output` + `focused_output`) gemäß `docs/WORKSPACES.md`.
-- Hotplug-Policy spezifiziert (noch nicht vollständig implementiert):
-  - Output Add/Remove/Reconfigure + Recovery-Regeln sind verbindlich in `docs/WORKSPACES.md` definiert.
-  - Implementierung folgt in Phasen H1-H5 (Registry API -> State cleanup -> Snapshot-Broadcast -> Layer/Panel recovery -> Backend-Hotplug).
-  - H1-H4 Audit bestätigt die operative Reihenfolge im zentralen State-Pfad:
-    1) Registry-Änderung -> 2) WorkspaceOutputState Sync/Fallback -> 3) Layer-Shell-Recovery -> 4) OutputWorkspaceSnapshot Broadcast.
-  - H5-Hookpunkte:
-    - Winit: `backend/winit/mod.rs` (`WinitEvent::Resized`).
-    - DRM: `backend/drm/init.rs` (DRM-Notifier/Connector-Lifecycle, derzeit primär VBlank-Pfad).
+## Multi-Monitor
+- Output-Metadaten werden in `OutputRegistry` gespiegelt.
+- Workspace-Zielmodell ist Hybrid:
+  `focused_output` plus `active_workspace_by_output`, mit globalem
+  `WorkspaceManager.active` als Kompatibilitaets-Shadow.
+- Active-Workspace im Panel ist output-aware; Occupied bleibt global.
+- Hotplug-Pipeline ist in Code vorbereitet/aktiv bis DRM Add/Remove:
+  Registry -> Workspace-State-Sync/Fallback -> Layer-Shell-Recovery ->
+  OutputWorkspaceSnapshot Broadcast.
+- Runtime-Hotplug braucht weiter reale E2E-Validierung.

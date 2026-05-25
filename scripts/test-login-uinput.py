@@ -31,6 +31,8 @@ SYN_REPORT = 0
 ABS_X = 0
 ABS_Y = 1
 BTN_LEFT = 0x110
+BTN_RIGHT = 0x111
+BTN_MIDDLE = 0x112
 UI_SET_EVBIT = 0x40045564
 UI_SET_KEYBIT = 0x40045565
 UI_SET_ABSBIT = 0x40045567
@@ -246,6 +248,8 @@ class VirtualPointer:
         fcntl.ioctl(self._file, UI_SET_EVBIT, EV_ABS)
         fcntl.ioctl(self._file, UI_SET_EVBIT, EV_SYN)
         fcntl.ioctl(self._file, UI_SET_KEYBIT, BTN_LEFT)
+        fcntl.ioctl(self._file, UI_SET_KEYBIT, BTN_RIGHT)
+        fcntl.ioctl(self._file, UI_SET_KEYBIT, BTN_MIDDLE)
         fcntl.ioctl(self._file, UI_SET_ABSBIT, ABS_X)
         fcntl.ioctl(self._file, UI_SET_ABSBIT, ABS_Y)
 
@@ -285,12 +289,12 @@ class VirtualPointer:
         self.emit(EV_SYN, SYN_REPORT, 0)
         time.sleep(0.08)
 
-    def click(self, x: int, y: int) -> None:
+    def click(self, x: int, y: int, button: int = BTN_LEFT) -> None:
         self.move_to(x, y)
-        self.emit(EV_KEY, BTN_LEFT, 1)
+        self.emit(EV_KEY, button, 1)
         self.emit(EV_SYN, SYN_REPORT, 0)
         time.sleep(0.05)
-        self.emit(EV_KEY, BTN_LEFT, 0)
+        self.emit(EV_KEY, button, 0)
         self.emit(EV_SYN, SYN_REPORT, 0)
         time.sleep(0.2)
 
@@ -480,6 +484,60 @@ def run_logout_ui_test(args: argparse.Namespace) -> None:
     log("logout ui smoke test passed")
 
 
+def panel_click_zones_path(username: str) -> Path:
+    return Path(f"/run/user/{user_uid(username)}/meridian-panel-click-zones.json")
+
+
+def load_panel_click_zone(username: str, zone_id: str, ui_height: int) -> tuple[int, int]:
+    path = panel_click_zones_path(username)
+    deadline = time.monotonic() + 6.0
+    last_error = ""
+    while True:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            zones = payload.get("zones", [])
+            for zone in zones:
+                if zone.get("id") == zone_id or zone.get("action") == zone_id:
+                    panel_height = int(payload["height"])
+                    local_x = int(zone["center_x"])
+                    local_y = int(zone["center_y"])
+                    return local_x, ui_height - panel_height + local_y
+            available = ", ".join(
+                str(zone.get("id") or zone.get("action") or "?") for zone in zones
+            )
+            last_error = f"panel zone {zone_id!r} not found in {path}; available: {available}"
+        except (FileNotFoundError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            last_error = f"panel click-zone snapshot not ready at {path}: {exc}"
+        if time.monotonic() >= deadline:
+            raise TestFailure(last_error)
+        time.sleep(0.2)
+
+
+def run_panel_click_test(args: argparse.Namespace) -> None:
+    if not pgrep_user(args.username, "meridian"):
+        raise TestFailure(f"no running meridian session for {args.username}; use --run with --keep-session first")
+
+    with VirtualPointer(args.ui_width, args.ui_height) as pointer:
+        time.sleep(args.ui_device_ready_delay)
+        x, y = load_panel_click_zone(args.username, args.panel_click, args.ui_height)
+        button = {
+            "left": BTN_LEFT,
+            "right": BTN_RIGHT,
+            "middle": BTN_MIDDLE,
+        }[args.panel_click_button]
+        log(
+            f"clicking panel zone {args.panel_click} at {x},{y} "
+            f"button={args.panel_click_button} count={args.panel_click_count}"
+        )
+        for _ in range(args.panel_click_count):
+            pointer.click(x, y, button)
+            time.sleep(args.panel_click_delay)
+
+    if not pgrep_user(args.username, "meridian-shell"):
+        raise TestFailure("meridian-shell exited after panel click smoke")
+    log("panel click smoke test passed")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--username", default="fakeuser")
@@ -488,6 +546,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run", action="store_true", help="run the virtual-keyboard login test")
     parser.add_argument("--logout-ipc", action="store_true", help="send ShellCommand::Quit and verify login returns")
     parser.add_argument("--logout-ui", action="store_true", help="open launcher and double-click power logout")
+    parser.add_argument("--panel-click", help="click a panel zone by widget id or action from meridian-panel-click-zones.json")
+    parser.add_argument("--panel-click-button", choices=("left", "right", "middle"), default="left")
+    parser.add_argument("--panel-click-count", type=int, default=1)
+    parser.add_argument("--panel-click-delay", type=float, default=0.25)
     parser.add_argument("--lock-user", action="store_true", help="lock the user after cleanup")
     parser.add_argument("--keep-session", action="store_true", help="leave the compositor session running")
     parser.add_argument("--no-restart-login", dest="restart_login", action="store_false")
@@ -522,8 +584,10 @@ def main() -> int:
                 run_logout_ipc_test(args)
             if args.logout_ui:
                 run_logout_ui_test(args)
-            if not args.run and not args.logout_ipc and not args.logout_ui:
-                log("nothing to run; pass --run, --logout-ipc and/or --logout-ui")
+            if args.panel_click:
+                run_panel_click_test(args)
+            if not args.run and not args.logout_ipc and not args.logout_ui and not args.panel_click:
+                log("nothing to run; pass --run, --logout-ipc, --logout-ui and/or --panel-click")
         finally:
             if not args.keep_session:
                 restart_login()

@@ -12,9 +12,11 @@ use meridian_ui::{
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, Transform};
 
 use crate::{
+    audio::AudioSnapshot,
     icons::{icon_image_to_pixmap, IconCache},
     network::NetworkState,
     panel::{PanelWindowEntry, PinnedApp},
+    status_notifier::StatusNotifierItem,
     ClickAction, ClickZone, Rect as ShellRect, PANEL_HEIGHT,
 };
 
@@ -25,6 +27,8 @@ const CHIP_H: i32 = 28;
 const LAUNCHER_W: i32 = 40;
 const PINNED_W: i32 = 30;
 const TRAY_W: i32 = 30;
+const AUDIO_W: i32 = 42;
+const SNI_W: i32 = 30;
 const SCREENSHOT_W: i32 = 30;
 // Launcher gets its own larger compass-rose icon that sits visually
 // raised above the chip outline (no bg fill, no accent strip) so it
@@ -274,16 +278,147 @@ fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
     Some(pm)
 }
 
+fn build_audio_icon(snapshot: &AudioSnapshot, theme: &Theme) -> Option<Pixmap> {
+    use tiny_skia::{FillRule, Paint, PathBuilder, Stroke};
+
+    let mut pm = Pixmap::new(ICON_SIZE, ICON_SIZE)?;
+    let palette = &theme.palette;
+    let output = snapshot.default_output.as_ref();
+    let muted = output
+        .map(|device| device.muted || device.volume_percent == Some(0))
+        .unwrap_or(true);
+    let volume = output.and_then(|device| device.volume_percent).unwrap_or(0);
+    let wave_count = if muted {
+        0
+    } else if volume < 35 {
+        1
+    } else if volume < 70 {
+        2
+    } else {
+        3
+    };
+
+    let paint_for = |color: Color| {
+        let mut paint = Paint {
+            anti_alias: true,
+            ..Paint::default()
+        };
+        paint.set_color_rgba8(color.r, color.g, color.b, color.a);
+        paint
+    };
+
+    let icon_paint = paint_for(palette.text);
+    let accent_paint = paint_for(palette.accent);
+    let stroke = Stroke {
+        width: 1.6,
+        ..Stroke::default()
+    };
+
+    let mut box_path = PathBuilder::new();
+    box_path.move_to(3.0, 8.0);
+    box_path.line_to(7.0, 8.0);
+    box_path.line_to(12.0, 4.5);
+    box_path.line_to(12.0, 17.5);
+    box_path.line_to(7.0, 14.0);
+    box_path.line_to(3.0, 14.0);
+    box_path.close();
+    if let Some(path) = box_path.finish() {
+        pm.as_mut()
+            .fill_path(&path, &icon_paint, FillRule::Winding, Transform::identity(), None);
+    }
+
+    for level in 0..wave_count {
+        let offset = level as f32 * 2.4;
+        let mut wave = PathBuilder::new();
+        wave.move_to(14.0 + offset, 8.0 - offset * 0.4);
+        wave.quad_to(
+            17.0 + offset,
+            11.0,
+            14.0 + offset,
+            14.0 + offset * 0.4,
+        );
+        if let Some(path) = wave.finish() {
+            pm.as_mut()
+                .stroke_path(&path, &icon_paint, &stroke, Transform::identity(), None);
+        }
+    }
+
+    if muted {
+        for (x0, y0, x1, y1) in [(15.0, 8.0, 20.0, 14.0), (20.0, 8.0, 15.0, 14.0)] {
+            let mut slash = PathBuilder::new();
+            slash.move_to(x0, y0);
+            slash.line_to(x1, y1);
+            if let Some(path) = slash.finish() {
+                pm.as_mut().stroke_path(
+                    &path,
+                    &accent_paint,
+                    &Stroke {
+                        width: 1.8,
+                        ..Stroke::default()
+                    },
+                    Transform::identity(),
+                    None,
+                );
+            }
+        }
+    }
+
+    Some(pm)
+}
+
 fn action_for_id_as_click(id: &str) -> Option<ClickAction> {
+    if let Some(idx) = id
+        .strip_prefix("panel-sni-")
+        .and_then(|value| value.parse::<usize>().ok())
+    {
+        return Some(ClickAction::ActivateStatusNotifierItem(idx));
+    }
     match id {
         "panel-launcher" => Some(ClickAction::ToggleLauncher),
         "panel-network" => Some(ClickAction::ToggleNetworkPopup),
+        "panel-sound" => Some(ClickAction::ToggleAudioPopup),
         "panel-workspace" => Some(ClickAction::ToggleWorkspacePopup),
         "panel-screenshot" => Some(ClickAction::TakeScreenshot),
         "panel-clock" => Some(ClickAction::Clock),
         _ => None,
     }
 }
+
+fn status_notifier_label(item: &StatusNotifierItem) -> String {
+    let source = item
+        .title
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            item.icon_name
+                .as_deref()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .or_else(|| item.service.rsplit('.').next())
+        .unwrap_or("TR");
+    let label: String = source
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .take(2)
+        .map(|ch| ch.to_ascii_uppercase())
+        .collect();
+    if label.is_empty() {
+        "TR".to_string()
+    } else {
+        label
+    }
+}
+
+const SNI_PANEL_IDS: [&str; 8] = [
+    "panel-sni-0",
+    "panel-sni-1",
+    "panel-sni-2",
+    "panel-sni-3",
+    "panel-sni-4",
+    "panel-sni-5",
+    "panel-sni-6",
+    "panel-sni-7",
+];
 
 // ── PanelChip ───────────────────────────────────────────────────────────────
 
@@ -728,7 +863,10 @@ pub(crate) fn build_panel_widget_tree(
     pinned_apps: &[PinnedApp],
     window_entries: &[PanelWindowEntry],
     network_state: &NetworkState,
+    audio_snapshot: &AudioSnapshot,
+    status_notifier_items: &[StatusNotifierItem],
     network_popup_open: bool,
+    audio_popup_open: bool,
     active_workspace: u8,
     total_workspaces: u8,
     clock: &str,
@@ -738,6 +876,10 @@ pub(crate) fn build_panel_widget_tree(
     let network_icon = icon_cache
         .lookup(network_state.icon_name(), ICON_SIZE)
         .and_then(icon_image_to_pixmap);
+    let audio_icon = icon_cache
+        .lookup(audio_snapshot.icon_name(), ICON_SIZE)
+        .and_then(icon_image_to_pixmap)
+        .or_else(|| build_audio_icon(audio_snapshot, &Theme::TOKYO_NIGHT_METRO));
 
     // Left cluster
     let mut left_children: Vec<Box<dyn Widget>> = Vec::new();
@@ -806,20 +948,46 @@ pub(crate) fn build_panel_widget_tree(
     let (clock_text_w, _) = measure_text(clock, FONT_SIZE);
     let clock_w = (clock_text_w + 2 * CLOCK_PAD).max(40);
     let ws_text: Box<str> = format!("{}/{}", active_workspace, total_workspaces.max(1)).into();
-    let right_children: Vec<Box<dyn Widget>> = vec![
+    let mut right_children: Vec<Box<dyn Widget>> = Vec::new();
+    for (idx, item) in status_notifier_items
+        .iter()
+        .take(SNI_PANEL_IDS.len())
+        .enumerate()
+    {
+        let icon = item
+            .icon_name
+            .as_deref()
+            .and_then(|name| icon_cache.lookup(name, ICON_SIZE))
+            .and_then(icon_image_to_pixmap);
+        right_children.push(Box::new(PanelChip::new(
+            SNI_PANEL_IDS[idx],
+            status_notifier_label(item).into_boxed_str(),
+            icon,
+            SNI_W,
+            false,
+        )));
+    }
+    right_children.extend([
         Box::new(PanelChip::new(
             "panel-screenshot",
             "📷".into(),
             screenshot_icon,
             SCREENSHOT_W,
             false,
-        )),
+        )) as Box<dyn Widget>,
         Box::new(PanelChip::new(
             "panel-network",
             "NET".into(),
             network_icon,
             TRAY_W,
             network_popup_open,
+        )),
+        Box::new(PanelChip::new(
+            "panel-sound",
+            audio_snapshot.panel_label().into_boxed_str(),
+            audio_icon,
+            AUDIO_W,
+            audio_popup_open,
         )),
         Box::new(PanelChip::new(
             "panel-workspace",
@@ -835,7 +1003,7 @@ pub(crate) fn build_panel_widget_tree(
             clock_w,
             false,
         )),
-    ];
+    ]);
     let right_cluster = Container::new(
         WidgetStyle {
             flex_direction: FlexDirection::Row,
@@ -898,6 +1066,7 @@ fn collect_click_zones(
 
     if let Some(action) = action {
         out.push(ClickZone {
+            id: widget.id().map(str::to_string),
             rect: ShellRect {
                 x: abs_x,
                 y: abs_y,
@@ -935,7 +1104,10 @@ pub(crate) fn draw_panel_ui(
     pinned_apps: &[PinnedApp],
     window_entries: &[PanelWindowEntry],
     network_state: &NetworkState,
+    audio_snapshot: &AudioSnapshot,
+    status_notifier_items: &[StatusNotifierItem],
     network_popup_open: bool,
+    audio_popup_open: bool,
     active_workspace: u8,
     total_workspaces: u8,
     clock: &str,
@@ -961,7 +1133,10 @@ pub(crate) fn draw_panel_ui(
         pinned_apps,
         window_entries,
         network_state,
+        audio_snapshot,
+        status_notifier_items,
         network_popup_open,
+        audio_popup_open,
         active_workspace,
         total_workspaces,
         clock,
@@ -999,7 +1174,7 @@ mod tests {
     use meridian_ui::Widget;
 
     use super::*;
-    use crate::{icons::IconCache, network::NetworkState};
+    use crate::{audio::AudioSnapshot, icons::IconCache, network::NetworkState};
 
     #[test]
     fn panel_chip_style_returns_correct_size() {
@@ -1050,14 +1225,49 @@ mod tests {
     }
 
     #[test]
+    fn status_notifier_label_prefers_title_then_icon_then_service() {
+        assert_eq!(
+            status_notifier_label(&StatusNotifierItem {
+                service: "org.example.Service".to_string(),
+                title: Some("Dropbox".to_string()),
+                icon_name: Some("cloud-sync".to_string()),
+                menu_path: Some("/Menu".to_string()),
+            }),
+            "DR"
+        );
+        assert_eq!(
+            status_notifier_label(&StatusNotifierItem {
+                service: "org.example.Service".to_string(),
+                title: None,
+                icon_name: Some("cloud-sync".to_string()),
+                menu_path: None,
+            }),
+            "CL"
+        );
+        assert_eq!(
+            status_notifier_label(&StatusNotifierItem {
+                service: "org.example.Service".to_string(),
+                title: None,
+                icon_name: None,
+                menu_path: None,
+            }),
+            "SE"
+        );
+    }
+
+    #[test]
     fn build_panel_widget_tree_root_has_three_children() {
         let icon_cache = IconCache::new();
         let network = NetworkState::Disconnected;
+        let audio = AudioSnapshot::unavailable();
         let tree = build_panel_widget_tree(
             1920,
             &[],
             &[],
             &network,
+            &audio,
+            &[],
+            false,
             false,
             1,
             9,
@@ -1075,6 +1285,7 @@ mod tests {
         let mut canvas = vec![0u8; (width * height * 4) as usize];
         let icon_cache = IconCache::new();
         let network = NetworkState::Disconnected;
+        let audio = AudioSnapshot::unavailable();
         let mut clicks = Vec::new();
         let state_fn = |_: &[usize]| WidgetState::Idle;
 
@@ -1085,6 +1296,9 @@ mod tests {
             &[],
             &[],
             &network,
+            &audio,
+            &[],
+            false,
             false,
             1,
             9,
@@ -1104,6 +1318,10 @@ mod tests {
         assert!(matches!(
             action_for_id_as_click("panel-screenshot"),
             Some(ClickAction::TakeScreenshot)
+        ));
+        assert!(matches!(
+            action_for_id_as_click("panel-sound"),
+            Some(ClickAction::ToggleAudioPopup)
         ));
     }
 }

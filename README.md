@@ -26,26 +26,29 @@ It is not yet ready as a daily driver for most users.
 ### Working now
 
 - Wayland compositor core
-- DRM/KMS backend
-- Shell process with panel and launcher
+- DRM/KMS backend and Winit development backend
+- Shell process with panel, launcher, popups, screenshots, notifications, and a structured settings UI
 - XWayland support
-- IPC foundations between compositor and shell
-- Screenshot/portal groundwork
+- IPC between compositor and shell, including window snapshots, thumbnails, workspace state, launch, reload, and quit
+- Boot/login chain with `meridian-login`, PAM/logind handover, YubiKey/PIN login, and password fallback
+- FileChooser portal backend via `meridian-portal`
 - Ongoing NVIDIA timing and mode-selection stability work
 
 ### Experimental / in progress
 
 - Multi-monitor polish and hotplug edge cases
-- Launcher UX evolution (favorites, categories, richer layout)
-- Icon pipeline and visual refinement
-- Settings UI
-- Power/session controls
+- Shell idle wakeup/commit optimization, with timer and popup redraw reductions landed
+- Settings UI completion beyond the current Desktop/System skeleton
+- Portal screenshot/screencast support
+- Lock screen frontend
 - Gaming-oriented UX features
 
 ## Features Overview
 
 - Rust workspace with separated compositor, shell, config, IPC, and WM logic
 - Wayland-first architecture with a dedicated shell client
+- Dedicated DRM login process with PAM/logind session lifetime management
+- Dedicated portal backend process for D-Bus portal integration
 - Focus on correctness in render/input paths and explicit testing discipline
 - Practical diagnostics for DRM/runtime issues during development
 
@@ -71,11 +74,12 @@ compass is pixel-identical from the splash through the login screen.
 
 *bootsplash: rendered before any user-space services are up, lives until meridian-login is ready to take master.*
 
-The login flow ([`docs/MERIDIAN_LOGIN.md`](docs/MERIDIAN_LOGIN.md)) authenticates
-the user against PAM (`pam_unix`), opens a logind session via `pam_systemd`
-(class=user, type=wayland), then spawns the compositor as that user with
-the full supplementary-group set (`video`, `render`, `input`, ...) and a
-clean Wayland environment. The PAM handle is held for the lifetime of the
+The login flow ([`docs/MERIDIAN_LOGIN.md`](docs/MERIDIAN_LOGIN.md)) supports
+YubiKey/PIN authentication and falls back to username/password when no
+registered key is ready. It authenticates through PAM, opens a logind session
+via `pam_systemd`, then spawns the compositor as that user with the full
+supplementary-group set (`video`, `render`, `input`, ...) and a clean
+Wayland environment. The PAM handle is held for the lifetime of the
 compositor; on exit it is dropped, which closes the logind session.
 
 ## Screenshots
@@ -124,9 +128,10 @@ git diff --check
 
 - Foundation and stability hardening
 - Shell UI quality and consistency
-- Launcher improvements
-- Panel/taskbar and pinned-app workflows
-- Settings, power, and session management
+- Settings UI completion: fill the Desktop/System skeleton with real controls
+- Portal screenshot/screencast support
+- Multi-monitor and hotplug validation
+- Shell idle performance and popup redraw profiling
 - Gaming-friendly features and performance polish
 
 ## Contributing

@@ -181,7 +181,12 @@ Begründung:
 ### Audit-Fazit
 - Phase 3 ist **fortgesetzt**, aber nicht abgeschlossen.
 - `focus_window_by_id`-Lookup auf `current_workspace_index()` ist abgeschlossen.
-- Nächster Schwerpunkt liegt auf Phase 4e (Panel per-output Workspace-State), nachdem 4d1/4d2/4d3 aktiviert sind.
+- Phase 4d1/4d2/4d3 und Phase 4e sind inzwischen aktiv: output-aware
+  IPC laeuft parallel zu legacy Events, die Shell verarbeitet den State und
+  das Panel nutzt ihn fuer den Active-Marker mit Legacy-Fallback.
+- Offene Grenze bleibt nicht Phase 4e selbst, sondern die spaetere
+  Aufraeumarbeit: globale Occupied-Semantik, `WorkspaceManager.active` als
+  Shadow und vollstaendige per-output Layout-/Render-Policy.
 
 ## Phase-4 Abschluss-Audit (Status)
 - focused_output Pflege: aktiv (Pointer/Click/Keyboard-Fokus).
@@ -202,14 +207,15 @@ Begründung:
 - output-aware Snapshot hängt an gültiger `OutputRegistry`-Datenlage.
 - `WorkspaceManager.active` ist weiterhin Shadow und noch nicht vollständig obsolet.
 
-## Phase 4 Keybinding-Semantik (Spezifikation vor Implementierung)
+## Phase 4 Keybinding-Semantik (aktueller Status)
 
 ### 1) `Super+1..9`
 - Wirkt auf `focused_output`.
 - Setzt `active_workspace_by_output[focused_output] = target_workspace`.
 - `WorkspaceManager.active` wird in Phase 4 als **Kompatibilitäts-Shadow** weitergeführt:
   - bei erfolgreichem Switch auf focused output wird `WorkspaceManager.active` ebenfalls auf das Ziel gesetzt.
-  - Begründung: bestehende globale Pfade (IPC/Panel/Render-Teilpfade) bleiben bis Phase 4d/4e funktional.
+  - Begründung: einige globale Pfade und legacy IPC bleiben waehrend der
+    Migration absichtlich kompatibel.
 
 ### 2) `Super+Shift+1..9`
 - Verschiebt fokussiertes Fenster in `target_workspace` (Workspace-Zuordnung).
@@ -377,8 +383,14 @@ Empfohlen: **Option C**.
   - `OutputChanged`
   - `OutputWorkspaceSnapshot`
 - Übergang:
-  - `OutputWorkspaceSnapshot` reicht zunächst als robuste Quelle der Wahrheit,
-  - dedizierte Add/Remove/Changed-Events sind Optimierung/Präzisierung.
+  - `OutputWorkspaceSnapshot` reicht zunächst als robuste Quelle der Wahrheit.
+  - Der Snapshot trägt neben `focused/primary/active_workspace` auch
+    `x/y/width/height`, `scale_millis`, `transform` und `refresh_millihz`.
+    Die Shell verwendet diese Daten für den read-only Display-Settings-Reiter.
+  - Primary-Output ist als erster schreibender Display-Settings-Slice aktiv:
+    Shell schreibt `outputs.<name>.primary` in `config.toml` und triggert
+    `ReloadConfig`; weitere Output-Eigenschaften bleiben unverändert.
+  - Dedizierte Add/Remove/Changed-Events sind Optimierung/Präzisierung.
 
 ### 6) Implementierungsphasen (Hotplug)
 1. **H1**: `OutputRegistry` remove/reconfigure API + Unit-Tests. ✅ vorbereitet

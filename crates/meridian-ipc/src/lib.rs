@@ -15,6 +15,10 @@ pub struct WindowSnapshotEntry {
     pub app_id: Option<String>,
 }
 
+fn default_output_scale_millis() -> u32 {
+    1000
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutputWorkspaceState {
     pub output_id: u32,
@@ -22,6 +26,39 @@ pub struct OutputWorkspaceState {
     pub active_workspace: usize,
     pub primary: bool,
     pub focused: bool,
+    #[serde(default)]
+    pub x: i32,
+    #[serde(default)]
+    pub y: i32,
+    #[serde(default)]
+    pub width: i32,
+    #[serde(default)]
+    pub height: i32,
+    #[serde(default = "default_output_scale_millis")]
+    pub scale_millis: u32,
+    #[serde(default)]
+    pub transform: Option<String>,
+    #[serde(default)]
+    pub refresh_millihz: Option<i32>,
+}
+
+impl Default for OutputWorkspaceState {
+    fn default() -> Self {
+        Self {
+            output_id: 0,
+            output_name: None,
+            active_workspace: 1,
+            primary: false,
+            focused: false,
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            scale_millis: default_output_scale_millis(),
+            transform: None,
+            refresh_millihz: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -338,6 +375,13 @@ mod tests {
                     active_workspace: 3,
                     primary: true,
                     focused: true,
+                    x: 0,
+                    y: 0,
+                    width: 2880,
+                    height: 1800,
+                    scale_millis: 1500,
+                    transform: Some("Normal".to_string()),
+                    refresh_millihz: Some(60_000),
                 },
                 OutputWorkspaceState {
                     output_id: 99,
@@ -345,6 +389,13 @@ mod tests {
                     active_workspace: 1,
                     primary: false,
                     focused: false,
+                    x: 2880,
+                    y: 0,
+                    width: 1920,
+                    height: 1080,
+                    scale_millis: 1000,
+                    transform: Some("Normal".to_string()),
+                    refresh_millihz: Some(144_000),
                 },
             ],
         };
@@ -385,11 +436,29 @@ mod tests {
                 active_workspace: 0,
                 primary: true,
                 focused: false,
+                ..Default::default()
             }],
         };
         let bytes = encode_event(&event).expect("encode");
         let decoded = decode_event(std::str::from_utf8(&bytes).expect("utf8")).expect("decode");
         assert_eq!(decoded, event);
+    }
+
+    #[test]
+    fn output_workspace_snapshot_decodes_legacy_output_without_display_details() {
+        let decoded = decode_event(
+            r#"{"type":"output-workspace-snapshot","focused_output_id":1,"outputs":[{"output_id":1,"output_name":"eDP-1","active_workspace":2,"primary":true,"focused":true}]}"#,
+        )
+        .expect("decode legacy output snapshot");
+
+        let ShellEvent::OutputWorkspaceSnapshot { outputs, .. } = decoded else {
+            panic!("expected output workspace snapshot");
+        };
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].width, 0);
+        assert_eq!(outputs[0].height, 0);
+        assert_eq!(outputs[0].scale_millis, 1000);
+        assert_eq!(outputs[0].refresh_millihz, None);
     }
 
     #[test]

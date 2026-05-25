@@ -34,7 +34,7 @@ use tiny_skia::{Color, FillRule, Paint, PathBuilder, PixmapMut, Stroke, Transfor
 use tracing::{info, warn};
 use zeroize::Zeroizing;
 
-use auth::{start_auth_session, AuthDriver, AuthResult};
+use auth::{start_auth_session, AuthBackend, AuthDriver, AuthResult};
 use input::{
     open_keyboards, open_pointers, poll_keyboards, poll_pointers, KeyAction, Keyboard,
     KeyboardStatus, PointerAction, PointerState,
@@ -157,8 +157,8 @@ enum InputPhase {
 
 #[derive(Default, Clone, Copy, PartialEq, Debug)]
 enum Field {
-    Username,
     #[default]
+    Username,
     Password,
 }
 
@@ -210,22 +210,46 @@ impl LoginUiState {
         self.pending_power = None;
         match action {
             KeyAction::Insert(s) => {
-                let target: &mut String = &mut self.password;
+                let target: &mut String = if self.smartcard_login_ready()
+                    || self.focus == Field::Password
+                {
+                    &mut self.password
+                } else {
+                    &mut self.username
+                };
                 if target.chars().count() + s.chars().count() <= MAX_FIELD_LEN {
                     target.push_str(&s);
                 }
                 ControlFlow::Continue
             }
             KeyAction::Backspace => {
-                self.password.pop();
+                if self.smartcard_login_ready() || self.focus == Field::Password {
+                    self.password.pop();
+                } else {
+                    self.username.pop();
+                }
                 ControlFlow::Continue
             }
             KeyAction::CycleFocus => {
-                self.focus = Field::Password;
+                self.focus = if self.smartcard_login_ready() {
+                    Field::Password
+                } else {
+                    match self.focus {
+                        Field::Username => Field::Password,
+                        Field::Password => Field::Username,
+                    }
+                };
                 ControlFlow::Continue
             }
             KeyAction::CycleFocusBack => {
-                self.focus = Field::Password;
+                self.focus = if self.smartcard_login_ready() {
+                    Field::Password
+                } else {
+                    match self.focus {
+                        Field::Username => Field::Password,
+                        Field::Password => Field::Username,
+                    }
+                };
                 ControlFlow::Continue
             }
             KeyAction::Submit => ControlFlow::Submit,
@@ -243,8 +267,13 @@ impl LoginUiState {
             return;
         };
         self.username = username.clone();
-        let pin = Zeroizing::new(self.password.to_string());
-        let (rx, driver) = start_auth_session(username, pin);
+        let backend = if self.smartcard_login_ready() {
+            AuthBackend::Smartcard
+        } else {
+            AuthBackend::Password
+        };
+        let secret = Zeroizing::new(self.password.to_string());
+        let (rx, driver) = start_auth_session(username, secret, backend);
         self.auth_rx = Some(rx);
         self.auth_driver = Some(driver);
         self.phase = InputPhase::Authenticating;
@@ -351,20 +380,20 @@ impl LoginUiState {
                 "YubiKey PIN eingeben - Touch nach Enter".to_string()
             }
             InputPhase::Editing if self.security_key_present => {
-                "YubiKey nicht registriert".to_string()
+                "YubiKey nicht registriert - Passwort-Login möglich".to_string()
             }
             InputPhase::Editing if self.keyboard_status.caps_lock => {
                 format!("Caps Lock aktiv - Layout {layout}")
             }
-            InputPhase::Editing => "YubiKey einstecken".to_string(),
-            InputPhase::Authenticating if self.security_key_present => {
+            InputPhase::Editing => "Benutzername und Passwort eingeben".to_string(),
+            InputPhase::Authenticating if self.smartcard_login_ready() => {
                 "YubiKey berühren …".to_string()
             }
             InputPhase::Authenticating => "Anmelden …".to_string(),
             InputPhase::Failed(_) if self.smartcard_login_ready() => {
                 "PIN oder YubiKey abgelehnt".to_string()
             }
-            InputPhase::Failed(_) => "YubiKey nicht bereit".to_string(),
+            InputPhase::Failed(_) => "Anmeldung fehlgeschlagen".to_string(),
         }
     }
 
@@ -376,11 +405,17 @@ impl LoginUiState {
         if self.smartcard_login_ready() {
             self.smartcard_user.clone()
         } else {
-            None
+            let username = self.username.trim();
+            if username.is_empty() {
+                None
+            } else {
+                Some(username.to_string())
+            }
         }
     }
 
     fn update_security_key_state(&mut self) -> bool {
+        let was_smartcard_ready = self.smartcard_login_ready();
         let present = yubikey_present();
         let smartcard_user = if present {
             smartcard_user_from_authfile(Path::new(SMARTCARD_AUTHFILE))
@@ -390,9 +425,25 @@ impl LoginUiState {
         let changed = self.security_key_present != present || self.smartcard_user != smartcard_user;
         self.security_key_present = present;
         self.smartcard_user = smartcard_user;
+        let is_smartcard_ready = self.smartcard_login_ready();
+        if was_smartcard_ready != is_smartcard_ready {
+            self.password.clear();
+        }
         if let Some(user) = self.smartcard_user.clone() {
             self.username = user;
             self.focus = Field::Password;
+        } else {
+            if self.username.trim().is_empty() {
+                self.focus = Field::Username;
+            }
+        }
+        if changed {
+            info!(
+                present = self.security_key_present,
+                smartcard_ready = is_smartcard_ready,
+                smartcard_user = self.smartcard_user.as_deref().unwrap_or("-"),
+                "security key state changed"
+            );
         }
         changed
     }
@@ -400,6 +451,7 @@ impl LoginUiState {
 
 fn yubikey_present() -> bool {
     yubikey_present_in_sysfs(Path::new("/sys/bus/usb/devices"))
+        || yubikey_present_in_hidraw_sysfs(Path::new("/sys/class/hidraw"))
 }
 
 fn yubikey_present_in_sysfs(root: &Path) -> bool {
@@ -407,11 +459,58 @@ fn yubikey_present_in_sysfs(root: &Path) -> bool {
         return false;
     };
     entries.flatten().any(|entry| {
-        let vendor_path = entry.path().join("idVendor");
-        fs::read_to_string(vendor_path)
+        let path = entry.path();
+        fs::read_to_string(path.join("idVendor"))
             .ok()
-            .is_some_and(|vendor| vendor.trim().eq_ignore_ascii_case(YUBICO_USB_VENDOR_ID))
+            .is_some_and(|vendor| is_yubico_vendor_id(&vendor))
+            || fs::read_to_string(path.join("manufacturer"))
+                .ok()
+                .is_some_and(|name| is_yubikey_name(&name))
+            || fs::read_to_string(path.join("product"))
+                .ok()
+                .is_some_and(|name| is_yubikey_name(&name))
     })
+}
+
+fn yubikey_present_in_hidraw_sysfs(root: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(root) else {
+        return false;
+    };
+    entries.flatten().any(|entry| {
+        let uevent_path = entry.path().join("device/uevent");
+        fs::read_to_string(uevent_path)
+            .ok()
+            .is_some_and(|uevent| {
+                hid_id_vendor_from_uevent(&uevent).is_some_and(is_yubico_vendor_id)
+                    || hid_name_from_uevent(&uevent).is_some_and(is_yubikey_name)
+            })
+    })
+}
+
+fn hid_id_vendor_from_uevent(uevent: &str) -> Option<&str> {
+    uevent.lines().find_map(|line| {
+        let hid_id = line.strip_prefix("HID_ID=")?;
+        hid_id.split(':').nth(1)
+    })
+}
+
+fn hid_name_from_uevent(uevent: &str) -> Option<&str> {
+    uevent
+        .lines()
+        .find_map(|line| line.strip_prefix("HID_NAME="))
+}
+
+fn is_yubico_vendor_id(vendor: &str) -> bool {
+    let vendor = vendor.trim();
+    vendor.eq_ignore_ascii_case(YUBICO_USB_VENDOR_ID)
+        || vendor
+            .trim_start_matches('0')
+            .eq_ignore_ascii_case(YUBICO_USB_VENDOR_ID)
+}
+
+fn is_yubikey_name(name: &str) -> bool {
+    let name = name.trim();
+    name.contains("Yubico") || name.contains("YubiKey")
 }
 
 fn smartcard_user_from_authfile(path: &Path) -> Option<String> {
@@ -958,7 +1057,14 @@ fn run_animation(
                 }
                 match action {
                     PointerAction::LeftPress { x, y } => {
-                        match click_target_at(w as f32, h as f32, x, y, shake_dx, true) {
+                        match click_target_at(
+                            w as f32,
+                            h as f32,
+                            x,
+                            y,
+                            shake_dx,
+                            ui_state.smartcard_login_ready(),
+                        ) {
                             Some(ClickTarget::Field(field)) => {
                                 ui_state.focus = field;
                                 ui_state.pending_power = None;
@@ -1437,64 +1543,141 @@ fn draw_login_ui(
     let box_outline = metro_border(alpha);
     let smartcard_ready = ui.smartcard_login_ready();
 
-    painter.render_text_centered(
-        pm,
-        TextStyle::SansBold(20.0),
-        "Smartcard",
-        cx,
-        inner_top + TITLE_OFFSET_Y,
-        title_color,
-    );
-
     let text_size = 22.0;
 
-    draw_yubikey_icon(
-        pm,
-        cx,
-        inner_top + SMARTCARD_ICON_TOP,
-        alpha,
-        ui.security_key_present,
-    );
+    if smartcard_ready {
+        painter.render_text_centered(
+            pm,
+            TextStyle::SansBold(20.0),
+            "Smartcard",
+            cx,
+            inner_top + TITLE_OFFSET_Y,
+            title_color,
+        );
 
-    painter.render_text_centered(
-        pm,
-        TextStyle::SansBold(13.0),
-        if smartcard_ready {
-            "PIN"
-        } else if ui.security_key_present {
-            "nicht registriert"
-        } else {
-            "YubiKey fehlt"
-        },
-        cx,
-        inner_top + SMARTCARD_PIN_LABEL_OFFSET_Y,
-        label_color,
-    );
-    let pin_rect = smartcard_pin_rect(w, h, shake_dx);
-    draw_input_box(
-        pm,
-        pin_rect.0,
-        pin_rect.1,
-        pin_rect.2,
-        pin_rect.3,
-        box_fill,
-        box_outline,
-        true,
-        alpha,
-    );
-    let pwd_text_x = pin_rect.0 + INPUT_TEXT_PAD_X;
-    let pwd_baseline = pin_rect.1 + INPUT_BOX_HEIGHT - INPUT_BASELINE_PAD_BOTTOM;
-    let dots = "•".repeat(ui.password.chars().count());
-    let after_pwd = painter.render_text_left(
-        pm,
-        TextStyle::SansBold(text_size),
-        &dots,
-        pwd_text_x,
-        pwd_baseline,
-        text_color,
-    );
-    if caret_on {
-        draw_caret(pm, after_pwd, pwd_baseline, text_size, caret_color);
+        draw_yubikey_icon(
+            pm,
+            cx,
+            inner_top + SMARTCARD_ICON_TOP,
+            alpha,
+            ui.security_key_present,
+        );
+
+        painter.render_text_centered(
+            pm,
+            TextStyle::SansBold(13.0),
+            "PIN",
+            cx,
+            inner_top + SMARTCARD_PIN_LABEL_OFFSET_Y,
+            label_color,
+        );
+        let pin_rect = smartcard_pin_rect(w, h, shake_dx);
+        draw_input_box(
+            pm,
+            pin_rect.0,
+            pin_rect.1,
+            pin_rect.2,
+            pin_rect.3,
+            box_fill,
+            box_outline,
+            true,
+            alpha,
+        );
+        let pwd_text_x = pin_rect.0 + INPUT_TEXT_PAD_X;
+        let pwd_baseline = pin_rect.1 + INPUT_BOX_HEIGHT - INPUT_BASELINE_PAD_BOTTOM;
+        let dots = "•".repeat(ui.password.chars().count());
+        let after_pwd = painter.render_text_left(
+            pm,
+            TextStyle::SansBold(text_size),
+            &dots,
+            pwd_text_x,
+            pwd_baseline,
+            text_color,
+        );
+        if caret_on {
+            draw_caret(pm, after_pwd, pwd_baseline, text_size, caret_color);
+        }
+    } else {
+        let inner_left = card_left + CARD_PAD;
+        let inner_w = cw - 2.0 * CARD_PAD;
+        let user_box_top = inner_top + USER_BOX_OFFSET_Y;
+        let pwd_box_top = inner_top + PASSWORD_BOX_OFFSET_Y;
+
+        painter.render_text_centered(
+            pm,
+            TextStyle::SansBold(20.0),
+            "Meridian",
+            cx,
+            inner_top + TITLE_OFFSET_Y,
+            title_color,
+        );
+
+        painter.render_text_left(
+            pm,
+            TextStyle::SansBold(13.0),
+            "Benutzer",
+            inner_left,
+            user_box_top - 12.0,
+            label_color,
+        );
+        draw_input_box(
+            pm,
+            inner_left,
+            user_box_top,
+            inner_w,
+            INPUT_BOX_HEIGHT,
+            box_fill,
+            box_outline,
+            ui.focus == Field::Username,
+            alpha,
+        );
+        let user_text_x = inner_left + INPUT_TEXT_PAD_X;
+        let user_baseline = user_box_top + INPUT_BOX_HEIGHT - INPUT_BASELINE_PAD_BOTTOM;
+        let after_user = painter.render_text_left(
+            pm,
+            TextStyle::SansBold(text_size),
+            &ui.username,
+            user_text_x,
+            user_baseline,
+            text_color,
+        );
+        if caret_on && ui.focus == Field::Username {
+            draw_caret(pm, after_user, user_baseline, text_size, caret_color);
+        }
+
+        painter.render_text_left(
+            pm,
+            TextStyle::SansBold(13.0),
+            "Passwort",
+            inner_left,
+            pwd_box_top - 12.0,
+            label_color,
+        );
+        draw_input_box(
+            pm,
+            inner_left,
+            pwd_box_top,
+            inner_w,
+            INPUT_BOX_HEIGHT,
+            box_fill,
+            box_outline,
+            ui.focus == Field::Password,
+            alpha,
+        );
+        let pwd_text_x = inner_left + INPUT_TEXT_PAD_X;
+        let pwd_baseline = pwd_box_top + INPUT_BOX_HEIGHT - INPUT_BASELINE_PAD_BOTTOM;
+        let dots = "•".repeat(ui.password.chars().count());
+        let after_pwd = painter.render_text_left(
+            pm,
+            TextStyle::SansBold(text_size),
+            &dots,
+            pwd_text_x,
+            pwd_baseline,
+            text_color,
+        );
+        if caret_on && ui.focus == Field::Password {
+            draw_caret(pm, after_pwd, pwd_baseline, text_size, caret_color);
+        }
     }
 
     // Bottom hint — text depends on phase (Editing vs Failed)
@@ -1893,6 +2076,15 @@ mod tests {
         CompassPainter::new(Fonts::quompacc()).unwrap()
     }
 
+    fn smartcard_ready_state() -> LoginUiState {
+        LoginUiState {
+            security_key_present: true,
+            smartcard_user: Some("eduard".to_string()),
+            focus: Field::Password,
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn anim_frame_at_t0_matches_settle_state() {
         let painter = p();
@@ -1948,6 +2140,67 @@ mod tests {
         fs::write(dev.join("idVendor"), "1050\n").unwrap();
 
         assert!(yubikey_present_in_sysfs(&root));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn yubikey_detector_accepts_zero_padded_hid_vendor_id() {
+        assert!(is_yubico_vendor_id("00001050"));
+        assert!(is_yubico_vendor_id("1050"));
+        assert!(!is_yubico_vendor_id("0627"));
+    }
+
+    #[test]
+    fn yubikey_detector_matches_yubikey_product_name() {
+        let root = std::env::temp_dir().join(format!(
+            "meridian-login-yubikey-name-test-{}",
+            std::process::id()
+        ));
+        let dev = root.join("1-9");
+        fs::create_dir_all(&dev).unwrap();
+        fs::write(dev.join("idVendor"), "1234\n").unwrap();
+        fs::write(dev.join("product"), "Yubico YubiKey OTP+FIDO+CCID\n").unwrap();
+
+        assert!(yubikey_present_in_sysfs(&root));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn hidraw_detector_matches_yubico_hid_id() {
+        let root = std::env::temp_dir().join(format!(
+            "meridian-login-hidraw-yubikey-test-{}",
+            std::process::id()
+        ));
+        let dev = root.join("hidraw0/device");
+        fs::create_dir_all(&dev).unwrap();
+        fs::write(
+            dev.join("uevent"),
+            "HID_ID=0003:00001050:00000407\nHID_NAME=Yubico YubiKey\n",
+        )
+        .unwrap();
+
+        assert!(yubikey_present_in_hidraw_sysfs(&root));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn hidraw_detector_matches_yubikey_hid_name() {
+        let root = std::env::temp_dir().join(format!(
+            "meridian-login-hidraw-yubikey-name-test-{}",
+            std::process::id()
+        ));
+        let dev = root.join("hidraw0/device");
+        fs::create_dir_all(&dev).unwrap();
+        fs::write(
+            dev.join("uevent"),
+            "HID_ID=0003:00001234:00005678\nHID_NAME=Yubico Security Key\n",
+        )
+        .unwrap();
+
+        assert!(yubikey_present_in_hidraw_sysfs(&root));
 
         let _ = fs::remove_dir_all(&root);
     }
@@ -2040,6 +2293,45 @@ mod tests {
     }
 
     #[test]
+    fn manual_mode_focuses_username_and_password_fields() {
+        let (card_left, card_top, cw, _) = card_rect(1920.0, 1080.0);
+        let inner_left = card_left + CARD_PAD;
+        let inner_top = card_top + CARD_PAD;
+        let inner_w = cw - 2.0 * CARD_PAD;
+        let username_center = (
+            inner_left + inner_w / 2.0,
+            inner_top + USER_BOX_OFFSET_Y + INPUT_BOX_HEIGHT / 2.0,
+        );
+        let password_center = (
+            inner_left + inner_w / 2.0,
+            inner_top + PASSWORD_BOX_OFFSET_Y + INPUT_BOX_HEIGHT / 2.0,
+        );
+
+        assert_eq!(
+            click_target_at(
+                1920.0,
+                1080.0,
+                username_center.0,
+                username_center.1,
+                0.0,
+                false,
+            ),
+            Some(ClickTarget::Field(Field::Username))
+        );
+        assert_eq!(
+            click_target_at(
+                1920.0,
+                1080.0,
+                password_center.0,
+                password_center.1,
+                0.0,
+                false,
+            ),
+            Some(ClickTarget::Field(Field::Password))
+        );
+    }
+
+    #[test]
     fn power_action_requires_second_matching_click() {
         let mut s = LoginUiState::default();
         assert_eq!(s.confirm_power_action(PowerAction::Reboot), None);
@@ -2076,7 +2368,7 @@ mod tests {
 
     #[test]
     fn insert_appends_to_pin_field() {
-        let mut s = LoginUiState::default();
+        let mut s = smartcard_ready_state();
         assert_eq!(s.focus, Field::Password);
         assert_eq!(
             s.apply(KeyAction::Insert("a".into())),
@@ -2092,7 +2384,7 @@ mod tests {
 
     #[test]
     fn backspace_removes_last_char_from_pin_field() {
-        let mut s = LoginUiState::default();
+        let mut s = smartcard_ready_state();
         s.apply(KeyAction::Insert("abc".into()));
         s.apply(KeyAction::Backspace);
         assert_eq!(s.password.as_str(), "ab");
@@ -2104,11 +2396,38 @@ mod tests {
 
     #[test]
     fn cycle_focus_keeps_pin_field() {
+        let mut s = smartcard_ready_state();
+        s.apply(KeyAction::CycleFocus);
+        assert_eq!(s.focus, Field::Password);
+        s.apply(KeyAction::CycleFocus);
+        assert_eq!(s.focus, Field::Password);
+    }
+
+    #[test]
+    fn manual_mode_edits_username_and_password() {
         let mut s = LoginUiState::default();
+        assert_eq!(s.focus, Field::Username);
+        s.apply(KeyAction::Insert("eduard".into()));
+        assert_eq!(s.username, "eduard");
+        assert_eq!(s.password.as_str(), "");
+
         s.apply(KeyAction::CycleFocus);
         assert_eq!(s.focus, Field::Password);
+        s.apply(KeyAction::Insert("secret".into()));
+        s.apply(KeyAction::Backspace);
+
+        assert_eq!(s.username, "eduard");
+        assert_eq!(s.password.as_str(), "secre");
+    }
+
+    #[test]
+    fn manual_mode_cycles_between_username_and_password() {
+        let mut s = LoginUiState::default();
+        assert_eq!(s.focus, Field::Username);
         s.apply(KeyAction::CycleFocus);
         assert_eq!(s.focus, Field::Password);
+        s.apply(KeyAction::CycleFocusBack);
+        assert_eq!(s.focus, Field::Username);
     }
 
     #[test]
@@ -2164,11 +2483,11 @@ mod tests {
     #[test]
     fn hint_changes_with_phase() {
         let mut s = LoginUiState::default();
-        assert_eq!(s.hint(), "YubiKey einstecken");
+        assert_eq!(s.hint(), "Benutzername und Passwort eingeben");
         s.phase = InputPhase::Authenticating;
         assert_eq!(s.hint(), "Anmelden …");
         s.phase = InputPhase::Failed(Instant::now());
-        assert_eq!(s.hint(), "YubiKey nicht bereit");
+        assert_eq!(s.hint(), "Anmeldung fehlgeschlagen");
     }
 
     #[test]
@@ -2186,23 +2505,30 @@ mod tests {
     #[test]
     fn hint_mentions_yubikey_when_present() {
         let s = LoginUiState {
-            security_key_present: true,
-            smartcard_user: Some("eduard".to_string()),
             keyboard_status: KeyboardStatus {
                 layout: "de".to_string(),
                 caps_lock: false,
             },
-            ..Default::default()
+            ..smartcard_ready_state()
         };
         assert_eq!(s.hint(), "YubiKey PIN eingeben - Touch nach Enter");
     }
 
     #[test]
-    fn hint_prompts_touch_while_authenticating_with_yubikey() {
-        let mut s = LoginUiState {
+    fn hint_allows_password_login_with_unregistered_yubikey() {
+        let s = LoginUiState {
             security_key_present: true,
             ..Default::default()
         };
+        assert_eq!(
+            s.hint(),
+            "YubiKey nicht registriert - Passwort-Login möglich"
+        );
+    }
+
+    #[test]
+    fn hint_prompts_touch_while_authenticating_with_yubikey() {
+        let mut s = smartcard_ready_state();
         s.phase = InputPhase::Authenticating;
         assert_eq!(s.hint(), "YubiKey berühren …");
     }
@@ -2222,11 +2548,29 @@ mod tests {
     }
 
     #[test]
+    fn auth_username_uses_manual_username_without_yubikey() {
+        let s = LoginUiState {
+            username: " eduard ".into(),
+            ..Default::default()
+        };
+        assert_eq!(s.auth_username(), Some("eduard".to_string()));
+    }
+
+    #[test]
+    fn auth_username_uses_smartcard_mapping_when_ready() {
+        let s = LoginUiState {
+            username: "typed-user".into(),
+            ..smartcard_ready_state()
+        };
+        assert_eq!(s.auth_username(), Some("eduard".to_string()));
+    }
+
+    #[test]
     fn insert_respects_max_field_len() {
         let mut s = LoginUiState::default();
         for _ in 0..MAX_FIELD_LEN + 16 {
             s.apply(KeyAction::Insert("a".into()));
         }
-        assert_eq!(s.password.chars().count(), MAX_FIELD_LEN);
+        assert_eq!(s.username.chars().count(), MAX_FIELD_LEN);
     }
 }

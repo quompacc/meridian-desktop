@@ -6,7 +6,7 @@ use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity};
 use tracing::{debug, info};
 use wayland_client::QueueHandle;
 
-use crate::{launcher, TextRenderer};
+use crate::{launcher, status_notifier, TextRenderer};
 
 use super::{time, types::WindowInfo, ClickAction, CommitReason, MeridianShell, RepaintReason};
 
@@ -20,6 +20,22 @@ fn normalize_workspace_1_based_u8(workspace: u8) -> u8 {
 
 fn apply_workspace_changed(active_workspace: &mut u8, next_workspace_raw: u8) {
     *active_workspace = normalize_workspace_1_based_u8(next_workspace_raw);
+}
+
+fn panel_global_activation_point(
+    pointer_position: (f64, f64),
+    output_height: Option<i32>,
+) -> status_notifier::ActivationPoint {
+    let x = pointer_position.0.round() as i32;
+    let local_y = pointer_position.1.round() as i32;
+    let y = output_height
+        .map(|height| {
+            height
+                .saturating_sub(crate::PANEL_HEIGHT as i32)
+                .saturating_add(local_y)
+        })
+        .unwrap_or(local_y);
+    status_notifier::ActivationPoint { x, y }
 }
 
 fn normalize_workspace_1_based(workspace: usize) -> usize {
@@ -131,6 +147,7 @@ fn apply_output_workspace_changed_state(
             active_workspace: workspace,
             primary: false,
             focused,
+            ..Default::default()
         });
     }
 
@@ -352,8 +369,28 @@ fn pinned_app_window_status(
 }
 
 impl MeridianShell {
-    pub(crate) fn tick_commit_stats(&mut self) {
-        self.maybe_log_commit_stats(Instant::now());
+    pub(crate) fn tick_timer_interval(&self) -> Duration {
+        if self.needs_fast_tick() {
+            Duration::from_millis(250)
+        } else {
+            Duration::from_secs(1)
+        }
+    }
+
+    pub(crate) fn notification_timer_interval(&self) -> Duration {
+        if !self.notifications.is_empty() || self.wallpaper_picker_rx.is_some() {
+            Duration::from_millis(250)
+        } else {
+            Duration::from_secs(1)
+        }
+    }
+
+    fn needs_fast_tick(&self) -> bool {
+        self.armed_power.is_some()
+            || self.thumbnail_dirty && self.thumbnail_popup_open
+            || !self.thumbnail_popup_open
+                && self.thumbnail_hover_app_idx.is_some()
+                && self.thumbnail_hover_since.is_some()
     }
 
     pub(crate) fn panel_active_workspace(&self) -> u8 {
@@ -700,6 +737,9 @@ impl MeridianShell {
         if !open_before && self.network_popup_open {
             self.close_network_popup(CommitReason::Input);
         }
+        if !open_before && self.audio_popup_open {
+            self.close_audio_popup(CommitReason::Input);
+        }
         self.launcher_state.toggle();
         let open_after = self.launcher_state.open;
         if self.launcher_state.open {
@@ -741,6 +781,30 @@ impl MeridianShell {
             self.launcher_dirty,
             self.keyboard_focus
         );
+    }
+
+    fn open_sound_settings_from_tray(&mut self, reason: CommitReason) {
+        if self.calendar_popup_open {
+            self.close_calendar_popup(reason);
+        }
+        if self.workspace_popup_open {
+            self.close_workspace_popup(reason);
+        }
+        if self.network_popup_open {
+            self.close_network_popup(reason);
+        }
+        if self.audio_popup_open {
+            self.close_audio_popup(reason);
+        }
+        if !self.launcher_state.open {
+            self.toggle_launcher();
+        }
+        self.launcher_settings_open = true;
+        self.app_view_open = false;
+        self.settings_category = crate::settings_view::SettingsCategory::Sound;
+        self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+        self.launcher_dirty = true;
+        self.panel_dirty = true;
     }
 
     pub(super) fn toggle_calendar_popup(&mut self, reason: CommitReason) {
@@ -824,6 +888,7 @@ impl MeridianShell {
         }
 
         self.workspace_popup_open = true;
+        self.workspace_hover_idx = None;
         self.workspace_layer
             .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
         self.workspace_layer
@@ -851,6 +916,7 @@ impl MeridianShell {
             return false;
         }
         self.workspace_popup_open = false;
+        self.workspace_hover_idx = None;
         self.workspace_layer
             .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
         self.unmap_workspace_popup(reason);
@@ -880,6 +946,9 @@ impl MeridianShell {
         }
         if self.workspace_popup_open {
             self.close_workspace_popup(reason);
+        }
+        if self.audio_popup_open {
+            self.close_audio_popup(reason);
         }
 
         self.network_popup_open = true;
@@ -920,6 +989,73 @@ impl MeridianShell {
         tracing::debug!(
             "close_network_popup: open_after={} configured={} keyboard_focus={:?}",
             self.network_popup_open,
+            self.network_configured,
+            self.keyboard_focus
+        );
+        true
+    }
+
+    pub(super) fn toggle_audio_popup(&mut self, reason: CommitReason) {
+        if self.audio_popup_open {
+            self.close_audio_popup(reason);
+            return;
+        }
+
+        if self.launcher_state.open {
+            self.launcher_state.close();
+            self.launcher_layer
+                .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+            self.unmap_launcher(reason);
+        }
+        if self.calendar_popup_open {
+            self.close_calendar_popup(reason);
+        }
+        if self.workspace_popup_open {
+            self.close_workspace_popup(reason);
+        }
+        if self.network_popup_open {
+            self.close_network_popup(reason);
+        }
+
+        self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+        self.audio_popup_open = true;
+        self.network_layer
+            .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
+        self.network_layer.set_margin(
+            0,
+            crate::AUDIO_POPUP_RIGHT_MARGIN,
+            crate::SHELL_POPUP_BOTTOM_MARGIN,
+            0,
+        );
+        self.network_layer.set_exclusive_zone(0);
+        self.network_layer
+            .set_size(crate::AUDIO_POPUP_WIDTH, crate::AUDIO_POPUP_HEIGHT);
+        self.network_layer
+            .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+        self.audio_width = crate::AUDIO_POPUP_WIDTH;
+        self.audio_height = crate::AUDIO_POPUP_HEIGHT;
+        self.audio_dirty = true;
+        tracing::debug!(
+            "toggle_audio_popup: open_after={} configured={} size={}x{} keyboard_focus={:?}",
+            self.audio_popup_open,
+            self.network_configured,
+            self.audio_width,
+            self.audio_height,
+            self.keyboard_focus
+        );
+    }
+
+    pub(crate) fn close_audio_popup(&mut self, reason: CommitReason) -> bool {
+        if !self.audio_popup_open {
+            return false;
+        }
+        self.audio_popup_open = false;
+        self.network_layer
+            .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+        self.unmap_audio_popup(reason);
+        tracing::debug!(
+            "close_audio_popup: open_after={} configured={} keyboard_focus={:?}",
+            self.audio_popup_open,
             self.network_configured,
             self.keyboard_focus
         );
@@ -1190,6 +1326,9 @@ impl MeridianShell {
         if self.network_popup_open && !matches!(action, ClickAction::ToggleNetworkPopup) {
             self.close_network_popup(CommitReason::Input);
         }
+        if self.audio_popup_open && !matches!(action, ClickAction::ToggleAudioPopup) {
+            self.close_audio_popup(CommitReason::Input);
+        }
 
         match action {
             ClickAction::SwitchWorkspace(workspace) => {
@@ -1261,6 +1400,34 @@ impl MeridianShell {
                 self.draw_panel(qh, RepaintReason::Pointer);
                 if self.network_popup_open {
                     self.draw_network_popup(qh, RepaintReason::Pointer);
+                }
+            }
+            ClickAction::ToggleAudioPopup => {
+                self.toggle_audio_popup(CommitReason::Input);
+                self.draw_panel(qh, RepaintReason::Pointer);
+                if self.audio_popup_open {
+                    self.draw_audio_popup(qh, RepaintReason::Pointer);
+                }
+            }
+            ClickAction::OpenSoundSettings => {
+                self.open_sound_settings_from_tray(CommitReason::Input);
+                self.draw_panel(qh, RepaintReason::Pointer);
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            ClickAction::ActivateStatusNotifierItem(idx) => {
+                if let Some(item) = self.status_notifier_items.get(idx) {
+                    let point = panel_global_activation_point(
+                        self.pointer_position,
+                        self.panel_output_height_fallback(),
+                    );
+                    tracing::info!(
+                        idx,
+                        service = %item.service,
+                        x = point.x,
+                        y = point.y,
+                        "status-notifier: panel item clicked"
+                    );
+                    status_notifier::activate_item(item.clone(), point);
                 }
             }
             ClickAction::Clock => {
@@ -1346,6 +1513,58 @@ impl MeridianShell {
         }
     }
 
+    pub(crate) fn handle_status_notifier_secondary_activate(&mut self, idx: usize) {
+        if let Some(item) = self.status_notifier_items.get(idx) {
+            let point = panel_global_activation_point(
+                self.pointer_position,
+                self.panel_output_height_fallback(),
+            );
+            tracing::info!(
+                idx,
+                service = %item.service,
+                x = point.x,
+                y = point.y,
+                "status-notifier: panel item secondary-clicked"
+            );
+            status_notifier::secondary_activate_item(item.clone(), point);
+        }
+    }
+
+    pub(crate) fn handle_status_notifier_context_menu(&mut self, idx: usize) {
+        if let Some(item) = self.status_notifier_items.get(idx) {
+            let point = panel_global_activation_point(
+                self.pointer_position,
+                self.panel_output_height_fallback(),
+            );
+            tracing::info!(
+                idx,
+                service = %item.service,
+                x = point.x,
+                y = point.y,
+                "status-notifier: panel item context-menu requested"
+            );
+            status_notifier::context_menu_item(item.clone(), point);
+        }
+    }
+
+    fn panel_output_height_fallback(&self) -> Option<i32> {
+        self.output_state
+            .outputs()
+            .filter_map(|output| self.output_state.info(&output))
+            .filter_map(|info| {
+                info.logical_size
+                    .map(|(_, h)| h)
+                    .or_else(|| {
+                        info.modes
+                            .iter()
+                            .find(|mode| mode.current)
+                            .map(|mode| mode.dimensions.1)
+                    })
+                    .filter(|height| *height > 0)
+            })
+            .max()
+    }
+
     pub(crate) fn handle_launcher_click(&mut self, qh: &QueueHandle<Self>, action: ClickAction) {
         match action {
             ClickAction::LaunchPinnedApp(_) => {}
@@ -1354,6 +1573,9 @@ impl MeridianShell {
             ClickAction::ToggleLauncher => {}
             ClickAction::ToggleWorkspacePopup => {}
             ClickAction::ToggleNetworkPopup => {}
+            ClickAction::ToggleAudioPopup => {}
+            ClickAction::OpenSoundSettings => {}
+            ClickAction::ActivateStatusNotifierItem(_) => {}
             ClickAction::Clock => {}
             ClickAction::TakeScreenshot => {}
             ClickAction::ToggleSettings => {
@@ -1515,8 +1737,9 @@ mod tests {
         apply_full_window_snapshot, apply_output_workspace_changed_state,
         apply_output_workspace_snapshot_state, apply_window_closed_state,
         apply_window_opened_state, apply_workspace_changed, clear_stale_focused_window_id,
-        compute_occupied_workspaces, panel_theme_signature, resolve_shell_theme_from_config,
-        select_panel_active_workspace, OutputWorkspaceChangedInput, WindowInfo,
+        compute_occupied_workspaces, panel_global_activation_point, panel_theme_signature,
+        resolve_shell_theme_from_config, select_panel_active_workspace, OutputWorkspaceChangedInput,
+        WindowInfo,
         WindowSnapshotEntry,
     };
 
@@ -1527,6 +1750,18 @@ mod tests {
         assert_eq!(active, 2);
         apply_workspace_changed(&mut active, 99);
         assert_eq!(active, 9);
+    }
+
+    #[test]
+    fn panel_global_activation_point_offsets_bottom_panel_y() {
+        assert_eq!(
+            panel_global_activation_point((938.2, 20.7), Some(800)),
+            crate::status_notifier::ActivationPoint { x: 938, y: 779 }
+        );
+        assert_eq!(
+            panel_global_activation_point((938.2, 20.7), None),
+            crate::status_notifier::ActivationPoint { x: 938, y: 21 }
+        );
     }
 
     #[test]
@@ -1821,6 +2056,7 @@ mod tests {
                     active_workspace: 2,
                     primary: true,
                     focused: false,
+                    ..Default::default()
                 },
                 OutputWorkspaceState {
                     output_id: 2,
@@ -1828,6 +2064,7 @@ mod tests {
                     active_workspace: 4,
                     primary: false,
                     focused: true,
+                    ..Default::default()
                 },
             ],
         );
@@ -1847,6 +2084,7 @@ mod tests {
             active_workspace: 1,
             primary: true,
             focused: true,
+            ..Default::default()
         }];
         let mut output_workspace_state_available = false;
         let mut workspace_indicator_dirty = false;
@@ -1909,6 +2147,7 @@ mod tests {
             active_workspace: 2,
             primary: false,
             focused: true,
+            ..Default::default()
         }];
         let mut output_workspace_state_available = false;
         let mut workspace_indicator_dirty = false;
@@ -1951,6 +2190,7 @@ mod tests {
                 active_workspace: 0,
                 primary: true,
                 focused: false,
+                ..Default::default()
             }],
         );
 
@@ -1973,6 +2213,7 @@ mod tests {
             active_workspace: 2,
             primary: true,
             focused: true,
+            ..Default::default()
         }];
         let before = output_workspaces.clone();
         apply_workspace_changed(&mut active, 4);
@@ -1993,6 +2234,7 @@ mod tests {
                     active_workspace: 3,
                     primary: true,
                     focused: false,
+                    ..Default::default()
                 },
                 OutputWorkspaceState {
                     output_id: 2,
@@ -2000,6 +2242,7 @@ mod tests {
                     active_workspace: 5,
                     primary: false,
                     focused: true,
+                    ..Default::default()
                 },
             ],
         );
@@ -2018,6 +2261,7 @@ mod tests {
                 active_workspace: 4,
                 primary: true,
                 focused: true,
+                ..Default::default()
             }],
         );
         assert_eq!(active, 4);
@@ -2036,6 +2280,7 @@ mod tests {
                     active_workspace: 6,
                     primary: true,
                     focused: false,
+                    ..Default::default()
                 },
                 OutputWorkspaceState {
                     output_id: 2,
@@ -2043,6 +2288,7 @@ mod tests {
                     active_workspace: 3,
                     primary: false,
                     focused: false,
+                    ..Default::default()
                 },
             ],
         );
@@ -2062,6 +2308,7 @@ mod tests {
                     active_workspace: 7,
                     primary: false,
                     focused: false,
+                    ..Default::default()
                 },
                 OutputWorkspaceState {
                     output_id: 11,
@@ -2069,6 +2316,7 @@ mod tests {
                     active_workspace: 1,
                     primary: false,
                     focused: false,
+                    ..Default::default()
                 },
             ],
         );
@@ -2087,6 +2335,7 @@ mod tests {
                 active_workspace: 3,
                 primary: false,
                 focused: true,
+                ..Default::default()
             }],
         );
         assert_eq!(active, 8);
@@ -2104,6 +2353,7 @@ mod tests {
                 active_workspace: 99,
                 primary: true,
                 focused: true,
+                ..Default::default()
             }],
         );
         assert_eq!(active, 9);

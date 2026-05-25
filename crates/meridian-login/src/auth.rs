@@ -37,7 +37,8 @@ use pam_sys::{
 use tracing::{debug, warn};
 use zeroize::Zeroizing;
 
-const PAM_SERVICE: &str = "meridian-login";
+const SMARTCARD_PAM_SERVICE: &str = "meridian-login";
+const PASSWORD_PAM_SERVICE: &str = "meridian-login-password";
 /// pam_systemd parses PAM_TTY: a value like "tty1" yields seat=seat0,
 /// vtnr=1 in the new logind session. Required for libseat-logind to
 /// accept the DRM acquire from the compositor.
@@ -57,6 +58,21 @@ pub enum AuthResult {
     /// setup error, ...). The caller treats this like Failed for the UI but
     /// logs the detail.
     Error(String),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AuthBackend {
+    Password,
+    Smartcard,
+}
+
+impl AuthBackend {
+    fn pam_service(self) -> &'static str {
+        match self {
+            Self::Password => PASSWORD_PAM_SERVICE,
+            Self::Smartcard => SMARTCARD_PAM_SERVICE,
+        }
+    }
 }
 
 /// Handle held by main for the lifetime of the user's session. Sending
@@ -96,12 +112,13 @@ impl Drop for AuthDriver {
 pub fn start_auth_session(
     username: String,
     password: Zeroizing<String>,
+    backend: AuthBackend,
 ) -> (mpsc::Receiver<AuthResult>, AuthDriver) {
     let (result_tx, result_rx) = mpsc::channel();
     let (close_tx, close_rx) = mpsc::sync_channel::<()>(1);
 
     let join = thread::spawn(move || {
-        run_pam_session(&username, password, &result_tx, &close_rx);
+        run_pam_session(&username, password, backend, &result_tx, &close_rx);
     });
 
     (
@@ -246,6 +263,7 @@ impl Drop for PamGuard {
 fn run_pam_session(
     username: &str,
     password: Zeroizing<String>,
+    backend: AuthBackend,
     result_tx: &mpsc::Sender<AuthResult>,
     close_rx: &mpsc::Receiver<()>,
 ) {
@@ -273,7 +291,8 @@ fn run_pam_session(
     // Plaintext password now lives only inside pass_c; wipe ours.
     drop(password);
 
-    let service_c = CString::new(PAM_SERVICE).expect("static service name has no NUL");
+    let service = backend.pam_service();
+    let service_c = CString::new(service).expect("static service name has no NUL");
     let tty_c = CString::new(PAM_TTY_VALUE).expect("static tty value has no NUL");
 
     // Box keeps a stable address while libpam holds the appdata_ptr.
@@ -298,7 +317,7 @@ fn run_pam_session(
         )
     };
     if rc != PAM_SUCCESS || pamh.is_null() {
-        warn!(rc, service = PAM_SERVICE, "pam_start failed");
+        warn!(rc, service, "pam_start failed");
         // SAFETY: conv_data_ptr came from Box::into_raw and was never aliased.
         unsafe { drop(Box::from_raw(conv_data_ptr)) };
         let _ = result_tx.send(AuthResult::Error(format!("pam_start: rc={}", rc)));
@@ -388,7 +407,11 @@ mod tests {
 
     #[test]
     fn empty_username_returns_failed_quickly() {
-        let (rx, driver) = start_auth_session(String::new(), Zeroizing::new(String::new()));
+        let (rx, driver) = start_auth_session(
+            String::new(),
+            Zeroizing::new(String::new()),
+            AuthBackend::Password,
+        );
         let deadline = Instant::now() + Duration::from_millis(200);
         let result = loop {
             if let Ok(r) = rx.try_recv() {
@@ -401,6 +424,12 @@ mod tests {
         };
         assert_eq!(result, AuthResult::Failed);
         driver.close();
+    }
+
+    #[test]
+    fn auth_backend_selects_expected_pam_service() {
+        assert_eq!(AuthBackend::Password.pam_service(), "meridian-login-password");
+        assert_eq!(AuthBackend::Smartcard.pam_service(), "meridian-login");
     }
 
     #[test]

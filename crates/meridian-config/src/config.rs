@@ -276,7 +276,7 @@ impl Default for WallpaperToml {
 mod tests {
     use std::{fs, time::SystemTime};
 
-    use super::{MeridianConfig, WallpaperMode};
+    use super::{set_primary_output_in_toml, MeridianConfig, WallpaperMode};
     use crate::{OutputModeConfig, OutputPositionConfig};
 
     #[test]
@@ -894,6 +894,48 @@ mode = { width = 1920, height = 1080 }
         assert!(!config.keybinds.bindings().is_empty());
     }
 
+    #[test]
+    fn set_primary_output_updates_existing_output_sections() {
+        let updated = set_primary_output_in_toml(
+            r#"
+[general]
+theme = "default"
+
+[outputs.eDP-1]
+primary = true
+scale = 1.25
+
+[outputs.HDMI-A-1]
+position = { right-of = "eDP-1" }
+
+[panel]
+pinned = []
+"#,
+            "HDMI-A-1",
+        );
+
+        assert!(updated.contains("[general]\ntheme = \"default\""));
+        assert!(updated.contains("[outputs.eDP-1]\nprimary = false\nscale = 1.25"));
+        assert!(updated.contains("[outputs.HDMI-A-1]\nposition = { right-of = \"eDP-1\" }"));
+        assert!(updated.contains("position = { right-of = \"eDP-1\" }\n\nprimary = true"));
+        assert!(updated.contains("[panel]\npinned = []"));
+    }
+
+    #[test]
+    fn set_primary_output_appends_missing_output_section() {
+        let updated = set_primary_output_in_toml(
+            r#"
+[outputs.eDP-1]
+primary = true
+"#,
+            "DP-3",
+        );
+
+        assert!(updated.contains("[outputs.eDP-1]\nprimary = false"));
+        assert!(updated.contains("[outputs.\"DP-3\"]\nprimary = true"));
+        assert!(updated.contains("position = \"auto\""));
+    }
+
     fn output_by_name<'a>(config: &'a MeridianConfig, name: &str) -> &'a crate::OutputEntry {
         config
             .outputs
@@ -1061,6 +1103,33 @@ impl MeridianConfig {
         }
     }
 
+    /// Mark one output as primary in config.toml while preserving the rest of
+    /// each output section.
+    pub fn save_primary_output(output_name: &str) {
+        let output_name = output_name.trim();
+        if output_name.is_empty() {
+            warn!("Refusing to save empty primary output name");
+            return;
+        }
+
+        let config_path = config_directory().join("config.toml");
+        let raw = if config_path.exists() {
+            fs::read_to_string(&config_path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let updated = set_primary_output_in_toml(&raw, output_name);
+
+        if let Some(parent) = config_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Err(e) = fs::write(&config_path, updated.as_bytes()) {
+            warn!("Failed to write primary output to config: {}", e);
+        } else {
+            info!("Saved primary output {:?} to {:?}", output_name, config_path);
+        }
+    }
+
     /// Scan standard wallpaper directories; group resolution variants into one entry per pack.
     pub fn scan_wallpaper_dirs() -> Vec<WallpaperEntry> {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
@@ -1120,6 +1189,105 @@ fn strip_toml_section(raw: &str, section: &str) -> String {
     } else {
         trimmed + "\n"
     }
+}
+
+fn set_primary_output_in_toml(raw: &str, output_name: &str) -> String {
+    let mut out = String::new();
+    let mut current_output: Option<String> = None;
+    let mut current_output_has_primary = false;
+    let mut found_target_output = false;
+
+    for line in raw.lines() {
+        if let Some(next_output) = output_section_name(line) {
+            if let Some(previous_output) = current_output.take() {
+                if !current_output_has_primary {
+                    push_primary_line(&mut out, &previous_output, output_name);
+                }
+            }
+            found_target_output |= next_output == output_name;
+            current_output = Some(next_output);
+            current_output_has_primary = false;
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+
+        let trimmed = line.trim();
+        if current_output.is_some() && trimmed.starts_with('[') && !trimmed.starts_with("[[") {
+            if let Some(previous_output) = current_output.take() {
+                if !current_output_has_primary {
+                    push_primary_line(&mut out, &previous_output, output_name);
+                }
+            }
+            current_output_has_primary = false;
+        }
+
+        if let Some(ref name) = current_output {
+            if is_primary_key_line(line) {
+                push_primary_line(&mut out, name, output_name);
+                current_output_has_primary = true;
+                continue;
+            }
+        }
+
+        out.push_str(line);
+        out.push('\n');
+    }
+
+    if let Some(previous_output) = current_output {
+        if !current_output_has_primary {
+            push_primary_line(&mut out, &previous_output, output_name);
+        }
+    }
+
+    if !found_target_output {
+        if !out.ends_with('\n') && !out.is_empty() {
+            out.push('\n');
+        }
+        out.push('\n');
+        out.push_str(&format!("[outputs.{:?}]\n", output_name));
+        out.push_str("primary = true\n");
+        out.push_str("enabled = true\n");
+        out.push_str("position = \"auto\"\n");
+    }
+
+    out
+}
+
+fn output_section_name(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.starts_with("[[") || !trimmed.starts_with("[outputs.") || !trimmed.ends_with(']') {
+        return None;
+    }
+    let raw_name = trimmed
+        .strip_prefix("[outputs.")?
+        .strip_suffix(']')?
+        .trim();
+    if raw_name.is_empty() {
+        return None;
+    }
+    if raw_name.starts_with('"') && raw_name.ends_with('"') && raw_name.len() >= 2 {
+        return Some(raw_name[1..raw_name.len() - 1].replace("\\\"", "\""));
+    }
+    Some(raw_name.to_string())
+}
+
+fn is_primary_key_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let Some(rest) = trimmed.strip_prefix("primary") else {
+        return false;
+    };
+    rest.trim_start().starts_with('=')
+}
+
+fn push_primary_line(out: &mut String, current_output: &str, primary_output: &str) {
+    out.push_str("primary = ");
+    out.push_str(if current_output == primary_output {
+        "true"
+    } else {
+        "false"
+    });
+    out.push('\n');
 }
 
 const WALLPAPER_SKIP: &[&str] = &[

@@ -5,7 +5,8 @@ use smithay_client_toolkit::{
 use wayland_client::{protocol::wl_pointer, Connection, QueueHandle};
 
 use crate::{
-    context_menu,
+    audio_popup,
+    context_menu, workspaces,
     network_popup::popup_hit_test,
     wayland::{RepaintReason, SurfaceKind},
 };
@@ -42,29 +43,33 @@ impl PointerHandler for MeridianShell {
                 self.pointer_position = (-1.0, -1.0);
                 match self.pointer_surface {
                     SurfaceKind::Panel => {
-                        if self.panel_widget_state.is_some() {
-                            self.panel_widget_state = None;
-                        }
-                        self.thumbnail_hover_app_idx = None;
+                        let had_panel_widget_state = self.panel_widget_state.take().is_some();
+                        let had_thumbnail_hover = self.thumbnail_hover_app_idx.take().is_some();
                         self.thumbnail_hover_since = None;
-                        if self.thumbnail_popup_open {
+                        let closed_thumbnail_popup = if self.thumbnail_popup_open {
                             self.close_thumbnail_popup(crate::wayland::CommitReason::Input);
+                            true
+                        } else {
+                            false
+                        };
+                        if had_panel_widget_state || had_thumbnail_hover || closed_thumbnail_popup {
+                            self.draw_panel(qh, RepaintReason::Pointer);
                         }
-                        self.draw_panel(qh, RepaintReason::Pointer);
                     }
                     SurfaceKind::Launcher => {
-                        if self.ui_preview_widget_state.is_some() {
-                            self.ui_preview_widget_state = None;
+                        let had_preview_widget_state =
+                            self.ui_preview_widget_state.take().is_some();
+                        let had_hovered_app_card = self.hovered_app_card_idx.take().is_some();
+                        if had_preview_widget_state || had_hovered_app_card {
+                            self.draw_launcher(qh, RepaintReason::Pointer)
                         }
-                        self.hovered_app_card_idx = None;
-                        self.draw_launcher(qh, RepaintReason::Pointer)
                     }
                     SurfaceKind::WorkspacePopup => {
-                        self.draw_workspace_popup(qh, RepaintReason::Pointer)
+                        if self.workspace_hover_idx.take().is_some() {
+                            self.draw_workspace_popup(qh, RepaintReason::Pointer)
+                        }
                     }
-                    SurfaceKind::NetworkPopup => {
-                        self.draw_network_popup(qh, RepaintReason::Pointer)
-                    }
+                    SurfaceKind::NetworkPopup => {}
                     SurfaceKind::ThumbnailPopup | SurfaceKind::Calendar | SurfaceKind::None => {}
                 }
                 self.pointer_surface = SurfaceKind::None;
@@ -440,6 +445,9 @@ impl PointerHandler for MeridianShell {
                             self.wallpaper_path.as_deref(),
                             self.wallpaper_mode,
                             &self.pinned_apps,
+                            &self.output_workspaces,
+                            &self.printer_snapshot,
+                            &self.audio_snapshot,
                             self.settings_pinned_adding,
                             &self.launcher_state.apps,
                             &self.icon_cache,
@@ -533,7 +541,10 @@ impl PointerHandler for MeridianShell {
                         &self.pinned_apps,
                         &self.panel_window_entries(self.panel_active_workspace()),
                         self.network_controller.state(),
+                        &self.audio_snapshot,
+                        &self.status_notifier_items,
                         self.network_popup_open,
+                        self.audio_popup_open,
                         self.panel_active_workspace(),
                         9,
                         &self.last_clock,
@@ -641,7 +652,44 @@ impl PointerHandler for MeridianShell {
                 && self.pointer_surface == SurfaceKind::WorkspacePopup
                 && matches!(event.kind, PointerEventKind::Motion { .. })
             {
-                self.draw_workspace_popup(qh, RepaintReason::Pointer);
+                let new_hover =
+                    workspaces::workspace_popup_hover_idx(event.position.0, event.position.1);
+                if new_hover != self.workspace_hover_idx {
+                    self.workspace_hover_idx = new_hover;
+                    self.draw_workspace_popup(qh, RepaintReason::Pointer);
+                }
+            }
+
+            if let PointerEventKind::Press { button: 0x111, .. } = event.kind {
+                if self.pointer_surface == SurfaceKind::Panel {
+                    let action = self
+                        .panel_state
+                        .clicks
+                        .iter()
+                        .find(|zone| zone.rect.contains(event.position.0, event.position.1))
+                        .map(|zone| zone.action.clone());
+                    if let Some(crate::wayland::ClickAction::ActivateStatusNotifierItem(idx)) =
+                        action
+                    {
+                        self.handle_status_notifier_context_menu(idx);
+                    }
+                }
+            }
+
+            if let PointerEventKind::Press { button: 0x112, .. } = event.kind {
+                if self.pointer_surface == SurfaceKind::Panel {
+                    let action = self
+                        .panel_state
+                        .clicks
+                        .iter()
+                        .find(|zone| zone.rect.contains(event.position.0, event.position.1))
+                        .map(|zone| zone.action.clone());
+                    if let Some(crate::wayland::ClickAction::ActivateStatusNotifierItem(idx)) =
+                        action
+                    {
+                        self.handle_status_notifier_secondary_activate(idx);
+                    }
+                }
             }
 
             if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
@@ -660,15 +708,31 @@ impl PointerHandler for MeridianShell {
                         .find(|zone| zone.rect.contains(event.position.0, event.position.1))
                         .map(|zone| zone.action.clone()),
                     SurfaceKind::NetworkPopup => {
-                        if popup_hit_test(
-                            self.network_width,
-                            self.network_height,
-                            event.position.0,
-                            event.position.1,
-                        ) {
-                            None
+                        if self.audio_popup_open {
+                            match audio_popup::popup_hit_test(
+                                self.audio_width,
+                                self.audio_height,
+                                event.position.0,
+                                event.position.1,
+                            ) {
+                                Some(audio_popup::AudioPopupHit::SettingsLink) => {
+                                    Some(crate::wayland::ClickAction::OpenSoundSettings)
+                                }
+                                Some(audio_popup::AudioPopupHit::Card) => None,
+                                None => Some(crate::wayland::ClickAction::ToggleAudioPopup),
+                            }
                         } else {
-                            Some(crate::wayland::ClickAction::ToggleNetworkPopup)
+                            let inside = popup_hit_test(
+                                self.network_width,
+                                self.network_height,
+                                event.position.0,
+                                event.position.1,
+                            );
+                            if inside {
+                                None
+                            } else {
+                                Some(crate::wayland::ClickAction::ToggleNetworkPopup)
+                            }
                         }
                     }
                     SurfaceKind::ThumbnailPopup => None,
@@ -683,6 +747,8 @@ impl PointerHandler for MeridianShell {
                     action,
                     Some(crate::wayland::ClickAction::ToggleNetworkPopup)
                 );
+                let keep_audio_popup_open =
+                    matches!(action, Some(crate::wayland::ClickAction::ToggleAudioPopup));
                 if self.workspace_popup_open
                     && self.pointer_surface != SurfaceKind::WorkspacePopup
                     && !keep_workspace_popup_open
@@ -695,6 +761,13 @@ impl PointerHandler for MeridianShell {
                     && !keep_network_popup_open
                 {
                     self.close_network_popup(crate::wayland::CommitReason::Input);
+                    self.draw_panel(qh, RepaintReason::Pointer);
+                }
+                if self.audio_popup_open
+                    && self.pointer_surface != SurfaceKind::NetworkPopup
+                    && !keep_audio_popup_open
+                {
+                    self.close_audio_popup(crate::wayland::CommitReason::Input);
                     self.draw_panel(qh, RepaintReason::Pointer);
                 }
                 // Close launcher on any click outside the launcher surface,
@@ -713,7 +786,7 @@ impl PointerHandler for MeridianShell {
                         SurfaceKind::Panel => self.handle_panel_click(qh, action),
                         SurfaceKind::Launcher => self.handle_launcher_click(qh, action),
                         SurfaceKind::WorkspacePopup => self.handle_workspace_click(qh, action),
-                        SurfaceKind::NetworkPopup => {}
+                        SurfaceKind::NetworkPopup => self.handle_panel_click(qh, action),
                         SurfaceKind::ThumbnailPopup => {}
                         SurfaceKind::Calendar => {}
                         SurfaceKind::None => {}

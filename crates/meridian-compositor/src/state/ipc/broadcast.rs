@@ -26,6 +26,13 @@ fn build_output_workspace_snapshot(
             active_workspace: active_workspace_for_output(output.id).saturating_add(1),
             primary: output.primary,
             focused: focused_output_id == Some(output.id.0),
+            x: output.geometry.x,
+            y: output.geometry.y,
+            width: output.geometry.width,
+            height: output.geometry.height,
+            scale_millis: (output.scale * 1000.0).round().clamp(1.0, u32::MAX as f64) as u32,
+            transform: Some(format!("{:?}", output.transform)),
+            refresh_millihz: output.refresh_millihz,
         });
     }
 
@@ -219,12 +226,20 @@ mod tests {
         assert!(outputs[0].primary);
         assert!(!outputs[0].focused);
         assert_eq!(outputs[0].active_workspace, 2);
+        assert_eq!(outputs[0].x, 0);
+        assert_eq!(outputs[0].y, 0);
+        assert_eq!(outputs[0].width, 1920);
+        assert_eq!(outputs[0].height, 1080);
+        assert_eq!(outputs[0].scale_millis, 1000);
+        assert_eq!(outputs[0].transform.as_deref(), Some("Normal"));
+        assert_eq!(outputs[0].refresh_millihz, Some(60_000));
 
         assert_eq!(outputs[1].output_id, right.0);
         assert_eq!(outputs[1].output_name.as_deref(), Some("HDMI-A-1"));
         assert!(!outputs[1].primary);
         assert!(outputs[1].focused);
         assert_eq!(outputs[1].active_workspace, 4);
+        assert_eq!(outputs[1].x, 1920);
     }
 
     #[test]

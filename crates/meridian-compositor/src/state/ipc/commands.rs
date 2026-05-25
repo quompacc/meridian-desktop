@@ -99,21 +99,7 @@ impl MeridianState {
                     launch.env("MOZ_ENABLE_WAYLAND", "1");
                 }
 
-                if let Err(err) = launch.spawn() {
-                    if err.kind() == std::io::ErrorKind::NotFound {
-                        tracing::warn!(
-                            "failed to launch app: program not found: {:?}",
-                            spec.program
-                        );
-                    } else {
-                        tracing::warn!(
-                            "failed to launch app program {:?} args {:?}: {}",
-                            spec.program,
-                            spec.args,
-                            err
-                        );
-                    }
-                }
+                spawn_and_reap_launch(launch, &spec.program, &spec.args);
             }
             ShellCommand::ReloadConfig => {
                 self.reload_config();
@@ -308,6 +294,36 @@ impl MeridianState {
         }
 
         tracing::warn!("focus-window requested unknown id: {}", id);
+    }
+}
+
+fn spawn_and_reap_launch(mut launch: Command, program: &str, args: &[String]) {
+    let mut child = match launch.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                tracing::warn!("failed to launch app: program not found: {:?}", program);
+            } else {
+                tracing::warn!(
+                    "failed to launch app program {:?} args {:?}: {}",
+                    program,
+                    args,
+                    err
+                );
+            }
+            return;
+        }
+    };
+
+    let program = program.to_string();
+    if let Err(err) = std::thread::Builder::new()
+        .name(format!("meridian-launch-reaper-{program}"))
+        .spawn(move || {
+            if let Err(err) = child.wait() {
+                tracing::warn!("failed to reap launched app {:?}: {}", program, err);
+            }
+        }) {
+        tracing::warn!("failed to spawn launch reaper thread: {}", err);
     }
 }
 

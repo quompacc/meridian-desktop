@@ -5,17 +5,18 @@ use tracing::{debug, info, warn};
 use wayland_client::QueueHandle;
 
 use crate::{
-    buffer, network_popup, notification_popup, panel, thumbnail_popup, ui_preview, workspaces,
-    Painter, Rect, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
-    NETWORK_POPUP_HEIGHT, NETWORK_POPUP_WIDTH, NOTIFICATION_HEIGHT, NOTIFICATION_WIDTH,
-    PANEL_HEIGHT, THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT,
+    audio_popup, buffer, network_popup, notification_popup, panel, thumbnail_popup, ui_preview,
+    workspaces, Painter, Rect, AUDIO_POPUP_HEIGHT, AUDIO_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT,
+    CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT,
+    NETWORK_POPUP_WIDTH, NOTIFICATION_HEIGHT, NOTIFICATION_WIDTH, PANEL_HEIGHT,
+    THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT,
     WORKSPACE_POPUP_WIDTH,
 };
 
 use super::{
     calendar::{weekday_labels, CalendarMonthModel},
     shell::{PanelRenderSignature, ThemeRenderSignature},
-    time, CommitReason, CommitSurfaceKind, MeridianShell, RepaintReason, SurfaceKind,
+    time, CommitReason, CommitSurfaceKind, MeridianShell, RepaintReason,
 };
 
 const CANVAS_RETRY_ATTEMPTS: usize = 2;
@@ -95,7 +96,23 @@ impl MeridianShell {
             window_entries,
             clock: clock.to_string(),
             network_icon: self.network_controller.state().icon_name(),
+            audio_label: self.audio_snapshot.panel_label(),
+            audio_icon: self.audio_snapshot.icon_name(),
+            status_notifier_items: self
+                .status_notifier_items
+                .iter()
+                .map(|item| {
+                    format!(
+                        "{}|{}|{}|{}",
+                        item.service,
+                        item.title.as_deref().unwrap_or(""),
+                        item.icon_name.as_deref().unwrap_or(""),
+                        item.menu_path.as_deref().unwrap_or("")
+                    )
+                })
+                .collect(),
             network_popup_open: self.network_popup_open,
+            audio_popup_open: self.audio_popup_open,
             hover_widget_path: self
                 .panel_widget_state
                 .as_ref()
@@ -266,7 +283,10 @@ impl MeridianShell {
                 &self.pinned_apps,
                 &panel_window_entries,
                 self.network_controller.state(),
+                &self.audio_snapshot,
+                &self.status_notifier_items,
                 self.network_popup_open,
+                self.audio_popup_open,
                 panel_active_w,
                 9,
                 &clock,
@@ -302,6 +322,7 @@ impl MeridianShell {
                 "draw_panel committed: reason={:?} width={} height={}",
                 reason, width, height
             );
+            self.write_panel_click_zones_snapshot(width, height);
             self.panel_last_signature = Some(signature);
             self.panel_dirty = false;
             return;
@@ -405,6 +426,9 @@ impl MeridianShell {
                     self.wallpaper_path.as_deref(),
                     self.wallpaper_mode,
                     &self.pinned_apps,
+                    &self.output_workspaces,
+                    &self.printer_snapshot,
+                    &self.audio_snapshot,
                     self.settings_pinned_adding,
                     &self.launcher_state.apps,
                     &self.icon_cache,
@@ -771,8 +795,7 @@ impl MeridianShell {
                     active_workspace,
                     total_workspaces: 9,
                     occupied: self.occupied_workspaces,
-                    hover_pos: (self.pointer_surface == SurfaceKind::WorkspacePopup)
-                        .then_some(self.pointer_position),
+                    hovered_idx: self.workspace_hover_idx,
                 },
                 &mut self.workspace_state,
             );
@@ -890,6 +913,80 @@ impl MeridianShell {
         self.network_layer.wl_surface().attach(None, 0, 0);
         self.network_layer.commit();
         self.network_dirty = false;
+    }
+
+    pub(crate) fn draw_audio_popup(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
+        debug!(
+            "draw_audio_popup: reason={:?} open={} configured={} audio_dirty={} commit_expected={}",
+            reason,
+            self.audio_popup_open,
+            self.network_configured,
+            self.audio_dirty,
+            self.audio_popup_open && self.network_configured
+        );
+        if !self.audio_popup_open || !self.network_configured {
+            return;
+        }
+
+        self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+        let width = self.audio_width.min(AUDIO_POPUP_WIDTH);
+        let height = self.audio_height.min(AUDIO_POPUP_HEIGHT);
+        let stride = buffer::shm_buffer_stride(width);
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.network_buffer,
+                width,
+                height,
+                stride,
+            );
+            let Some(buf) = buf else {
+                warn!(
+                    "audio popup buffer unavailable: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
+            };
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.network_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
+                return;
+            };
+
+            let mut painter = Painter::new(canvas, width as i32, height as i32);
+            audio_popup::draw_audio_popup(
+                &mut painter,
+                &self.font,
+                &self.theme,
+                &self.audio_snapshot,
+            );
+
+            if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {
+                warn!(
+                    "audio popup buffer attach failed: reason={:?} width={} height={} error={}",
+                    reason, width, height, err
+                );
+                return;
+            }
+            self.network_layer
+                .wl_surface()
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.network_layer.commit();
+            self.audio_dirty = false;
+            return;
+        }
+    }
+
+    pub(crate) fn unmap_audio_popup(&mut self, reason: CommitReason) {
+        debug!(
+            "unmap_audio_popup: reason={:?} open={} configured={} surface=network attach_none=true commit=true",
+            reason, self.audio_popup_open, self.network_configured
+        );
+        self.network_layer.wl_surface().attach(None, 0, 0);
+        self.network_layer.commit();
+        self.audio_dirty = false;
     }
 
     /// Phase A1.3: paint the front notification onto the dedicated
@@ -1036,5 +1133,45 @@ impl MeridianShell {
         self.thumbnail_layer.wl_surface().attach(None, 0, 0);
         self.thumbnail_layer.commit();
         self.thumbnail_dirty = false;
+    }
+
+    fn write_panel_click_zones_snapshot(&mut self, width: u32, height: u32) {
+        let zones: Vec<_> = self
+            .panel_state
+            .clicks
+            .iter()
+            .map(|zone| {
+                serde_json::json!({
+                    "id": zone.id.as_deref(),
+                    "action": zone.action.test_name(),
+                    "x": zone.rect.x,
+                    "y": zone.rect.y,
+                    "w": zone.rect.w,
+                    "h": zone.rect.h,
+                    "center_x": zone.rect.x + zone.rect.w / 2,
+                    "center_y": zone.rect.y + zone.rect.h / 2,
+                })
+            })
+            .collect();
+        let payload = serde_json::json!({
+            "surface": "panel",
+            "width": width,
+            "height": height,
+            "zones": zones,
+        });
+        let Ok(snapshot) = serde_json::to_string_pretty(&payload) else {
+            return;
+        };
+        if self.panel_click_zones_snapshot.as_deref() == Some(snapshot.as_str()) {
+            return;
+        }
+        self.panel_click_zones_snapshot = Some(snapshot.clone());
+
+        let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
+        let path = std::path::Path::new(&runtime_dir).join("meridian-panel-click-zones.json");
+        let tmp_path = path.with_extension("json.tmp");
+        if std::fs::write(&tmp_path, snapshot).is_ok() {
+            let _ = std::fs::rename(tmp_path, path);
+        }
     }
 }

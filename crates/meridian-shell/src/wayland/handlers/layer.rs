@@ -6,9 +6,9 @@ use wayland_client::{Connection, QueueHandle};
 
 use crate::wayland::{MeridianShell, RepaintReason};
 use crate::{
-    CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
-    NETWORK_POPUP_HEIGHT, NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, WORKSPACE_POPUP_HEIGHT,
-    WORKSPACE_POPUP_WIDTH,
+    AUDIO_POPUP_HEIGHT, AUDIO_POPUP_RIGHT_MARGIN, AUDIO_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT,
+    CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT,
+    NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
 };
 
 impl LayerShellHandler for MeridianShell {
@@ -49,8 +49,10 @@ impl LayerShellHandler for MeridianShell {
         if self.network_layer == *layer {
             warn!("Network popup layer surface closed by compositor; recovering popup state");
             self.network_popup_open = false;
+            self.audio_popup_open = false;
             self.network_configured = false;
             self.network_dirty = false;
+            self.audio_dirty = false;
             self.draw_panel(qh, RepaintReason::LayerConfigure);
             return;
         }
@@ -225,6 +227,41 @@ impl LayerShellHandler for MeridianShell {
                 self.draw_workspace_popup(qh, RepaintReason::LayerConfigure);
             }
         } else if self.network_layer == *layer {
+            if self.audio_popup_open {
+                let requested_w = if configure.new_size.0 > 0 {
+                    configure.new_size.0
+                } else {
+                    AUDIO_POPUP_WIDTH
+                };
+                let requested_h = if configure.new_size.1 > 0 {
+                    configure.new_size.1
+                } else {
+                    AUDIO_POPUP_HEIGHT
+                };
+                tracing::debug!(
+                    "audio popup configure: requested={}x{} desired={}x{}",
+                    requested_w,
+                    requested_h,
+                    AUDIO_POPUP_WIDTH,
+                    AUDIO_POPUP_HEIGHT
+                );
+                self.network_layer
+                    .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
+                self.network_layer.set_margin(
+                    0,
+                    AUDIO_POPUP_RIGHT_MARGIN,
+                    crate::SHELL_POPUP_BOTTOM_MARGIN,
+                    0,
+                );
+                self.network_layer.set_exclusive_zone(0);
+                self.network_layer
+                    .set_size(AUDIO_POPUP_WIDTH, AUDIO_POPUP_HEIGHT);
+                self.network_configured = true;
+                self.audio_width = AUDIO_POPUP_WIDTH;
+                self.audio_height = AUDIO_POPUP_HEIGHT;
+                self.draw_audio_popup(qh, RepaintReason::LayerConfigure);
+                return;
+            }
             let requested_w = if configure.new_size.0 > 0 {
                 configure.new_size.0
             } else {

@@ -80,6 +80,11 @@ impl KeyboardHandler for MeridianShell {
             self.draw_panel(qh, RepaintReason::Keyboard);
             return;
         }
+        if self.audio_popup_open && is_escape {
+            self.close_audio_popup(CommitReason::Input);
+            self.draw_panel(qh, RepaintReason::Keyboard);
+            return;
+        }
         if self.workspace_popup_open && is_escape {
             self.close_workspace_popup(CommitReason::Input);
             self.draw_panel(qh, RepaintReason::Keyboard);

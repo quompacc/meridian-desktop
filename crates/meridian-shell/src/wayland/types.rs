@@ -26,13 +26,38 @@ pub enum ClickAction {
     ToggleLauncher,
     ToggleWorkspacePopup,
     ToggleNetworkPopup,
+    ToggleAudioPopup,
+    OpenSoundSettings,
+    ActivateStatusNotifierItem(usize),
     Clock,
     TakeScreenshot,
     ToggleSettings,
 }
 
+impl ClickAction {
+    pub(crate) fn test_name(&self) -> String {
+        match self {
+            ClickAction::SwitchWorkspace(workspace) => format!("switch-workspace-{workspace}"),
+            ClickAction::FocusWindow(id) => format!("focus-window-{id}"),
+            ClickAction::LaunchPinnedApp(idx) => format!("launch-pinned-app-{idx}"),
+            ClickAction::ToggleLauncher => "toggle-launcher".to_string(),
+            ClickAction::ToggleWorkspacePopup => "toggle-workspace-popup".to_string(),
+            ClickAction::ToggleNetworkPopup => "toggle-network-popup".to_string(),
+            ClickAction::ToggleAudioPopup => "toggle-audio-popup".to_string(),
+            ClickAction::OpenSoundSettings => "open-sound-settings".to_string(),
+            ClickAction::ActivateStatusNotifierItem(idx) => {
+                format!("activate-status-notifier-item-{idx}")
+            }
+            ClickAction::Clock => "clock".to_string(),
+            ClickAction::TakeScreenshot => "take-screenshot".to_string(),
+            ClickAction::ToggleSettings => "toggle-settings".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ClickZone {
+    pub id: Option<String>,
     pub rect: Rect,
     pub action: ClickAction,
 }

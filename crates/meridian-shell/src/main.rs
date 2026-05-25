@@ -8,6 +8,8 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 mod app_view;
+mod audio;
+mod audio_popup;
 mod buffer;
 mod context_menu;
 mod draw;
@@ -20,7 +22,9 @@ mod notifications;
 mod panel;
 mod panel_view;
 mod power_footer;
+mod printers;
 mod settings_view;
+mod status_notifier;
 mod thumbnail_popup;
 mod ui;
 mod ui_preview;
@@ -35,6 +39,10 @@ pub use draw::{Painter, TextRenderer};
 pub use wayland::{ClickAction, ClickZone, IpcClient, Rect};
 use wayland::{CommitReason, RepaintReason};
 
+const SHELL_IDLE_TICK: Duration = Duration::from_secs(1);
+const NETWORK_IDLE_POLL: Duration = Duration::from_secs(15);
+const NETWORK_ACTIVE_POLL: Duration = Duration::from_secs(2);
+
 pub const PANEL_HEIGHT: u32 = 42;
 pub const LAUNCHER_WIDTH: u32 = 880;
 pub const LAUNCHER_HEIGHT: u32 = 620;
@@ -44,6 +52,9 @@ pub const WORKSPACE_POPUP_WIDTH: u32 = 280;
 pub const WORKSPACE_POPUP_HEIGHT: u32 = 200;
 pub const NETWORK_POPUP_WIDTH: u32 = 280;
 pub const NETWORK_POPUP_HEIGHT: u32 = 150;
+pub const AUDIO_POPUP_WIDTH: u32 = 300;
+pub const AUDIO_POPUP_HEIGHT: u32 = 172;
+pub const AUDIO_POPUP_RIGHT_MARGIN: i32 = 126;
 pub const SHELL_POPUP_BOTTOM_MARGIN: i32 = 2;
 pub const NETWORK_POPUP_RIGHT_MARGIN: i32 = 220;
 pub const NOTIFICATION_WIDTH: u32 = 360;
@@ -97,14 +108,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     insert_tick_timer(&mut event_loop, qh.clone())?;
     insert_network_poll_timer(&mut event_loop, qh.clone())?;
-    insert_commit_stats_timer(&mut event_loop)?;
     insert_notifications_source(&mut event_loop, qh.clone())?;
+    insert_status_notifier_source(&mut event_loop, qh.clone())?;
     insert_notification_expiry_timer(&mut event_loop, qh)?;
 
     while !shell.exit {
         event_loop.dispatch(Duration::from_millis(500), &mut shell)?;
     }
 
+    Ok(())
+}
+
+fn insert_status_notifier_source(
+    event_loop: &mut EventLoop<'_, wayland::MeridianShell>,
+    qh: wayland_client::QueueHandle<wayland::MeridianShell>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let rx = match status_notifier::spawn() {
+        Ok(rx) => rx,
+        Err(e) => {
+            tracing::warn!(error = %e, "status-notifier: failed to spawn dbus thread");
+            return Ok(());
+        }
+    };
+    event_loop
+        .handle()
+        .insert_source(rx, move |event, _, shell| {
+            use smithay_client_toolkit::reexports::calloop::channel::Event as ChEvent;
+            match event {
+                ChEvent::Msg(status_notifier::DbusEvent::ItemsChanged(items)) => {
+                    tracing::info!(count = items.len(), "status-notifier: items changed");
+                    shell.status_notifier_items = items;
+                    shell.panel_dirty = true;
+                    shell.draw_panel(&qh, wayland::RepaintReason::Ipc);
+                }
+                ChEvent::Closed => {
+                    tracing::warn!("status-notifier: dbus channel closed");
+                }
+            }
+        })?;
     Ok(())
 }
 
@@ -117,10 +158,9 @@ fn insert_notification_expiry_timer(
     event_loop: &mut EventLoop<'_, wayland::MeridianShell>,
     qh: wayland_client::QueueHandle<wayland::MeridianShell>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let interval = Duration::from_millis(250);
     event_loop
         .handle()
-        .insert_source(Timer::from_duration(interval), move |_, _, shell| {
+        .insert_source(Timer::from_duration(SHELL_IDLE_TICK), move |_, _, shell| {
             let now = std::time::Instant::now();
             let before = shell.notifications.len();
             shell.notifications.retain(|n| !n.is_expired(now));
@@ -135,7 +175,7 @@ fn insert_notification_expiry_timer(
                 let mode = shell.wallpaper_mode;
                 shell.apply_wallpaper(&qh, path, mode);
             }
-            TimeoutAction::ToDuration(interval)
+            TimeoutAction::ToDuration(shell.notification_timer_interval())
         })?;
     Ok(())
 }
@@ -225,21 +265,9 @@ fn insert_tick_timer(
                 }
             }
             shell.tick(&qh);
-            TimeoutAction::ToDuration(Duration::from_millis(250))
+            TimeoutAction::ToDuration(shell.tick_timer_interval())
         })?;
 
-    Ok(())
-}
-
-fn insert_commit_stats_timer(
-    event_loop: &mut EventLoop<'_, wayland::MeridianShell>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    event_loop
-        .handle()
-        .insert_source(Timer::immediate(), move |_, _, shell| {
-            shell.tick_commit_stats();
-            TimeoutAction::ToDuration(Duration::from_secs(1))
-        })?;
     Ok(())
 }
 
@@ -258,7 +286,11 @@ fn insert_network_poll_timer(
                     shell.draw_network_popup(&qh, RepaintReason::Ipc);
                 }
             }
-            TimeoutAction::ToDuration(Duration::from_secs(2))
+            TimeoutAction::ToDuration(if shell.network_popup_open {
+                NETWORK_ACTIVE_POLL
+            } else {
+                NETWORK_IDLE_POLL
+            })
         })?;
     Ok(())
 }

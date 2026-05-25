@@ -45,7 +45,8 @@ impl MeridianShell {
             | WidgetAction::ApplyThemeByIndex(_)
             | WidgetAction::ApplyWallpaperByIndex(_)
             | WidgetAction::SetWallpaperMode(_)
-            | WidgetAction::BrowseWallpaper => self.dispatch_settings_action(qh, action),
+            | WidgetAction::BrowseWallpaper
+            | WidgetAction::SetPrimaryOutput(_) => self.dispatch_settings_action(qh, action),
             WidgetAction::PowerOff
             | WidgetAction::PowerRestart
             | WidgetAction::PowerSleep
@@ -151,6 +152,12 @@ impl MeridianShell {
                 {
                     self.load_wallpaper_thumbnails();
                 }
+                if cat == crate::settings_view::SettingsCategory::Printers {
+                    self.printer_snapshot = crate::printers::PrinterSnapshot::poll();
+                }
+                if cat == crate::settings_view::SettingsCategory::Sound {
+                    self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+                }
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
             WidgetAction::ApplyThemeByIndex(idx) => {
@@ -177,6 +184,23 @@ impl MeridianShell {
                 // Close launcher so the file dialog opens in the foreground.
                 self.close_launcher_after_launch(qh, RepaintReason::Pointer);
                 self.spawn_file_picker();
+            }
+            WidgetAction::SetPrimaryOutput(idx) => {
+                if let Some(output) = self.output_workspaces.get(idx).cloned() {
+                    let Some(name) = output.output_name else {
+                        tracing::warn!(
+                            "cannot set primary output without output name: output_id={}",
+                            output.output_id
+                        );
+                        return;
+                    };
+                    meridian_config::MeridianConfig::save_primary_output(&name);
+                    for state in &mut self.output_workspaces {
+                        state.primary = state.output_name.as_deref() == Some(name.as_str());
+                    }
+                    self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
+                    self.draw_launcher(qh, RepaintReason::Pointer);
+                }
             }
             _ => unreachable!("non settings action routed to settings dispatcher"),
         }

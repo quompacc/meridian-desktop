@@ -13,33 +13,126 @@ use crate::icons::{icon_image_to_pixmap, IconCache};
 use crate::launcher::DesktopApp;
 use crate::panel::PinnedApp;
 use crate::power_footer::build_power_footer_buttons;
+use crate::audio::{AudioDevice, AudioServiceState, AudioSnapshot};
+use crate::printers::{PrinterInfo, PrinterServiceState, PrinterSnapshot};
 use meridian_config::{WallpaperEntry, WallpaperMode};
+use meridian_ipc::OutputWorkspaceState;
 
 // ─── SettingsCategory ────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SettingsRootCategory {
+    #[default]
+    Desktop,
+    System,
+}
+
+impl SettingsRootCategory {
+    pub const ALL: &'static [SettingsRootCategory] = &[
+        SettingsRootCategory::Desktop,
+        SettingsRootCategory::System,
+    ];
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            SettingsRootCategory::Desktop => "Desktop",
+            SettingsRootCategory::System => "System",
+        }
+    }
+
+    pub fn chip_id(&self) -> &'static str {
+        match self {
+            SettingsRootCategory::Desktop => "settings-root-desktop",
+            SettingsRootCategory::System => "settings-root-system",
+        }
+    }
+
+    pub fn first_category(&self) -> SettingsCategory {
+        match self {
+            SettingsRootCategory::Desktop => SettingsCategory::Theme,
+            SettingsRootCategory::System => SettingsCategory::SystemOverview,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SettingsCategory {
     #[default]
     Theme,
     Cursor,
+    Display,
     Wallpaper,
     PinnedApps,
+    SystemOverview,
+    Network,
+    Bluetooth,
+    Sound,
+    Printers,
+    Power,
+    Users,
+    Updates,
 }
 
 impl SettingsCategory {
-    pub const ALL: &'static [SettingsCategory] = &[
+    pub const DESKTOP: &'static [SettingsCategory] = &[
         SettingsCategory::Theme,
         SettingsCategory::Cursor,
+        SettingsCategory::Display,
         SettingsCategory::Wallpaper,
         SettingsCategory::PinnedApps,
     ];
+
+    pub const SYSTEM: &'static [SettingsCategory] = &[
+        SettingsCategory::SystemOverview,
+        SettingsCategory::Network,
+        SettingsCategory::Bluetooth,
+        SettingsCategory::Sound,
+        SettingsCategory::Printers,
+        SettingsCategory::Power,
+        SettingsCategory::Users,
+        SettingsCategory::Updates,
+    ];
+
+    pub fn root(&self) -> SettingsRootCategory {
+        match self {
+            SettingsCategory::Theme
+            | SettingsCategory::Cursor
+            | SettingsCategory::Display
+            | SettingsCategory::Wallpaper
+            | SettingsCategory::PinnedApps => SettingsRootCategory::Desktop,
+            SettingsCategory::SystemOverview
+            | SettingsCategory::Network
+            | SettingsCategory::Bluetooth
+            | SettingsCategory::Sound
+            | SettingsCategory::Printers
+            | SettingsCategory::Power
+            | SettingsCategory::Users
+            | SettingsCategory::Updates => SettingsRootCategory::System,
+        }
+    }
+
+    pub fn all_for_root(root: SettingsRootCategory) -> &'static [SettingsCategory] {
+        match root {
+            SettingsRootCategory::Desktop => SettingsCategory::DESKTOP,
+            SettingsRootCategory::System => SettingsCategory::SYSTEM,
+        }
+    }
 
     pub fn label(&self) -> &'static str {
         match self {
             SettingsCategory::Theme => "Theme",
             SettingsCategory::Cursor => "Cursor",
+            SettingsCategory::Display => "Display",
             SettingsCategory::Wallpaper => "Wallpaper",
             SettingsCategory::PinnedApps => "Pinned Apps",
+            SettingsCategory::SystemOverview => "Overview",
+            SettingsCategory::Network => "Network",
+            SettingsCategory::Bluetooth => "Bluetooth",
+            SettingsCategory::Sound => "Sound",
+            SettingsCategory::Printers => "Printers",
+            SettingsCategory::Power => "Power",
+            SettingsCategory::Users => "Users",
+            SettingsCategory::Updates => "Updates",
         }
     }
 
@@ -47,17 +140,61 @@ impl SettingsCategory {
         match self {
             SettingsCategory::Theme => "settings-cat-theme",
             SettingsCategory::Cursor => "settings-cat-cursor",
+            SettingsCategory::Display => "settings-cat-display",
             SettingsCategory::Wallpaper => "settings-cat-wallpaper",
             SettingsCategory::PinnedApps => "settings-cat-pinned",
+            SettingsCategory::SystemOverview => "settings-cat-system-overview",
+            SettingsCategory::Network => "settings-cat-network",
+            SettingsCategory::Bluetooth => "settings-cat-bluetooth",
+            SettingsCategory::Sound => "settings-cat-sound",
+            SettingsCategory::Printers => "settings-cat-printers",
+            SettingsCategory::Power => "settings-cat-power",
+            SettingsCategory::Users => "settings-cat-users",
+            SettingsCategory::Updates => "settings-cat-updates",
         }
     }
 
     pub fn placeholder(&self) -> &'static str {
         match self {
             SettingsCategory::Theme => "",
-            SettingsCategory::Cursor => "Cursor theme + size — coming soon",
-            SettingsCategory::Wallpaper => "Wallpaper path + mode — coming soon",
-            SettingsCategory::PinnedApps => "Reorder / add / remove pinned apps — coming soon",
+            SettingsCategory::Cursor => "Cursor theme + size - coming soon",
+            SettingsCategory::Display => "",
+            SettingsCategory::Wallpaper => "Wallpaper path + mode - coming soon",
+            SettingsCategory::PinnedApps => "Reorder / add / remove pinned apps - coming soon",
+            SettingsCategory::SystemOverview => "System overview - coming soon",
+            SettingsCategory::Network => "Network status and connections - coming soon",
+            SettingsCategory::Bluetooth => "Bluetooth devices and pairing - coming soon",
+            SettingsCategory::Sound => "Audio devices and volume routing - coming soon",
+            SettingsCategory::Printers => "Printer setup and queue status - coming soon",
+            SettingsCategory::Power => "Power mode, suspend, and battery settings - coming soon",
+            SettingsCategory::Users => "Users, login, and authentication - coming soon",
+            SettingsCategory::Updates => "System update status - coming soon",
+        }
+    }
+
+    pub fn skeleton_detail(&self) -> &'static str {
+        match self {
+            SettingsCategory::SystemOverview => {
+                "Device summary, Meridian version, session state, and quick health checks."
+            }
+            SettingsCategory::Network => {
+                "Connections, Wi-Fi, Ethernet, VPN, DNS, and connection diagnostics."
+            }
+            SettingsCategory::Bluetooth => "Adapters, pairing, trusted devices, and input devices.",
+            SettingsCategory::Sound => "PipeWire devices, input/output routing, and volume defaults.",
+            SettingsCategory::Printers => {
+                "Printer discovery, CUPS queues, default printer, and print-job status."
+            }
+            SettingsCategory::Power => {
+                "Suspend policy, power profiles, battery status, brightness, and idle behavior."
+            }
+            SettingsCategory::Users => {
+                "Local users, login options, password flow, and YubiKey authentication."
+            }
+            SettingsCategory::Updates => {
+                "Package update status, last check, pending restarts, and maintenance actions."
+            }
+            _ => self.placeholder(),
         }
     }
 }
@@ -83,6 +220,16 @@ const THEME_ROW_CORNER: i32 = 4;
 const PINNED_ROW_H: i32 = 44;
 const PINNED_BTN_W: i32 = 30;
 const PINNED_MAX: usize = 16;
+const DISPLAY_CARD_H: i32 = 104;
+const DISPLAY_PRIMARY_BTN_W: i32 = 104;
+const DISPLAY_OUTPUT_MAX: usize = 16;
+const SYSTEM_CARD_H: i32 = 116;
+const PRINTER_SUMMARY_H: i32 = 92;
+const PRINTER_ROW_H: i32 = 72;
+const PRINTER_MAX: usize = 8;
+const SOUND_SUMMARY_H: i32 = 92;
+const SOUND_ROW_H: i32 = 72;
+const SOUND_MAX: usize = 8;
 
 pub(crate) const THEME_WIDGET_IDS: &[&str] = &[
     "settings-theme-0",
@@ -221,6 +368,24 @@ const PINNED_ADD_IDS: [&str; 16] = [
     "pinned-add-app-13",
     "pinned-add-app-14",
     "pinned-add-app-15",
+];
+const DISPLAY_PRIMARY_IDS: [&str; 16] = [
+    "display-primary-0",
+    "display-primary-1",
+    "display-primary-2",
+    "display-primary-3",
+    "display-primary-4",
+    "display-primary-5",
+    "display-primary-6",
+    "display-primary-7",
+    "display-primary-8",
+    "display-primary-9",
+    "display-primary-10",
+    "display-primary-11",
+    "display-primary-12",
+    "display-primary-13",
+    "display-primary-14",
+    "display-primary-15",
 ];
 
 struct SettingsHeader {
@@ -675,6 +840,640 @@ impl Widget for SettingsPlaceholder {
     }
 }
 
+struct SettingsSkeletonCard {
+    title: &'static str,
+    detail: &'static str,
+    row_width: i32,
+    accent: Color,
+}
+
+impl Widget for SettingsSkeletonCard {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.row_width as f32),
+                height: ui_length(SYSTEM_CARD_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, theme.palette.surface);
+        }
+
+        let strip = Rect {
+            x: area.x,
+            y: area.y + 10,
+            width: 3,
+            height: area.height - 20,
+        };
+        if let Some(path) = rounded_rect_path(strip, 1) {
+            paint_fill(canvas, &path, self.accent);
+        }
+
+        paint_text(
+            canvas,
+            self.title,
+            area.x + 18,
+            area.y + 32,
+            14.0,
+            theme.palette.text,
+        );
+        paint_text(
+            canvas,
+            "COMING SOON",
+            area.x + 18,
+            area.y + 56,
+            10.5,
+            self.accent,
+        );
+        paint_text(
+            canvas,
+            self.detail,
+            area.x + 18,
+            area.y + 86,
+            12.0,
+            theme.palette.text_dim,
+        );
+    }
+}
+
+struct SoundSummaryCard {
+    snapshot: AudioSnapshot,
+    row_width: i32,
+    accent: Color,
+}
+
+impl Widget for SoundSummaryCard {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.row_width as f32),
+                height: ui_length(SOUND_SUMMARY_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, theme.palette.surface);
+        }
+        let service_text = match self.snapshot.service {
+            AudioServiceState::Running => "PIPEWIRE RUNNING",
+            AudioServiceState::Unavailable => "AUDIO UNAVAILABLE",
+        };
+        let status_color = match self.snapshot.service {
+            AudioServiceState::Running => self.accent,
+            AudioServiceState::Unavailable => theme.palette.error,
+        };
+        paint_text(
+            canvas,
+            "Sound",
+            area.x + 18,
+            area.y + 30,
+            14.0,
+            theme.palette.text,
+        );
+        paint_text(
+            canvas,
+            service_text,
+            area.x + 18,
+            area.y + 52,
+            10.5,
+            status_color,
+        );
+
+        let output_text = self
+            .snapshot
+            .default_output
+            .as_ref()
+            .map(|device| format!("Output: {}", fit_text(&device.name, 40)))
+            .unwrap_or_else(|| "Output: none".to_string());
+        let count_text = format!(
+            "{} outputs / {} inputs",
+            self.snapshot.outputs.len(),
+            self.snapshot.inputs.len()
+        );
+        paint_text(
+            canvas,
+            &output_text,
+            area.x + 18,
+            area.y + 76,
+            12.0,
+            theme.palette.text_dim,
+        );
+        paint_text(
+            canvas,
+            &count_text,
+            area.x + area.width - 170,
+            area.y + 76,
+            12.0,
+            theme.palette.text_dim,
+        );
+    }
+}
+
+struct SoundDeviceRow {
+    label: &'static str,
+    device: AudioDevice,
+    row_width: i32,
+    accent: Color,
+}
+
+impl Widget for SoundDeviceRow {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.row_width as f32),
+                height: ui_length(SOUND_ROW_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, theme.palette.surface);
+        }
+        if self.device.is_default {
+            let strip = Rect {
+                x: area.x,
+                y: area.y + 8,
+                width: 3,
+                height: area.height - 16,
+            };
+            if let Some(path) = rounded_rect_path(strip, 1) {
+                paint_fill(canvas, &path, self.accent);
+            }
+        }
+
+        let title = format!("{} {}", self.label, fit_text(&self.device.name, 42));
+        paint_text(
+            canvas,
+            &title,
+            area.x + 18,
+            area.y + 26,
+            13.5,
+            theme.palette.text,
+        );
+        if self.device.is_default {
+            paint_text(
+                canvas,
+                "DEFAULT",
+                area.x + area.width - 88,
+                area.y + 26,
+                10.5,
+                self.accent,
+            );
+        }
+
+        let volume = self
+            .device
+            .volume_percent
+            .map(|value| format!("{}%", value))
+            .unwrap_or_else(|| "volume unknown".to_string());
+        let detail = if self.device.muted {
+            format!("id {} / {} / muted", self.device.id, volume)
+        } else {
+            format!("id {} / {}", self.device.id, volume)
+        };
+        paint_text(
+            canvas,
+            &detail,
+            area.x + 18,
+            area.y + 52,
+            12.0,
+            theme.palette.text_dim,
+        );
+    }
+}
+
+struct PrinterSummaryCard {
+    snapshot: PrinterSnapshot,
+    row_width: i32,
+    accent: Color,
+}
+
+impl Widget for PrinterSummaryCard {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.row_width as f32),
+                height: ui_length(PRINTER_SUMMARY_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, theme.palette.surface);
+        }
+
+        let service_text = match self.snapshot.service {
+            PrinterServiceState::Running => "CUPS RUNNING",
+            PrinterServiceState::Stopped => "CUPS STOPPED",
+            PrinterServiceState::Unavailable => "CUPS UNAVAILABLE",
+        };
+        let status_color = match self.snapshot.service {
+            PrinterServiceState::Running => self.accent,
+            PrinterServiceState::Stopped | PrinterServiceState::Unavailable => theme.palette.error,
+        };
+        paint_text(
+            canvas,
+            "Printers",
+            area.x + 18,
+            area.y + 30,
+            14.0,
+            theme.palette.text,
+        );
+        paint_text(
+            canvas,
+            service_text,
+            area.x + 18,
+            area.y + 52,
+            10.5,
+            status_color,
+        );
+
+        let default_text = self
+            .snapshot
+            .default_printer
+            .as_deref()
+            .map(|name| format!("Default: {}", fit_text(name, 44)))
+            .unwrap_or_else(|| "Default: none".to_string());
+        let queue_text = format!(
+            "{} configured / {} queued",
+            self.snapshot.printers.len(),
+            self.snapshot.job_count
+        );
+        paint_text(
+            canvas,
+            &default_text,
+            area.x + 18,
+            area.y + 76,
+            12.0,
+            theme.palette.text_dim,
+        );
+        paint_text(
+            canvas,
+            &queue_text,
+            area.x + area.width - 190,
+            area.y + 76,
+            12.0,
+            theme.palette.text_dim,
+        );
+    }
+}
+
+struct PrinterRow {
+    printer: PrinterInfo,
+    row_width: i32,
+    accent: Color,
+}
+
+impl Widget for PrinterRow {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.row_width as f32),
+                height: ui_length(PRINTER_ROW_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, theme.palette.surface);
+        }
+        if self.printer.is_default {
+            let strip = Rect {
+                x: area.x,
+                y: area.y + 8,
+                width: 3,
+                height: area.height - 16,
+            };
+            if let Some(path) = rounded_rect_path(strip, 1) {
+                paint_fill(canvas, &path, self.accent);
+            }
+        }
+
+        let title = fit_text(&self.printer.name, 42);
+        paint_text(
+            canvas,
+            &title,
+            area.x + 18,
+            area.y + 26,
+            13.5,
+            theme.palette.text,
+        );
+        if self.printer.is_default {
+            paint_text(
+                canvas,
+                "DEFAULT",
+                area.x + area.width - 88,
+                area.y + 26,
+                10.5,
+                self.accent,
+            );
+        }
+
+        let accepting = match self.printer.accepting {
+            Some(true) => "accepting",
+            Some(false) => "not accepting",
+            None => "accepting unknown",
+        };
+        let state = if self.printer.enabled {
+            "enabled"
+        } else {
+            "disabled"
+        };
+        let detail = format!(
+            "{} / {} / {} jobs / {}",
+            state,
+            accepting,
+            self.printer.job_count,
+            fit_text(&self.printer.status, 48)
+        );
+        paint_text(
+            canvas,
+            &detail,
+            area.x + 18,
+            area.y + 52,
+            12.0,
+            theme.palette.text_dim,
+        );
+    }
+}
+
+fn fit_text(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let mut out: String = text.chars().take(max_chars.saturating_sub(3)).collect();
+    out.push_str("...");
+    out
+}
+
+struct DisplayOutputRow {
+    output_id: u32,
+    name: Box<str>,
+    workspace: usize,
+    primary: bool,
+    focused: bool,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    scale_millis: u32,
+    transform: Option<Box<str>>,
+    refresh_millihz: Option<i32>,
+    row_width: i32,
+    accent: Color,
+}
+
+impl Widget for DisplayOutputRow {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.row_width as f32),
+                height: ui_length(DISPLAY_CARD_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+        let bg = if self.focused {
+            theme.palette.surface.lerp(self.accent, 0.08)
+        } else {
+            theme.palette.surface
+        };
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, bg);
+        }
+
+        let monitor_color = if self.focused {
+            self.accent
+        } else {
+            theme.palette.text_dim
+        };
+        let screen = Rect {
+            x: area.x + 16,
+            y: area.y + 18,
+            width: 78,
+            height: 48,
+        };
+        if let Some(path) = rounded_rect_path(screen, 4) {
+            paint_fill(canvas, &path, monitor_color);
+        }
+        let inner = Rect {
+            x: screen.x + 4,
+            y: screen.y + 4,
+            width: screen.width - 8,
+            height: screen.height - 8,
+        };
+        if let Some(path) = rounded_rect_path(inner, 2) {
+            paint_fill(canvas, &path, theme.palette.background);
+        }
+        let preview = Rect {
+            x: inner.x + 6,
+            y: inner.y + 6,
+            width: inner.width - 12,
+            height: inner.height - 12,
+        };
+        if let Some(path) = rounded_rect_path(preview, 1) {
+            paint_fill(canvas, &path, bg.lerp(monitor_color, 0.18));
+        }
+        let stand = Rect {
+            x: screen.x + 34,
+            y: screen.y + screen.height,
+            width: 10,
+            height: 10,
+        };
+        if let Some(path) = rounded_rect_path(stand, 1) {
+            paint_fill(canvas, &path, monitor_color);
+        }
+        let foot = Rect {
+            x: screen.x + 24,
+            y: screen.y + screen.height + 9,
+            width: 30,
+            height: 4,
+        };
+        if let Some(path) = rounded_rect_path(foot, 2) {
+            paint_fill(canvas, &path, monitor_color);
+        }
+
+        paint_text(
+            canvas,
+            &self.name,
+            area.x + 112,
+            area.y + 26,
+            14.0,
+            if self.focused {
+                self.accent
+            } else {
+                theme.palette.text
+            },
+        );
+
+        let badges = display_badge_text(self.focused, self.primary);
+        paint_text(
+            canvas,
+            &badges,
+            area.x + 112,
+            area.y + 45,
+            11.0,
+            if self.focused {
+                self.accent
+            } else {
+                theme.palette.text_dim
+            },
+        );
+
+        let refresh = self
+            .refresh_millihz
+            .map(|millihz| format!("{:.2} Hz", millihz as f32 / 1000.0))
+            .unwrap_or_else(|| "refresh n/a".to_string());
+        let transform = self.transform.as_deref().unwrap_or("transform n/a");
+        let mode = if self.width > 0 && self.height > 0 {
+            format!("{} x {} @ {}", self.width, self.height, refresh)
+        } else {
+            "geometry n/a".to_string()
+        };
+        paint_text(
+            canvas,
+            &mode,
+            area.x + 112,
+            area.y + 65,
+            12.0,
+            theme.palette.text,
+        );
+
+        let details = if self.width > 0 && self.height > 0 {
+            format!(
+                "pos {},{} · scale {:.2} · {} · workspace {} · id {}",
+                self.x,
+                self.y,
+                self.scale_millis as f32 / 1000.0,
+                transform,
+                self.workspace.clamp(1, 9),
+                self.output_id
+            )
+        } else {
+            format!(
+                "scale {:.2} · {} · workspace {} · id {}",
+                self.scale_millis as f32 / 1000.0,
+                transform,
+                self.workspace.clamp(1, 9),
+                self.output_id
+            )
+        };
+        paint_text(
+            canvas,
+            &details,
+            area.x + 112,
+            area.y + 84,
+            10.0,
+            theme.palette.text_dim,
+        );
+    }
+}
+
+fn display_badge_text(focused: bool, primary: bool) -> String {
+    match (focused, primary) {
+        (true, true) => "FOCUSED   PRIMARY".to_string(),
+        (true, false) => "FOCUSED".to_string(),
+        (false, true) => "PRIMARY".to_string(),
+        (false, false) => "AVAILABLE".to_string(),
+    }
+}
+
+struct DisplayPrimaryButton {
+    index: usize,
+    active: bool,
+    accent: Color,
+}
+
+impl Widget for DisplayPrimaryButton {
+    fn id(&self) -> Option<&'static str> {
+        if self.active {
+            None
+        } else {
+            DISPLAY_PRIMARY_IDS.get(self.index).copied()
+        }
+    }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(DISPLAY_PRIMARY_BTN_W as f32),
+                height: ui_length(DISPLAY_CARD_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let base = if self.active {
+            theme.palette.surface_alt.lerp(self.accent, 0.12)
+        } else {
+            theme.palette.surface_alt
+        };
+        let bg = match state {
+            WidgetState::Idle => base,
+            WidgetState::Hovered => base.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
+            WidgetState::Pressed => base.lerp(Color::rgb(0, 0, 0), 0.16),
+        };
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, bg);
+        }
+
+        let dot = Rect {
+            x: area.x + area.width / 2 - 5,
+            y: area.y + 18,
+            width: 10,
+            height: 10,
+        };
+        if let Some(path) = rounded_rect_path(dot, 5) {
+            paint_fill(
+                canvas,
+                &path,
+                if self.active {
+                    self.accent
+                } else {
+                    theme.palette.text_dim
+                },
+            );
+        }
+        let color = if self.active {
+            self.accent
+        } else {
+            theme.palette.text
+        };
+        paint_text(
+            canvas,
+            if self.active { "Primary" } else { "Make" },
+            area.x + 18,
+            area.y + 55,
+            12.0,
+            color,
+        );
+        paint_text(
+            canvas,
+            if self.active { "active" } else { "Primary" },
+            area.x + 18,
+            area.y + 73,
+            12.0,
+            color,
+        );
+    }
+}
+
 struct AddAppRow {
     index: usize,
     name: Box<str>,
@@ -773,6 +1572,9 @@ pub(crate) fn build_settings_widget_tree(
     current_wallpaper: Option<&str>,
     wallpaper_mode: WallpaperMode,
     pinned_apps: &[PinnedApp],
+    output_workspaces: &[OutputWorkspaceState],
+    printer_snapshot: &PrinterSnapshot,
+    audio_snapshot: &AudioSnapshot,
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
@@ -784,15 +1586,27 @@ pub(crate) fn build_settings_widget_tree(
         width: width as i32,
     }) as Box<dyn Widget>;
 
-    // Root-category chip bar — "Appearance" is the only root for now.
-    // Future roots (System, Network, …) get added here as more chips.
-    let root_chips: Vec<Box<dyn Widget>> = vec![Box::new(Button::with_id(
-        "settings-root-appearance",
-        "Appearance",
-        pal.accent,
-        ROOT_CHIP_W,
-        ROOT_CHIP_H,
-    )) as Box<dyn Widget>];
+    let selected_root = selected.root();
+
+    // Root-category chip bar. The content area stays compact while each root
+    // owns its own sidebar skeleton.
+    let root_chips: Vec<Box<dyn Widget>> = SettingsRootCategory::ALL
+        .iter()
+        .map(|root| {
+            let accent = if *root == selected_root {
+                pal.accent
+            } else {
+                pal.text_dim
+            };
+            Box::new(Button::with_id(
+                root.chip_id(),
+                root.label(),
+                accent,
+                ROOT_CHIP_W,
+                ROOT_CHIP_H,
+            )) as Box<dyn Widget>
+        })
+        .collect();
     let chip_bar = Container::centered_viewport(
         width,
         CHIPS_BAR_HEIGHT,
@@ -805,7 +1619,7 @@ pub(crate) fn build_settings_widget_tree(
     let content_w = width.saturating_sub(SIDEBAR_W + 1);
 
     // Left sidebar — sub-categories of the selected root category
-    let sidebar_rows: Vec<Box<dyn Widget>> = SettingsCategory::ALL
+    let sidebar_rows: Vec<Box<dyn Widget>> = SettingsCategory::all_for_root(selected_root)
         .iter()
         .map(|cat| {
             Box::new(SettingsSidebarRow {
@@ -911,6 +1725,55 @@ pub(crate) fn build_settings_widget_tree(
                     Box::new(mode_bar) as Box<dyn Widget>,
                     Box::new(wallpaper_list) as Box<dyn Widget>,
                 ],
+            ))
+        }
+        SettingsCategory::Display => {
+            let row_w = content_w as i32;
+            let mut rows: Vec<Box<dyn Widget>> = Vec::new();
+            if output_workspaces.is_empty() {
+                rows.push(Box::new(SettingsPlaceholder {
+                    width: row_w,
+                    text: "No output snapshot received yet",
+                }));
+            } else {
+                for (idx, output) in output_workspaces
+                    .iter()
+                    .take(DISPLAY_OUTPUT_MAX)
+                    .enumerate()
+                {
+                    let name = output
+                        .output_name
+                        .as_deref()
+                        .map(str::to_string)
+                        .unwrap_or_else(|| format!("Output {}", output.output_id));
+                    let row = Box::new(DisplayOutputRow {
+                        output_id: output.output_id,
+                        name: name.into(),
+                        workspace: output.active_workspace,
+                        primary: output.primary,
+                        focused: output.focused,
+                        x: output.x,
+                        y: output.y,
+                        width: output.width,
+                        height: output.height,
+                        scale_millis: output.scale_millis,
+                        transform: output.transform.as_deref().map(Into::into),
+                        refresh_millihz: output.refresh_millihz,
+                        row_width: row_w - DISPLAY_PRIMARY_BTN_W - 8,
+                        accent: pal.accent,
+                    }) as Box<dyn Widget>;
+                    let primary_button = Box::new(DisplayPrimaryButton {
+                        index: idx,
+                        active: output.primary,
+                        accent: pal.accent,
+                    }) as Box<dyn Widget>;
+                    rows.push(Box::new(Container::row(8, vec![row, primary_button])));
+                }
+            }
+            Box::new(Container::centered_viewport(
+                content_w,
+                content_h,
+                vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
             ))
         }
         SettingsCategory::PinnedApps => {
@@ -1037,6 +1900,101 @@ pub(crate) fn build_settings_widget_tree(
                 }
             }
         }
+        SettingsCategory::SystemOverview
+        | SettingsCategory::Network
+        | SettingsCategory::Bluetooth
+        | SettingsCategory::Power
+        | SettingsCategory::Users
+        | SettingsCategory::Updates => Box::new(Container::centered_viewport(
+            content_w,
+            content_h,
+            vec![Box::new(Container::column(
+                4,
+                vec![Box::new(SettingsSkeletonCard {
+                    title: selected.label(),
+                    detail: selected.skeleton_detail(),
+                    row_width: content_w as i32,
+                    accent: pal.accent,
+                }) as Box<dyn Widget>],
+            )) as Box<dyn Widget>],
+        )),
+        SettingsCategory::Sound => {
+            let row_w = content_w as i32;
+            let mut rows: Vec<Box<dyn Widget>> = vec![Box::new(SoundSummaryCard {
+                snapshot: audio_snapshot.clone(),
+                row_width: row_w,
+                accent: pal.accent,
+            }) as Box<dyn Widget>];
+
+            if audio_snapshot.service != AudioServiceState::Running {
+                rows.push(Box::new(SettingsPlaceholder {
+                    width: row_w,
+                    text: "PipeWire/WirePlumber status is not available",
+                }));
+            } else if audio_snapshot.outputs.is_empty() && audio_snapshot.inputs.is_empty() {
+                rows.push(Box::new(SettingsPlaceholder {
+                    width: row_w,
+                    text: "No audio devices reported",
+                }));
+            } else {
+                for device in audio_snapshot.outputs.iter().take(SOUND_MAX) {
+                    rows.push(Box::new(SoundDeviceRow {
+                        label: "Output",
+                        device: device.clone(),
+                        row_width: row_w,
+                        accent: pal.accent,
+                    }));
+                }
+                for device in audio_snapshot.inputs.iter().take(SOUND_MAX) {
+                    rows.push(Box::new(SoundDeviceRow {
+                        label: "Input",
+                        device: device.clone(),
+                        row_width: row_w,
+                        accent: pal.accent,
+                    }));
+                }
+            }
+
+            Box::new(Container::centered_viewport(
+                content_w,
+                content_h,
+                vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
+            ))
+        }
+        SettingsCategory::Printers => {
+            let row_w = content_w as i32;
+            let mut rows: Vec<Box<dyn Widget>> = vec![Box::new(PrinterSummaryCard {
+                snapshot: printer_snapshot.clone(),
+                row_width: row_w,
+                accent: pal.accent,
+            }) as Box<dyn Widget>];
+
+            if printer_snapshot.service != PrinterServiceState::Running {
+                rows.push(Box::new(SettingsPlaceholder {
+                    width: row_w,
+                    text: printer_service_message(printer_snapshot.service),
+                }));
+            } else if printer_snapshot.printers.is_empty() {
+                rows.push(Box::new(SettingsPlaceholder {
+                    width: row_w,
+                    text: "No printers configured yet",
+                }));
+            } else {
+                for printer in printer_snapshot.printers.iter().take(PRINTER_MAX) {
+                    rows.push(Box::new(PrinterRow {
+                        printer: printer.clone(),
+                        row_width: row_w,
+                        accent: pal.accent,
+                    }));
+                }
+            }
+
+            Box::new(Container::centered_viewport(
+                content_w,
+                content_h,
+                vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
+            ))
+        }
         other => Box::new(Container::centered_viewport(
             content_w,
             content_h,
@@ -1107,6 +2065,9 @@ pub(crate) fn draw_settings_launcher(
     current_wallpaper: Option<&str>,
     wallpaper_mode: WallpaperMode,
     pinned_apps: &[PinnedApp],
+    output_workspaces: &[OutputWorkspaceState],
+    printer_snapshot: &PrinterSnapshot,
+    audio_snapshot: &AudioSnapshot,
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
@@ -1140,6 +2101,9 @@ pub(crate) fn draw_settings_launcher(
         current_wallpaper,
         wallpaper_mode,
         pinned_apps,
+        output_workspaces,
+        printer_snapshot,
+        audio_snapshot,
         pinned_adding,
         all_apps,
         icon_cache,
@@ -1152,6 +2116,14 @@ pub(crate) fn draw_settings_launcher(
         let _ = meridian_ui::render(&*root, &layout, &mut pm, &theme, state_fn);
     }
     blit_rgba_to_argb(pixmap.data(), canvas);
+}
+
+fn printer_service_message(service: PrinterServiceState) -> &'static str {
+    match service {
+        PrinterServiceState::Running => "",
+        PrinterServiceState::Stopped => "CUPS scheduler is not running",
+        PrinterServiceState::Unavailable => "lpstat is not available",
+    }
 }
 
 fn blit_rgba_to_argb(src: &[u8], dst: &mut [u8]) {
