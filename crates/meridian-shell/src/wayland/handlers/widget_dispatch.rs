@@ -2,7 +2,7 @@ use wayland_client::QueueHandle;
 
 use super::MeridianShell;
 use crate::{
-    context_menu::{ContextMenuAction, ContextMenuState},
+    context_menu::{ContextMenuAction, ContextMenuState, DesktopContextMenuAction},
     panel::PinnedApp,
     wayland::{CommitReason, RepaintReason},
     widget_action::WidgetAction,
@@ -46,7 +46,9 @@ impl MeridianShell {
             | WidgetAction::ApplyWallpaperByIndex(_)
             | WidgetAction::SetWallpaperMode(_)
             | WidgetAction::BrowseWallpaper
-            | WidgetAction::SetPrimaryOutput(_) => self.dispatch_settings_action(qh, action),
+            | WidgetAction::SetPrimaryOutput(_)
+            | WidgetAction::ToggleOutputModeDropdown(_)
+            | WidgetAction::SetOutputMode { .. } => self.dispatch_settings_action(qh, action),
             WidgetAction::PowerOff
             | WidgetAction::PowerRestart
             | WidgetAction::PowerSleep
@@ -147,6 +149,7 @@ impl MeridianShell {
             }
             WidgetAction::SetSettingsCategory(cat) => {
                 self.settings_category = cat;
+                self.display_mode_dropdown_open = None;
                 if cat == crate::settings_view::SettingsCategory::Wallpaper
                     && self.wallpaper_thumbnails.is_empty()
                 {
@@ -202,8 +205,71 @@ impl MeridianShell {
                     self.draw_launcher(qh, RepaintReason::Pointer);
                 }
             }
+            WidgetAction::ToggleOutputModeDropdown(idx) => {
+                self.display_mode_dropdown_open = if self.display_mode_dropdown_open == Some(idx) {
+                    None
+                } else {
+                    Some(idx)
+                };
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::SetOutputMode {
+                output_index,
+                mode_index,
+            } => {
+                self.apply_output_mode_selection(qh, output_index, mode_index);
+            }
             _ => unreachable!("non settings action routed to settings dispatcher"),
         }
+    }
+
+    fn apply_output_mode_selection(
+        &mut self,
+        qh: &QueueHandle<MeridianShell>,
+        output_index: usize,
+        mode_index: usize,
+    ) {
+        let Some(output) = self.output_workspaces.get(output_index).cloned() else {
+            return;
+        };
+        let Some(name) = output.output_name.clone() else {
+            tracing::warn!(
+                "cannot set output mode without output name: output_id={}",
+                output.output_id
+            );
+            return;
+        };
+        let modes: Vec<_> = output
+            .modes
+            .iter()
+            .filter(|mode| mode.width > 0 && mode.height > 0)
+            .cloned()
+            .collect();
+        let Some(next_mode) = modes.get(mode_index).cloned() else {
+            return;
+        };
+
+        meridian_config::MeridianConfig::save_output_mode(
+            &name,
+            next_mode.width,
+            next_mode.height,
+            next_mode.refresh_millihz,
+        );
+        for state in &mut self.output_workspaces {
+            if state.output_name.as_deref() == Some(name.as_str()) {
+                state.width = next_mode.width;
+                state.height = next_mode.height;
+                state.refresh_millihz = next_mode.refresh_millihz;
+                for mode in &mut state.modes {
+                    mode.current = mode.width == next_mode.width
+                        && mode.height == next_mode.height
+                        && mode.refresh_millihz == next_mode.refresh_millihz;
+                }
+            }
+        }
+        self.display_mode_dropdown_open = None;
+        self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
+        self.draw_launcher(qh, RepaintReason::Pointer);
     }
 
     fn dispatch_power_action(&mut self, qh: &QueueHandle<MeridianShell>, action: WidgetAction) {
@@ -307,6 +373,39 @@ impl MeridianShell {
             self.settings_pinned_adding = false;
             self.draw_panel(qh, RepaintReason::Pointer);
             self.draw_launcher(qh, RepaintReason::Pointer);
+        }
+    }
+
+    pub(crate) fn handle_desktop_context_menu_action(
+        &mut self,
+        qh: &QueueHandle<MeridianShell>,
+        action: DesktopContextMenuAction,
+    ) {
+        match action {
+            DesktopContextMenuAction::Terminal => {
+                let command = meridian_ipc::ShellCommand::LaunchApp {
+                    program: "sh".to_string(),
+                    args: Vec::new(),
+                    terminal: true,
+                };
+                if !self.ipc.send(&command) {
+                    tracing::warn!("IPC unavailable, desktop terminal launch skipped");
+                }
+            }
+            DesktopContextMenuAction::Launcher => {
+                if !self.launcher_state.open {
+                    self.handle_panel_click(qh, crate::wayland::ClickAction::ToggleLauncher);
+                }
+            }
+            DesktopContextMenuAction::DisplaySettings => {
+                self.open_settings_category(qh, crate::settings_view::SettingsCategory::Display);
+            }
+            DesktopContextMenuAction::WallpaperSettings => {
+                self.open_settings_category(qh, crate::settings_view::SettingsCategory::Wallpaper);
+            }
+            DesktopContextMenuAction::Settings => {
+                self.open_settings_category(qh, crate::settings_view::SettingsCategory::Theme);
+            }
         }
     }
 

@@ -1,21 +1,18 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap},
     time::{Duration, Instant},
 };
 
 use meridian_config::OutputModeConfig;
 use smithay::{
     backend::{
-        allocator::{gbm::GbmAllocator, Format},
-        drm::{
-            compositor::DrmCompositor, exporter::gbm::GbmFramebufferExporter, DrmDevice,
-            DrmDeviceFd,
-        },
+        allocator::gbm::GbmAllocator,
+        drm::{compositor::DrmCompositor, exporter::gbm::GbmFramebufferExporter, DrmDeviceFd},
         renderer::{element::memory::MemoryRenderBuffer, gles::GlesRenderer},
     },
     desktop::Window,
     output::Output,
-    reexports::drm::control::{connector, crtc, Device as _},
+    reexports::drm::control::{connector, crtc, Mode},
     utils::{Logical, Point},
 };
 
@@ -536,6 +533,7 @@ pub struct DrmOutput {
     pub compositor: GbmDrmCompositor,
     pub crtc: crtc::Handle,
     pub connector: connector::Handle,
+    pub modes: Vec<Mode>,
     pub wallpaper: Option<WallpaperGpuCache>,
     pub frame_in_flight: bool,
     pub needs_repaint: bool,
@@ -633,10 +631,10 @@ impl DrmBackend {
 
     pub fn rebuild_compositor_for_mode(
         &mut self,
-        state_display_handle: &smithay::reexports::wayland_server::DisplayHandle,
+        _state_display_handle: &smithay::reexports::wayland_server::DisplayHandle,
         output_name: &str,
         new_mode_override: &OutputModeConfig,
-    ) -> bool {
+    ) -> Option<(i32, i32, i32)> {
         let Some(idx) = self
             .outputs
             .iter()
@@ -646,29 +644,10 @@ impl DrmBackend {
                 "rebuild_compositor_for_mode: output {} not found",
                 output_name
             );
-            return false;
+            return None;
         };
 
-        let connector = self.outputs[idx].connector;
-        let crtc = self.outputs[idx].crtc;
-        let device_fd = self.device_fd.clone();
-
-        let (mut drm, _notifier) = match DrmDevice::new(device_fd.clone(), false) {
-            Ok(pair) => pair,
-            Err(err) => {
-                tracing::warn!("rebuild compositor: drm device open failed: {}", err);
-                return false;
-            }
-        };
-
-        let conn = match drm.get_connector(connector, false) {
-            Ok(connector_info) => connector_info,
-            Err(err) => {
-                tracing::warn!("rebuild compositor: connector query failed: {}", err);
-                return false;
-            }
-        };
-        let modes = conn.modes();
+        let modes = self.outputs[idx].modes.as_slice();
         let (mode, reason) = match mode_selection::select_mode_with_override(
             modes,
             Some(new_mode_override),
@@ -681,7 +660,7 @@ impl DrmBackend {
                     output_name,
                     new_mode_override
                 );
-                return false;
+                return None;
             }
         };
         tracing::info!(
@@ -692,38 +671,12 @@ impl DrmBackend {
             reason
         );
 
-        let renderer_formats: HashSet<Format> = self
-            .renderer
-            .egl_context()
-            .dmabuf_render_formats()
-            .iter()
-            .cloned()
-            .collect();
-        let renderer_formats = init_env::maybe_disable_modifiers(
-            renderer_formats,
-            init_env::disable_drm_modifiers_requested(),
-        );
-
         let smithay_output = self.outputs[idx].output.clone();
-        let rebuilt = match init::build_drm_compositor(init::DrmCompositorBuildParams {
-            state_display_handle,
-            device_fd,
-            drm: &mut drm,
-            crtc,
-            connector,
-            mode,
-            renderer_formats: &renderer_formats,
-            output: &smithay_output,
-            gbm: None,
-        }) {
-            Ok((compositor, _gbm)) => compositor,
-            Err(err) => {
-                tracing::warn!("rebuild compositor: build failed: {}", err);
-                return false;
-            }
-        };
+        if let Err(err) = self.outputs[idx].compositor.use_mode(mode) {
+            tracing::warn!("rebuild compositor: live mode switch failed: {}", err);
+            return None;
+        }
 
-        self.outputs[idx].compositor = rebuilt;
         self.outputs[idx].frame_in_flight = false;
         self.outputs[idx].needs_repaint = true;
 
@@ -733,6 +686,10 @@ impl DrmBackend {
         };
         smithay_output.change_current_state(Some(output_mode), None, None, None);
         smithay_output.set_preferred(output_mode);
-        true
+        Some((
+            mode.size().0 as i32,
+            mode.size().1 as i32,
+            mode_selection::mode_refresh_millihz_with_fallback(mode),
+        ))
     }
 }

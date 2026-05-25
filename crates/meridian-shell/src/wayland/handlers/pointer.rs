@@ -5,10 +5,11 @@ use smithay_client_toolkit::{
 use wayland_client::{protocol::wl_pointer, Connection, QueueHandle};
 
 use crate::{
-    audio_popup,
-    context_menu, workspaces,
+    audio_popup, context_menu,
     network_popup::popup_hit_test,
+    status_notifier_popup,
     wayland::{RepaintReason, SurfaceKind},
+    workspaces,
 };
 
 use super::{pointer_translate::translate_pointer_event, MeridianShell};
@@ -22,7 +23,11 @@ impl PointerHandler for MeridianShell {
         events: &[PointerEvent],
     ) {
         for event in events {
-            self.pointer_surface = if &event.surface == self.panel.wl_surface() {
+            self.pointer_surface = if &event.surface == self.desktop_menu_layer.wl_surface() {
+                SurfaceKind::DesktopMenu
+            } else if &event.surface == self.desktop_layer.wl_surface() {
+                SurfaceKind::Desktop
+            } else if &event.surface == self.panel.wl_surface() {
                 SurfaceKind::Panel
             } else if &event.surface == self.launcher_layer.wl_surface() {
                 SurfaceKind::Launcher
@@ -70,10 +75,68 @@ impl PointerHandler for MeridianShell {
                         }
                     }
                     SurfaceKind::NetworkPopup => {}
-                    SurfaceKind::ThumbnailPopup | SurfaceKind::Calendar | SurfaceKind::None => {}
+                    SurfaceKind::DesktopMenu => {
+                        let hover_changed = self
+                            .desktop_context_menu
+                            .as_mut()
+                            .and_then(|menu| menu.hover_idx.take())
+                            .is_some();
+                        if hover_changed {
+                            self.draw_desktop_menu(qh, RepaintReason::Pointer);
+                        }
+                    }
+                    SurfaceKind::Desktop
+                    | SurfaceKind::ThumbnailPopup
+                    | SurfaceKind::Calendar
+                    | SurfaceKind::None => {}
                 }
                 self.pointer_surface = SurfaceKind::None;
                 continue;
+            }
+
+            if self.pointer_surface == SurfaceKind::DesktopMenu {
+                if let PointerEventKind::Motion { .. } = event.kind {
+                    let new_hover =
+                        context_menu::desktop_hit_item_local(event.position.0, event.position.1);
+                    let hover_changed = if let Some(ref mut menu) = self.desktop_context_menu {
+                        if new_hover != menu.hover_idx {
+                            menu.hover_idx = new_hover;
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+                    if hover_changed {
+                        self.draw_desktop_menu(qh, RepaintReason::Pointer);
+                    }
+                    continue;
+                }
+
+                if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
+                    let hit =
+                        context_menu::desktop_hit_item_local(event.position.0, event.position.1);
+                    let action = hit.and_then(|idx| {
+                        context_menu::desktop_item_list()
+                            .get(idx)
+                            .map(|item| item.1)
+                    });
+                    self.desktop_context_menu = None;
+                    self.desktop_menu_open = false;
+                    self.unmap_desktop_menu(crate::wayland::CommitReason::Input);
+                    if let Some(action) = action {
+                        self.handle_desktop_context_menu_action(qh, action);
+                    }
+                    continue;
+                }
+
+                if let PointerEventKind::Press { button: 0x111, .. } = event.kind {
+                    self.desktop_context_menu = None;
+                    self.desktop_menu_open = false;
+                    self.unmap_desktop_menu(crate::wayland::CommitReason::Input);
+                    continue;
+                }
             }
 
             if self.pointer_surface == SurfaceKind::Launcher {
@@ -277,6 +340,7 @@ impl PointerHandler for MeridianShell {
                             &self.search_query,
                             self.app_view_scroll_y,
                             None,
+                            &crate::ui::tokens::theme_from_config(&self.theme),
                         )
                     } else {
                         crate::ui_preview::build_ui_preview_widget_tree(
@@ -285,6 +349,7 @@ impl PointerHandler for MeridianShell {
                             &self.launcher_state.apps,
                             &self.icon_cache,
                             None,
+                            &crate::ui::tokens::theme_from_config(&self.theme),
                         )
                     };
                     let pixel_size = meridian_ui::PixelSize {
@@ -446,12 +511,14 @@ impl PointerHandler for MeridianShell {
                             self.wallpaper_mode,
                             &self.pinned_apps,
                             &self.output_workspaces,
+                            self.display_mode_dropdown_open,
                             &self.printer_snapshot,
                             &self.audio_snapshot,
                             self.settings_pinned_adding,
                             &self.launcher_state.apps,
                             &self.icon_cache,
                             None,
+                            &crate::ui::tokens::theme_from_config(&self.theme),
                         )
                     } else if self.app_view_open {
                         crate::app_view::build_app_view_widget_tree(
@@ -463,6 +530,7 @@ impl PointerHandler for MeridianShell {
                             &self.search_query,
                             self.app_view_scroll_y,
                             None,
+                            &crate::ui::tokens::theme_from_config(&self.theme),
                         )
                     } else {
                         crate::ui_preview::build_ui_preview_widget_tree(
@@ -471,6 +539,7 @@ impl PointerHandler for MeridianShell {
                             &self.launcher_state.apps,
                             &self.icon_cache,
                             None,
+                            &crate::ui::tokens::theme_from_config(&self.theme),
                         )
                     };
                     let pixel_size = meridian_ui::PixelSize {
@@ -550,6 +619,7 @@ impl PointerHandler for MeridianShell {
                         &self.last_clock,
                         &self.icon_cache,
                         None, // screenshot_icon — nur für Hover-Layout, Icon irrelevant
+                        &crate::ui::tokens::theme_from_config(&self.theme),
                     );
                     let pixel_size = meridian_ui::PixelSize {
                         width: self.width,
@@ -708,7 +778,36 @@ impl PointerHandler for MeridianShell {
                         .find(|zone| zone.rect.contains(event.position.0, event.position.1))
                         .map(|zone| zone.action.clone()),
                     SurfaceKind::NetworkPopup => {
-                        if self.audio_popup_open {
+                        if self.status_notifier_menu_open {
+                            let hit = status_notifier_popup::hit_item(
+                                &self.status_notifier_menu_entries,
+                                self.status_notifier_menu_height,
+                                event.position.0,
+                                event.position.1,
+                            );
+                            if let Some(item_id) = hit {
+                                if let Some(menu_state) = self.status_notifier_menu.as_ref() {
+                                    crate::status_notifier::activate_menu_item(
+                                        menu_state.service.clone(),
+                                        menu_state.menu_path.clone(),
+                                        item_id,
+                                    );
+                                }
+                                Some(crate::wayland::ClickAction::CloseStatusNotifierMenu)
+                            } else {
+                                let inside = popup_hit_test(
+                                    self.status_notifier_menu_width,
+                                    self.status_notifier_menu_height,
+                                    event.position.0,
+                                    event.position.1,
+                                );
+                                if inside {
+                                    None
+                                } else {
+                                    Some(crate::wayland::ClickAction::CloseStatusNotifierMenu)
+                                }
+                            }
+                        } else if self.audio_popup_open {
                             match audio_popup::popup_hit_test(
                                 self.audio_width,
                                 self.audio_height,
@@ -737,6 +836,7 @@ impl PointerHandler for MeridianShell {
                     }
                     SurfaceKind::ThumbnailPopup => None,
                     SurfaceKind::Calendar => None,
+                    SurfaceKind::Desktop | SurfaceKind::DesktopMenu => None,
                     SurfaceKind::None => None,
                 };
                 let keep_workspace_popup_open = matches!(
@@ -749,6 +849,10 @@ impl PointerHandler for MeridianShell {
                 );
                 let keep_audio_popup_open =
                     matches!(action, Some(crate::wayland::ClickAction::ToggleAudioPopup));
+                let keep_status_notifier_menu_open = matches!(
+                    action,
+                    Some(crate::wayland::ClickAction::CloseStatusNotifierMenu)
+                );
                 if self.workspace_popup_open
                     && self.pointer_surface != SurfaceKind::WorkspacePopup
                     && !keep_workspace_popup_open
@@ -770,6 +874,13 @@ impl PointerHandler for MeridianShell {
                     self.close_audio_popup(crate::wayland::CommitReason::Input);
                     self.draw_panel(qh, RepaintReason::Pointer);
                 }
+                if self.status_notifier_menu_open
+                    && self.pointer_surface != SurfaceKind::NetworkPopup
+                    && !keep_status_notifier_menu_open
+                {
+                    self.close_status_notifier_menu(crate::wayland::CommitReason::Input);
+                    self.draw_panel(qh, RepaintReason::Pointer);
+                }
                 // Close launcher on any click outside the launcher surface,
                 // but only when the click itself is not a launcher-toggle action
                 // (ToggleLauncher lets toggle_launcher() handle the close cleanly).
@@ -789,6 +900,7 @@ impl PointerHandler for MeridianShell {
                         SurfaceKind::NetworkPopup => self.handle_panel_click(qh, action),
                         SurfaceKind::ThumbnailPopup => {}
                         SurfaceKind::Calendar => {}
+                        SurfaceKind::Desktop | SurfaceKind::DesktopMenu => {}
                         SurfaceKind::None => {}
                     }
                 }

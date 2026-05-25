@@ -90,12 +90,16 @@ pub(crate) fn parse_snapshot(
 
     let mut rows: Vec<PrinterInfo> = printers
         .lines()
-        .filter_map(|line| parse_printer_line(line, &default_name, &accepting_by_name, &jobs_by_name))
+        .filter_map(|line| {
+            parse_printer_line(line, &default_name, &accepting_by_name, &jobs_by_name)
+        })
         .collect();
     rows.sort_by(|a, b| {
-        b.is_default
-            .cmp(&a.is_default)
-            .then_with(|| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()))
+        b.is_default.cmp(&a.is_default).then_with(|| {
+            a.name
+                .to_ascii_lowercase()
+                .cmp(&b.name.to_ascii_lowercase())
+        })
     });
 
     let job_count = jobs_by_name.values().sum();
@@ -154,7 +158,11 @@ fn parse_default_printer(output: &str) -> Option<String> {
 
 fn parse_accepting(output: &str) -> HashMap<String, bool> {
     let mut map = HashMap::new();
-    for line in output.lines().map(str::trim).filter(|line| !line.is_empty()) {
+    for line in output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
         let mut fields = line.split_whitespace();
         let Some(name) = fields.next() else { continue };
         let Some(state) = fields.next() else { continue };
@@ -166,7 +174,11 @@ fn parse_accepting(output: &str) -> HashMap<String, bool> {
 fn parse_jobs(output: &str) -> HashMap<String, usize> {
     let mut map = HashMap::new();
     let mut seen_jobs = HashSet::new();
-    for line in output.lines().map(str::trim).filter(|line| !line.is_empty()) {
+    for line in output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+    {
         let Some(job_id) = line.split_whitespace().next() else {
             continue;
         };
@@ -191,7 +203,11 @@ struct CommandOutput {
 }
 
 fn run_lpstat(args: &[&str]) -> Option<CommandOutput> {
-    let output = Command::new("lpstat").env("LC_ALL", "C").args(args).output().ok()?;
+    let output = Command::new("lpstat")
+        .env("LC_ALL", "C")
+        .args(args)
+        .output()
+        .ok()?;
     Some(CommandOutput {
         success: output.status.success(),
         stdout: String::from_utf8(output.stdout).ok()?,

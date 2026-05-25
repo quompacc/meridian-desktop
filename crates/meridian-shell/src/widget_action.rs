@@ -10,6 +10,8 @@ const PINNED_MOVE_DOWN_PREFIX: &str = "pinned-move-dn-";
 const PINNED_REMOVE_PREFIX: &str = "pinned-remove-";
 const PINNED_ADD_APP_PREFIX: &str = "pinned-add-app-";
 const DISPLAY_PRIMARY_PREFIX: &str = "display-primary-";
+const DISPLAY_MODE_TOGGLE_PREFIX: &str = "display-mode-toggle-";
+const DISPLAY_MODE_SELECT_PREFIX: &str = "display-mode-select-";
 
 const CATEGORY_ACTIONS: &[(&str, AppCategory)] = &[
     ("cat-internet", AppCategory::Internet),
@@ -45,7 +47,10 @@ pub(crate) enum WidgetAction {
     ToggleUiPreview,
     ShowTileView,
     SetCategory(AppCategory),
-    LaunchApp { program: String, args: Vec<String> },
+    LaunchApp {
+        program: String,
+        args: Vec<String>,
+    },
     LaunchExec(String),
     ToggleCalendar,
     ToggleNetworkPopup,
@@ -68,6 +73,11 @@ pub(crate) enum WidgetAction {
     PinnedCloseAdd,
     PinnedAddApp(usize),
     SetPrimaryOutput(usize),
+    ToggleOutputModeDropdown(usize),
+    SetOutputMode {
+        output_index: usize,
+        mode_index: usize,
+    },
 }
 
 pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
@@ -91,6 +101,14 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
         .or_else(|| {
             parse_indexed_action(id, DISPLAY_PRIMARY_PREFIX, WidgetAction::SetPrimaryOutput)
         })
+        .or_else(|| {
+            parse_indexed_action(
+                id,
+                DISPLAY_MODE_TOGGLE_PREFIX,
+                WidgetAction::ToggleOutputModeDropdown,
+            )
+        })
+        .or_else(|| parse_display_mode_select_action(id))
 }
 
 fn exact_action_for_id(id: &str) -> Option<WidgetAction> {
@@ -152,6 +170,15 @@ fn parse_indexed_action(
     action: impl FnOnce(usize) -> WidgetAction,
 ) -> Option<WidgetAction> {
     id.strip_prefix(prefix)?.parse::<usize>().ok().map(action)
+}
+
+fn parse_display_mode_select_action(id: &str) -> Option<WidgetAction> {
+    let rest = id.strip_prefix(DISPLAY_MODE_SELECT_PREFIX)?;
+    let (output, mode) = rest.split_once('-')?;
+    Some(WidgetAction::SetOutputMode {
+        output_index: output.parse().ok()?,
+        mode_index: mode.parse().ok()?,
+    })
 }
 
 #[cfg(test)]
@@ -285,6 +312,17 @@ mod tests {
             action_for_id("display-primary-1"),
             Some(WidgetAction::SetPrimaryOutput(1))
         );
+        assert_eq!(
+            action_for_id("display-mode-toggle-1"),
+            Some(WidgetAction::ToggleOutputModeDropdown(1))
+        );
+        assert_eq!(
+            action_for_id("display-mode-select-1-3"),
+            Some(WidgetAction::SetOutputMode {
+                output_index: 1,
+                mode_index: 3,
+            })
+        );
     }
 
     #[test]
@@ -292,6 +330,7 @@ mod tests {
         assert_eq!(action_for_id("settings-theme-"), None);
         assert_eq!(action_for_id("settings-theme-abc"), None);
         assert_eq!(action_for_id("pinned-remove-x"), None);
+        assert_eq!(action_for_id("display-mode-select-1-x"), None);
     }
 
     #[test]

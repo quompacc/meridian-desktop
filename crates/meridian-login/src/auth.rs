@@ -428,7 +428,10 @@ mod tests {
 
     #[test]
     fn auth_backend_selects_expected_pam_service() {
-        assert_eq!(AuthBackend::Password.pam_service(), "meridian-login-password");
+        assert_eq!(
+            AuthBackend::Password.pam_service(),
+            "meridian-login-password"
+        );
         assert_eq!(AuthBackend::Smartcard.pam_service(), "meridian-login");
     }
 

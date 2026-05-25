@@ -176,10 +176,14 @@ impl MeridianState {
                 .iter()
                 .find(|candidate| candidate.name == output.name);
             let diff = detect_output_reload_diff(previous_entry, entry);
+            let mut effective_width = output.width;
+            let mut effective_height = output.height;
+            let mut effective_refresh_millihz =
+                refresh_by_name.get(&output.name).copied().flatten();
 
             if diff.mode_changed {
                 if let Some(next_mode) = entry.and_then(|candidate| candidate.mode.as_ref()) {
-                    let rebuild_ok = if let Some(drm) = self.drm_backend.as_mut() {
+                    let rebuilt_mode = if let Some(drm) = self.drm_backend.as_mut() {
                         drm.rebuild_compositor_for_mode(
                             &self.display_handle,
                             &output.name,
@@ -190,9 +194,42 @@ impl MeridianState {
                             "output {} mode change skipped: drm backend not active",
                             output.name
                         );
-                        false
+                        None
                     };
-                    if !rebuild_ok && self.drm_backend.is_some() {
+                    if let Some((width, height, refresh_millihz)) = rebuilt_mode {
+                        effective_width = width;
+                        effective_height = height;
+                        effective_refresh_millihz = Some(refresh_millihz);
+                        if let Some(output_id) = self.output_registry.reconfigure_by_name(
+                            &output.name,
+                            OutputReconfigure {
+                                geometry: OutputGeometry {
+                                    x: output.x,
+                                    y: output.y,
+                                    width,
+                                    height,
+                                },
+                                scale: entry
+                                    .map(|candidate| candidate.scale)
+                                    .filter(|scale| scale.is_finite() && *scale > 0.0)
+                                    .unwrap_or(1.0),
+                                transform: entry
+                                    .and_then(|candidate| candidate.transform.as_deref())
+                                    .map(parse_output_transform)
+                                    .unwrap_or(Transform::Normal),
+                                refresh_millihz: Some(refresh_millihz),
+                                primary: Some(output.primary),
+                            },
+                        ) {
+                            let mut modes = self.output_registry.modes_for_id(output_id).to_vec();
+                            for mode in &mut modes {
+                                mode.current = mode.width == width
+                                    && mode.height == height
+                                    && mode.refresh_millihz == Some(refresh_millihz);
+                            }
+                            self.output_registry.set_modes_by_id(output_id, modes);
+                        }
+                    } else if self.drm_backend.is_some() {
                         tracing::warn!(
                             "output {} mode rebuild failed; keeping previous mode",
                             output.name
@@ -315,12 +352,12 @@ impl MeridianState {
                     geometry: OutputGeometry {
                         x: output.x,
                         y: output.y,
-                        width: output.width,
-                        height: output.height,
+                        width: effective_width,
+                        height: effective_height,
                     },
                     scale: scale_value,
                     transform,
-                    refresh_millihz: refresh_by_name.get(&output.name).copied().flatten(),
+                    refresh_millihz: effective_refresh_millihz,
                     primary: Some(output.primary),
                 },
             );
@@ -489,6 +526,10 @@ impl MeridianState {
                 crate::backend::drm::mode_selection::mode_refresh_millihz_with_fallback(mode),
             ),
         });
+        self.output_registry.set_modes_by_id(
+            output_id,
+            crate::backend::drm::mode_selection::output_mode_infos(modes, mode),
+        );
 
         let drm_backend = self
             .drm_backend
@@ -500,6 +541,7 @@ impl MeridianState {
             compositor,
             crtc: pending.crtc,
             connector: pending.connector,
+            modes: modes.to_vec(),
             wallpaper: None,
             frame_in_flight: false,
             needs_repaint: true,

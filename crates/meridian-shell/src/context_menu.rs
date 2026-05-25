@@ -1,9 +1,12 @@
+use meridian_config::ThemeConfig;
 use meridian_ui::{
     effect::{paint_border, paint_fill, paint_text, rounded_rect_path},
     paint::Rect,
-    style::{Color, Palette},
+    style::Color,
 };
 use tiny_skia::Pixmap;
+
+use crate::ui::tokens::palette_from_config;
 
 pub(crate) const MENU_WIDTH: i32 = 200;
 const ITEM_H: i32 = 36;
@@ -35,6 +38,22 @@ pub(crate) struct ContextMenuState {
     pub hover_idx: Option<usize>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DesktopContextMenuAction {
+    Terminal,
+    Launcher,
+    DisplaySettings,
+    WallpaperSettings,
+    Settings,
+}
+
+pub(crate) struct DesktopContextMenuState {
+    /// Menu top-left in desktop-surface pixels.
+    pub x: i32,
+    pub y: i32,
+    pub hover_idx: Option<usize>,
+}
+
 /// Build the item list from the current state flags.
 pub(crate) fn item_list(
     is_terminal: bool,
@@ -58,6 +77,22 @@ pub(crate) fn item_list(
     }
     items.push(("Entfernen", ContextMenuAction::RemoveFromLauncher));
     items
+}
+
+pub(crate) fn desktop_item_list() -> Vec<(&'static str, DesktopContextMenuAction)> {
+    vec![
+        ("Terminal öffnen", DesktopContextMenuAction::Terminal),
+        ("Launcher öffnen", DesktopContextMenuAction::Launcher),
+        (
+            "Display-Einstellungen",
+            DesktopContextMenuAction::DisplaySettings,
+        ),
+        (
+            "Wallpaper-Einstellungen",
+            DesktopContextMenuAction::WallpaperSettings,
+        ),
+        ("Einstellungen", DesktopContextMenuAction::Settings),
+    ]
 }
 
 /// Total pixel height of the menu for `n` items (includes separator + padding).
@@ -99,13 +134,53 @@ pub(crate) fn hit_item(state: &ContextMenuState, n: usize, px: f64, py: f64) -> 
     if !contains_point(state, n, px, py) {
         return None;
     }
+    hit_item_at(state.x, state.y, n, px, py)
+}
+
+#[allow(dead_code)]
+pub(crate) fn desktop_clamp_position(
+    cx: i32,
+    cy: i32,
+    desktop_w: i32,
+    desktop_h: i32,
+) -> (i32, i32) {
+    let n = desktop_item_list().len();
+    clamp_position(cx, cy, n, desktop_w, desktop_h)
+}
+
+pub(crate) fn desktop_contains_point(state: &DesktopContextMenuState, px: f64, py: f64) -> bool {
+    let n = desktop_item_list().len();
+    let ix = px as i32;
+    let iy = py as i32;
+    let mh = menu_height(n);
+    ix >= state.x && ix < state.x + MENU_WIDTH && iy >= state.y && iy < state.y + mh
+}
+
+pub(crate) fn desktop_hit_item(state: &DesktopContextMenuState, px: f64, py: f64) -> Option<usize> {
+    if !desktop_contains_point(state, px, py) {
+        return None;
+    }
+    hit_item_at(state.x, state.y, desktop_item_list().len(), px, py)
+}
+
+pub(crate) fn desktop_hit_item_local(px: f64, py: f64) -> Option<usize> {
+    let state = DesktopContextMenuState {
+        x: 0,
+        y: 0,
+        hover_idx: None,
+    };
+    desktop_hit_item(&state, px, py)
+}
+
+fn hit_item_at(x: i32, y: i32, n: usize, px: f64, py: f64) -> Option<usize> {
     let sep_before = n.saturating_sub(1);
     for i in 0..n {
         let extra = if i >= sep_before { 1 } else { 0 };
-        let top = state.y + VPAD + i as i32 * ITEM_H + extra;
+        let top = y + VPAD + i as i32 * ITEM_H + extra;
         let bot = top + ITEM_H;
         let iy = py as i32;
-        if iy >= top && iy < bot {
+        let ix = px as i32;
+        if ix >= x && ix < x + MENU_WIDTH && iy >= top && iy < bot {
             return Some(i);
         }
     }
@@ -119,6 +194,7 @@ pub(crate) fn draw_overlay(
     canvas_h: u32,
     state: &ContextMenuState,
     items: &[(&str, ContextMenuAction)],
+    theme_config: &ThemeConfig,
 ) {
     let n = items.len();
     let mw = MENU_WIDTH as u32;
@@ -126,7 +202,7 @@ pub(crate) fn draw_overlay(
     let Some(mut pm) = Pixmap::new(mw, mh) else {
         return;
     };
-    let pal = Palette::TOKYO_NIGHT_METRO;
+    let pal = palette_from_config(theme_config);
 
     // Background
     let bg_rect = Rect {
@@ -193,6 +269,38 @@ pub(crate) fn draw_overlay(
         &pm,
         state.x,
         state.y,
+    );
+}
+
+pub(crate) fn draw_desktop_overlay(
+    canvas: &mut [u8],
+    canvas_w: u32,
+    canvas_h: u32,
+    state: &DesktopContextMenuState,
+    items: &[(&str, DesktopContextMenuAction)],
+    theme_config: &ThemeConfig,
+) {
+    let app_items: Vec<(&str, ContextMenuAction)> = items
+        .iter()
+        .map(|(label, _)| (*label, ContextMenuAction::Launch))
+        .collect();
+    let local_state = ContextMenuState {
+        x: state.x,
+        y: state.y,
+        app_name: "Desktop".into(),
+        exec: "".into(),
+        is_terminal: false,
+        is_pinned: false,
+        running_window_id: None,
+        hover_idx: state.hover_idx,
+    };
+    draw_overlay(
+        canvas,
+        canvas_w,
+        canvas_h,
+        &local_state,
+        &app_items,
+        theme_config,
     );
 }
 
@@ -349,7 +457,7 @@ mod tests {
         let s = state(false, false);
         let items = item_list(false, false, false);
         let mut canvas = vec![0u8; 880 * 620 * 4];
-        draw_overlay(&mut canvas, 880, 620, &s, &items);
+        draw_overlay(&mut canvas, 880, 620, &s, &items, &ThemeConfig::default());
     }
 
     #[test]
@@ -357,12 +465,34 @@ mod tests {
         let s = state(false, false);
         let items = item_list(false, false, false);
         let mut canvas = vec![0u8; 880 * 620 * 4];
-        draw_overlay(&mut canvas, 880, 620, &s, &items);
+        draw_overlay(&mut canvas, 880, 620, &s, &items, &ThemeConfig::default());
         // At least some pixel in the menu area should be non-zero.
         let row_stride = 880 * 4;
         let menu_start = (s.y * row_stride + s.x * 4) as usize;
         assert!(canvas[menu_start..menu_start + MENU_WIDTH as usize * 4]
             .iter()
             .any(|b| *b != 0));
+    }
+    #[test]
+    fn desktop_item_list_contains_core_actions() {
+        let items = desktop_item_list();
+        assert_eq!(items[0].1, DesktopContextMenuAction::Terminal);
+        assert!(items
+            .iter()
+            .any(|(_, action)| *action == DesktopContextMenuAction::DisplaySettings));
+        assert!(items
+            .iter()
+            .any(|(_, action)| *action == DesktopContextMenuAction::WallpaperSettings));
+    }
+
+    #[test]
+    fn desktop_hit_item_uses_desktop_coordinates() {
+        let state = DesktopContextMenuState {
+            x: 40,
+            y: 50,
+            hover_idx: None,
+        };
+        assert_eq!(desktop_hit_item(&state, 55.0, 65.0), Some(0));
+        assert_eq!(desktop_hit_item(&state, 5.0, 65.0), None);
     }
 }

@@ -75,6 +75,12 @@ impl KeyboardHandler for MeridianShell {
             self.draw_launcher(qh, RepaintReason::Keyboard);
             return;
         }
+        if is_escape && self.desktop_menu_open {
+            self.desktop_context_menu = None;
+            self.desktop_menu_open = false;
+            self.unmap_desktop_menu(CommitReason::Input);
+            return;
+        }
         if self.network_popup_open && is_escape {
             self.close_network_popup(CommitReason::Input);
             self.draw_panel(qh, RepaintReason::Keyboard);

@@ -6,7 +6,7 @@ use smithay::{
         },
         gles::GlesRenderer,
     },
-    desktop::{space::SpaceRenderElements, Window},
+    desktop::{space::SpaceRenderElements, PopupManager, Window, WindowSurface},
     output::Output,
     utils::Scale,
     wayland::seat::WaylandFocus,
@@ -19,7 +19,7 @@ use crate::{
 
 use super::{WinitRenderElements, WinitRenderScratch};
 
-fn render_window_space_elements<C>(
+fn render_window_popup_elements<C>(
     renderer: &mut GlesRenderer,
     window: &Window,
     window_loc: smithay::utils::Point<i32, smithay::utils::Logical>,
@@ -28,18 +28,77 @@ fn render_window_space_elements<C>(
 ) where
     C: From<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>>,
 {
+    let WindowSurface::Wayland(toplevel) = window.underlying_surface() else {
+        return;
+    };
+
+    let surface = toplevel.wl_surface();
+    let location = window_loc.to_physical_precise_round(scale);
     out.extend(
-        window
-            .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
-                renderer,
-                window_loc.to_physical_precise_round(scale),
-                scale,
-                1.0,
-            )
-            .into_iter()
+        PopupManager::popups_for_surface(surface)
+            .flat_map(|(popup, popup_offset)| {
+                let offset = (window.geometry().loc + popup_offset - popup.geometry().loc)
+                    .to_physical_precise_round(scale);
+                render_elements_from_surface_tree::<
+                    GlesRenderer,
+                    WaylandSurfaceRenderElement<GlesRenderer>,
+                >(
+                    renderer,
+                    popup.wl_surface(),
+                    location + offset,
+                    scale,
+                    1.0,
+                    Kind::Unspecified,
+                )
+            })
             .map(SpaceRenderElements::from)
             .map(C::from),
     );
+}
+
+fn render_window_toplevel_elements<C>(
+    renderer: &mut GlesRenderer,
+    window: &Window,
+    window_loc: smithay::utils::Point<i32, smithay::utils::Logical>,
+    scale: Scale<f64>,
+    out: &mut Vec<C>,
+) where
+    C: From<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>>,
+{
+    match window.underlying_surface() {
+        WindowSurface::Wayland(toplevel) => {
+            out.extend(
+                render_elements_from_surface_tree::<
+                    GlesRenderer,
+                    WaylandSurfaceRenderElement<GlesRenderer>,
+                >(
+                    renderer,
+                    toplevel.wl_surface(),
+                    window_loc.to_physical_precise_round(scale),
+                    scale,
+                    1.0,
+                    Kind::Unspecified,
+                )
+                .into_iter()
+                .map(SpaceRenderElements::from)
+                .map(C::from),
+            );
+        }
+        WindowSurface::X11(_) => {
+            out.extend(
+                window
+                    .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
+                        renderer,
+                        window_loc.to_physical_precise_round(scale),
+                        scale,
+                        1.0,
+                    )
+                    .into_iter()
+                    .map(SpaceRenderElements::from)
+                    .map(C::from),
+            );
+        }
+    }
 }
 
 // Keep explicit render inputs to make frame wiring and ordering dependencies obvious.
@@ -117,6 +176,8 @@ pub(super) fn render_elements_for_output(
         let render_loc =
             smithay::utils::Point::from((loc.x - geometry.loc.x, loc.y - geometry.loc.y));
 
+        render_window_popup_elements(renderer, window, render_loc, scale, &mut scratch.normal);
+
         if let Some(wl_surf) = window.wl_surface().map(|s| s.into_owned()) {
             let metrics = state.decoration_manager.ssd_render_metrics(
                 &wl_surf,
@@ -147,7 +208,7 @@ pub(super) fn render_elements_for_output(
             );
         }
 
-        render_window_space_elements(renderer, window, render_loc, scale, &mut scratch.normal);
+        render_window_toplevel_elements(renderer, window, render_loc, scale, &mut scratch.normal);
     }
 
     let wallpaper_elem = wallpaper_cache

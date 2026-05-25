@@ -35,6 +35,12 @@ impl IpcClient {
         self.stream.is_some()
     }
 
+    pub(crate) fn event_stream_clone(&self) -> Option<UnixStream> {
+        self.stream
+            .as_ref()
+            .and_then(|stream| stream.try_clone().ok())
+    }
+
     pub(crate) fn reconnect(&mut self) {
         self.last_attempt = Instant::now();
         match UnixStream::connect(meridian_ipc::socket_path()) {

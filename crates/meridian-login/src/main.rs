@@ -210,13 +210,12 @@ impl LoginUiState {
         self.pending_power = None;
         match action {
             KeyAction::Insert(s) => {
-                let target: &mut String = if self.smartcard_login_ready()
-                    || self.focus == Field::Password
-                {
-                    &mut self.password
-                } else {
-                    &mut self.username
-                };
+                let target: &mut String =
+                    if self.smartcard_login_ready() || self.focus == Field::Password {
+                        &mut self.password
+                    } else {
+                        &mut self.username
+                    };
                 if target.chars().count() + s.chars().count() <= MAX_FIELD_LEN {
                     target.push_str(&s);
                 }
@@ -478,12 +477,10 @@ fn yubikey_present_in_hidraw_sysfs(root: &Path) -> bool {
     };
     entries.flatten().any(|entry| {
         let uevent_path = entry.path().join("device/uevent");
-        fs::read_to_string(uevent_path)
-            .ok()
-            .is_some_and(|uevent| {
-                hid_id_vendor_from_uevent(&uevent).is_some_and(is_yubico_vendor_id)
-                    || hid_name_from_uevent(&uevent).is_some_and(is_yubikey_name)
-            })
+        fs::read_to_string(uevent_path).ok().is_some_and(|uevent| {
+            hid_id_vendor_from_uevent(&uevent).is_some_and(is_yubico_vendor_id)
+                || hid_name_from_uevent(&uevent).is_some_and(is_yubikey_name)
+        })
     })
 }
 

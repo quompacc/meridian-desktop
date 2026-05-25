@@ -1,18 +1,20 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use meridian_ipc::{OutputWorkspaceState, ShellEvent, WindowSnapshotEntry};
+use meridian_ipc::{OutputModeState, OutputWorkspaceState, ShellEvent, WindowSnapshotEntry};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::wayland::seat::WaylandFocus;
 
 use super::conversions::index_to_legacy_ipc_workspace;
 use crate::state::{
     window_app_id, window_id, window_list_entry, MeridianState, OutputId, OutputInfo,
+    OutputModeInfo,
 };
 
 fn build_output_workspace_snapshot(
     outputs: &[OutputInfo],
     focused_output: Option<OutputId>,
     mut active_workspace_for_output: impl FnMut(OutputId) -> usize,
+    mut modes_for_output: impl FnMut(OutputId) -> Vec<OutputModeInfo>,
 ) -> (Option<u32>, Vec<OutputWorkspaceState>) {
     let focused_output_id = focused_output
         .filter(|id| outputs.iter().any(|output| output.id == *id))
@@ -33,6 +35,16 @@ fn build_output_workspace_snapshot(
             scale_millis: (output.scale * 1000.0).round().clamp(1.0, u32::MAX as f64) as u32,
             transform: Some(format!("{:?}", output.transform)),
             refresh_millihz: output.refresh_millihz,
+            modes: modes_for_output(output.id)
+                .into_iter()
+                .map(|mode| OutputModeState {
+                    width: mode.width,
+                    height: mode.height,
+                    refresh_millihz: mode.refresh_millihz,
+                    current: mode.current,
+                    preferred: mode.preferred,
+                })
+                .collect(),
         });
     }
 
@@ -114,10 +126,22 @@ impl MeridianState {
     }
 
     pub fn broadcast_output_workspace_snapshot(&mut self) {
+        let output_modes = self
+            .output_registry
+            .list()
+            .iter()
+            .map(|output| {
+                (
+                    output.id,
+                    self.output_registry.modes_for_id(output.id).to_vec(),
+                )
+            })
+            .collect::<HashMap<_, _>>();
         let (focused_output_id, outputs) = build_output_workspace_snapshot(
             self.output_registry.list(),
             self.focused_output(),
             |output_id| self.active_workspace_for_output(Some(output_id)),
+            |output_id| output_modes.get(&output_id).cloned().unwrap_or_default(),
         );
         tracing::debug!(
             "output workspace snapshot broadcasted: focused_output_id={:?} outputs={}",
@@ -179,6 +203,10 @@ impl MeridianState {
     pub fn broadcast_toggle_launcher(&mut self) {
         self.ipc.broadcast(&ShellEvent::ToggleLauncher);
     }
+
+    pub fn broadcast_desktop_context_menu(&mut self, x: i32, y: i32) {
+        self.ipc.broadcast(&ShellEvent::DesktopContextMenu { x, y });
+    }
 }
 
 #[cfg(test)]
@@ -210,14 +238,18 @@ mod tests {
         let left = registry.upsert(reg("eDP-1", 0, 0));
         let right = registry.upsert(reg("HDMI-A-1", 1920, 0));
 
-        let (focused_output_id, outputs) =
-            build_output_workspace_snapshot(registry.list(), Some(right), |id| {
+        let (focused_output_id, outputs) = build_output_workspace_snapshot(
+            registry.list(),
+            Some(right),
+            |id| {
                 if id == left {
                     1
                 } else {
                     3
                 }
-            });
+            },
+            |id| registry.modes_for_id(id).to_vec(),
+        );
 
         assert_eq!(focused_output_id, Some(right.0));
         assert_eq!(outputs.len(), 2);
@@ -233,6 +265,7 @@ mod tests {
         assert_eq!(outputs[0].scale_millis, 1000);
         assert_eq!(outputs[0].transform.as_deref(), Some("Normal"));
         assert_eq!(outputs[0].refresh_millihz, Some(60_000));
+        assert!(outputs[0].modes.is_empty());
 
         assert_eq!(outputs[1].output_id, right.0);
         assert_eq!(outputs[1].output_name.as_deref(), Some("HDMI-A-1"));
@@ -245,8 +278,12 @@ mod tests {
     #[test]
     fn output_workspace_snapshot_empty_registry_is_safe() {
         let registry = OutputRegistry::new();
-        let (focused_output_id, outputs) =
-            build_output_workspace_snapshot(registry.list(), Some(OutputId(1)), |_| 0);
+        let (focused_output_id, outputs) = build_output_workspace_snapshot(
+            registry.list(),
+            Some(OutputId(1)),
+            |_| 0,
+            |id| registry.modes_for_id(id).to_vec(),
+        );
         assert_eq!(focused_output_id, None);
         assert!(outputs.is_empty());
     }

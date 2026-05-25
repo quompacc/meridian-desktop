@@ -11,6 +11,7 @@ use meridian_ui::{
 };
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, Transform};
 
+use crate::ui::tokens::theme_from_config;
 use crate::{
     audio::AudioSnapshot,
     icons::{icon_image_to_pixmap, IconCache},
@@ -27,7 +28,7 @@ const CHIP_H: i32 = 28;
 const LAUNCHER_W: i32 = 40;
 const PINNED_W: i32 = 30;
 const TRAY_W: i32 = 30;
-const AUDIO_W: i32 = 42;
+const AUDIO_W: i32 = TRAY_W;
 const SNI_W: i32 = 30;
 const SCREENSHOT_W: i32 = 30;
 // Launcher gets its own larger compass-rose icon that sits visually
@@ -323,20 +324,20 @@ fn build_audio_icon(snapshot: &AudioSnapshot, theme: &Theme) -> Option<Pixmap> {
     box_path.line_to(3.0, 14.0);
     box_path.close();
     if let Some(path) = box_path.finish() {
-        pm.as_mut()
-            .fill_path(&path, &icon_paint, FillRule::Winding, Transform::identity(), None);
+        pm.as_mut().fill_path(
+            &path,
+            &icon_paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 
     for level in 0..wave_count {
         let offset = level as f32 * 2.4;
         let mut wave = PathBuilder::new();
         wave.move_to(14.0 + offset, 8.0 - offset * 0.4);
-        wave.quad_to(
-            17.0 + offset,
-            11.0,
-            14.0 + offset,
-            14.0 + offset * 0.4,
-        );
+        wave.quad_to(17.0 + offset, 11.0, 14.0 + offset, 14.0 + offset * 0.4);
         if let Some(path) = wave.finish() {
             pm.as_mut()
                 .stroke_path(&path, &icon_paint, &stroke, Transform::identity(), None);
@@ -872,6 +873,7 @@ pub(crate) fn build_panel_widget_tree(
     clock: &str,
     icon_cache: &IconCache,
     screenshot_icon: Option<Pixmap>,
+    theme: &Theme,
 ) -> Box<dyn Widget> {
     let network_icon = icon_cache
         .lookup(network_state.icon_name(), ICON_SIZE)
@@ -879,14 +881,11 @@ pub(crate) fn build_panel_widget_tree(
     let audio_icon = icon_cache
         .lookup(audio_snapshot.icon_name(), ICON_SIZE)
         .and_then(icon_image_to_pixmap)
-        .or_else(|| build_audio_icon(audio_snapshot, &Theme::TOKYO_NIGHT_METRO));
+        .or_else(|| build_audio_icon(audio_snapshot, theme));
 
     // Left cluster
     let mut left_children: Vec<Box<dyn Widget>> = Vec::new();
-    // Compass-needle launcher icon, rendered in-house to match the
-    // bootsplash visual language. Uses the same hardcoded theme
-    // constant as `draw_panel_ui` below (TOKYO_NIGHT_METRO).
-    let launcher_icon = build_launcher_icon(&Theme::TOKYO_NIGHT_METRO);
+    let launcher_icon = build_launcher_icon(theme);
     left_children.push(Box::new(PanelChip::new(
         "panel-launcher",
         "Apps".into(),
@@ -1113,6 +1112,7 @@ pub(crate) fn draw_panel_ui(
     clock: &str,
     icon_cache: &IconCache,
     screenshot_icon: Option<Pixmap>,
+    theme_config: &meridian_config::ThemeConfig,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
     clicks_out: &mut Vec<ClickZone>,
 ) {
@@ -1128,6 +1128,8 @@ pub(crate) fn draw_panel_ui(
         return;
     }
 
+    let theme = theme_from_config(theme_config);
+
     let root = build_panel_widget_tree(
         width,
         pinned_apps,
@@ -1142,6 +1144,7 @@ pub(crate) fn draw_panel_ui(
         clock,
         icon_cache,
         screenshot_icon,
+        &theme,
     );
 
     let Ok(layout) = compute_layout(&*root, PixelSize { width, height }) else {
@@ -1151,17 +1154,11 @@ pub(crate) fn draw_panel_ui(
     let Some(mut pixmap) = Pixmap::new(width, height) else {
         return;
     };
-    let bg = meridian_ui::style::Palette::TOKYO_NIGHT_METRO.surface_alt;
+    let bg = theme.palette.surface_alt;
     pixmap.fill(tiny_skia::Color::from_rgba8(bg.r, bg.g, bg.b, 0xff));
 
     let mut pixmap_canvas = pixmap.as_mut();
-    let _ = render(
-        &*root,
-        &layout,
-        &mut pixmap_canvas,
-        &Theme::TOKYO_NIGHT_METRO,
-        state_fn,
-    );
+    let _ = render(&*root, &layout, &mut pixmap_canvas, &theme, state_fn);
 
     blit_rgba_to_argb(pixmap.data(), canvas);
 
@@ -1182,6 +1179,13 @@ mod tests {
         let style = chip.style();
         assert_eq!(style.size.width, ui_length(58.0));
         assert_eq!(style.size.height, ui_length(CHIP_H as f32));
+    }
+
+    #[test]
+    fn tray_chip_widths_match() {
+        assert_eq!(AUDIO_W, TRAY_W);
+        assert_eq!(SNI_W, TRAY_W);
+        assert_eq!(SCREENSHOT_W, TRAY_W);
     }
 
     #[test]
@@ -1274,6 +1278,7 @@ mod tests {
             "12:34",
             &icon_cache,
             None,
+            &Theme::TOKYO_NIGHT_METRO,
         );
         assert_eq!(tree.children().len(), 3);
     }
@@ -1305,6 +1310,7 @@ mod tests {
             "12:34",
             &icon_cache,
             None,
+            &meridian_config::ThemeConfig::default(),
             &state_fn,
             &mut clicks,
         );

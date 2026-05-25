@@ -2,7 +2,33 @@ use std::env;
 
 use meridian_config::OutputModeConfig;
 
+use crate::state::OutputModeInfo;
+
 use super::init_env::env_flag_enabled;
+
+pub(crate) fn output_mode_infos(
+    modes: &[smithay::reexports::drm::control::Mode],
+    current: smithay::reexports::drm::control::Mode,
+) -> Vec<OutputModeInfo> {
+    let current_refresh = mode_refresh_millihz_with_fallback(current);
+    modes
+        .iter()
+        .copied()
+        .map(|mode| {
+            let (width, height) = mode.size();
+            let refresh_millihz = mode_refresh_millihz_with_fallback(mode);
+            OutputModeInfo {
+                width: width as i32,
+                height: height as i32,
+                refresh_millihz: Some(refresh_millihz),
+                current: mode.size() == current.size() && refresh_millihz == current_refresh,
+                preferred: mode
+                    .mode_type()
+                    .contains(smithay::reexports::drm::control::ModeTypeFlags::PREFERRED),
+            }
+        })
+        .collect()
+}
 
 pub(crate) fn select_add_mode(
     modes: &[smithay::reexports::drm::control::Mode],

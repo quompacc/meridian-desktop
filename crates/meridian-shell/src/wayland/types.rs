@@ -1,6 +1,8 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SurfaceKind {
     None,
+    Desktop,
+    DesktopMenu,
     Panel,
     Launcher,
     Calendar,
@@ -29,6 +31,7 @@ pub enum ClickAction {
     ToggleAudioPopup,
     OpenSoundSettings,
     ActivateStatusNotifierItem(usize),
+    CloseStatusNotifierMenu,
     Clock,
     TakeScreenshot,
     ToggleSettings,
@@ -48,6 +51,7 @@ impl ClickAction {
             ClickAction::ActivateStatusNotifierItem(idx) => {
                 format!("activate-status-notifier-item-{idx}")
             }
+            ClickAction::CloseStatusNotifierMenu => "close-status-notifier-menu".to_string(),
             ClickAction::Clock => "clock".to_string(),
             ClickAction::TakeScreenshot => "take-screenshot".to_string(),
             ClickAction::ToggleSettings => "toggle-settings".to_string(),

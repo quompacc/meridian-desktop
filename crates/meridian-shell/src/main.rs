@@ -1,8 +1,9 @@
 use std::time::Duration;
 
 use smithay_client_toolkit::reexports::calloop::{
+    generic::Generic,
     timer::{TimeoutAction, Timer},
-    EventLoop,
+    EventLoop, Interest, Mode, PostAction,
 };
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -25,6 +26,7 @@ mod power_footer;
 mod printers;
 mod settings_view;
 mod status_notifier;
+mod status_notifier_popup;
 mod thumbnail_popup;
 mod ui;
 mod ui_preview;
@@ -55,6 +57,7 @@ pub const NETWORK_POPUP_HEIGHT: u32 = 150;
 pub const AUDIO_POPUP_WIDTH: u32 = 300;
 pub const AUDIO_POPUP_HEIGHT: u32 = 172;
 pub const AUDIO_POPUP_RIGHT_MARGIN: i32 = 126;
+pub const SNI_MENU_RIGHT_MARGIN: i32 = 8;
 pub const SHELL_POPUP_BOTTOM_MARGIN: i32 = 2;
 pub const NETWORK_POPUP_RIGHT_MARGIN: i32 = 220;
 pub const NOTIFICATION_WIDTH: u32 = 360;
@@ -106,10 +109,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut event_loop = EventLoop::try_new()?;
     let (mut shell, qh) = wayland::initialize(&mut event_loop)?;
 
+    insert_ipc_event_source(&mut event_loop, qh.clone(), &shell)?;
     insert_tick_timer(&mut event_loop, qh.clone())?;
     insert_network_poll_timer(&mut event_loop, qh.clone())?;
     insert_notifications_source(&mut event_loop, qh.clone())?;
-    insert_status_notifier_source(&mut event_loop, qh.clone())?;
+    shell.status_notifier_tx = insert_status_notifier_source(&mut event_loop, qh.clone())?;
     insert_notification_expiry_timer(&mut event_loop, qh)?;
 
     while !shell.exit {
@@ -119,34 +123,102 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+fn redraw_after_ipc(
+    shell: &mut wayland::MeridianShell,
+    qh: &wayland_client::QueueHandle<wayland::MeridianShell>,
+) {
+    shell.draw_panel(qh, RepaintReason::Ipc);
+    if shell.launcher_state.open {
+        shell.draw_launcher(qh, RepaintReason::Ipc);
+    } else if shell.launcher_dirty {
+        shell.unmap_launcher(CommitReason::EventLoopTick);
+        shell.launcher_dirty = false;
+    }
+    if shell.workspace_popup_open {
+        shell.draw_workspace_popup(qh, RepaintReason::Ipc);
+    }
+    if shell.desktop_menu_open {
+        shell.draw_desktop_menu(qh, RepaintReason::Ipc);
+    }
+    if shell.thumbnail_dirty && shell.thumbnail_popup_open {
+        shell.draw_thumbnail_popup(qh, RepaintReason::Ipc);
+    }
+}
+
+fn insert_ipc_event_source(
+    event_loop: &mut EventLoop<'_, wayland::MeridianShell>,
+    qh: wayland_client::QueueHandle<wayland::MeridianShell>,
+    shell: &wayland::MeridianShell,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(stream) = shell.ipc.event_stream_clone() else {
+        tracing::warn!(
+            "meridian IPC event source unavailable at shell startup; falling back to tick polling"
+        );
+        return Ok(());
+    };
+
+    event_loop.handle().insert_source(
+        Generic::new(stream, Interest::READ, Mode::Level),
+        move |_, _, shell| {
+            let changed = shell.poll_ipc();
+            if changed {
+                redraw_after_ipc(shell, &qh);
+            }
+            Ok(if shell.ipc.is_connected() {
+                PostAction::Continue
+            } else {
+                PostAction::Remove
+            })
+        },
+    )?;
+    Ok(())
+}
+
 fn insert_status_notifier_source(
     event_loop: &mut EventLoop<'_, wayland::MeridianShell>,
     qh: wayland_client::QueueHandle<wayland::MeridianShell>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let rx = match status_notifier::spawn() {
-        Ok(rx) => rx,
+) -> Result<
+    Option<smithay_client_toolkit::reexports::calloop::channel::Sender<status_notifier::DbusEvent>>,
+    Box<dyn std::error::Error>,
+> {
+    let source = match status_notifier::spawn() {
+        Ok(source) => source,
         Err(e) => {
             tracing::warn!(error = %e, "status-notifier: failed to spawn dbus thread");
-            return Ok(());
+            return Ok(None);
         }
     };
+    let tx = source.tx.clone();
     event_loop
         .handle()
-        .insert_source(rx, move |event, _, shell| {
+        .insert_source(source.rx, move |event, _, shell| {
             use smithay_client_toolkit::reexports::calloop::channel::Event as ChEvent;
             match event {
                 ChEvent::Msg(status_notifier::DbusEvent::ItemsChanged(items)) => {
                     tracing::info!(count = items.len(), "status-notifier: items changed");
                     shell.status_notifier_items = items;
+                    shell.status_notifier_menu = None;
                     shell.panel_dirty = true;
                     shell.draw_panel(&qh, wayland::RepaintReason::Ipc);
+                }
+                ChEvent::Msg(status_notifier::DbusEvent::MenuLayout(menu_state)) => {
+                    tracing::info!(
+                        service = %menu_state.service,
+                        menu_path = %menu_state.menu_path,
+                        x = menu_state.point.x,
+                        y = menu_state.point.y,
+                        visible_items = menu_state.menu.visible_item_count(),
+                        actionable_items = menu_state.menu.actionable_item_count(),
+                        "status-notifier: dbusmenu layout ready for shell"
+                    );
+                    shell.open_status_notifier_menu(&qh, menu_state);
                 }
                 ChEvent::Closed => {
                     tracing::warn!("status-notifier: dbus channel closed");
                 }
             }
         })?;
-    Ok(())
+    Ok(Some(tx))
 }
 
 /// Periodic timer that prunes expired notifications from the queue and
@@ -158,9 +230,9 @@ fn insert_notification_expiry_timer(
     event_loop: &mut EventLoop<'_, wayland::MeridianShell>,
     qh: wayland_client::QueueHandle<wayland::MeridianShell>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    event_loop
-        .handle()
-        .insert_source(Timer::from_duration(SHELL_IDLE_TICK), move |_, _, shell| {
+    event_loop.handle().insert_source(
+        Timer::from_duration(SHELL_IDLE_TICK),
+        move |_, _, shell| {
             let now = std::time::Instant::now();
             let before = shell.notifications.len();
             shell.notifications.retain(|n| !n.is_expired(now));
@@ -176,7 +248,8 @@ fn insert_notification_expiry_timer(
                 shell.apply_wallpaper(&qh, path, mode);
             }
             TimeoutAction::ToDuration(shell.notification_timer_interval())
-        })?;
+        },
+    )?;
     Ok(())
 }
 
@@ -250,19 +323,7 @@ fn insert_tick_timer(
             }
             let ipc_changed = shell.poll_ipc();
             if ipc_changed {
-                shell.draw_panel(&qh, RepaintReason::Ipc);
-                if shell.launcher_state.open {
-                    shell.draw_launcher(&qh, RepaintReason::Ipc);
-                } else if shell.launcher_dirty {
-                    shell.unmap_launcher(CommitReason::EventLoopTick);
-                    shell.launcher_dirty = false;
-                }
-                if shell.workspace_popup_open {
-                    shell.draw_workspace_popup(&qh, RepaintReason::Ipc);
-                }
-                if shell.thumbnail_dirty && shell.thumbnail_popup_open {
-                    shell.draw_thumbnail_popup(&qh, RepaintReason::Ipc);
-                }
+                redraw_after_ipc(shell, &qh);
             }
             shell.tick(&qh);
             TimeoutAction::ToDuration(shell.tick_timer_interval())

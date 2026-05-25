@@ -6,7 +6,6 @@
 
 use meridian_ui::{
     compute_layout, render,
-    style::Palette,
     widget::{tile::TILE_BASE_SIZE, Button, Container, Widget},
     PixelSize, Theme, TileSize, WidgetState,
 };
@@ -22,6 +21,7 @@ use tiny_skia::{Pixmap, PixmapMut};
 use tiny_skia::{PixmapPaint, Transform};
 
 use crate::launcher::DesktopApp;
+use crate::ui::tokens::theme_from_config;
 use crate::{
     icons::{icon_image_to_pixmap, IconCache},
     power_footer::build_power_footer_buttons,
@@ -136,10 +136,10 @@ pub(crate) fn build_ui_preview_widget_tree(
     apps: &[DesktopApp],
     icon_cache: &IconCache,
     armed_power: Option<(&str, f32)>,
+    theme: &Theme,
 ) -> Box<dyn Widget> {
-    let theme = Theme::TOKYO_NIGHT_METRO;
     let gap = theme.spacing.md;
-    let pal = Palette::TOKYO_NIGHT_METRO;
+    let pal = theme.palette;
     let size_cycle = [
         TileSize::Large,
         TileSize::Wide,
@@ -251,6 +251,7 @@ pub(crate) fn build_ui_preview_widget_tree(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_ui_preview_sandbox(
     canvas: &mut [u8],
     width: u32,
@@ -258,6 +259,7 @@ pub(crate) fn draw_ui_preview_sandbox(
     apps: &[DesktopApp],
     icon_cache: &IconCache,
     armed_power: Option<(&str, f32)>,
+    theme_config: &meridian_config::ThemeConfig,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
 ) {
     let expected_len = (width as usize)
@@ -271,10 +273,10 @@ pub(crate) fn draw_ui_preview_sandbox(
         return;
     };
 
-    let theme = Theme::TOKYO_NIGHT_METRO;
+    let theme = theme_from_config(theme_config);
     pixmap.fill(to_tiny_skia_color(theme.palette.background));
 
-    let root = build_ui_preview_widget_tree(width, height, apps, icon_cache, armed_power);
+    let root = build_ui_preview_widget_tree(width, height, apps, icon_cache, armed_power, &theme);
 
     if let Ok(layout) = compute_layout(&*root, PixelSize { width, height }) {
         let mut pixmap_canvas = pixmap.as_mut();
@@ -303,7 +305,7 @@ fn to_tiny_skia_color(color: meridian_ui::style::Color) -> tiny_skia::Color {
 
 #[cfg(test)]
 mod tests {
-    use meridian_ui::WidgetState;
+    use meridian_ui::{Theme, WidgetState};
 
     use super::{
         blit_rgba_to_argb, build_ui_preview_widget_tree, draw_ui_preview_sandbox, DynTile,
@@ -339,9 +341,16 @@ mod tests {
         let mut canvas = vec![0_u8; (width * height * 4) as usize];
         let icon_cache = IconCache::new();
 
-        draw_ui_preview_sandbox(&mut canvas, width, height, &[], &icon_cache, None, &|_| {
-            WidgetState::Idle
-        });
+        draw_ui_preview_sandbox(
+            &mut canvas,
+            width,
+            height,
+            &[],
+            &icon_cache,
+            None,
+            &meridian_config::ThemeConfig::default(),
+            &|_| WidgetState::Idle,
+        );
 
         assert!(canvas.iter().any(|byte| *byte != 0));
     }
@@ -349,7 +358,14 @@ mod tests {
     #[test]
     fn build_ui_preview_widget_tree_has_root_column_with_three_sections() {
         let icon_cache = IconCache::new();
-        let tree = build_ui_preview_widget_tree(880, 620, &[], &icon_cache, None);
+        let tree = build_ui_preview_widget_tree(
+            880,
+            620,
+            &[],
+            &icon_cache,
+            None,
+            &Theme::TOKYO_NIGHT_METRO,
+        );
         let children = tree.children();
         assert_eq!(
             children.len(),

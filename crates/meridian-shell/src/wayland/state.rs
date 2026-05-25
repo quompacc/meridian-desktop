@@ -6,7 +6,7 @@ use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity};
 use tracing::{debug, info};
 use wayland_client::QueueHandle;
 
-use crate::{launcher, status_notifier, TextRenderer};
+use crate::{launcher, status_notifier, status_notifier_popup, TextRenderer};
 
 use super::{time, types::WindowInfo, ClickAction, CommitReason, MeridianShell, RepaintReason};
 
@@ -296,11 +296,9 @@ pub(crate) fn pinned_app_has_windows_on_workspace(
         .unwrap_or(&app.program)
         .to_lowercase();
     let label_lower = app.label.to_lowercase();
-    windows.iter().any(|w| {
-        w.workspace == workspace
-            && !w.minimized
-            && app_matches_window(&program_base, &label_lower, w)
-    })
+    windows
+        .iter()
+        .any(|w| w.workspace == workspace && app_matches_window(&program_base, &label_lower, w))
 }
 
 pub(crate) fn pinned_app_window_ids(
@@ -316,11 +314,7 @@ pub(crate) fn pinned_app_window_ids(
     let label_lower = app.label.to_lowercase();
     windows
         .iter()
-        .filter(|w| {
-            w.workspace == workspace
-                && !w.minimized
-                && app_matches_window(&program_base, &label_lower, w)
-        })
+        .filter(|w| w.workspace == workspace && app_matches_window(&program_base, &label_lower, w))
         .map(|w| w.id.clone())
         .collect()
 }
@@ -338,34 +332,26 @@ fn app_matches_window(program_base: &str, label_lower: &str, w: &WindowInfo) -> 
             || (!label_lower.is_empty() && t.contains(label_lower))
     }
 }
-
-// Returns (first_unfocused_id, any_window_exists).
-// Drives focus-or-launch: focus an unfocused window, or launch when
-// the app is already in focus (second click = new instance).
-fn pinned_app_window_status(
+fn first_minimized_pinned_app_window_id(
     app: &crate::panel::PinnedApp,
     windows: &[WindowInfo],
     active_workspace: u8,
-    focused_window_id: Option<&str>,
-) -> (Option<String>, bool) {
+) -> Option<String> {
     let program_base = std::path::Path::new(&app.program)
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(&app.program)
         .to_lowercase();
     let label_lower = app.label.to_lowercase();
-    let mut first_unfocused: Option<String> = None;
-    let mut any = false;
-    for w in windows.iter().filter(|w| w.workspace == active_workspace) {
-        if !app_matches_window(&program_base, &label_lower, w) {
-            continue;
-        }
-        any = true;
-        if focused_window_id.is_none_or(|fid| fid != w.id) && first_unfocused.is_none() {
-            first_unfocused = Some(w.id.clone());
-        }
-    }
-    (first_unfocused, any)
+
+    windows
+        .iter()
+        .find(|w| {
+            w.workspace == active_workspace
+                && w.minimized
+                && app_matches_window(&program_base, &label_lower, w)
+        })
+        .map(|w| w.id.clone())
 }
 
 impl MeridianShell {
@@ -497,6 +483,39 @@ impl MeridianShell {
         changed
     }
 
+    fn open_desktop_context_menu_from_ipc(&mut self, x: i32, y: i32) {
+        let desktop_w = self
+            .desktop_width
+            .max(crate::context_menu::MENU_WIDTH as u32) as i32;
+        let desktop_h = self.desktop_height.max(1) as i32;
+        let (x, y) = crate::context_menu::desktop_clamp_position(x, y, desktop_w, desktop_h);
+        let menu_height =
+            crate::context_menu::menu_height(crate::context_menu::desktop_item_list().len()) as u32;
+
+        self.desktop_context_menu = Some(crate::context_menu::DesktopContextMenuState {
+            x,
+            y,
+            hover_idx: None,
+        });
+        self.desktop_menu_open = true;
+        self.desktop_menu_width = crate::context_menu::MENU_WIDTH as u32;
+        self.desktop_menu_height = menu_height.max(1);
+        self.desktop_menu_buffer = None;
+        self.desktop_menu_layer
+            .set_anchor(Anchor::TOP | Anchor::LEFT);
+        self.desktop_menu_layer.set_margin(y.max(0), 0, 0, x.max(0));
+        self.desktop_menu_layer
+            .set_size(crate::context_menu::MENU_WIDTH as u32, menu_height.max(1));
+    }
+
+    fn close_desktop_context_menu_from_ipc(&mut self) {
+        if self.desktop_menu_open || self.desktop_context_menu.is_some() {
+            self.desktop_context_menu = None;
+            self.desktop_menu_open = false;
+            self.unmap_desktop_menu(CommitReason::UnknownOther);
+        }
+    }
+
     fn apply_ipc_event(&mut self, event: ShellEvent) {
         match event {
             ShellEvent::WorkspaceChanged { workspace } => {
@@ -619,10 +638,12 @@ impl MeridianShell {
                 self.update_focused_title();
             }
             ShellEvent::WindowFocused { id } => {
+                self.close_desktop_context_menu_from_ipc();
                 self.focused_window_id = Some(id);
                 self.update_focused_title();
             }
             ShellEvent::WindowFocusCleared => {
+                self.close_desktop_context_menu_from_ipc();
                 self.focused_window_id = None;
                 self.update_focused_title();
             }
@@ -632,6 +653,9 @@ impl MeridianShell {
             }
             ShellEvent::ToggleLauncher => {
                 self.toggle_launcher();
+            }
+            ShellEvent::DesktopContextMenu { x, y } => {
+                self.open_desktop_context_menu_from_ipc(x, y);
             }
             ShellEvent::WindowThumbnail {
                 id,
@@ -781,6 +805,47 @@ impl MeridianShell {
             self.launcher_dirty,
             self.keyboard_focus
         );
+    }
+
+    pub(crate) fn open_settings_category(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        category: crate::settings_view::SettingsCategory,
+    ) {
+        if self.calendar_popup_open {
+            self.close_calendar_popup(CommitReason::Input);
+        }
+        if self.workspace_popup_open {
+            self.close_workspace_popup(CommitReason::Input);
+        }
+        if self.network_popup_open {
+            self.close_network_popup(CommitReason::Input);
+        }
+        if self.audio_popup_open {
+            self.close_audio_popup(CommitReason::Input);
+        }
+        if !self.launcher_state.open {
+            self.toggle_launcher();
+        }
+        self.launcher_settings_open = true;
+        self.app_view_open = false;
+        self.settings_category = category;
+        self.display_mode_dropdown_open = None;
+        if category == crate::settings_view::SettingsCategory::Wallpaper
+            && self.wallpaper_thumbnails.is_empty()
+        {
+            self.load_wallpaper_thumbnails();
+        }
+        if category == crate::settings_view::SettingsCategory::Printers {
+            self.printer_snapshot = crate::printers::PrinterSnapshot::poll();
+        }
+        if category == crate::settings_view::SettingsCategory::Sound {
+            self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+        }
+        self.launcher_dirty = true;
+        self.panel_dirty = true;
+        self.draw_panel(qh, RepaintReason::Pointer);
+        self.draw_launcher(qh, RepaintReason::Pointer);
     }
 
     fn open_sound_settings_from_tray(&mut self, reason: CommitReason) {
@@ -1062,6 +1127,69 @@ impl MeridianShell {
         true
     }
 
+    pub(crate) fn open_status_notifier_menu(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        menu_state: status_notifier::StatusNotifierMenuState,
+    ) {
+        if self.launcher_state.open {
+            self.launcher_state.close();
+            self.launcher_layer
+                .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+            self.unmap_launcher(CommitReason::Input);
+        }
+        if self.calendar_popup_open {
+            self.close_calendar_popup(CommitReason::Input);
+        }
+        if self.workspace_popup_open {
+            self.close_workspace_popup(CommitReason::Input);
+        }
+        if self.network_popup_open {
+            self.close_network_popup(CommitReason::Input);
+        }
+        if self.audio_popup_open {
+            self.close_audio_popup(CommitReason::Input);
+        }
+
+        let entries = menu_state.menu.display_entries();
+        let height = status_notifier_popup::menu_height(entries.len());
+        self.status_notifier_menu_width = status_notifier_popup::SNI_MENU_WIDTH;
+        self.status_notifier_menu_height = height;
+        self.status_notifier_menu_entries = entries;
+        self.status_notifier_menu = Some(menu_state);
+        self.status_notifier_menu_open = true;
+        self.network_layer
+            .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
+        self.network_layer.set_margin(
+            0,
+            crate::SNI_MENU_RIGHT_MARGIN,
+            crate::SHELL_POPUP_BOTTOM_MARGIN,
+            0,
+        );
+        self.network_layer.set_exclusive_zone(0);
+        self.network_layer.set_size(
+            self.status_notifier_menu_width,
+            self.status_notifier_menu_height,
+        );
+        self.network_layer
+            .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+        self.network_dirty = true;
+        self.draw_status_notifier_menu(qh, RepaintReason::Ipc);
+    }
+
+    pub(crate) fn close_status_notifier_menu(&mut self, reason: CommitReason) -> bool {
+        if !self.status_notifier_menu_open {
+            return false;
+        }
+        self.status_notifier_menu_open = false;
+        self.status_notifier_menu = None;
+        self.status_notifier_menu_entries.clear();
+        self.network_layer
+            .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
+        self.unmap_status_notifier_menu(reason);
+        true
+    }
+
     pub(crate) fn open_thumbnail_popup(
         &mut self,
         qh: &QueueHandle<Self>,
@@ -1308,6 +1436,7 @@ impl MeridianShell {
         self.theme = theme_manager.current().config.clone();
         self.theme_name = name.clone();
         meridian_config::MeridianConfig::save_theme(&name);
+        self.ipc.send(&ShellCommand::ReloadConfig);
         tracing::info!("Theme applied: {}", name);
         self.panel_dirty = true;
         self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
@@ -1349,33 +1478,19 @@ impl MeridianShell {
             ClickAction::LaunchPinnedApp(idx) => {
                 if let Some(app) = self.pinned_apps.get(idx).cloned() {
                     let ws = self.panel_active_workspace();
-                    let (unfocused_id, any_window) = pinned_app_window_status(
-                        &app,
-                        &self.windows,
-                        ws,
-                        self.focused_window_id.as_deref(),
-                    );
-                    if let Some(id) = unfocused_id {
-                        // A window exists but is not focused: bring it to front.
+                    if let Some(id) = first_minimized_pinned_app_window_id(&app, &self.windows, ws)
+                    {
                         self.ipc.send(&ShellCommand::FocusWindow { id });
-                    } else if any_window {
-                        // All windows are already focused: open a new instance.
-                        let command = ShellCommand::LaunchApp {
-                            program: app.program,
-                            args: app.args,
-                            terminal: app.terminal,
-                        };
-                        let _ = self.ipc.send(&command);
-                    } else {
-                        // No window at all: launch.
-                        let command = ShellCommand::LaunchApp {
-                            program: app.program,
-                            args: app.args,
-                            terminal: app.terminal,
-                        };
-                        if !self.ipc.send(&command) {
-                            tracing::warn!("IPC unavailable, pinned app launch skipped: {}", idx);
-                        }
+                        return;
+                    }
+
+                    let command = ShellCommand::LaunchApp {
+                        program: app.program,
+                        args: app.args,
+                        terminal: app.terminal,
+                    };
+                    if !self.ipc.send(&command) {
+                        tracing::warn!("IPC unavailable, pinned app launch skipped: {}", idx);
                     }
                 }
             }
@@ -1413,6 +1528,9 @@ impl MeridianShell {
                 self.open_sound_settings_from_tray(CommitReason::Input);
                 self.draw_panel(qh, RepaintReason::Pointer);
                 self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            ClickAction::CloseStatusNotifierMenu => {
+                self.close_status_notifier_menu(CommitReason::Input);
             }
             ClickAction::ActivateStatusNotifierItem(idx) => {
                 if let Some(item) = self.status_notifier_items.get(idx) {
@@ -1543,7 +1661,11 @@ impl MeridianShell {
                 y = point.y,
                 "status-notifier: panel item context-menu requested"
             );
-            status_notifier::context_menu_item(item.clone(), point);
+            status_notifier::context_menu_item(
+                item.clone(),
+                point,
+                self.status_notifier_tx.clone(),
+            );
         }
     }
 
@@ -1576,6 +1698,7 @@ impl MeridianShell {
             ClickAction::ToggleAudioPopup => {}
             ClickAction::OpenSoundSettings => {}
             ClickAction::ActivateStatusNotifierItem(_) => {}
+            ClickAction::CloseStatusNotifierMenu => {}
             ClickAction::Clock => {}
             ClickAction::TakeScreenshot => {}
             ClickAction::ToggleSettings => {
@@ -1738,9 +1861,8 @@ mod tests {
         apply_output_workspace_snapshot_state, apply_window_closed_state,
         apply_window_opened_state, apply_workspace_changed, clear_stale_focused_window_id,
         compute_occupied_workspaces, panel_global_activation_point, panel_theme_signature,
-        resolve_shell_theme_from_config, select_panel_active_workspace, OutputWorkspaceChangedInput,
-        WindowInfo,
-        WindowSnapshotEntry,
+        resolve_shell_theme_from_config, select_panel_active_workspace,
+        OutputWorkspaceChangedInput, WindowInfo, WindowSnapshotEntry,
     };
 
     #[test]

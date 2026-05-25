@@ -38,7 +38,7 @@ to the version pinned by `rust-toolchain.toml`.
 ```bash
 sudo apt install -y \
     network-manager \
-    dmz-cursor-theme \
+    breeze-cursor-theme \
     xkb-data \
     fonts-dejavu fonts-noto-core \
     xdg-utils
@@ -52,9 +52,10 @@ What each one is for:
   switches to NetworkManager so the tray works. SSH stays up across the
   switch as long as you create the connection profile *before* disabling
   networkd (the install steps below do this).
-- **dmz-cursor-theme** — provides the `DMZ-White` and `DMZ-Black` cursor
-  themes. Meridian's default cursor theme is `default` which always exists,
-  but DMZ is the polish we recommend. See "Cursor theme" below.
+- **breeze-cursor-theme** — provides the `Breeze_Light` cursor theme used by
+  Meridian desktop cursor by default, matching the small white login cursor.
+  Source-only builds without Breeze installed fall back through the compositor
+  cursor loader. See "Cursor theme" below.
 - **xkb-data** — keyboard layout databases for `xkbcommon`. Usually already
   installed by another package but explicit here so a minimal install does
   not stall on missing layouts.
@@ -147,19 +148,18 @@ suffix like `(local only)` which Meridian now handles correctly).
 
 ## 6. Cursor theme
 
-Meridian defaults to `default` (always exists). For the DMZ arrow look from
-the package above:
+Meridian defaults to `Breeze_Light` at size `24`. The Debian runtime dependency
+above installs it. To make the choice explicit in a user config:
 
-```bash
-# Either pick DMZ-White (Debian package name) by editing your config:
-#   ~/.config/meridian/config.toml
-#   [cursor]
-#   theme = "DMZ-White"
-
-# Or symlink Vanilla-DMZ -> DMZ-White if you have configs that name the
-# Ubuntu/legacy theme:
-sudo ln -s DMZ-White /usr/share/icons/Vanilla-DMZ
+```toml
+# ~/.config/meridian/config.toml
+[cursor]
+theme = "Breeze_Light"
+size = 24
 ```
+
+If an older config still names `DMZ-White` or `Vanilla-DMZ`, change it to
+`Breeze_Light` to use the KDE Breeze cursor everywhere.
 
 ## 7. Reboot
 

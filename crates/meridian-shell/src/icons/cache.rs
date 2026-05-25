@@ -13,9 +13,14 @@ pub struct IconCache {
 }
 
 impl IconCache {
+    #[allow(dead_code)]
     pub fn new() -> Self {
+        Self::new_for_theme(super::lookup_default_theme(), "#c0caf5")
+    }
+
+    pub fn new_for_theme(theme_name: &str, symbolic_color: &str) -> Self {
         Self {
-            loader: IconLoader::new(super::lookup_default_theme()),
+            loader: IconLoader::new_with_symbolic_color(theme_name, symbolic_color),
             entries: HashMap::new(),
         }
     }

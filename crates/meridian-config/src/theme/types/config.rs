@@ -110,7 +110,7 @@ pub struct Cursor {
 impl Default for Cursor {
     fn default() -> Self {
         Self {
-            theme: "Adwaita".to_string(),
+            theme: "Breeze_Light".to_string(),
             size: 24,
         }
     }
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn test_cursor_default_uses_installed_theme() {
         let cursor = Cursor::default();
-        assert_eq!(cursor.theme, "Adwaita");
+        assert_eq!(cursor.theme, "Breeze_Light");
         assert_eq!(cursor.size, 24);
     }
 }

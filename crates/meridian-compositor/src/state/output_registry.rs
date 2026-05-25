@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use smithay::utils::Transform;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -19,6 +21,15 @@ impl OutputGeometry {
         let bottom = top + self.height as f64;
         x >= left && x < right && y >= top && y < bottom
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutputModeInfo {
+    pub width: i32,
+    pub height: i32,
+    pub refresh_millihz: Option<i32>,
+    pub current: bool,
+    pub preferred: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,6 +65,7 @@ pub struct OutputReconfigure {
 pub struct OutputRegistry {
     next_id: u32,
     outputs: Vec<OutputInfo>,
+    modes: HashMap<OutputId, Vec<OutputModeInfo>>,
 }
 
 impl OutputRegistry {
@@ -63,6 +75,27 @@ impl OutputRegistry {
 
     pub fn list(&self) -> &[OutputInfo] {
         &self.outputs
+    }
+
+    pub fn modes_for_id(&self, id: OutputId) -> &[OutputModeInfo] {
+        self.modes.get(&id).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    pub fn set_modes_by_id(&mut self, id: OutputId, modes: Vec<OutputModeInfo>) -> bool {
+        if !self.contains_id(id) {
+            return false;
+        }
+        self.modes.insert(id, modes);
+        true
+    }
+
+    pub fn set_modes_by_name(
+        &mut self,
+        name: &str,
+        modes: Vec<OutputModeInfo>,
+    ) -> Option<OutputId> {
+        let id = self.by_name(name)?.id;
+        self.set_modes_by_id(id, modes).then_some(id)
     }
 
     pub fn first(&self) -> Option<&OutputInfo> {
@@ -145,6 +178,7 @@ impl OutputRegistry {
     pub fn remove_by_id(&mut self, id: OutputId) -> Option<OutputInfo> {
         let idx = self.outputs.iter().position(|output| output.id == id)?;
         let removed = self.outputs.remove(idx);
+        self.modes.remove(&removed.id);
         self.ensure_primary_after_mutation();
         Some(removed)
     }
@@ -152,6 +186,7 @@ impl OutputRegistry {
     pub fn remove_by_name(&mut self, name: &str) -> Option<OutputInfo> {
         let idx = self.outputs.iter().position(|output| output.name == name)?;
         let removed = self.outputs.remove(idx);
+        self.modes.remove(&removed.id);
         self.ensure_primary_after_mutation();
         Some(removed)
     }
@@ -228,6 +263,25 @@ mod tests {
         let id2 = registry.upsert(reg("HDMI-A-1", 1920, 0, 1920, 1080));
         assert_ne!(id1, id2);
         assert_eq!(registry.list().len(), 2);
+    }
+
+    #[test]
+    fn output_modes_are_stored_by_output_id() {
+        let mut registry = OutputRegistry::new();
+        let id = registry.upsert(reg("eDP-1", 0, 0, 1920, 1080));
+        assert!(registry.set_modes_by_id(
+            id,
+            vec![super::OutputModeInfo {
+                width: 1920,
+                height: 1080,
+                refresh_millihz: Some(60_000),
+                current: true,
+                preferred: true,
+            }],
+        ));
+        assert_eq!(registry.modes_for_id(id).len(), 1);
+        assert!(registry.remove_by_id(id).is_some());
+        assert!(registry.modes_for_id(id).is_empty());
     }
 
     #[test]
@@ -325,6 +379,7 @@ mod tests {
         let registry = OutputRegistry {
             next_id: 2,
             outputs: infos.into(),
+            modes: Default::default(),
         };
         assert_eq!(
             registry
@@ -369,6 +424,7 @@ mod tests {
         let registry = OutputRegistry {
             next_id: 2,
             outputs: infos.into(),
+            modes: Default::default(),
         };
         assert_eq!(
             registry

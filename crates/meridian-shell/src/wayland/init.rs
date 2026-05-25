@@ -56,6 +56,34 @@ pub(crate) fn initialize(
     info!("Layer shell protocol bound");
     let shm = Shm::bind(&globals, &qh).expect("wl_shm is not available");
 
+    let desktop_surface = compositor.create_surface(&qh);
+    let desktop_layer = layer_shell.create_layer_surface(
+        &qh,
+        desktop_surface,
+        Layer::Background,
+        Some("meridian-desktop"),
+        None,
+    );
+    desktop_layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+    desktop_layer.set_size(0, 0);
+    desktop_layer.set_exclusive_zone(0);
+    desktop_layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+    info!("Desktop background surface created without input buffer");
+
+    let desktop_menu_surface = compositor.create_surface(&qh);
+    let desktop_menu_layer = layer_shell.create_layer_surface(
+        &qh,
+        desktop_menu_surface,
+        Layer::Overlay,
+        Some("meridian-desktop-menu"),
+        None,
+    );
+    desktop_menu_layer.set_anchor(Anchor::TOP | Anchor::LEFT);
+    desktop_menu_layer.set_size(crate::context_menu::MENU_WIDTH as u32, 1);
+    desktop_menu_layer.set_exclusive_zone(0);
+    desktop_menu_layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+    info!("Desktop menu surface created");
+
     let panel_surface = compositor.create_surface(&qh);
     let panel = layer_shell.create_layer_surface(
         &qh,
@@ -220,7 +248,7 @@ pub(crate) fn initialize(
 
     let font = TextRenderer::new(&theme.fonts.ui, 13);
     let pool = SlotPool::new(1024 * 1024 * 4, &shm)?;
-    let mut icon_cache = IconCache::new();
+    let mut icon_cache = IconCache::new_for_theme(&theme.icons.theme, &theme.colors.text.to_hex());
     // Panel pinned-app icons at 22px. Includes both chromium (the new
     // default Web entry) and firefox so users with the older custom
     // config still get an icon. Without warming, IconCache::lookup
@@ -352,6 +380,8 @@ pub(crate) fn initialize(
         seat_state: SeatState::new(&globals, &qh),
         output_state: OutputState::new(&globals, &qh),
         shm,
+        desktop_layer,
+        desktop_menu_layer,
         panel,
         launcher_layer,
         calendar_layer,
@@ -359,6 +389,8 @@ pub(crate) fn initialize(
         network_layer,
         notification_layer,
         thumbnail_layer,
+        desktop_configured: false,
+        desktop_menu_configured: false,
         panel_configured: false,
         launcher_configured: false,
         calendar_configured: false,
@@ -367,8 +399,11 @@ pub(crate) fn initialize(
         notification_configured: false,
         thumbnail_configured: false,
         thumbnail_popup_open: false,
+        desktop_menu_open: false,
         audio_popup_open: false,
         panel_buffer: None,
+        desktop_buffer: None,
+        desktop_menu_buffer: None,
         launcher_buffer: None,
         calendar_buffer: None,
         workspace_buffer: None,
@@ -377,6 +412,10 @@ pub(crate) fn initialize(
         thumbnail_buffer: None,
         pool,
         width: 1024,
+        desktop_width: 1024,
+        desktop_height: 768,
+        desktop_menu_width: crate::context_menu::MENU_WIDTH as u32,
+        desktop_menu_height: 1,
         launcher_width: LAUNCHER_WIDTH,
         launcher_height: LAUNCHER_HEIGHT,
         launcher_is_fullscreen: false,
@@ -390,6 +429,8 @@ pub(crate) fn initialize(
         network_height: NETWORK_POPUP_HEIGHT,
         audio_width: AUDIO_POPUP_WIDTH,
         audio_height: AUDIO_POPUP_HEIGHT,
+        status_notifier_menu_width: crate::status_notifier_popup::SNI_MENU_WIDTH,
+        status_notifier_menu_height: 1,
         notification_width: crate::NOTIFICATION_WIDTH,
         notification_height: crate::NOTIFICATION_HEIGHT,
         thumbnail_width: 0,
@@ -404,6 +445,10 @@ pub(crate) fn initialize(
         notifications: std::collections::VecDeque::new(),
         notification_dirty: false,
         status_notifier_items: Vec::new(),
+        status_notifier_tx: None,
+        status_notifier_menu: None,
+        status_notifier_menu_open: false,
+        status_notifier_menu_entries: Vec::new(),
         settings_category: crate::settings_view::SettingsCategory::default(),
         settings_pinned_adding: false,
         printer_snapshot: crate::printers::PrinterSnapshot::poll(),
@@ -441,6 +486,7 @@ pub(crate) fn initialize(
         focused_output_id: None,
         output_workspaces: Vec::new(),
         output_workspace_state_available: false,
+        display_mode_dropdown_open: None,
         workspace_window_counts: [0; 9],
         occupied_workspaces: [false; 9],
         occupied_state_available: false,
@@ -458,6 +504,7 @@ pub(crate) fn initialize(
         launcher_settings_open: false,
         app_view_category: Default::default(),
         context_menu: None,
+        desktop_context_menu: None,
         hidden_execs: crate::wayland::state::load_hidden_apps(),
         search_query: String::new(),
         calendar_dirty: true,
@@ -500,6 +547,10 @@ pub(crate) fn initialize(
         screenshot_capture: None,
     };
 
+    shell.desktop_layer.commit();
+    info!("Desktop background surface committed without input buffer");
+    shell.desktop_menu_layer.commit();
+    info!("Desktop menu surface created and committed");
     shell.commit_surface(CommitSurfaceKind::Panel, CommitReason::InitialCreate);
     info!("Panel surface created and committed");
     shell.commit_surface(CommitSurfaceKind::Launcher, CommitReason::InitialCreate);

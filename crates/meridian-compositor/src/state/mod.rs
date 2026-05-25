@@ -74,7 +74,8 @@ pub use output_layout::{
 };
 pub use output_power::{OutputPowerManager, OutputPowerMode};
 pub use output_registry::{
-    OutputGeometry, OutputId, OutputInfo, OutputReconfigure, OutputRegistration, OutputRegistry,
+    OutputGeometry, OutputId, OutputInfo, OutputModeInfo, OutputReconfigure, OutputRegistration,
+    OutputRegistry,
 };
 pub use workspace_output_state::WorkspaceOutputState;
 

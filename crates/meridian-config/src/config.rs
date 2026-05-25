@@ -35,13 +35,11 @@ pub struct CursorConfig {
 impl Default for CursorConfig {
     fn default() -> Self {
         Self {
-            // "default" exists on every distro (it's a meta-theme that
-            // points at whatever the system picked) so the out-of-box
-            // experience always works. Users wanting the classic DMZ
-            // arrow set should install dmz-cursor-theme (Debian/Ubuntu)
-            // and either set theme = "DMZ-White" in their config or
-            // symlink Vanilla-DMZ -> DMZ-White. See INSTALL.md.
-            theme: "default".to_string(),
+            // Meridian defaults to KDE Breeze so the desktop cursor
+            // matches the small white login cursor by default. Source-only
+            // builds without Breeze installed fall back through the compositor
+            // cursor loader.
+            theme: "Breeze_Light".to_string(),
             size: 24,
         }
     }
@@ -247,7 +245,7 @@ struct CursorToml {
 impl Default for CursorToml {
     fn default() -> Self {
         Self {
-            theme: "default".to_string(),
+            theme: "Breeze_Light".to_string(),
             size: 24,
         }
     }
@@ -276,7 +274,9 @@ impl Default for WallpaperToml {
 mod tests {
     use std::{fs, time::SystemTime};
 
-    use super::{set_primary_output_in_toml, MeridianConfig, WallpaperMode};
+    use super::{
+        set_output_mode_in_toml, set_primary_output_in_toml, MeridianConfig, WallpaperMode,
+    };
     use crate::{OutputModeConfig, OutputPositionConfig};
 
     #[test]
@@ -936,6 +936,38 @@ primary = true
         assert!(updated.contains("position = \"auto\""));
     }
 
+    #[test]
+    fn set_output_mode_updates_existing_output_section() {
+        let updated = set_output_mode_in_toml(
+            r#"
+[outputs.eDP-1]
+primary = true
+mode = { width = 1920, height = 1080, refresh_millihz = 60000 }
+scale = 1.25
+"#,
+            "eDP-1",
+            2560,
+            1440,
+            Some(144_000),
+        );
+
+        assert!(
+            updated.contains("mode = { width = 2560, height = 1440, refresh_millihz = 144000 }")
+        );
+        assert!(updated.contains("scale = 1.25"));
+    }
+
+    #[test]
+    fn set_output_mode_appends_missing_output_section() {
+        let updated =
+            set_output_mode_in_toml("[general]\ntheme = \"default\"\n", "DP-3", 1920, 1080, None);
+
+        assert!(updated.contains("[outputs.\"DP-3\"]"));
+        assert!(updated.contains("enabled = true"));
+        assert!(updated.contains("position = \"auto\""));
+        assert!(updated.contains("mode = { width = 1920, height = 1080 }"));
+    }
+
     fn output_by_name<'a>(config: &'a MeridianConfig, name: &str) -> &'a crate::OutputEntry {
         config
             .outputs
@@ -1126,7 +1158,47 @@ impl MeridianConfig {
         if let Err(e) = fs::write(&config_path, updated.as_bytes()) {
             warn!("Failed to write primary output to config: {}", e);
         } else {
-            info!("Saved primary output {:?} to {:?}", output_name, config_path);
+            info!(
+                "Saved primary output {:?} to {:?}",
+                output_name, config_path
+            );
+        }
+    }
+
+    /// Set the configured mode for one output while preserving the rest of the file.
+    pub fn save_output_mode(
+        output_name: &str,
+        width: i32,
+        height: i32,
+        refresh_millihz: Option<i32>,
+    ) {
+        let output_name = output_name.trim();
+        if output_name.is_empty() || width <= 0 || height <= 0 {
+            warn!(
+                "Refusing to save invalid output mode: output={:?} width={} height={}",
+                output_name, width, height
+            );
+            return;
+        }
+
+        let config_path = config_directory().join("config.toml");
+        let raw = if config_path.exists() {
+            fs::read_to_string(&config_path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let updated = set_output_mode_in_toml(&raw, output_name, width, height, refresh_millihz);
+
+        if let Some(parent) = config_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Err(e) = fs::write(&config_path, updated.as_bytes()) {
+            warn!("Failed to write output mode to config: {}", e);
+        } else {
+            info!(
+                "Saved output mode {}x{}@{:?} for {:?} to {:?}",
+                width, height, refresh_millihz, output_name, config_path
+            );
         }
     }
 
@@ -1189,6 +1261,71 @@ fn strip_toml_section(raw: &str, section: &str) -> String {
     } else {
         trimmed + "\n"
     }
+}
+
+fn set_output_mode_in_toml(
+    raw: &str,
+    output_name: &str,
+    width: i32,
+    height: i32,
+    refresh_millihz: Option<i32>,
+) -> String {
+    let mut out = String::new();
+    let mut current_output: Option<String> = None;
+    let mut current_output_has_mode = false;
+    let mut found_target_output = false;
+
+    for line in raw.lines() {
+        if let Some(next_output) = output_section_name(line) {
+            if current_output.as_deref() == Some(output_name) && !current_output_has_mode {
+                push_output_mode_line(&mut out, width, height, refresh_millihz);
+            }
+            found_target_output |= next_output == output_name;
+            current_output = Some(next_output);
+            current_output_has_mode = false;
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+
+        let trimmed = line.trim();
+        if current_output.as_deref() == Some(output_name)
+            && trimmed.starts_with('[')
+            && !trimmed.starts_with("[[")
+        {
+            if !current_output_has_mode {
+                push_output_mode_line(&mut out, width, height, refresh_millihz);
+            }
+            current_output = None;
+            current_output_has_mode = false;
+        }
+
+        if current_output.as_deref() == Some(output_name) && is_mode_key_line(line) {
+            push_output_mode_line(&mut out, width, height, refresh_millihz);
+            current_output_has_mode = true;
+            continue;
+        }
+
+        out.push_str(line);
+        out.push('\n');
+    }
+
+    if current_output.as_deref() == Some(output_name) && !current_output_has_mode {
+        push_output_mode_line(&mut out, width, height, refresh_millihz);
+    }
+
+    if !found_target_output {
+        if !out.ends_with('\n') && !out.is_empty() {
+            out.push('\n');
+        }
+        out.push('\n');
+        out.push_str(&format!("[outputs.{:?}]\n", output_name));
+        out.push_str("enabled = true\n");
+        out.push_str("position = \"auto\"\n");
+        push_output_mode_line(&mut out, width, height, refresh_millihz);
+    }
+
+    out
 }
 
 fn set_primary_output_in_toml(raw: &str, output_name: &str) -> String {
@@ -1259,10 +1396,7 @@ fn output_section_name(line: &str) -> Option<String> {
     if trimmed.starts_with("[[") || !trimmed.starts_with("[outputs.") || !trimmed.ends_with(']') {
         return None;
     }
-    let raw_name = trimmed
-        .strip_prefix("[outputs.")?
-        .strip_suffix(']')?
-        .trim();
+    let raw_name = trimmed.strip_prefix("[outputs.")?.strip_suffix(']')?.trim();
     if raw_name.is_empty() {
         return None;
     }
@@ -1272,12 +1406,32 @@ fn output_section_name(line: &str) -> Option<String> {
     Some(raw_name.to_string())
 }
 
+fn is_mode_key_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let Some(rest) = trimmed.strip_prefix("mode") else {
+        return false;
+    };
+    rest.trim_start().starts_with('=')
+}
+
 fn is_primary_key_line(line: &str) -> bool {
     let trimmed = line.trim_start();
     let Some(rest) = trimmed.strip_prefix("primary") else {
         return false;
     };
     rest.trim_start().starts_with('=')
+}
+
+fn push_output_mode_line(out: &mut String, width: i32, height: i32, refresh_millihz: Option<i32>) {
+    out.push_str("mode = { width = ");
+    out.push_str(&width.to_string());
+    out.push_str(", height = ");
+    out.push_str(&height.to_string());
+    if let Some(refresh) = refresh_millihz {
+        out.push_str(", refresh_millihz = ");
+        out.push_str(&refresh.to_string());
+    }
+    out.push_str(" }\n");
 }
 
 fn push_primary_line(out: &mut String, current_output: &str, primary_output: &str) {

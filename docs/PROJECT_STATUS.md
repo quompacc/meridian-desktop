@@ -78,8 +78,11 @@ der Code-Stand plus `AGENTS.md`.
   `SecondaryActivate(x, y)` bzw. `ContextMenu(x, y)` mit globalen
   Panel-Koordinaten an das Item. Wenn die `Menu`-Property gesetzt ist, wird
   beim Rechtsklick zusaetzlich `com.canonical.dbusmenu.GetLayout` gegen den
-  Menu-ObjectPath geprobt und Revision/Root/Child-Anzahl geloggt.
-  DBusMenu-Rendering ist Folgearbeit.
+  Menu-ObjectPath gelesen, in ein lokales Menumodell normalisiert, an den
+  Shell-Eventloop zurueckgegeben und als erstes Popup auf der geteilten
+  Network/Audio-Layer-Surface gerendert. Linksklick auf einen aktivierten
+  Menueintrag sendet `com.canonical.dbusmenu.Event(id, "clicked", ...)`.
+  Submenu-/Scroll-Politur bleibt Folgearbeit.
 - Screenshots: Panel-Screenshot nutzt clientseitig `ext-image-copy-capture`
   und schreibt PNGs in `~/Pictures/Screenshots`.
 - Window-Thumbnails: Shell fordert Thumbnails ueber IPC an, Compositor rendert
@@ -176,8 +179,8 @@ der Code-Stand plus `AGENTS.md`.
 1. Runtime-Hotplug H5d auf echter DRM-Hardware erneut ausfuehren und
    Ergebnisse in `docs/MULTI_MONITOR.md`/`docs/NVIDIA_PASSTHROUGH.md`
    eintragen.
-2. StatusNotifierItem-Tray weiter ausbauen: DBusMenu-Layout in ein lokales
-   Menu-Modell parsen und als ContextMenu-Popup rendern.
+2. StatusNotifierItem-Tray weiter ausbauen: DBusMenu-Submenus, Scrollen,
+   Hover-State und sauberere Positionierung pro Tray-Icon polieren.
 3. Portal-Scope entscheiden: FileChooser haerten oder Screenshot-Permission-
    Pfad spezifizieren, nicht beides in einem Slice.
 4. Login-Installationspfad dokumentieren: PAM-Dateien und Host-/VM-USB-

@@ -42,7 +42,14 @@ pub fn draw_audio_popup(
     const ROW_HEIGHT: i32 = 22;
     const DOT_SIZE: i32 = 10;
 
-    painter.text_clipped(font, "Sound", PAD_X, TITLE_TOP + 14, width - 2 * PAD_X, colors.accent);
+    painter.text_clipped(
+        font,
+        "Sound",
+        PAD_X,
+        TITLE_TOP + 14,
+        width - 2 * PAD_X,
+        colors.accent,
+    );
     let sep_y = TITLE_TOP + TITLE_HEIGHT;
     painter.rect(
         Rect {
@@ -240,7 +247,10 @@ mod tests {
 
     #[test]
     fn popup_hit_detection_reports_inside_and_outside() {
-        assert_eq!(popup_hit_test(280, 172, 1.0, 1.0), Some(AudioPopupHit::Card));
+        assert_eq!(
+            popup_hit_test(280, 172, 1.0, 1.0),
+            Some(AudioPopupHit::Card)
+        );
         assert_eq!(
             popup_hit_test(280, 172, 190.0, 145.0),
             Some(AudioPopupHit::SettingsLink)

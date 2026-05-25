@@ -110,9 +110,7 @@ fn parse_section_devices(output: &str, section: &str) -> Vec<AudioDevice> {
 }
 
 fn parse_device_line(line: &str) -> Option<AudioDevice> {
-    let trimmed = line
-        .trim_start_matches(['|', '`', '-', ' ', '\t'])
-        .trim();
+    let trimmed = line.trim_start_matches(['|', '`', '-', ' ', '\t']).trim();
     let is_default = trimmed.starts_with('*');
     let trimmed = trimmed.trim_start_matches('*').trim();
     let (id_text, rest) = trimmed.split_once('.')?;

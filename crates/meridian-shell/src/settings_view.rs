@@ -2,21 +2,23 @@
 
 use meridian_ui::{
     effect::{paint_fill, paint_text, rounded_rect_path},
-    style::{Color, Palette},
+    style::Color,
     ui_length,
     widget::{Button, Container, Widget},
     Rect, Theme, UiSize, WidgetState, WidgetStyle,
 };
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, PixmapRef, Transform};
 
+use crate::audio::{AudioDevice, AudioServiceState, AudioSnapshot};
 use crate::icons::{icon_image_to_pixmap, IconCache};
 use crate::launcher::DesktopApp;
 use crate::panel::PinnedApp;
 use crate::power_footer::build_power_footer_buttons;
-use crate::audio::{AudioDevice, AudioServiceState, AudioSnapshot};
 use crate::printers::{PrinterInfo, PrinterServiceState, PrinterSnapshot};
-use meridian_config::{WallpaperEntry, WallpaperMode};
-use meridian_ipc::OutputWorkspaceState;
+use meridian_config::{ThemeConfig, WallpaperEntry, WallpaperMode};
+use meridian_ipc::{OutputModeState, OutputWorkspaceState};
+
+use crate::ui::tokens::theme_from_config;
 
 // ─── SettingsCategory ────────────────────────────────────────────────────────
 
@@ -28,10 +30,8 @@ pub enum SettingsRootCategory {
 }
 
 impl SettingsRootCategory {
-    pub const ALL: &'static [SettingsRootCategory] = &[
-        SettingsRootCategory::Desktop,
-        SettingsRootCategory::System,
-    ];
+    pub const ALL: &'static [SettingsRootCategory] =
+        &[SettingsRootCategory::Desktop, SettingsRootCategory::System];
 
     pub fn label(&self) -> &'static str {
         match self {
@@ -77,13 +77,13 @@ impl SettingsCategory {
     pub const DESKTOP: &'static [SettingsCategory] = &[
         SettingsCategory::Theme,
         SettingsCategory::Cursor,
-        SettingsCategory::Display,
         SettingsCategory::Wallpaper,
         SettingsCategory::PinnedApps,
     ];
 
     pub const SYSTEM: &'static [SettingsCategory] = &[
         SettingsCategory::SystemOverview,
+        SettingsCategory::Display,
         SettingsCategory::Network,
         SettingsCategory::Bluetooth,
         SettingsCategory::Sound,
@@ -97,10 +97,10 @@ impl SettingsCategory {
         match self {
             SettingsCategory::Theme
             | SettingsCategory::Cursor
-            | SettingsCategory::Display
             | SettingsCategory::Wallpaper
             | SettingsCategory::PinnedApps => SettingsRootCategory::Desktop,
             SettingsCategory::SystemOverview
+            | SettingsCategory::Display
             | SettingsCategory::Network
             | SettingsCategory::Bluetooth
             | SettingsCategory::Sound
@@ -181,7 +181,9 @@ impl SettingsCategory {
                 "Connections, Wi-Fi, Ethernet, VPN, DNS, and connection diagnostics."
             }
             SettingsCategory::Bluetooth => "Adapters, pairing, trusted devices, and input devices.",
-            SettingsCategory::Sound => "PipeWire devices, input/output routing, and volume defaults.",
+            SettingsCategory::Sound => {
+                "PipeWire devices, input/output routing, and volume defaults."
+            }
             SettingsCategory::Printers => {
                 "Printer discovery, CUPS queues, default printer, and print-job status."
             }
@@ -222,6 +224,9 @@ const PINNED_BTN_W: i32 = 30;
 const PINNED_MAX: usize = 16;
 const DISPLAY_CARD_H: i32 = 104;
 const DISPLAY_PRIMARY_BTN_W: i32 = 104;
+const DISPLAY_MODE_COMBO_W: i32 = 188;
+const DISPLAY_MODE_OPTION_H: i32 = 34;
+const DISPLAY_MODE_OPTION_MAX: usize = 8;
 const DISPLAY_OUTPUT_MAX: usize = 16;
 const SYSTEM_CARD_H: i32 = 116;
 const PRINTER_SUMMARY_H: i32 = 92;
@@ -386,6 +391,186 @@ const DISPLAY_PRIMARY_IDS: [&str; 16] = [
     "display-primary-13",
     "display-primary-14",
     "display-primary-15",
+];
+const DISPLAY_MODE_TOGGLE_IDS: [&str; 16] = [
+    "display-mode-toggle-0",
+    "display-mode-toggle-1",
+    "display-mode-toggle-2",
+    "display-mode-toggle-3",
+    "display-mode-toggle-4",
+    "display-mode-toggle-5",
+    "display-mode-toggle-6",
+    "display-mode-toggle-7",
+    "display-mode-toggle-8",
+    "display-mode-toggle-9",
+    "display-mode-toggle-10",
+    "display-mode-toggle-11",
+    "display-mode-toggle-12",
+    "display-mode-toggle-13",
+    "display-mode-toggle-14",
+    "display-mode-toggle-15",
+];
+const DISPLAY_MODE_OPTION_IDS: [[&str; DISPLAY_MODE_OPTION_MAX]; 16] = [
+    [
+        "display-mode-select-0-0",
+        "display-mode-select-0-1",
+        "display-mode-select-0-2",
+        "display-mode-select-0-3",
+        "display-mode-select-0-4",
+        "display-mode-select-0-5",
+        "display-mode-select-0-6",
+        "display-mode-select-0-7",
+    ],
+    [
+        "display-mode-select-1-0",
+        "display-mode-select-1-1",
+        "display-mode-select-1-2",
+        "display-mode-select-1-3",
+        "display-mode-select-1-4",
+        "display-mode-select-1-5",
+        "display-mode-select-1-6",
+        "display-mode-select-1-7",
+    ],
+    [
+        "display-mode-select-2-0",
+        "display-mode-select-2-1",
+        "display-mode-select-2-2",
+        "display-mode-select-2-3",
+        "display-mode-select-2-4",
+        "display-mode-select-2-5",
+        "display-mode-select-2-6",
+        "display-mode-select-2-7",
+    ],
+    [
+        "display-mode-select-3-0",
+        "display-mode-select-3-1",
+        "display-mode-select-3-2",
+        "display-mode-select-3-3",
+        "display-mode-select-3-4",
+        "display-mode-select-3-5",
+        "display-mode-select-3-6",
+        "display-mode-select-3-7",
+    ],
+    [
+        "display-mode-select-4-0",
+        "display-mode-select-4-1",
+        "display-mode-select-4-2",
+        "display-mode-select-4-3",
+        "display-mode-select-4-4",
+        "display-mode-select-4-5",
+        "display-mode-select-4-6",
+        "display-mode-select-4-7",
+    ],
+    [
+        "display-mode-select-5-0",
+        "display-mode-select-5-1",
+        "display-mode-select-5-2",
+        "display-mode-select-5-3",
+        "display-mode-select-5-4",
+        "display-mode-select-5-5",
+        "display-mode-select-5-6",
+        "display-mode-select-5-7",
+    ],
+    [
+        "display-mode-select-6-0",
+        "display-mode-select-6-1",
+        "display-mode-select-6-2",
+        "display-mode-select-6-3",
+        "display-mode-select-6-4",
+        "display-mode-select-6-5",
+        "display-mode-select-6-6",
+        "display-mode-select-6-7",
+    ],
+    [
+        "display-mode-select-7-0",
+        "display-mode-select-7-1",
+        "display-mode-select-7-2",
+        "display-mode-select-7-3",
+        "display-mode-select-7-4",
+        "display-mode-select-7-5",
+        "display-mode-select-7-6",
+        "display-mode-select-7-7",
+    ],
+    [
+        "display-mode-select-8-0",
+        "display-mode-select-8-1",
+        "display-mode-select-8-2",
+        "display-mode-select-8-3",
+        "display-mode-select-8-4",
+        "display-mode-select-8-5",
+        "display-mode-select-8-6",
+        "display-mode-select-8-7",
+    ],
+    [
+        "display-mode-select-9-0",
+        "display-mode-select-9-1",
+        "display-mode-select-9-2",
+        "display-mode-select-9-3",
+        "display-mode-select-9-4",
+        "display-mode-select-9-5",
+        "display-mode-select-9-6",
+        "display-mode-select-9-7",
+    ],
+    [
+        "display-mode-select-10-0",
+        "display-mode-select-10-1",
+        "display-mode-select-10-2",
+        "display-mode-select-10-3",
+        "display-mode-select-10-4",
+        "display-mode-select-10-5",
+        "display-mode-select-10-6",
+        "display-mode-select-10-7",
+    ],
+    [
+        "display-mode-select-11-0",
+        "display-mode-select-11-1",
+        "display-mode-select-11-2",
+        "display-mode-select-11-3",
+        "display-mode-select-11-4",
+        "display-mode-select-11-5",
+        "display-mode-select-11-6",
+        "display-mode-select-11-7",
+    ],
+    [
+        "display-mode-select-12-0",
+        "display-mode-select-12-1",
+        "display-mode-select-12-2",
+        "display-mode-select-12-3",
+        "display-mode-select-12-4",
+        "display-mode-select-12-5",
+        "display-mode-select-12-6",
+        "display-mode-select-12-7",
+    ],
+    [
+        "display-mode-select-13-0",
+        "display-mode-select-13-1",
+        "display-mode-select-13-2",
+        "display-mode-select-13-3",
+        "display-mode-select-13-4",
+        "display-mode-select-13-5",
+        "display-mode-select-13-6",
+        "display-mode-select-13-7",
+    ],
+    [
+        "display-mode-select-14-0",
+        "display-mode-select-14-1",
+        "display-mode-select-14-2",
+        "display-mode-select-14-3",
+        "display-mode-select-14-4",
+        "display-mode-select-14-5",
+        "display-mode-select-14-6",
+        "display-mode-select-14-7",
+    ],
+    [
+        "display-mode-select-15-0",
+        "display-mode-select-15-1",
+        "display-mode-select-15-2",
+        "display-mode-select-15-3",
+        "display-mode-select-15-4",
+        "display-mode-select-15-5",
+        "display-mode-select-15-6",
+        "display-mode-select-15-7",
+    ],
 ];
 
 struct SettingsHeader {
@@ -1232,6 +1417,7 @@ struct DisplayOutputRow {
     scale_millis: u32,
     transform: Option<Box<str>>,
     refresh_millihz: Option<i32>,
+    mode_count: usize,
     row_width: i32,
     accent: Color,
 }
@@ -1356,21 +1542,23 @@ impl Widget for DisplayOutputRow {
 
         let details = if self.width > 0 && self.height > 0 {
             format!(
-                "pos {},{} · scale {:.2} · {} · workspace {} · id {}",
+                "pos {},{} · scale {:.2} · {} · workspace {} · id {} · {} modes",
                 self.x,
                 self.y,
                 self.scale_millis as f32 / 1000.0,
                 transform,
                 self.workspace.clamp(1, 9),
-                self.output_id
+                self.output_id,
+                self.mode_count
             )
         } else {
             format!(
-                "scale {:.2} · {} · workspace {} · id {}",
+                "scale {:.2} · {} · workspace {} · id {} · {} modes",
                 self.scale_millis as f32 / 1000.0,
                 transform,
                 self.workspace.clamp(1, 9),
-                self.output_id
+                self.output_id,
+                self.mode_count
             )
         };
         paint_text(
@@ -1390,6 +1578,174 @@ fn display_badge_text(focused: bool, primary: bool) -> String {
         (true, false) => "FOCUSED".to_string(),
         (false, true) => "PRIMARY".to_string(),
         (false, false) => "AVAILABLE".to_string(),
+    }
+}
+
+fn display_mode_label(mode: &OutputModeState) -> String {
+    let refresh = mode
+        .refresh_millihz
+        .map(|millihz| format!("{:.2} Hz", millihz as f32 / 1000.0))
+        .unwrap_or_else(|| "Hz n/a".to_string());
+    let suffix = if mode.preferred { " pref" } else { "" };
+    format!("{} x {} @ {}{}", mode.width, mode.height, refresh, suffix)
+}
+
+fn selected_display_mode(output: &OutputWorkspaceState) -> Option<&OutputModeState> {
+    output
+        .modes
+        .iter()
+        .find(|mode| mode.current)
+        .or_else(|| {
+            output.modes.iter().find(|mode| {
+                mode.width == output.width
+                    && mode.height == output.height
+                    && mode.refresh_millihz == output.refresh_millihz
+            })
+        })
+        .or_else(|| output.modes.first())
+}
+
+struct DisplayModeComboButton {
+    index: usize,
+    label: Box<str>,
+    expanded: bool,
+    enabled: bool,
+    accent: Color,
+}
+
+impl Widget for DisplayModeComboButton {
+    fn id(&self) -> Option<&'static str> {
+        if self.enabled {
+            DISPLAY_MODE_TOGGLE_IDS.get(self.index).copied()
+        } else {
+            None
+        }
+    }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(DISPLAY_MODE_COMBO_W as f32),
+                height: ui_length(DISPLAY_CARD_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let base = if self.expanded {
+            theme.palette.surface_alt.lerp(self.accent, 0.10)
+        } else if self.enabled {
+            theme.palette.surface_alt
+        } else {
+            theme.palette.surface
+        };
+        let bg = match state {
+            WidgetState::Idle => base,
+            WidgetState::Hovered if self.enabled => base.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
+            WidgetState::Pressed if self.enabled => base.lerp(Color::rgb(0, 0, 0), 0.16),
+            _ => base,
+        };
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, bg);
+        }
+        let color = if self.enabled {
+            theme.palette.text
+        } else {
+            theme.palette.text_dim
+        };
+        paint_text(
+            canvas,
+            "Mode",
+            area.x + 14,
+            area.y + 28,
+            11.0,
+            theme.palette.text_dim,
+        );
+        paint_text(
+            canvas,
+            &fit_text(&self.label, 23),
+            area.x + 14,
+            area.y + 58,
+            11.0,
+            color,
+        );
+        paint_text(
+            canvas,
+            if self.expanded { "^" } else { "v" },
+            area.x + area.width - 22,
+            area.y + 58,
+            13.0,
+            if self.enabled {
+                self.accent
+            } else {
+                theme.palette.text_dim
+            },
+        );
+    }
+}
+
+struct DisplayModeOptionRow {
+    output_index: usize,
+    mode_index: usize,
+    label: Box<str>,
+    selected: bool,
+    row_width: i32,
+    accent: Color,
+}
+
+impl Widget for DisplayModeOptionRow {
+    fn id(&self) -> Option<&'static str> {
+        DISPLAY_MODE_OPTION_IDS
+            .get(self.output_index)
+            .and_then(|ids| ids.get(self.mode_index))
+            .copied()
+    }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.row_width as f32),
+                height: ui_length(DISPLAY_MODE_OPTION_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let base = if self.selected {
+            theme.palette.surface_alt.lerp(self.accent, 0.14)
+        } else {
+            theme.palette.surface_alt
+        };
+        let bg = match state {
+            WidgetState::Idle => base,
+            WidgetState::Hovered => base.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
+            WidgetState::Pressed => base.lerp(Color::rgb(0, 0, 0), 0.16),
+        };
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, bg);
+        }
+        paint_text(
+            canvas,
+            if self.selected { "*" } else { "" },
+            area.x + 14,
+            area.y + 23,
+            12.0,
+            self.accent,
+        );
+        paint_text(
+            canvas,
+            &fit_text(&self.label, 58),
+            area.x + 34,
+            area.y + 23,
+            12.0,
+            if self.selected {
+                self.accent
+            } else {
+                theme.palette.text
+            },
+        );
     }
 }
 
@@ -1573,14 +1929,16 @@ pub(crate) fn build_settings_widget_tree(
     wallpaper_mode: WallpaperMode,
     pinned_apps: &[PinnedApp],
     output_workspaces: &[OutputWorkspaceState],
+    display_mode_dropdown_open: Option<usize>,
     printer_snapshot: &PrinterSnapshot,
     audio_snapshot: &AudioSnapshot,
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
     armed_power: Option<(&str, f32)>,
+    theme: &Theme,
 ) -> Box<dyn Widget> {
-    let pal = Palette::TOKYO_NIGHT_METRO;
+    let pal = theme.palette;
 
     let header = Box::new(SettingsHeader {
         width: width as i32,
@@ -1759,7 +2117,20 @@ pub(crate) fn build_settings_widget_tree(
                         scale_millis: output.scale_millis,
                         transform: output.transform.as_deref().map(Into::into),
                         refresh_millihz: output.refresh_millihz,
-                        row_width: row_w - DISPLAY_PRIMARY_BTN_W - 8,
+                        mode_count: output.modes.len(),
+                        row_width: (row_w - DISPLAY_PRIMARY_BTN_W - DISPLAY_MODE_COMBO_W - 16)
+                            .max(180),
+                        accent: pal.accent,
+                    }) as Box<dyn Widget>;
+                    let combo_label = selected_display_mode(output)
+                        .map(display_mode_label)
+                        .unwrap_or_else(|| "No modes".to_string());
+                    let expanded = display_mode_dropdown_open == Some(idx);
+                    let mode_combo = Box::new(DisplayModeComboButton {
+                        index: idx,
+                        label: combo_label.into(),
+                        expanded,
+                        enabled: !output.modes.is_empty(),
                         accent: pal.accent,
                     }) as Box<dyn Widget>;
                     let primary_button = Box::new(DisplayPrimaryButton {
@@ -1767,7 +2138,28 @@ pub(crate) fn build_settings_widget_tree(
                         active: output.primary,
                         accent: pal.accent,
                     }) as Box<dyn Widget>;
-                    rows.push(Box::new(Container::row(8, vec![row, primary_button])));
+                    rows.push(Box::new(Container::row(
+                        8,
+                        vec![row, mode_combo, primary_button],
+                    )));
+
+                    if expanded {
+                        for (mode_idx, mode) in output
+                            .modes
+                            .iter()
+                            .take(DISPLAY_MODE_OPTION_MAX)
+                            .enumerate()
+                        {
+                            rows.push(Box::new(DisplayModeOptionRow {
+                                output_index: idx,
+                                mode_index: mode_idx,
+                                label: display_mode_label(mode).into(),
+                                selected: mode.current,
+                                row_width: row_w,
+                                accent: pal.accent,
+                            }));
+                        }
+                    }
                 }
             }
             Box::new(Container::centered_viewport(
@@ -2066,12 +2458,14 @@ pub(crate) fn draw_settings_launcher(
     wallpaper_mode: WallpaperMode,
     pinned_apps: &[PinnedApp],
     output_workspaces: &[OutputWorkspaceState],
+    display_mode_dropdown_open: Option<usize>,
     printer_snapshot: &PrinterSnapshot,
     audio_snapshot: &AudioSnapshot,
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
     armed_power: Option<(&str, f32)>,
+    theme_config: &ThemeConfig,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
 ) {
     let expected = (width as usize)
@@ -2083,7 +2477,7 @@ pub(crate) fn draw_settings_launcher(
     let Some(mut pixmap) = Pixmap::new(width, height) else {
         return;
     };
-    let theme = Theme::TOKYO_NIGHT_METRO;
+    let theme = theme_from_config(theme_config);
     pixmap.fill(tiny_skia::Color::from_rgba8(
         theme.palette.background.r,
         theme.palette.background.g,
@@ -2102,12 +2496,14 @@ pub(crate) fn draw_settings_launcher(
         wallpaper_mode,
         pinned_apps,
         output_workspaces,
+        display_mode_dropdown_open,
         printer_snapshot,
         audio_snapshot,
         pinned_adding,
         all_apps,
         icon_cache,
         armed_power,
+        &theme,
     );
     if let Ok(layout) =
         meridian_ui::compute_layout(&*root, meridian_ui::PixelSize { width, height })

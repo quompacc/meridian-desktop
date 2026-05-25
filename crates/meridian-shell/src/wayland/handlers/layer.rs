@@ -1,5 +1,6 @@
-use smithay_client_toolkit::shell::wlr_layer::{
-    Anchor, LayerShellHandler, LayerSurface, LayerSurfaceConfigure,
+use smithay_client_toolkit::shell::{
+    wlr_layer::{Anchor, LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
+    WaylandSurface,
 };
 use tracing::{debug, warn};
 use wayland_client::{Connection, QueueHandle};
@@ -8,7 +9,8 @@ use crate::wayland::{MeridianShell, RepaintReason};
 use crate::{
     AUDIO_POPUP_HEIGHT, AUDIO_POPUP_RIGHT_MARGIN, AUDIO_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT,
     CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT,
-    NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
+    NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, SNI_MENU_RIGHT_MARGIN, WORKSPACE_POPUP_HEIGHT,
+    WORKSPACE_POPUP_WIDTH,
 };
 
 impl LayerShellHandler for MeridianShell {
@@ -16,6 +18,22 @@ impl LayerShellHandler for MeridianShell {
         if self.panel == *layer {
             warn!("Panel layer surface closed by compositor; terminating shell");
             self.exit = true;
+            return;
+        }
+
+        if self.desktop_layer == *layer {
+            warn!("Desktop background layer surface closed by compositor; disabling desktop menu input");
+            self.desktop_configured = false;
+            self.desktop_context_menu = None;
+            self.desktop_menu_open = false;
+            return;
+        }
+
+        if self.desktop_menu_layer == *layer {
+            warn!("Desktop menu layer surface closed by compositor; recovering menu state");
+            self.desktop_menu_configured = false;
+            self.desktop_context_menu = None;
+            self.desktop_menu_open = false;
             return;
         }
 
@@ -50,6 +68,9 @@ impl LayerShellHandler for MeridianShell {
             warn!("Network popup layer surface closed by compositor; recovering popup state");
             self.network_popup_open = false;
             self.audio_popup_open = false;
+            self.status_notifier_menu_open = false;
+            self.status_notifier_menu = None;
+            self.status_notifier_menu_entries.clear();
             self.network_configured = false;
             self.network_dirty = false;
             self.audio_dirty = false;
@@ -83,7 +104,46 @@ impl LayerShellHandler for MeridianShell {
         configure: LayerSurfaceConfigure,
         _serial: u32,
     ) {
-        if self.panel == *layer {
+        if self.desktop_layer == *layer {
+            let width = if configure.new_size.0 > 0 {
+                configure.new_size.0
+            } else {
+                self.panel_output_width_fallback().unwrap_or(1) as u32
+            };
+            let height = if configure.new_size.1 > 0 {
+                configure.new_size.1
+            } else {
+                self.output_height_fallback()
+                    .unwrap_or(crate::PANEL_HEIGHT as i32 + 1) as u32
+            };
+            tracing::debug!("desktop configure: size={}x{}", width, height);
+            self.desktop_configured = true;
+            self.desktop_width = width.max(1);
+            self.desktop_height = height.max(1);
+            self.desktop_layer.wl_surface().attach(None, 0, 0);
+            self.desktop_layer.commit();
+        } else if self.desktop_menu_layer == *layer {
+            let desired_h =
+                crate::context_menu::menu_height(crate::context_menu::desktop_item_list().len())
+                    as u32;
+            let width = if configure.new_size.0 > 0 {
+                configure.new_size.0
+            } else {
+                crate::context_menu::MENU_WIDTH as u32
+            };
+            let height = if configure.new_size.1 > 0 {
+                configure.new_size.1
+            } else {
+                desired_h
+            };
+            tracing::debug!("desktop menu configure: size={}x{}", width, height);
+            self.desktop_menu_configured = true;
+            self.desktop_menu_width = width.max(1);
+            self.desktop_menu_height = height.max(1);
+            if self.desktop_menu_open {
+                self.draw_desktop_menu(qh, RepaintReason::LayerConfigure);
+            }
+        } else if self.panel == *layer {
             tracing::info!(
                 "panel configure: size={}x{}",
                 configure.new_size.0,
@@ -227,6 +287,31 @@ impl LayerShellHandler for MeridianShell {
                 self.draw_workspace_popup(qh, RepaintReason::LayerConfigure);
             }
         } else if self.network_layer == *layer {
+            if self.status_notifier_menu_open {
+                tracing::debug!(
+                    "status-notifier menu configure: requested={}x{} desired={}x{}",
+                    configure.new_size.0,
+                    configure.new_size.1,
+                    self.status_notifier_menu_width,
+                    self.status_notifier_menu_height
+                );
+                self.network_layer
+                    .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
+                self.network_layer.set_margin(
+                    0,
+                    SNI_MENU_RIGHT_MARGIN,
+                    crate::SHELL_POPUP_BOTTOM_MARGIN,
+                    0,
+                );
+                self.network_layer.set_exclusive_zone(0);
+                self.network_layer.set_size(
+                    self.status_notifier_menu_width,
+                    self.status_notifier_menu_height,
+                );
+                self.network_configured = true;
+                self.draw_status_notifier_menu(qh, RepaintReason::LayerConfigure);
+                return;
+            }
             if self.audio_popup_open {
                 let requested_w = if configure.new_size.0 > 0 {
                     configure.new_size.0
@@ -362,6 +447,24 @@ impl MeridianShell {
                             .map(|mode| mode.dimensions.0)
                     })
                     .filter(|width| *width > 0)
+            })
+            .max()
+    }
+
+    fn output_height_fallback(&self) -> Option<i32> {
+        self.output_state
+            .outputs()
+            .filter_map(|output| self.output_state.info(&output))
+            .filter_map(|info| {
+                info.logical_size
+                    .map(|(_, h)| h)
+                    .or_else(|| {
+                        info.modes
+                            .iter()
+                            .find(|mode| mode.current)
+                            .map(|mode| mode.dimensions.1)
+                    })
+                    .filter(|height| *height > 0)
             })
             .max()
     }

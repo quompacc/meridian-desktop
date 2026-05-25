@@ -322,7 +322,8 @@ fn spawn_and_reap_launch(mut launch: Command, program: &str, args: &[String]) {
             if let Err(err) = child.wait() {
                 tracing::warn!("failed to reap launched app {:?}: {}", program, err);
             }
-        }) {
+        })
+    {
         tracing::warn!("failed to spawn launch reaper thread: {}", err);
     }
 }

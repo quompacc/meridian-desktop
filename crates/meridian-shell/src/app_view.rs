@@ -8,6 +8,7 @@ use meridian_ui::{
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, Transform};
 
 use crate::launcher::DesktopApp;
+use crate::ui::tokens::theme_from_config;
 use crate::{
     icons::{icon_image_to_pixmap, IconCache},
     power_footer::build_power_footer_buttons,
@@ -284,8 +285,9 @@ pub(crate) fn build_app_view_widget_tree(
     search_query: &str,
     _scroll_y: i32,
     armed_power: Option<(&str, f32)>,
+    theme: &Theme,
 ) -> Box<dyn Widget> {
-    let pal = Palette::TOKYO_NIGHT_METRO;
+    let pal = theme.palette;
 
     let search_bar: Box<dyn Widget> = Box::new(SearchBar {
         width: width as i32,
@@ -408,6 +410,7 @@ pub(crate) fn draw_app_view(
     armed_power: Option<(&str, f32)>,
     hidden_execs: &std::collections::HashSet<String>,
     hovered_app_card_idx: Option<usize>,
+    theme_config: &meridian_config::ThemeConfig,
 ) {
     let expected_len = (width as usize)
         .saturating_mul(height as usize)
@@ -420,7 +423,7 @@ pub(crate) fn draw_app_view(
         return;
     };
 
-    let theme = Theme::TOKYO_NIGHT_METRO;
+    let theme = theme_from_config(theme_config);
     pixmap.fill(to_tiny_skia_color(theme.palette.background));
 
     let root = build_app_view_widget_tree(
@@ -432,6 +435,7 @@ pub(crate) fn draw_app_view(
         search_query,
         scroll_y,
         armed_power,
+        &theme,
     );
 
     if let Ok(layout) =
@@ -607,7 +611,7 @@ mod tests {
     use super::{build_app_view_widget_tree, AppCategory, SearchBar};
     use crate::icons::{IconCache, IconLoader};
     use crate::launcher::DesktopApp;
-    use meridian_ui::Widget;
+    use meridian_ui::{Theme, Widget};
 
     struct TempDir {
         path: PathBuf,
@@ -719,8 +723,17 @@ mod tests {
     #[test]
     fn build_app_view_widget_tree_empty_apps() {
         let icon_cache = IconCache::new();
-        let tree =
-            build_app_view_widget_tree(880, 620, &[], AppCategory::Alle, &icon_cache, "", 0, None);
+        let tree = build_app_view_widget_tree(
+            880,
+            620,
+            &[],
+            AppCategory::Alle,
+            &icon_cache,
+            "",
+            0,
+            None,
+            &Theme::TOKYO_NIGHT_METRO,
+        );
         let children = tree.children();
         assert_eq!(
             children.len(),
@@ -742,6 +755,7 @@ mod tests {
             "fire",
             0,
             None,
+            &Theme::TOKYO_NIGHT_METRO,
         );
         let children = tree.children();
         assert_eq!(children.len(), 6);
@@ -765,6 +779,7 @@ mod tests {
             "zzznomatch",
             0,
             None,
+            &Theme::TOKYO_NIGHT_METRO,
         );
         let children = tree.children();
         assert_eq!(children.len(), 6);

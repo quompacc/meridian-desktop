@@ -5,11 +5,11 @@ use tracing::{debug, info, warn};
 use wayland_client::QueueHandle;
 
 use crate::{
-    audio_popup, buffer, network_popup, notification_popup, panel, thumbnail_popup, ui_preview,
-    workspaces, Painter, Rect, AUDIO_POPUP_HEIGHT, AUDIO_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT,
-    CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT,
-    NETWORK_POPUP_WIDTH, NOTIFICATION_HEIGHT, NOTIFICATION_WIDTH, PANEL_HEIGHT,
-    THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT,
+    audio_popup, buffer, network_popup, notification_popup, panel, status_notifier_popup,
+    thumbnail_popup, ui_preview, workspaces, Painter, Rect, AUDIO_POPUP_HEIGHT, AUDIO_POPUP_WIDTH,
+    CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
+    NETWORK_POPUP_HEIGHT, NETWORK_POPUP_WIDTH, NOTIFICATION_HEIGHT, NOTIFICATION_WIDTH,
+    PANEL_HEIGHT, THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT,
     WORKSPACE_POPUP_WIDTH,
 };
 
@@ -292,6 +292,7 @@ impl MeridianShell {
                 &clock,
                 &self.icon_cache,
                 screenshot_icon,
+                &self.theme,
                 &state_fn,
                 &mut self.panel_state.clicks,
             );
@@ -327,6 +328,143 @@ impl MeridianShell {
             self.panel_dirty = false;
             return;
         }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn draw_desktop(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
+        debug!(
+            "draw_desktop: reason={:?} configured={} size={}x{}",
+            reason, self.desktop_configured, self.desktop_width, self.desktop_height
+        );
+        if !self.desktop_configured || self.desktop_width == 0 || self.desktop_height == 0 {
+            return;
+        }
+
+        let width = self.desktop_width;
+        let height = self.desktop_height;
+        let stride = buffer::shm_buffer_stride(width);
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.desktop_buffer,
+                width,
+                height,
+                stride,
+            );
+            let Some(buf) = buf else {
+                warn!(
+                    "desktop buffer unavailable: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
+            };
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.desktop_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
+                warn!(
+                    "desktop canvas unavailable after retry: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
+            };
+
+            canvas.fill(0);
+            if let Err(err) = buf.attach_to(self.desktop_layer.wl_surface()) {
+                warn!(
+                    "desktop buffer attach failed: reason={:?} width={} height={} error={}",
+                    reason, width, height, err
+                );
+                return;
+            }
+            self.desktop_layer
+                .wl_surface()
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.desktop_layer.commit();
+            return;
+        }
+    }
+
+    pub(crate) fn draw_desktop_menu(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
+        debug!(
+            "draw_desktop_menu: reason={:?} open={} configured={} size={}x{}",
+            reason,
+            self.desktop_menu_open,
+            self.desktop_menu_configured,
+            self.desktop_menu_width,
+            self.desktop_menu_height
+        );
+        if !self.desktop_menu_open || !self.desktop_menu_configured {
+            return;
+        }
+        let Some(menu) = self.desktop_context_menu.as_ref() else {
+            return;
+        };
+
+        let width = self.desktop_menu_width.max(1);
+        let height = self.desktop_menu_height.max(1);
+        let stride = buffer::shm_buffer_stride(width);
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.desktop_menu_buffer,
+                width,
+                height,
+                stride,
+            );
+            let Some(buf) = buf else {
+                warn!(
+                    "desktop menu buffer unavailable: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
+            };
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.desktop_menu_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
+                warn!(
+                    "desktop menu canvas unavailable after retry: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
+            };
+
+            canvas.fill(0);
+            let local = crate::context_menu::DesktopContextMenuState {
+                x: 0,
+                y: 0,
+                hover_idx: menu.hover_idx,
+            };
+            let items = crate::context_menu::desktop_item_list();
+            crate::context_menu::draw_desktop_overlay(
+                canvas,
+                width,
+                height,
+                &local,
+                &items,
+                &self.theme,
+            );
+            if let Err(err) = buf.attach_to(self.desktop_menu_layer.wl_surface()) {
+                warn!(
+                    "desktop menu buffer attach failed: reason={:?} width={} height={} error={}",
+                    reason, width, height, err
+                );
+                return;
+            }
+            self.desktop_menu_layer
+                .wl_surface()
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.desktop_menu_layer.commit();
+            return;
+        }
+    }
+
+    pub(crate) fn unmap_desktop_menu(&mut self, _reason: CommitReason) {
+        self.desktop_menu_layer.wl_surface().attach(None, 0, 0);
+        self.desktop_menu_layer.commit();
     }
 
     pub(crate) fn draw_launcher(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
@@ -427,12 +565,14 @@ impl MeridianShell {
                     self.wallpaper_mode,
                     &self.pinned_apps,
                     &self.output_workspaces,
+                    self.display_mode_dropdown_open,
                     &self.printer_snapshot,
                     &self.audio_snapshot,
                     self.settings_pinned_adding,
                     &self.launcher_state.apps,
                     &self.icon_cache,
                     armed_power,
+                    &self.theme,
                     &state_fn,
                 );
             } else if self.app_view_open {
@@ -449,6 +589,7 @@ impl MeridianShell {
                     armed_power,
                     &self.hidden_execs,
                     self.hovered_app_card_idx,
+                    &self.theme,
                 );
             } else {
                 ui_preview::draw_ui_preview_sandbox(
@@ -458,6 +599,7 @@ impl MeridianShell {
                     &self.launcher_state.apps,
                     &self.icon_cache,
                     armed_power,
+                    &self.theme,
                     &state_fn,
                 );
             }
@@ -473,6 +615,7 @@ impl MeridianShell {
                     LAUNCHER_HEIGHT,
                     cm,
                     &items,
+                    &self.theme,
                 );
             }
 
@@ -987,6 +1130,89 @@ impl MeridianShell {
         self.network_layer.wl_surface().attach(None, 0, 0);
         self.network_layer.commit();
         self.audio_dirty = false;
+    }
+
+    pub(crate) fn draw_status_notifier_menu(
+        &mut self,
+        _qh: &QueueHandle<Self>,
+        reason: RepaintReason,
+    ) {
+        if !self.status_notifier_menu_open || !self.network_configured {
+            return;
+        }
+        let width = self
+            .status_notifier_menu_width
+            .min(status_notifier_popup::SNI_MENU_WIDTH);
+        let height = self
+            .status_notifier_menu_height
+            .min(status_notifier_popup::SNI_MENU_MAX_HEIGHT);
+        let Some(menu_state) = self.status_notifier_menu.as_ref() else {
+            self.close_status_notifier_menu(CommitReason::UnknownOther);
+            return;
+        };
+        let title = menu_state
+            .service
+            .rsplit('.')
+            .next()
+            .unwrap_or(menu_state.service.as_str());
+        let stride = buffer::shm_buffer_stride(width);
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.network_buffer,
+                width,
+                height,
+                stride,
+            );
+            let Some(buf) = buf else {
+                warn!(
+                    "status-notifier menu buffer unavailable: reason={:?} width={} height={}",
+                    reason, width, height
+                );
+                return;
+            };
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.network_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
+                return;
+            };
+
+            let mut painter = Painter::new(canvas, width as i32, height as i32);
+            status_notifier_popup::draw_status_notifier_menu(
+                &mut painter,
+                &self.font,
+                &self.theme,
+                title,
+                &self.status_notifier_menu_entries,
+                height,
+            );
+
+            if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {
+                warn!(
+                    "status-notifier menu buffer attach failed: reason={:?} width={} height={} error={}",
+                    reason, width, height, err
+                );
+                return;
+            }
+            self.network_layer
+                .wl_surface()
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.network_layer.commit();
+            self.network_dirty = false;
+            return;
+        }
+    }
+
+    pub(crate) fn unmap_status_notifier_menu(&mut self, reason: CommitReason) {
+        debug!(
+            "unmap_status_notifier_menu: reason={:?} open={} configured={} surface=network attach_none=true commit=true",
+            reason, self.status_notifier_menu_open, self.network_configured
+        );
+        self.network_layer.wl_surface().attach(None, 0, 0);
+        self.network_layer.commit();
+        self.network_dirty = false;
     }
 
     /// Phase A1.3: paint the front notification onto the dedicated

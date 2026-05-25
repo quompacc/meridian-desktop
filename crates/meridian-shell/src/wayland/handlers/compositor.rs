@@ -53,7 +53,11 @@ impl CompositorHandler for MeridianShell {
             tracing::trace!(
                 "workspace popup frame callback received: dirty-flag set only (no immediate draw/commit)"
             );
-        } else if self.network_popup_open && self.network_layer.wl_surface() == surface {
+        } else if (self.network_popup_open
+            || self.audio_popup_open
+            || self.status_notifier_menu_open)
+            && self.network_layer.wl_surface() == surface
+        {
             self.network_dirty = true;
             tracing::trace!(
                 "network popup frame callback received: dirty-flag set only (no immediate draw/commit)"

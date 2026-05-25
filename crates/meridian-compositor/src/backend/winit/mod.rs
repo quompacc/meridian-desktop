@@ -20,7 +20,9 @@ use smithay::{
 };
 
 use crate::{
-    state::{MeridianState, OutputPowerMode, OutputReconfigure, OutputRegistration},
+    state::{
+        MeridianState, OutputModeInfo, OutputPowerMode, OutputReconfigure, OutputRegistration,
+    },
     wallpaper::WallpaperGpuCache,
 };
 
@@ -91,6 +93,16 @@ pub fn init_winit(
         transform: Transform::Flipped180,
         refresh_millihz: Some(mode.refresh),
     });
+    state.output_registry.set_modes_by_id(
+        output_id,
+        vec![OutputModeInfo {
+            width: mode.size.w,
+            height: mode.size.h,
+            refresh_millihz: Some(mode.refresh),
+            current: true,
+            preferred: true,
+        }],
+    );
 
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
     let mut wallpaper_cache: Option<WallpaperGpuCache> = None;
@@ -127,18 +139,28 @@ pub fn init_winit(
                         primary: None,
                     },
                 );
-                if !reconfigured {
+                let mode_info = vec![OutputModeInfo {
+                    width: size.w,
+                    height: size.h,
+                    refresh_millihz: Some(60_000),
+                    current: true,
+                    preferred: true,
+                }];
+                if reconfigured {
+                    state.output_registry.set_modes_by_id(output_id, mode_info);
+                } else {
                     tracing::warn!(
                         "winit output reconfigure failed for output_id={}, falling back to upsert by name",
                         output_id.0
                     );
-                    state.register_output_info(OutputRegistration {
+                    let next_output_id = state.register_output_info(OutputRegistration {
                         name: output.name(),
                         geometry: MeridianState::output_geometry_for_registry(0, 0, size.w, size.h),
                         scale: 1.0,
                         transform: Transform::Flipped180,
                         refresh_millihz: Some(60_000),
                     });
+                    state.output_registry.set_modes_by_id(next_output_id, mode_info);
                 }
             }
             WinitEvent::Redraw => {

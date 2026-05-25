@@ -11,7 +11,7 @@ use tracing::info;
 
 use super::{
     rcc::RccArchive,
-    svg::decode_svg,
+    svg::decode_svg_with_symbolic_color,
     theme_index::{parse_index_theme, IconDirectory, IconDirectoryType, IconTheme},
     IconImage,
 };
@@ -19,6 +19,7 @@ use super::{
 #[derive(Debug, Clone)]
 pub(crate) struct IconLoader {
     theme_name: String,
+    symbolic_color: String,
     search_paths: Vec<PathBuf>,
     pixmaps_paths: Vec<PathBuf>,
     rcc_sources: Vec<RccSource>,
@@ -51,7 +52,12 @@ struct RccCandidate {
 }
 
 impl IconLoader {
+    #[allow(dead_code)]
     pub(crate) fn new(theme_name: &str) -> Self {
+        Self::new_with_symbolic_color(theme_name, "#c0caf5")
+    }
+
+    pub(crate) fn new_with_symbolic_color(theme_name: &str, symbolic_color: &str) -> Self {
         let search_paths = standard_icon_search_paths();
         let (rcc_sources, total_files) = discover_rcc_sources(&search_paths);
         info!(
@@ -61,6 +67,7 @@ impl IconLoader {
         );
         Self {
             theme_name: theme_name.to_string(),
+            symbolic_color: symbolic_color.to_string(),
             search_paths,
             pixmaps_paths: vec![PathBuf::from("/usr/share/pixmaps")],
             rcc_sources,
@@ -76,6 +83,7 @@ impl IconLoader {
         let (rcc_sources, _) = discover_rcc_sources(&search_paths);
         Self {
             theme_name: theme_name.to_string(),
+            symbolic_color: "#c0caf5".to_string(),
             search_paths,
             pixmaps_paths,
             rcc_sources,
@@ -236,7 +244,7 @@ impl IconLoader {
 
     fn decode_svg_file(&self, path: &Path, requested_size: u32) -> Option<IconImage> {
         let data = fs::read(path).ok()?;
-        decode_svg(&data, requested_size)
+        decode_svg_with_symbolic_color(&data, requested_size, &self.symbolic_color)
     }
 
     fn decode_png_file(&self, path: &Path, requested_size: u32) -> Option<IconImage> {
@@ -251,7 +259,7 @@ impl IconLoader {
         requested_size: u32,
     ) -> Option<IconImage> {
         match extension {
-            "svg" => decode_svg(bytes, requested_size),
+            "svg" => decode_svg_with_symbolic_color(bytes, requested_size, &self.symbolic_color),
             "png" => self.decode_png_bytes(bytes, requested_size),
             _ => None,
         }

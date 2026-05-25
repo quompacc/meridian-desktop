@@ -41,13 +41,13 @@ impl CursorImage {
     }
 
     pub fn load_theme(theme_name: &str, requested_size: u32) -> Self {
-        const DEFAULT_ICON_NAMES: &[&str] = &["left_ptr", "default", "arrow"];
+        const DEFAULT_ICON_NAMES: &[&str] = &["left_ptr", "arrow", "default"];
         Self::load_theme_icon(theme_name, requested_size, DEFAULT_ICON_NAMES)
     }
 
     pub fn load_theme_icon(theme_name: &str, requested_size: u32, icon_names: &[&str]) -> Self {
         #[cfg(feature = "xcursor-themes")]
-        const FALLBACK_THEMES: &[&str] = &["Adwaita", "default"];
+        const FALLBACK_THEMES: &[&str] = &["Breeze_Light", "breeze_cursors", "Adwaita", "default"];
 
         if theme_name.is_empty() {
             info!(
@@ -117,15 +117,18 @@ impl CursorImage {
 
     pub fn load_theme_cursor_icon(theme_name: &str, requested_size: u32, icon: CursorIcon) -> Self {
         let mut icon_names = Vec::with_capacity(1 + icon.alt_names().len() + 2);
-        icon_names.push(icon.name());
-        icon_names.extend_from_slice(icon.alt_names());
-        // Classic themes (Vanilla-DMZ, etc.) usually expose X11 names, not "default".
+        // Prefer common X11 names first so default-cursor requests stay inside
+        // the selected theme instead of falling through to another theme shape.
         if matches!(icon, CursorIcon::Default) {
-            if !icon_names.contains(&"left_ptr") {
-                icon_names.push("left_ptr");
-            }
-            if !icon_names.contains(&"arrow") {
-                icon_names.push("arrow");
+            icon_names.push("left_ptr");
+            icon_names.push("arrow");
+        }
+        if !icon_names.contains(&icon.name()) {
+            icon_names.push(icon.name());
+        }
+        for name in icon.alt_names() {
+            if !icon_names.contains(name) {
+                icon_names.push(name);
             }
         }
         Self::load_theme_icon(theme_name, requested_size, &icon_names)

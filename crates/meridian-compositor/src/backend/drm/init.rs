@@ -59,7 +59,7 @@ use super::{
     },
     mode_selection::{
         forced_mode_index_from_env, forced_mode_size_from_env, mode_refresh_millihz_with_fallback,
-        select_add_mode, select_mode_with_override,
+        output_mode_infos, select_add_mode, select_mode_with_override,
     },
     render::render_outputs,
     DisabledDrmOutput, DrmBackend, DrmOutput,
@@ -94,6 +94,7 @@ struct PendingInitOutput {
     connector: smithay::reexports::drm::control::connector::Handle,
     crtc: smithay::reexports::drm::control::crtc::Handle,
     mode: smithay::reexports::drm::control::Mode,
+    modes: Vec<smithay::reexports::drm::control::Mode>,
     width: i32,
     height: i32,
     refresh_millihz: i32,
@@ -321,32 +322,6 @@ fn scan_drm_connectors_for_h5b(state: &mut MeridianState, source: &str) {
         }
     };
 
-    let mut connected_modes = HashMap::new();
-    for conn_handle in resources.connectors() {
-        let Ok(conn) = device_fd.get_connector(*conn_handle, false) else {
-            continue;
-        };
-        if conn.state() != smithay::reexports::drm::control::connector::State::Connected {
-            continue;
-        }
-        let modes = conn.modes();
-        if modes.is_empty() {
-            continue;
-        }
-        let Some((mode, _mode_reason)) = select_add_mode(modes) else {
-            tracing::trace!(
-                "drm hotplug scan skipped connector without selectable mode: connector={:?}",
-                conn_handle
-            );
-            continue;
-        };
-        let (w, h) = mode.size();
-        connected_modes.insert(
-            *conn_handle,
-            (w as i32, h as i32, mode_refresh_millihz_with_fallback(mode)),
-        );
-    }
-
     let registry_by_name = state
         .output_registry
         .list()
@@ -366,6 +341,42 @@ fn scan_drm_connectors_for_h5b(state: &mut MeridianState, source: &str) {
             )
         })
         .collect::<HashMap<_, _>>();
+    let known_name_by_connector = known_connectors
+        .iter()
+        .map(|(connector, name)| (*connector, name.as_str()))
+        .collect::<HashMap<_, _>>();
+
+    let mut connected_modes = HashMap::new();
+    for conn_handle in resources.connectors() {
+        let Ok(conn) = device_fd.get_connector(*conn_handle, false) else {
+            continue;
+        };
+        if conn.state() != smithay::reexports::drm::control::connector::State::Connected {
+            continue;
+        }
+        if let Some(name) = known_name_by_connector.get(conn_handle) {
+            if let Some((_, _, _, width, height, refresh_millihz)) = registry_by_name.get(*name) {
+                connected_modes.insert(*conn_handle, (*width, *height, *refresh_millihz));
+                continue;
+            }
+        }
+        let modes = conn.modes();
+        if modes.is_empty() {
+            continue;
+        }
+        let Some((mode, _mode_reason)) = select_add_mode(modes) else {
+            tracing::trace!(
+                "drm hotplug scan skipped connector without selectable mode: connector={:?}",
+                conn_handle
+            );
+            continue;
+        };
+        let (w, h) = mode.size();
+        connected_modes.insert(
+            *conn_handle,
+            (w as i32, h as i32, mode_refresh_millihz_with_fallback(mode)),
+        );
+    }
 
     let changes =
         classify_drm_connector_changes(&known_connectors, &connected_modes, &registry_by_name);
@@ -670,6 +681,9 @@ fn add_drm_output_via_hotplug_pipeline(
         transform,
         refresh_millihz: Some(refresh_millihz),
     });
+    state
+        .output_registry
+        .set_modes_by_id(output_id, output_mode_infos(modes, mode));
     sync_primary_flags_from_resolved_layout(state, &resolved);
 
     let Some(drm_backend) = state.drm_backend.as_mut() else {
@@ -686,6 +700,7 @@ fn add_drm_output_via_hotplug_pipeline(
         compositor,
         crtc: crtc_handle,
         connector,
+        modes: modes.to_vec(),
         wallpaper: None,
         frame_in_flight: false,
         needs_repaint: true,
@@ -1093,6 +1108,7 @@ pub fn init_drm(
             connector: *conn_handle,
             crtc: crtc_handle,
             mode,
+            modes: modes.to_vec(),
             width: w as i32,
             height: h as i32,
             refresh_millihz: selected_mode_refresh_millihz,
@@ -1188,6 +1204,9 @@ pub fn init_drm(
             transform: pending.transform,
             refresh_millihz: Some(pending.refresh_millihz),
         });
+        state
+            .output_registry
+            .set_modes_by_id(output_id, output_mode_infos(&pending.modes, pending.mode));
 
         let (compositor, _gbm) = build_drm_compositor(DrmCompositorBuildParams {
             state_display_handle: &state.display_handle,
@@ -1207,6 +1226,7 @@ pub fn init_drm(
             compositor,
             crtc: pending.crtc,
             connector: pending.connector,
+            modes: pending.modes.clone(),
             wallpaper: None,
             frame_in_flight: false,
             needs_repaint: true,

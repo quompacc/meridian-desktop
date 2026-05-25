@@ -521,6 +521,15 @@ pub fn handle_pointer_button<I: InputBackend>(
         }
 
         const BTN_LEFT: u32 = 0x110;
+        const BTN_RIGHT: u32 = 0x111;
+        if button == BTN_RIGHT && !under_is_layer_surface && under.is_none() {
+            state.broadcast_desktop_context_menu(
+                location.x.round() as i32,
+                location.y.round() as i32,
+            );
+            return;
+        }
+
         if button == BTN_LEFT && !under_is_layer_surface {
             if let Some((window, edge, initial_window_location)) =
                 super::xwayland_resize_edge_hit_for_pointer(state, location)

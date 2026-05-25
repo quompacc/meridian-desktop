@@ -20,6 +20,18 @@ fn default_output_scale_millis() -> u32 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutputModeState {
+    pub width: i32,
+    pub height: i32,
+    #[serde(default)]
+    pub refresh_millihz: Option<i32>,
+    #[serde(default)]
+    pub current: bool,
+    #[serde(default)]
+    pub preferred: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutputWorkspaceState {
     pub output_id: u32,
     pub output_name: Option<String>,
@@ -40,6 +52,8 @@ pub struct OutputWorkspaceState {
     pub transform: Option<String>,
     #[serde(default)]
     pub refresh_millihz: Option<i32>,
+    #[serde(default)]
+    pub modes: Vec<OutputModeState>,
 }
 
 impl Default for OutputWorkspaceState {
@@ -57,6 +71,7 @@ impl Default for OutputWorkspaceState {
             scale_millis: default_output_scale_millis(),
             transform: None,
             refresh_millihz: None,
+            modes: Vec::new(),
         }
     }
 }
@@ -213,6 +228,10 @@ pub enum ShellEvent {
         success: bool,
     },
     ToggleLauncher,
+    DesktopContextMenu {
+        x: i32,
+        y: i32,
+    },
     WindowThumbnail {
         id: String,
         path: String,
@@ -294,7 +313,7 @@ fn encode_json_line<T: Serialize>(value: &T) -> io::Result<Vec<u8>> {
 mod tests {
     use super::{
         decode_command, decode_event, decode_screenshot_bridge_message, encode_command,
-        encode_event, encode_screenshot_bridge_message, OutputWorkspaceSnapshot,
+        encode_event, encode_screenshot_bridge_message, OutputModeState, OutputWorkspaceSnapshot,
         OutputWorkspaceState, ScreenshotBridgeError, ScreenshotBridgeMessage,
         ScreenshotBridgeRequest, ScreenshotBridgeResponse, ScreenshotBridgeResult, ScreenshotKind,
         ScreenshotRegion, ScreenshotRequestMetadata, ScreenshotRequestOrigin, ShellCommand,
@@ -382,6 +401,13 @@ mod tests {
                     scale_millis: 1500,
                     transform: Some("Normal".to_string()),
                     refresh_millihz: Some(60_000),
+                    modes: vec![OutputModeState {
+                        width: 2880,
+                        height: 1800,
+                        refresh_millihz: Some(60_000),
+                        current: true,
+                        preferred: true,
+                    }],
                 },
                 OutputWorkspaceState {
                     output_id: 99,
@@ -396,6 +422,13 @@ mod tests {
                     scale_millis: 1000,
                     transform: Some("Normal".to_string()),
                     refresh_millihz: Some(144_000),
+                    modes: vec![OutputModeState {
+                        width: 1920,
+                        height: 1080,
+                        refresh_millihz: Some(144_000),
+                        current: true,
+                        preferred: false,
+                    }],
                 },
             ],
         };
@@ -421,6 +454,14 @@ mod tests {
     #[test]
     fn window_focus_cleared_event_roundtrip_is_supported() {
         let event = ShellEvent::WindowFocusCleared;
+        let bytes = encode_event(&event).expect("encode");
+        let decoded = decode_event(std::str::from_utf8(&bytes).expect("utf8")).expect("decode");
+        assert_eq!(decoded, event);
+    }
+
+    #[test]
+    fn desktop_context_menu_event_roundtrip_is_supported() {
+        let event = ShellEvent::DesktopContextMenu { x: 120, y: 340 };
         let bytes = encode_event(&event).expect("encode");
         let decoded = decode_event(std::str::from_utf8(&bytes).expect("utf8")).expect("decode");
         assert_eq!(decoded, event);
@@ -459,6 +500,7 @@ mod tests {
         assert_eq!(outputs[0].height, 0);
         assert_eq!(outputs[0].scale_millis, 1000);
         assert_eq!(outputs[0].refresh_millihz, None);
+        assert!(outputs[0].modes.is_empty());
     }
 
     #[test]

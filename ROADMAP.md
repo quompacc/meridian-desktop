@@ -6,7 +6,7 @@
 
 Last updated: 2026-05-25 (documentation audit against `master` at `2e7a2ed`,
 plus shell idle timer/input-redraw, Sound tray/PipeWire, and SNI watcher/detail/
-activate slices).
+activate/dbusmenu-popup slices).
 
 ## Where we are now
 
@@ -52,7 +52,7 @@ people can use it".
 
 | # | Item | Effort |
 |---|------|--------|
-| B1 | System tray (StatusNotifierItem dbus) — watcher v1 registers items, reads `Title`/`IconName`/`Menu`, renders panel slots with icon/label fallback, forwards `Activate`/`SecondaryActivate`/`ContextMenu`, and probes DBusMenu `GetLayout`; DBusMenu rendering remains open. | 2-3 weeks |
+| B1 | System tray (StatusNotifierItem dbus) — watcher v1 registers items, reads `Title`/`IconName`/`Menu`, renders panel slots with icon/label fallback, forwards `Activate`/`SecondaryActivate`/`ContextMenu`, parses DBusMenu `GetLayout` into a local menu model, returns it to the shell event loop, renders a first popup, and sends `clicked` events for enabled menu rows; richer submenu/scroll polish remains open. | 2-3 weeks |
 | B2 | Panel applets: network is partial via `nmcli`; audio has a first tray card backed by PipeWire/`wpctl` with an optional `System -> Sound` settings link; bluetooth, battery, brightness, and full StatusNotifierItem tray remain open | 1-2 weeks each |
 | B3 | Fractional scaling — for HiDPI laptop + FHD external setups | 2-3 weeks |
 | B4 | Lock screen UI + idle timer — `session_lock.rs` exists, the front-end doesn't | 1-2 weeks |

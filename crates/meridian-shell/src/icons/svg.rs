@@ -4,13 +4,22 @@ use crate::icons::IconImage;
 
 /// Decode SVG bytes into an IconImage rendered at exactly (size x size).
 /// Returns None for invalid/unparseable SVG. Output is BGRA non-premultiplied.
+#[allow(dead_code)]
 pub fn decode_svg(data: &[u8], size: u32) -> Option<IconImage> {
+    decode_svg_with_symbolic_color(data, size, "#c0caf5")
+}
+
+pub fn decode_svg_with_symbolic_color(
+    data: &[u8],
+    size: u32,
+    symbolic_color: &str,
+) -> Option<IconImage> {
     if size == 0 || data.is_empty() {
         return None;
     }
 
     let options = usvg::Options::default();
-    let substituted = substitute_color_scheme(data);
+    let substituted = substitute_color_scheme(data, symbolic_color);
     let tree = usvg::Tree::from_data(&substituted, &options).ok()?;
     let native_size = tree.size();
     let native_w = native_size.width();
@@ -36,32 +45,44 @@ pub fn decode_svg(data: &[u8], size: u32) -> Option<IconImage> {
     })
 }
 
-fn substitute_color_scheme(data: &[u8]) -> Vec<u8> {
-    const REPLACEMENTS: &[(&[u8], &[u8])] = &[
-        (b"color:#232629", b"color:#c0caf5"),
-        (b"color: #232629", b"color:#c0caf5"),
-        (b"color:#2a2e32", b"color:#c0caf5"),
-        (b"color: #2a2e32", b"color:#c0caf5"),
-        (b"color:#fcfcfc", b"color:#c0caf5"),
-        (b"color: #fcfcfc", b"color:#c0caf5"),
+fn substitute_color_scheme(data: &[u8], symbolic_color: &str) -> Vec<u8> {
+    const NEEDLES: &[&[u8]] = &[
+        b"color:#232629",
+        b"color: #232629",
+        b"color:#2a2e32",
+        b"color: #2a2e32",
+        b"color:#fcfcfc",
+        b"color: #fcfcfc",
     ];
-    if !REPLACEMENTS
-        .iter()
-        .any(|(needle, _)| memchr_contains(data, needle))
-    {
+    if !NEEDLES.iter().any(|needle| memchr_contains(data, needle)) {
         return data.to_vec();
     }
     let s = match std::str::from_utf8(data) {
         Ok(s) => s,
         Err(_) => return data.to_vec(),
     };
+    let color = if is_hex_color(symbolic_color) {
+        symbolic_color
+    } else {
+        "#c0caf5"
+    };
     let mut out = s.to_string();
-    for (needle, repl) in REPLACEMENTS {
+    for needle in NEEDLES {
         let needle_str = std::str::from_utf8(needle).expect("ascii needle");
-        let repl_str = std::str::from_utf8(repl).expect("ascii repl");
-        out = out.replace(needle_str, repl_str);
+        let repl = if needle_str.contains(": ") {
+            format!("color: {color}")
+        } else {
+            format!("color:{color}")
+        };
+        out = out.replace(needle_str, &repl);
     }
     out.into_bytes()
+}
+
+fn is_hex_color(value: &str) -> bool {
+    value.len() == 7
+        && value.starts_with('#')
+        && value.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
 }
 
 fn memchr_contains(haystack: &[u8], needle: &[u8]) -> bool {
@@ -95,7 +116,7 @@ fn unpremultiply_channel(value: u8, alpha: u8) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_svg, substitute_color_scheme};
+    use super::{decode_svg, decode_svg_with_symbolic_color, substitute_color_scheme};
 
     fn pixel_at(bgra: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
         let offset = ((y * width + x) * 4) as usize;
@@ -167,9 +188,24 @@ mod tests {
     }
 
     #[test]
+    fn decode_svg_uses_custom_symbolic_color() {
+        let svg =
+            br##"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+            <defs><style>.ColorScheme-Text { color:#232629; }</style></defs>
+            <rect width="10" height="10" style="fill:currentColor" class="ColorScheme-Text"/>
+        </svg>"##;
+        let image = decode_svg_with_symbolic_color(svg, 10, "#3f372e").expect("decode");
+        let off = (5 * 10 + 5) * 4;
+        assert_eq!(image.bgra[off], 0x2e, "B");
+        assert_eq!(image.bgra[off + 1], 0x37, "G");
+        assert_eq!(image.bgra[off + 2], 0x3f, "R");
+        assert!(image.bgra[off + 3] > 200, "alpha-opaque-ish");
+    }
+
+    #[test]
     fn substitute_color_scheme_no_breeze_marker_is_noop() {
         let svg = b"<svg><rect fill='#ff0000'/></svg>";
-        let out = substitute_color_scheme(svg);
+        let out = substitute_color_scheme(svg, "#c0caf5");
         assert_eq!(out.as_slice(), svg);
     }
 }

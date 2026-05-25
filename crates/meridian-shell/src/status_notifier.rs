@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex};
 
 use smithay_client_toolkit::reexports::calloop::channel as cchannel;
 use tracing::{debug, error, info, warn};
+use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 use zbus::{connection::Builder, fdo, interface, Connection, Proxy};
-use zbus::zvariant::{OwnedObjectPath, OwnedValue};
 
 const SERVICE_NAME: &str = "org.kde.StatusNotifierWatcher";
 const OBJECT_PATH: &str = "/StatusNotifierWatcher";
@@ -23,6 +23,108 @@ pub(crate) struct StatusNotifierItem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DbusEvent {
     ItemsChanged(Vec<StatusNotifierItem>),
+    MenuLayout(StatusNotifierMenuState),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct StatusNotifierMenuState {
+    pub service: String,
+    pub menu_path: String,
+    pub point: ActivationPoint,
+    pub menu: DbusMenu,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DbusMenu {
+    revision: u32,
+    root_id: i32,
+    items: Vec<DbusMenuItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DbusMenuItem {
+    id: i32,
+    label: String,
+    enabled: bool,
+    kind: DbusMenuItemKind,
+    children: Vec<DbusMenuItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DbusMenuEntry {
+    pub id: i32,
+    pub label: String,
+    pub enabled: bool,
+    pub separator: bool,
+    pub depth: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DbusMenuItemKind {
+    Standard,
+    Separator,
+}
+
+impl DbusMenu {
+    pub(crate) fn visible_item_count(&self) -> usize {
+        self.items.iter().map(DbusMenuItem::subtree_count).sum()
+    }
+
+    pub(crate) fn actionable_item_count(&self) -> usize {
+        self.items.iter().map(DbusMenuItem::actionable_count).sum()
+    }
+
+    pub(crate) fn first_item_label(&self) -> Option<&str> {
+        self.items.iter().find_map(DbusMenuItem::first_label)
+    }
+
+    pub(crate) fn display_entries(&self) -> Vec<DbusMenuEntry> {
+        let mut entries = Vec::new();
+        for item in &self.items {
+            item.push_display_entries(0, &mut entries);
+        }
+        entries
+    }
+}
+
+impl DbusMenuItem {
+    fn subtree_count(&self) -> usize {
+        1 + self
+            .children
+            .iter()
+            .map(DbusMenuItem::subtree_count)
+            .sum::<usize>()
+    }
+
+    fn actionable_count(&self) -> usize {
+        let self_count = usize::from(self.enabled && self.kind == DbusMenuItemKind::Standard);
+        self_count
+            + self
+                .children
+                .iter()
+                .map(DbusMenuItem::actionable_count)
+                .sum::<usize>()
+    }
+
+    fn first_label(&self) -> Option<&str> {
+        if !self.label.is_empty() {
+            return Some(self.label.as_str());
+        }
+        self.children.iter().find_map(DbusMenuItem::first_label)
+    }
+
+    fn push_display_entries(&self, depth: usize, entries: &mut Vec<DbusMenuEntry>) {
+        entries.push(DbusMenuEntry {
+            id: self.id,
+            label: self.label.clone(),
+            enabled: self.enabled,
+            separator: self.kind == DbusMenuItemKind::Separator,
+            depth,
+        });
+        for child in &self.children {
+            child.push_display_entries(depth + 1, entries);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,7 +178,9 @@ impl StatusNotifierWatcher {
     ) -> fdo::Result<()> {
         let service = normalize_service(service);
         if service.is_empty() {
-            return Err(fdo::Error::InvalidArgs("empty notifier service".to_string()));
+            return Err(fdo::Error::InvalidArgs(
+                "empty notifier service".to_string(),
+            ));
         }
         let item = resolve_item_details(connection, &service).await;
         let items = {
@@ -130,8 +234,14 @@ impl StatusNotifierWatcher {
     }
 }
 
-pub fn spawn() -> std::io::Result<cchannel::Channel<DbusEvent>> {
+pub(crate) struct StatusNotifierSource {
+    pub rx: cchannel::Channel<DbusEvent>,
+    pub tx: cchannel::Sender<DbusEvent>,
+}
+
+pub fn spawn() -> std::io::Result<StatusNotifierSource> {
     let (tx, rx) = cchannel::channel::<DbusEvent>();
+    let watcher_tx = tx.clone();
     std::thread::Builder::new()
         .name("status-notifier-dbus".to_string())
         .spawn(move || {
@@ -146,7 +256,7 @@ pub fn spawn() -> std::io::Result<cchannel::Channel<DbusEvent>> {
                 }
             };
             rt.block_on(async move {
-                if let Err(e) = run(tx).await {
+                if let Err(e) = run(watcher_tx).await {
                     error!(
                         error = %e,
                         "status-notifier: dbus serve failed; watcher disabled until shell restarts"
@@ -154,7 +264,7 @@ pub fn spawn() -> std::io::Result<cchannel::Channel<DbusEvent>> {
                 }
             });
         })?;
-    Ok(rx)
+    Ok(StatusNotifierSource { rx, tx })
 }
 
 pub(crate) fn activate_item(item: StatusNotifierItem, point: ActivationPoint) {
@@ -165,20 +275,41 @@ pub(crate) fn secondary_activate_item(item: StatusNotifierItem, point: Activatio
     forward_item_activation(item, point, ActivationKind::SecondaryActivate);
 }
 
-pub(crate) fn context_menu_item(item: StatusNotifierItem, point: ActivationPoint) {
+pub(crate) fn activate_menu_item(service: String, menu_path: String, item_id: i32) {
+    let builder = std::thread::Builder::new().name("status-notifier-dbusmenu-event".to_string());
+    if let Err(e) = builder.spawn(move || {
+        let rt = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+            Ok(rt) => rt,
+            Err(e) => {
+                error!(error = %e, service = %service, menu_path = %menu_path, item_id, "status-notifier: dbusmenu event runtime build failed");
+                return;
+            }
+        };
+        rt.block_on(async move {
+            match send_dbus_menu_event(&service, &menu_path, item_id).await {
+                Ok(()) => info!(service = %service, menu_path = %menu_path, item_id, "status-notifier: dbusmenu clicked event sent"),
+                Err(e) => warn!(error = %e, service = %service, menu_path = %menu_path, item_id, "status-notifier: dbusmenu clicked event failed"),
+            }
+        });
+    }) {
+        warn!(error = %e, "status-notifier: dbusmenu event thread spawn failed");
+    }
+}
+
+pub(crate) fn context_menu_item(
+    item: StatusNotifierItem,
+    point: ActivationPoint,
+    tx: Option<cchannel::Sender<DbusEvent>>,
+) {
     let service = item.service.clone();
     let menu_path = item.menu_path.clone();
     forward_item_activation(item, point, ActivationKind::ContextMenu);
     if let Some(menu_path) = menu_path {
-        inspect_dbus_menu(service, menu_path);
+        inspect_dbus_menu(service, menu_path, point, tx);
     }
 }
 
-fn forward_item_activation(
-    item: StatusNotifierItem,
-    point: ActivationPoint,
-    kind: ActivationKind,
-) {
+fn forward_item_activation(item: StatusNotifierItem, point: ActivationPoint, kind: ActivationKind) {
     let service = item.service;
     let title = item.title.unwrap_or_default();
     let builder = std::thread::Builder::new().name(format!("status-notifier-{}", kind.log_name()));
@@ -269,7 +400,12 @@ async fn forward_activation(
     Ok(())
 }
 
-fn inspect_dbus_menu(service: String, menu_path: String) {
+fn inspect_dbus_menu(
+    service: String,
+    menu_path: String,
+    point: ActivationPoint,
+    tx: Option<cchannel::Sender<DbusEvent>>,
+) {
     let builder = std::thread::Builder::new().name("status-notifier-dbusmenu".to_string());
     if let Err(e) = builder.spawn(move || {
         let rt = match tokio::runtime::Builder::new_current_thread()
@@ -289,15 +425,33 @@ fn inspect_dbus_menu(service: String, menu_path: String) {
         };
         rt.block_on(async move {
             match fetch_dbus_menu_layout(&service, &menu_path).await {
-                Ok(summary) => {
+                Ok(menu) => {
                     info!(
                         service = %service,
                         menu_path = %menu_path,
-                        revision = summary.revision,
-                        root_id = summary.root_id,
-                        children = summary.child_count,
-                        "status-notifier: dbusmenu layout fetched"
+                        revision = menu.revision,
+                        root_id = menu.root_id,
+                        visible_items = menu.visible_item_count(),
+                        actionable_items = menu.actionable_item_count(),
+                        first_label = menu.first_item_label().unwrap_or(""),
+                        "status-notifier: dbusmenu layout parsed"
                     );
+                    if let Some(tx) = tx.as_ref() {
+                        let event = DbusEvent::MenuLayout(StatusNotifierMenuState {
+                            service: service.clone(),
+                            menu_path: menu_path.clone(),
+                            point,
+                            menu,
+                        });
+                        if let Err(e) = tx.send(event) {
+                            warn!(
+                                error = ?e,
+                                service = %service,
+                                menu_path = %menu_path,
+                                "status-notifier: main loop channel closed; dropping dbusmenu layout"
+                            );
+                        }
+                    }
                 }
                 Err(e) => {
                     warn!(
@@ -314,17 +468,16 @@ fn inspect_dbus_menu(service: String, menu_path: String) {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct DbusMenuLayoutSummary {
-    revision: u32,
-    root_id: i32,
-    child_count: usize,
+async fn send_dbus_menu_event(service: &str, menu_path: &str, item_id: i32) -> zbus::Result<()> {
+    let connection = Connection::session().await?;
+    let proxy = Proxy::new(&connection, service, menu_path, "com.canonical.dbusmenu").await?;
+    proxy
+        .call_method("Event", &(item_id, "clicked", Value::from(0i32), 0u32))
+        .await?;
+    Ok(())
 }
 
-async fn fetch_dbus_menu_layout(
-    service: &str,
-    menu_path: &str,
-) -> zbus::Result<DbusMenuLayoutSummary> {
+async fn fetch_dbus_menu_layout(service: &str, menu_path: &str) -> zbus::Result<DbusMenu> {
     let connection = Connection::session().await?;
     let proxy = Proxy::new(&connection, service, menu_path, "com.canonical.dbusmenu").await?;
     let reply = proxy
@@ -332,11 +485,76 @@ async fn fetch_dbus_menu_layout(
         .await?;
     let body = reply.body();
     let (revision, root): (u32, DbusMenuLayoutNode) = body.deserialize()?;
-    Ok(DbusMenuLayoutSummary {
+    Ok(parse_dbus_menu_layout(revision, root))
+}
+
+fn parse_dbus_menu_layout(revision: u32, root: DbusMenuLayoutNode) -> DbusMenu {
+    let root_id = root.0;
+    let items = root
+        .2
+        .into_iter()
+        .filter_map(parse_dbus_menu_item)
+        .collect();
+    DbusMenu {
         revision,
-        root_id: root.0,
-        child_count: root.2.len(),
+        root_id,
+        items,
+    }
+}
+
+fn parse_dbus_menu_item(value: OwnedValue) -> Option<DbusMenuItem> {
+    let (id, properties, children): DbusMenuLayoutNode = value.try_into().ok()?;
+    if !property_bool(&properties, "visible", true) {
+        return None;
+    }
+    let kind = match property_string(&properties, "type").as_deref() {
+        Some("separator") => DbusMenuItemKind::Separator,
+        _ => DbusMenuItemKind::Standard,
+    };
+    let label = property_string(&properties, "label")
+        .map(|label| normalize_menu_label(&label))
+        .unwrap_or_default();
+    let children = children
+        .into_iter()
+        .filter_map(parse_dbus_menu_item)
+        .collect();
+    Some(DbusMenuItem {
+        id,
+        label,
+        enabled: property_bool(&properties, "enabled", true),
+        kind,
+        children,
     })
+}
+
+fn property_string(properties: &DbusMenuProperties, key: &str) -> Option<String> {
+    properties
+        .get(key)
+        .and_then(|value| <&str>::try_from(value).ok())
+        .map(ToString::to_string)
+}
+
+fn property_bool(properties: &DbusMenuProperties, key: &str, default: bool) -> bool {
+    properties
+        .get(key)
+        .and_then(|value| bool::try_from(value).ok())
+        .unwrap_or(default)
+}
+
+fn normalize_menu_label(label: &str) -> String {
+    let mut out = String::with_capacity(label.len());
+    let mut chars = label.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '_' {
+            if chars.peek() == Some(&'_') {
+                out.push('_');
+                chars.next();
+            }
+            continue;
+        }
+        out.push(ch);
+    }
+    out.trim().to_string()
 }
 
 fn normalize_service(service: String) -> String {
@@ -412,7 +630,30 @@ fn snapshot_items(state: &WatcherState) -> Vec<StatusNotifierItem> {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_service, snapshot_items, StatusNotifierItem, WatcherState};
+    use std::collections::HashMap;
+
+    use zbus::zvariant::{OwnedValue, Structure, Value};
+
+    use super::{
+        normalize_menu_label, normalize_service, parse_dbus_menu_layout, snapshot_items,
+        DbusMenuItemKind, DbusMenuLayoutNode, DbusMenuProperties, StatusNotifierItem, WatcherState,
+    };
+
+    fn text_value(value: &'static str) -> OwnedValue {
+        OwnedValue::try_from(Value::from(value)).expect("test string value converts")
+    }
+
+    fn item_node(id: i32, properties: DbusMenuProperties, children: Vec<OwnedValue>) -> OwnedValue {
+        OwnedValue::try_from(Structure::from((id, properties, children)))
+            .expect("test menu node converts")
+    }
+
+    fn props(entries: &[(&'static str, OwnedValue)]) -> DbusMenuProperties {
+        entries
+            .iter()
+            .map(|(key, value)| ((*key).to_string(), value.try_clone().unwrap()))
+            .collect::<HashMap<_, _>>()
+    }
 
     #[test]
     fn normalize_service_trims_input() {
@@ -460,5 +701,87 @@ mod tests {
                 }
             ]
         );
+    }
+
+    #[test]
+    fn normalize_menu_label_removes_mnemonics() {
+        assert_eq!(normalize_menu_label("_Open"), "Open");
+        assert_eq!(normalize_menu_label("Save __As"), "Save _As");
+        assert_eq!(normalize_menu_label("  E_xit  "), "Exit");
+    }
+
+    #[test]
+    fn parse_dbus_menu_layout_filters_hidden_items() {
+        let root: DbusMenuLayoutNode = (
+            0,
+            DbusMenuProperties::new(),
+            vec![
+                item_node(
+                    1,
+                    props(&[("label", text_value("_Open")), ("enabled", true.into())]),
+                    Vec::new(),
+                ),
+                item_node(
+                    2,
+                    props(&[("label", text_value("Hidden")), ("visible", false.into())]),
+                    Vec::new(),
+                ),
+            ],
+        );
+        let menu = parse_dbus_menu_layout(7, root);
+        assert_eq!(menu.revision, 7);
+        assert_eq!(menu.root_id, 0);
+        assert_eq!(menu.items.len(), 1);
+        assert_eq!(menu.items[0].id, 1);
+        assert_eq!(menu.items[0].label, "Open");
+        assert!(menu.items[0].enabled);
+        assert_eq!(menu.visible_item_count(), 1);
+        assert_eq!(menu.actionable_item_count(), 1);
+        assert_eq!(menu.first_item_label(), Some("Open"));
+    }
+
+    #[test]
+    fn parse_dbus_menu_layout_keeps_separators_and_children() {
+        let child = item_node(
+            11,
+            props(&[("label", text_value("Child")), ("enabled", false.into())]),
+            Vec::new(),
+        );
+        let root: DbusMenuLayoutNode = (
+            0,
+            DbusMenuProperties::new(),
+            vec![
+                item_node(10, props(&[("label", text_value("Parent"))]), vec![child]),
+                item_node(12, props(&[("type", text_value("separator"))]), Vec::new()),
+            ],
+        );
+        let menu = parse_dbus_menu_layout(1, root);
+        assert_eq!(menu.items.len(), 2);
+        assert_eq!(menu.items[0].children.len(), 1);
+        assert_eq!(menu.items[0].children[0].label, "Child");
+        assert!(!menu.items[0].children[0].enabled);
+        assert_eq!(menu.items[1].kind, DbusMenuItemKind::Separator);
+        assert_eq!(menu.visible_item_count(), 3);
+        assert_eq!(menu.actionable_item_count(), 1);
+    }
+
+    #[test]
+    fn display_entries_flattens_children_with_depth() {
+        let child = item_node(2, props(&[("label", text_value("Child"))]), Vec::new());
+        let root: DbusMenuLayoutNode = (
+            0,
+            DbusMenuProperties::new(),
+            vec![item_node(
+                1,
+                props(&[("label", text_value("Parent"))]),
+                vec![child],
+            )],
+        );
+        let entries = parse_dbus_menu_layout(1, root).display_entries();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].id, 1);
+        assert_eq!(entries[0].depth, 0);
+        assert_eq!(entries[1].id, 2);
+        assert_eq!(entries[1].depth, 1);
     }
 }
