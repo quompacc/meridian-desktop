@@ -10,7 +10,7 @@ use smithay::{
             memory::MemoryRenderBufferRenderElement, solid::SolidColorRenderElement,
             texture::TextureRenderElement, Kind,
         },
-        gles::{GlesRenderer, GlesTexture},
+        gles::{element::PixelShaderElement, GlesRenderer, GlesTexture},
     },
     desktop::{
         layer_map_for_output, space::SpaceRenderElements, PopupManager, Window, WindowSurface,
@@ -42,6 +42,7 @@ render_elements! {
     Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
     Decoration=SolidColorRenderElement,
     DecorationIcon=Wrap<MemoryRenderBufferRenderElement<GlesRenderer>>,
+    Shadow=PixelShaderElement,
     Wallpaper=TextureRenderElement<GlesTexture>,
     Layer=WaylandSurfaceRenderElement<GlesRenderer>,
 }
@@ -309,6 +310,9 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                                     }
                                     crate::decoration::DecorationRenderElement::Icon(icon) => {
                                         MeridianRenderElements::DecorationIcon(icon.into())
+                                    }
+                                    crate::decoration::DecorationRenderElement::PixelShader(s) => {
+                                        MeridianRenderElements::Shadow(s)
                                     }
                                 }),
                         );

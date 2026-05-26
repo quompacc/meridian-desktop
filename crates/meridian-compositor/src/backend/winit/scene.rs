@@ -204,6 +204,9 @@ pub(super) fn render_elements_for_output(
                         crate::decoration::DecorationRenderElement::Icon(icon) => {
                             WinitRenderElements::DecorationIcon(icon.into())
                         }
+                        crate::decoration::DecorationRenderElement::PixelShader(s) => {
+                            WinitRenderElements::Shadow(s)
+                        }
                     }),
             );
         }

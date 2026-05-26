@@ -9,7 +9,7 @@ use smithay::{
                 solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement,
                 texture::TextureRenderElement, Wrap,
             },
-            gles::{GlesRenderer, GlesTexture},
+            gles::{element::PixelShaderElement, GlesRenderer, GlesTexture},
         },
         winit::{self, WinitEvent},
     },
@@ -36,6 +36,7 @@ render_elements! {
     Space=SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>,
     Decoration=SolidColorRenderElement,
     DecorationIcon=Wrap<MemoryRenderBufferRenderElement<GlesRenderer>>,
+    Shadow=PixelShaderElement,
     Wallpaper=TextureRenderElement<GlesTexture>,
     Layer=WaylandSurfaceRenderElement<GlesRenderer>,
 }

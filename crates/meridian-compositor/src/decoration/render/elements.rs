@@ -4,10 +4,10 @@ use meridian_config::{Decorations, ThemeColors};
 use smithay::{
     backend::renderer::{
         element::{memory::MemoryRenderBufferRenderElement, solid::SolidColorRenderElement, Kind},
-        gles::GlesRenderer,
+        gles::{element::PixelShaderElement, GlesRenderer, Uniform, UniformName, UniformType},
     },
     reexports::wayland_server::protocol::wl_surface::WlSurface,
-    utils::{Logical, Physical, Point, Scale, Size},
+    utils::{Logical, Physical, Point, Rectangle, Scale, Size},
 };
 
 use super::{
@@ -17,12 +17,60 @@ use super::{
         DecorationManager, DecorationRenderElement, BUTTON_HEIGHT, BUTTON_ICON_PX, BUTTON_WIDTH,
         TITLE_BAR_HEIGHT,
     },
-    buffers::{
-        effective_shadow_alpha, effective_shadow_radius, effective_shadow_radius_top,
-        update_buffers,
-    },
+    buffers::{effective_shadow_alpha, effective_shadow_radius, update_buffers},
     geometry::{SsdChromeMetrics, SsdFrameMetrics},
 };
+
+
+/// Rounded-box soft drop-shadow pixel shader (GLSL ES 100). Computes the
+/// signed distance to the (optionally rounded) window rect and fades the
+/// shadow smoothly across `u_blur` — a seamless analytic shadow, no 9-slice
+/// bitmap. Technique after Evan Wallace's rounded-rectangle shadows.
+const SHADOW_SHADER_SRC: &str = r#"
+precision highp float;
+uniform vec2 size;
+uniform float alpha;
+uniform vec2 u_frame_center;
+uniform vec2 u_frame_half;
+uniform float u_radius;
+uniform float u_blur;
+uniform float u_offset_y;
+uniform vec4 u_color;
+varying vec2 v_coords;
+
+float rounded_box_sdf(vec2 p, vec2 b, float r) {
+    vec2 q = abs(p) - b + vec2(r);
+    return min(max(q.x, q.y), 0.0) + length(max(q, vec2(0.0))) - r;
+}
+
+void main() {
+    vec2 px = v_coords * size;
+    // Discard inside the *actual* window (u_frame_center is the drop-shifted
+    // shadow shape, so the window sits u_offset_y above it). Opaque clients
+    // would cover it anyway; translucent ones must not be tinted grey.
+    vec2 win_center = u_frame_center - vec2(0.0, u_offset_y);
+    float d_win = rounded_box_sdf(px - win_center, u_frame_half, u_radius);
+    if (d_win < 0.0) {
+        discard;
+    }
+    // Coverage from the drop-shifted shape, so the shadow stays continuous
+    // directly below the window (no transparent gap from the offset).
+    float d = rounded_box_sdf(px - u_frame_center, u_frame_half, u_radius);
+    float cov = 1.0 - smoothstep(-u_blur, u_blur, d);
+    gl_FragColor = u_color * (cov * alpha);
+}
+"#;
+
+fn shadow_uniform_names() -> [UniformName<'static>; 6] {
+    [
+        UniformName::new("u_frame_center", UniformType::_2f),
+        UniformName::new("u_frame_half", UniformType::_2f),
+        UniformName::new("u_radius", UniformType::_1f),
+        UniformName::new("u_blur", UniformType::_1f),
+        UniformName::new("u_offset_y", UniformType::_1f),
+        UniformName::new("u_color", UniformType::_4f),
+    ]
+}
 
 impl DecorationManager {
     #[allow(clippy::too_many_arguments)]
@@ -36,6 +84,13 @@ impl DecorationManager {
         colors: &ThemeColors,
         scale: Scale<f64>,
     ) -> SmallVec<[DecorationRenderElement; 32]> {
+        if self.shadow_shader.is_none() {
+            match renderer.compile_custom_pixel_shader(SHADOW_SHADER_SRC, &shadow_uniform_names()) {
+                Ok(prog) => self.shadow_shader = Some(prog),
+                Err(err) => tracing::warn!("shadow shader compile failed: {:?}", err),
+            }
+        }
+        let shadow_shader = self.shadow_shader.clone();
         let key = Self::key(surface);
         let deco = match self.decorations.get_mut(&key) {
             Some(d) => d,
@@ -93,12 +148,9 @@ impl DecorationManager {
         };
         let phys_f64 = |lx: i32, ly: i32| phys(lx, ly).to_f64();
 
-        let chrome = SsdChromeMetrics::new(SsdFrameMetrics::from_frame_origin(
-            window_loc,
-            content_size,
-            bw,
-            title_h,
-        ));
+        let frame_metrics =
+            SsdFrameMetrics::from_frame_origin(window_loc, content_size, bw, title_h);
+        let chrome = SsdChromeMetrics::new(frame_metrics);
 
         if show_title {
             let buttons = chrome
@@ -253,50 +305,57 @@ impl DecorationManager {
             ));
         }
 
+        // Analytic soft drop shadow via the rounded-box SDF pixel shader.
+        // Replaces the old 9-slice bitmap (seams/notches at the corners).
         if theme.shadow && bw > 0 {
-            let sr = effective_shadow_radius(theme.shadow_radius as i32, deco.is_focused);
-            let srt = effective_shadow_radius_top(theme.shadow_radius_top as i32, deco.is_focused);
-            let alpha = effective_shadow_alpha(theme.shadow_alpha, deco.is_focused);
-            if let Some(layout) = chrome.shadow_layout(sr, srt, theme.shadow_offset_y) {
-                let shadow = self.shadow_cache.get_for(sr as u32, srt as u32, alpha);
+            if let Some(ref prog) = shadow_shader {
+                let spread = effective_shadow_radius(theme.shadow_radius as i32, deco.is_focused)
+                    .max(1);
+                let oy = theme.shadow_offset_y;
+                let shadow_alpha = effective_shadow_alpha(theme.shadow_alpha, deco.is_focused);
 
-                for (rect, buffer) in [
-                    (layout.corner_tl, shadow.corner_tl),
-                    (layout.corner_tr, shadow.corner_tr),
-                    (layout.corner_bl, shadow.corner_bl),
-                    (layout.corner_br, shadow.corner_br),
-                ] {
-                    if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
-                        renderer,
-                        phys_f64(rect.loc.x, rect.loc.y),
-                        buffer,
-                        None,
-                        None,
-                        Some(rect.size),
-                        Kind::Unspecified,
-                    ) {
-                        elements.push(DecorationRenderElement::Icon(element));
-                    }
-                }
+                let fox = frame_metrics.frame_origin.x;
+                let foy = frame_metrics.frame_origin.y;
+                let fw = frame_metrics.frame_size.w;
+                let fh = frame_metrics.frame_size.h;
 
-                for (rect, buffer) in [
-                    (layout.edge_top, shadow.edge_top),
-                    (layout.edge_bottom, shadow.edge_bottom),
-                    (layout.edge_left, shadow.edge_left),
-                    (layout.edge_right, shadow.edge_right),
-                ] {
-                    if let Ok(element) = MemoryRenderBufferRenderElement::from_buffer(
-                        renderer,
-                        phys_f64(rect.loc.x, rect.loc.y),
-                        buffer,
-                        None,
-                        None,
-                        Some(rect.size),
-                        Kind::Unspecified,
-                    ) {
-                        elements.push(DecorationRenderElement::Icon(element));
-                    }
-                }
+                // Inflate enough for the blur spread plus the drop offset.
+                let margin = spread + oy.abs();
+                let area = Rectangle::<i32, Logical>::new(
+                    Point::from((fox - margin, foy - margin)),
+                    Size::from((fw + 2 * margin, fh + 2 * margin)),
+                );
+
+                // Uniforms in physical pixels — v_coords * size is physical.
+                let psf = ps as f32;
+                // Shadow shape centre = window centre dropped by `oy`.
+                let cx = (margin as f32 + fw as f32 / 2.0) * psf;
+                let cy = (margin as f32 + fh as f32 / 2.0 + oy as f32) * psf;
+                let hx = (fw as f32 / 2.0) * psf;
+                let hy = (fh as f32 / 2.0) * psf;
+                let blur = spread as f32 * psf;
+                // Square soft shadow for now (matches square windows; bump once
+                // window corners are rounded so the radii stay in sync).
+                let radius = 0.0f32;
+
+                let uniforms = vec![
+                    Uniform::new("u_frame_center", (cx, cy)),
+                    Uniform::new("u_frame_half", (hx, hy)),
+                    Uniform::new("u_radius", radius),
+                    Uniform::new("u_blur", blur),
+                    Uniform::new("u_offset_y", oy as f32 * psf),
+                    Uniform::new("u_color", (0.0f32, 0.0, 0.0, 1.0)),
+                ];
+
+                let element = PixelShaderElement::new(
+                    prog.clone(),
+                    area,
+                    None,
+                    shadow_alpha,
+                    uniforms,
+                    Kind::Unspecified,
+                );
+                elements.push(DecorationRenderElement::PixelShader(element));
             }
         }
 

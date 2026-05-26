@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use smithay::backend::renderer::{
     element::{memory::MemoryRenderBufferRenderElement, solid::SolidColorRenderElement},
-    gles::GlesRenderer,
+    gles::{element::PixelShaderElement, GlesPixelProgram, GlesRenderer},
 };
 use smithay::reexports::wayland_server::{
     backend::ObjectId, protocol::wl_surface::WlSurface, Resource,
@@ -11,12 +11,10 @@ use smithay::reexports::wayland_server::{
 pub mod icons;
 mod model;
 mod render;
-mod shadow_bitmap;
 
 pub use model::HoveredButton;
 use model::WindowDecoration;
 use render::icon_cache::IconCache;
-use render::shadow_cache::ShadowCache;
 
 pub const TITLE_BAR_HEIGHT: i32 = 32;
 pub const BUTTON_WIDTH: i32 = 32;
@@ -34,6 +32,8 @@ pub const BUTTON_MARGIN: i32 = 8;
 pub enum DecorationRenderElement {
     Solid(SolidColorRenderElement),
     Icon(MemoryRenderBufferRenderElement<GlesRenderer>),
+    /// Shader-driven soft drop shadow (rounded-box SDF).
+    PixelShader(PixelShaderElement),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,7 +60,8 @@ pub enum DecorationHit {
 pub struct DecorationManager {
     decorations: HashMap<ObjectId, WindowDecoration>,
     icon_cache: IconCache,
-    shadow_cache: ShadowCache,
+    /// Lazily-compiled rounded-box soft-shadow pixel shader.
+    shadow_shader: Option<GlesPixelProgram>,
 }
 
 impl DecorationManager {
@@ -68,7 +69,7 @@ impl DecorationManager {
         Self {
             decorations: HashMap::new(),
             icon_cache: IconCache::new(BUTTON_ICON_PX, BUTTON_STROKE_WIDTH),
-            shadow_cache: ShadowCache::new(),
+            shadow_shader: None,
         }
     }
 
