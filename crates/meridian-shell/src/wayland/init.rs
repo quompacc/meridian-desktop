@@ -126,6 +126,7 @@ pub(crate) fn build_icon_cache(
     if !pinned_icons.is_empty() {
         icon_cache.warm(&pinned_icons, 22);
         icon_cache.warm(&pinned_icons, 24);
+        icon_cache.warm(&pinned_icons, 48);
     }
 
     icon_cache

@@ -20,8 +20,8 @@ const CP_DIVIDER_H: i32 = 1;
 const CP_SECTION_LABEL_H: i32 = 24;
 const CP_SECTION_PAD: i32 = 8;
 
-pub(crate) const CP_BENTO_TILE_W: i32 = 96;
-pub(crate) const CP_BENTO_TILE_H: i32 = 96;
+pub(crate) const CP_BENTO_TILE_W: i32 = 72;
+pub(crate) const CP_BENTO_TILE_H: i32 = 72;
 const CP_BENTO_TILE_GAP: i32 = 8;
 pub(crate) const CP_MAX_BENTO: usize = 8;
 // bento zone: label + top-pad + tiles + bottom-pad
@@ -294,7 +294,7 @@ fn draw_header(
     width: u32,
     search_query: &str,
     settings_hovered: bool,
-    icon_cache: &IconCache,
+    _icon_cache: &IconCache,
     pal: &meridian_ui::style::Palette,
 ) {
     fill_rect(pm, Rect { x: 0, y: 0, width: width as i32, height: CP_HEADER_H }, pal.surface);
@@ -311,15 +311,7 @@ fn draw_header(
     let sx = cp_settings_btn_x(width);
     let sy = cp_hdr_icon_y();
     let icon_col = if settings_hovered { pal.text } else { pal.text_dim };
-    if let Some(img) = icon_cache.lookup("preferences-system-symbolic", 22) {
-        if let Some(pix) = icon_image_to_pixmap(img) {
-            let ix = sx + (CP_HDR_ICON_W - pix.width() as i32) / 2;
-            let iy = sy + (CP_HDR_ICON_H - pix.height() as i32) / 2;
-            pm.draw_pixmap(ix, iy, pix.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
-            return;
-        }
-    }
-    paint_text(pm, "*", sx + 6, sy + CP_HDR_ICON_H - 4, 14.0, icon_col);
+    draw_settings_symbol(pm, sx + CP_HDR_ICON_W / 2, sy + CP_HDR_ICON_H / 2, icon_col);
 }
 
 fn draw_bento_strip(
@@ -354,7 +346,7 @@ fn draw_bento_strip(
 
         // icon – try large then small sizes
         if let Some(name) = app.icon_name.as_deref() {
-            for &sz in &[48u32, 96, 32, 24] {
+            for &sz in &[48u32, 32, 24] {
                 if let Some(img) = icon_cache.lookup(name, sz) {
                     if let Some(pix) = icon_image_to_pixmap(img) {
                         let pw = pix.width() as i32;
@@ -547,6 +539,34 @@ fn draw_power_footer(
                 let bar_w = (CP_PWR_BTN_SIZE as f32 * p) as i32;
                 fill_rect(pm, Rect { x: bx, y: btn_y + CP_PWR_BTN_SIZE - 1, width: bar_w, height: 1 }, pal.error);
             }
+        }
+    }
+}
+
+
+fn draw_settings_symbol(pm: &mut PixmapMut<'_>, cx: i32, cy: i32, col: meridian_ui::style::Color) {
+    let ts_col = tiny_skia::Color::from_rgba8(col.r, col.g, col.b, col.a);
+    let mut paint = SkPaint::default();
+    paint.set_color(ts_col);
+    paint.anti_alias = true;
+    let stroke = Stroke { width: 1.5, line_cap: LineCap::Round, line_join: LineJoin::Round, ..Default::default() };
+    let fx = cx as f32;
+    let fy = cy as f32;
+    // Three slider lines
+    for dy in [-6.0f32, 0.0, 6.0] {
+        let mut pb = PathBuilder::new();
+        pb.move_to(fx - 9.0, fy + dy);
+        pb.line_to(fx + 9.0, fy + dy);
+        if let Some(p) = pb.finish() {
+            pm.stroke_path(&p, &paint, &stroke, Transform::identity(), None);
+        }
+    }
+    // Three knobs (filled circles) at different x positions
+    for (dy, kx) in [(-6.0f32, -3.5f32), (0.0, 2.5), (6.0, -1.0)] {
+        let mut pb = PathBuilder::new();
+        pb.push_circle(fx + kx, fy + dy, 3.0);
+        if let Some(p) = pb.finish() {
+            pm.fill_path(&p, &paint, FillRule::Winding, Transform::identity(), None);
         }
     }
 }
