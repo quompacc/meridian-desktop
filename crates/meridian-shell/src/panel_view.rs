@@ -43,7 +43,8 @@ const PANEL_H: i32 = PANEL_HEIGHT as i32;
 
 const LEFT_PADDING: i32 = 8;
 const RIGHT_PADDING: i32 = 10;
-const CHIP_RADIUS: i32 = 3;
+// Soft rounded highlight behind active/hovered chips (matches the island/launcher).
+const CHIP_HL_RADIUS: i32 = 8;
 const GAP: i32 = 4;
 
 // Floating island
@@ -53,6 +54,11 @@ const BOTTOM_GAP: i32 = PANEL_BOTTOM_GAP as i32;
 const SURFACE_H: i32 = PANEL_SURFACE_HEIGHT as i32;
 // Segment divider chrome
 const DIVIDER_W: i32 = 11;
+// Frosted-glass island: more transparent body, a milky veil, and a fine
+// deterministic grain that fakes the frosted texture (no live backdrop blur).
+const PANEL_ISLAND_ALPHA: u8 = 140;
+const PANEL_FROST_ALPHA: u8 = 22;
+const PANEL_NOISE_STRENGTH: i32 = 9;
 
 const FONT_SIZE: f32 = 14.0;
 const ACCENT_LINE_H: i32 = 2;
@@ -539,21 +545,23 @@ impl Widget for PanelChip {
                 }
             }
         } else {
-            let bg = if self.active {
-                theme.palette.border
+            // Idle chips draw no frame so the frosted glass shows through —
+            // only the icon floats. Active/hover/pressed get a soft, rounded,
+            // translucent highlight that keeps the glass visible.
+            let hl: Option<Color> = if self.active {
+                let a = theme.palette.accent;
+                Some(Color::rgba(a.r, a.g, a.b, 64))
             } else {
                 match state {
-                    WidgetState::Idle => theme.palette.surface,
-                    WidgetState::Hovered => theme
-                        .palette
-                        .surface
-                        .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12),
-                    WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.15),
+                    WidgetState::Idle => None,
+                    WidgetState::Hovered => Some(Color::rgba(0xFF, 0xFF, 0xFF, 30)),
+                    WidgetState::Pressed => Some(Color::rgba(0, 0, 0, 56)),
                 }
             };
-
-            if let Some(ref path) = rounded_rect_path(area, CHIP_RADIUS) {
-                paint_fill(canvas, path, bg);
+            if let Some(color) = hl {
+                if let Some(ref path) = rounded_rect_path(area, CHIP_HL_RADIUS) {
+                    paint_fill(canvas, path, color);
+                }
             }
         }
 
@@ -636,28 +644,27 @@ impl Widget for PanelPinnedChip {
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
         // Background — subtle highlight when this app has the focused window
-        let bg = if self.has_focused {
+        // No opaque idle frame — the icon floats on the glass. The focused
+        // app gets a subtle translucent accent cushion; hover/press a soft
+        // rounded highlight.
+        let hl: Option<Color> = if self.has_focused {
+            let a = theme.palette.accent;
             match state {
-                WidgetState::Idle => theme.palette.surface.lerp(theme.palette.accent, 0.12),
-                WidgetState::Hovered => theme
-                    .palette
-                    .surface
-                    .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15),
-                WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.15),
+                WidgetState::Idle => Some(Color::rgba(a.r, a.g, a.b, 54)),
+                WidgetState::Hovered => Some(Color::rgba(a.r, a.g, a.b, 80)),
+                WidgetState::Pressed => Some(Color::rgba(0, 0, 0, 56)),
             }
         } else {
             match state {
-                WidgetState::Idle => theme.palette.surface,
-                WidgetState::Hovered => theme
-                    .palette
-                    .surface
-                    .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12),
-                WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.15),
+                WidgetState::Idle => None,
+                WidgetState::Hovered => Some(Color::rgba(0xFF, 0xFF, 0xFF, 30)),
+                WidgetState::Pressed => Some(Color::rgba(0, 0, 0, 56)),
             }
         };
-
-        if let Some(ref path) = rounded_rect_path(area, CHIP_RADIUS) {
-            paint_fill(canvas, path, bg);
+        if let Some(color) = hl {
+            if let Some(ref path) = rounded_rect_path(area, CHIP_HL_RADIUS) {
+                paint_fill(canvas, path, color);
+            }
         }
 
         // Icon (centered, shifted up slightly to leave room for indicator)
@@ -1153,6 +1160,30 @@ fn collect_click_zones(
 
 // ── draw_panel_ui ───────────────────────────────────────────────────────────
 
+/// Add a fine, position-deterministic brightness grain to a rectangular
+/// region of a tiny-skia RGBA(premultiplied) buffer. Deterministic so it does
+/// not shimmer between redraws; only touches pixels that belong to the island
+/// (alpha > 0). Fakes the texture of frosted glass without a backdrop blur.
+fn apply_frost_noise(data: &mut [u8], w: usize, _h: usize, x0: i32, y0: i32, x1: i32, y1: i32) {
+    for y in y0.max(0)..y1 {
+        for x in x0.max(0)..x1 {
+            let idx = (y as usize * w + x as usize) * 4;
+            if idx + 4 > data.len() || data[idx + 3] == 0 {
+                continue;
+            }
+            let mut n = (x as u32)
+                .wrapping_mul(374_761_393)
+                ^ (y as u32).wrapping_mul(668_265_263);
+            n = (n ^ (n >> 13)).wrapping_mul(1_274_126_177);
+            n ^= n >> 16;
+            let delta = ((n & 0xff) as i32 - 128) * PANEL_NOISE_STRENGTH / 128;
+            for k in 0..3 {
+                data[idx + k] = (data[idx + k] as i32 + delta).clamp(0, 255) as u8;
+            }
+        }
+    }
+}
+
 fn blit_rgba_to_argb(src: &[u8], dst: &mut [u8]) {
     if src.len() != dst.len() || !src.len().is_multiple_of(4) {
         return;
@@ -1229,45 +1260,65 @@ pub(crate) fn draw_panel_ui(
     // wallpaper shows through the side margins and the bottom gap.
     pixmap.fill(tiny_skia::Color::TRANSPARENT);
 
-    let mut pixmap_canvas = pixmap.as_mut();
-
-    // Floating island: a 1px lighter border (drawn as a slightly larger
-    // rounded rect) with the surface_alt body inset on top of it, plus a
-    // subtle top highlight for a touch of dimension.
+    // Frosted-glass island. Drawn in three passes so the grain lands on the
+    // glass body but UNDER the icons: (1) border + semi-transparent body +
+    // milky veil, (2) deterministic grain over the body, (3) top highlight +
+    // the widget tree on top.
     let inner_w = (width as i32 - 2 * SIDE_MARGIN).max(0);
-    let bg = theme.palette.surface_alt;
-    let border = bg.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12);
+    let base = theme.palette.surface_alt;
+    let body_col = Color::rgba(base.r, base.g, base.b, PANEL_ISLAND_ALPHA);
+    let border = {
+        let l = base.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.18);
+        Color::rgba(l.r, l.g, l.b, 235)
+    };
     let outline = Rect {
         x: SIDE_MARGIN,
         y: 0,
         width: inner_w,
         height: PANEL_H,
     };
-    if let Some(path) = rounded_rect_path(outline, ISLAND_RADIUS) {
-        paint_fill(&mut pixmap_canvas, &path, border);
-    }
     let body = Rect {
         x: SIDE_MARGIN + 1,
         y: 1,
         width: (inner_w - 2).max(0),
         height: PANEL_H - 2,
     };
-    if let Some(path) = rounded_rect_path(body, ISLAND_RADIUS - 1) {
-        paint_fill(&mut pixmap_canvas, &path, bg);
+    {
+        let mut pc = pixmap.as_mut();
+        if let Some(path) = rounded_rect_path(outline, ISLAND_RADIUS) {
+            paint_fill(&mut pc, &path, border);
+        }
+        if let Some(path) = rounded_rect_path(body, ISLAND_RADIUS - 1) {
+            paint_fill(&mut pc, &path, body_col);
+        }
+        let frost = Color::rgba(0xFF, 0xFF, 0xFF, PANEL_FROST_ALPHA);
+        if let Some(path) = rounded_rect_path(body, ISLAND_RADIUS - 1) {
+            paint_fill(&mut pc, &path, frost);
+        }
     }
-    // Top highlight hairline just inside the rounded top edge.
-    let hl = bg.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.06);
-    let highlight = Rect {
-        x: SIDE_MARGIN + ISLAND_RADIUS,
-        y: 1,
-        width: (inner_w - 2 * ISLAND_RADIUS).max(0),
-        height: 1,
-    };
-    if let Some(path) = rounded_rect_path(highlight, 0) {
-        paint_fill(&mut pixmap_canvas, &path, hl);
+    apply_frost_noise(
+        pixmap.data_mut(),
+        width as usize,
+        height as usize,
+        body.x,
+        body.y,
+        body.x + body.width,
+        body.y + body.height,
+    );
+    {
+        let mut pc = pixmap.as_mut();
+        let hl = Color::rgba(0xFF, 0xFF, 0xFF, 26);
+        let highlight = Rect {
+            x: SIDE_MARGIN + ISLAND_RADIUS,
+            y: 1,
+            width: (inner_w - 2 * ISLAND_RADIUS).max(0),
+            height: 1,
+        };
+        if let Some(path) = rounded_rect_path(highlight, 0) {
+            paint_fill(&mut pc, &path, hl);
+        }
+        let _ = render(&*root, &layout, &mut pc, &theme, state_fn);
     }
-
-    let _ = render(&*root, &layout, &mut pixmap_canvas, &theme, state_fn);
 
     if intro_progress < 1.0 {
         // Login->desktop entrance: slide the panel up from the screen

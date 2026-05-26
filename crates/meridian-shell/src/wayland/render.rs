@@ -634,6 +634,9 @@ impl MeridianShell {
                 );
             }
 
+            // Round the launcher's outer corners so it matches the panel island.
+            round_buffer_corners(&mut content, lw, lh, 12);
+
             if self.launcher_is_fullscreen {
                 // Blit LAUNCHER_WxH content into the full-screen canvas at visual offset.
                 let fw = width as usize;
@@ -1413,6 +1416,43 @@ impl MeridianShell {
         let tmp_path = path.with_extension("json.tmp");
         if std::fs::write(&tmp_path, snapshot).is_ok() {
             let _ = std::fs::rename(tmp_path, path);
+        }
+    }
+}
+
+/// Make the four corners of a packed ARGB8888 buffer transparent so a
+/// rectangular surface renders with rounded corners. Anti-aliased via a 1px
+/// coverage falloff; channels are scaled together (premultiplied-safe).
+fn round_buffer_corners(buf: &mut [u8], w: usize, h: usize, radius: i32) {
+    if radius <= 0 || w == 0 || h == 0 {
+        return;
+    }
+    let rad = (radius as usize).min(w / 2).min(h / 2);
+    let r = rad as f32;
+    let corners = [
+        (r, r, 0usize, 0usize),
+        ((w - rad) as f32, r, w - rad, 0),
+        (r, (h - rad) as f32, 0, h - rad),
+        ((w - rad) as f32, (h - rad) as f32, w - rad, h - rad),
+    ];
+    for (cx, cy, x0, y0) in corners {
+        for yy in 0..rad {
+            for xx in 0..rad {
+                let px = x0 + xx;
+                let py = y0 + yy;
+                let dx = (px as f32 + 0.5) - cx;
+                let dy = (py as f32 + 0.5) - cy;
+                let dist = (dx * dx + dy * dy).sqrt();
+                let cov = (r - dist + 0.5).clamp(0.0, 1.0);
+                if cov < 1.0 {
+                    let idx = (py * w + px) * 4;
+                    if idx + 4 <= buf.len() {
+                        for k in 0..4 {
+                            buf[idx + k] = (buf[idx + k] as f32 * cov).round() as u8;
+                        }
+                    }
+                }
+            }
         }
     }
 }
