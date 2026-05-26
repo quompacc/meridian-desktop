@@ -203,13 +203,13 @@ pub(crate) fn initialize(
         Some("meridian-launcher"),
         None,
     );
-    launcher_layer.set_anchor(Anchor::BOTTOM | Anchor::LEFT);
-    launcher_layer.set_margin(0, 0, SHELL_POPUP_BOTTOM_MARGIN, 8);
+    launcher_layer.set_anchor(Anchor::BOTTOM);
+    launcher_layer.set_margin(0, 0, SHELL_POPUP_BOTTOM_MARGIN, 0);
     launcher_layer.set_size(LAUNCHER_WIDTH, LAUNCHER_HEIGHT);
     launcher_layer.set_exclusive_zone(0);
     launcher_layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
     debug!(
-        "Launcher surface created: namespace=meridian-launcher layer=Overlay anchor=Bottom|Left size={}x{} margin_bottom={} margin_left=8 exclusive_zone=0 keyboard_interactivity=Exclusive",
+        "Launcher surface created: namespace=meridian-launcher layer=Overlay anchor=Bottom size={}x{} margin_bottom={} exclusive_zone=0 keyboard_interactivity=Exclusive",
         LAUNCHER_WIDTH,
         LAUNCHER_HEIGHT,
         SHELL_POPUP_BOTTOM_MARGIN

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, Transform};
+use tiny_skia::{FillRule, LineCap, LineJoin, Paint as SkPaint, PathBuilder, Pixmap, PixmapMut, PixmapPaint, Stroke, Transform};
 
 use crate::launcher::DesktopApp;
 use crate::panel::PinnedApp;
@@ -58,14 +58,6 @@ const POWER_IDS: [&str; 5] = [
     "power-restart",
     "power-off",
 ];
-const POWER_ICONS: [&str; 5] = [
-    "system-lock-screen-symbolic",
-    "system-log-out-symbolic",
-    "system-suspend-symbolic",
-    "system-restart-symbolic",
-    "system-shutdown-symbolic",
-];
-const POWER_FALLBACK: [&str; 5] = ["L", "Q", "S", "R", "P"];
 
 // ─── Hit testing ──────────────────────────────────────────────────────────────
 
@@ -291,7 +283,7 @@ pub(crate) fn draw_command_palette(
             );
         }
 
-        draw_power_footer(&mut pm, width, height, hovered_power_btn, armed_power, icon_cache, &pal);
+        draw_power_footer(&mut pm, width, height, hovered_power_btn, armed_power, &pal);
     }
 
     blit_rgba_to_argb(pixmap.data(), canvas);
@@ -523,7 +515,6 @@ fn draw_power_footer(
     launcher_h: u32,
     hovered_idx: Option<usize>,
     armed_power: Option<(&str, f32)>,
-    icon_cache: &IconCache,
     pal: &meridian_ui::style::Palette,
 ) {
     let footer_y = cp_footer_y(launcher_h);
@@ -548,18 +539,7 @@ fn draw_power_footer(
             pal.text_dim
         };
 
-        let drawn = if let Some(img) = icon_cache.lookup(POWER_ICONS[i], 22) {
-            if let Some(pix) = icon_image_to_pixmap(img) {
-                let ix = bx + (CP_PWR_BTN_SIZE - pix.width() as i32) / 2;
-                let iy = btn_y + (CP_PWR_BTN_SIZE - pix.height() as i32) / 2;
-                pm.draw_pixmap(ix, iy, pix.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
-                true
-            } else { false }
-        } else { false };
-
-        if !drawn {
-            paint_text(pm, POWER_FALLBACK[i], bx + 8, btn_y + CP_PWR_BTN_SIZE - 6, 14.0, col);
-        }
+        draw_power_symbol(pm, i, bx + CP_PWR_BTN_SIZE / 2, btn_y + CP_PWR_BTN_SIZE / 2, col);
 
         // arm progress bar
         if is_armed {
@@ -567,6 +547,106 @@ fn draw_power_footer(
                 let bar_w = (CP_PWR_BTN_SIZE as f32 * p) as i32;
                 fill_rect(pm, Rect { x: bx, y: btn_y + CP_PWR_BTN_SIZE - 1, width: bar_w, height: 1 }, pal.error);
             }
+        }
+    }
+}
+
+
+fn arc_seg(pb: &mut PathBuilder, cx: f32, cy: f32, r: f32, start_deg: f32, end_deg: f32, first_move: bool) {
+    let n = ((end_deg - start_deg).abs() / 5.0).ceil() as usize + 2;
+    for i in 0..=n {
+        let t = (start_deg + (end_deg - start_deg) * i as f32 / n as f32).to_radians();
+        let x = cx + r * t.cos();
+        let y = cy + r * t.sin();
+        if i == 0 && first_move { pb.move_to(x, y); } else { pb.line_to(x, y); }
+    }
+}
+
+fn draw_power_symbol(pm: &mut PixmapMut<'_>, idx: usize, cx: i32, cy: i32, col: meridian_ui::style::Color) {
+    let fx = cx as f32;
+    let fy = cy as f32;
+    let ts_col = tiny_skia::Color::from_rgba8(col.r, col.g, col.b, col.a);
+    let mut paint = SkPaint::default();
+    paint.set_color(ts_col);
+    paint.anti_alias = true;
+    let stroke = Stroke { width: 1.5, line_cap: LineCap::Round, line_join: LineJoin::Round, ..Default::default() };
+    let do_stroke = |pm: &mut PixmapMut<'_>, pb: PathBuilder| {
+        if let Some(p) = pb.finish() {
+            pm.stroke_path(&p, &paint, &stroke, Transform::identity(), None);
+        }
+    };
+    match idx {
+        0 => {
+            // Lock — shackle arc + body rect + keyhole dot
+            let mut pb = PathBuilder::new();
+            pb.move_to(fx - 4.0, fy - 2.0);
+            pb.line_to(fx - 4.0, fy - 6.0);
+            arc_seg(&mut pb, fx, fy - 6.0, 4.0, 180.0, 360.0, false);
+            pb.line_to(fx + 4.0, fy - 2.0);
+            do_stroke(pm, pb);
+            let mut pb = PathBuilder::new();
+            pb.move_to(fx - 6.0, fy - 2.0);
+            pb.line_to(fx + 6.0, fy - 2.0);
+            pb.line_to(fx + 6.0, fy + 6.0);
+            pb.line_to(fx - 6.0, fy + 6.0);
+            pb.close();
+            do_stroke(pm, pb);
+            let mut pb = PathBuilder::new();
+            pb.push_circle(fx, fy + 2.0, 2.0);
+            do_stroke(pm, pb);
+        }
+        1 => {
+            // Logout — door bar + right arrow
+            let mut pb = PathBuilder::new();
+            pb.move_to(fx - 7.0, fy - 7.0);
+            pb.line_to(fx - 7.0, fy + 7.0);
+            pb.move_to(fx - 2.0, fy);
+            pb.line_to(fx + 7.0, fy);
+            pb.move_to(fx + 3.0, fy - 4.0);
+            pb.line_to(fx + 7.0, fy);
+            pb.line_to(fx + 3.0, fy + 4.0);
+            do_stroke(pm, pb);
+        }
+        2 => {
+            // Sleep — crescent moon via EvenOdd (big circle minus offset smaller circle)
+            let mut pb = PathBuilder::new();
+            pb.push_circle(fx - 1.0, fy, 7.5);
+            pb.push_circle(fx + 2.5, fy - 1.0, 6.0);
+            if let Some(p) = pb.finish() {
+                let mut fp = SkPaint::default();
+                fp.set_color(ts_col);
+                fp.anti_alias = true;
+                pm.fill_path(&p, &fp, FillRule::EvenOdd, Transform::identity(), None);
+            }
+        }
+        3 => {
+            // Restart — 270° arc with arrowhead
+            let r = 7.0f32;
+            let mut pb = PathBuilder::new();
+            arc_seg(&mut pb, fx, fy, r, -30.0, -30.0 + 270.0, true);
+            do_stroke(pm, pb);
+            // Arrowhead at end of arc (240°): tip at (fx-3.5, fy-6.06)
+            let end_rad = 240.0f32.to_radians();
+            let ex = fx + r * end_rad.cos();
+            let ey = fy + r * end_rad.sin();
+            let al = 4.5f32;
+            // Arms rotated ±150° from CW tangent at 240° = (-0.866, 0.5)
+            let mut pb = PathBuilder::new();
+            pb.move_to(ex + 0.5 * al, ey - 0.866 * al);
+            pb.line_to(ex, ey);
+            pb.line_to(ex + 1.0 * al, ey);
+            do_stroke(pm, pb);
+        }
+        _ => {
+            // Power off — 300° circle arc + vertical line through top gap
+            let r = 7.0f32;
+            let mut pb = PathBuilder::new();
+            arc_seg(&mut pb, fx, fy, r, -60.0, -60.0 + 300.0, true);
+            do_stroke(pm, pb);
+            let mut pb = PathBuilder::new();
+            pb.move_to(fx, fy - 3.0);
+            pb.line_to(fx, fy - 9.0);
+            do_stroke(pm, pb);
         }
     }
 }
