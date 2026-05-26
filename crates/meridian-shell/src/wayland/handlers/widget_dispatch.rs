@@ -31,9 +31,6 @@ impl MeridianShell {
         }
 
         match action {
-            WidgetAction::ToggleUiPreview
-            | WidgetAction::ShowTileView
-            | WidgetAction::SetCategory(_) => self.dispatch_launcher_view_action(qh, action),
             WidgetAction::LaunchApp { .. } | WidgetAction::LaunchExec(_) => {
                 self.dispatch_launch_action(qh, action);
             }
@@ -61,36 +58,6 @@ impl MeridianShell {
             | WidgetAction::PinnedCloseAdd
             | WidgetAction::PinnedAddApp(_) => self.dispatch_pinned_action(qh, action),
         }
-    }
-
-    fn dispatch_launcher_view_action(
-        &mut self,
-        qh: &QueueHandle<MeridianShell>,
-        action: WidgetAction,
-    ) {
-        match action {
-            WidgetAction::ToggleUiPreview => {
-                self.app_view_open = true;
-                self.launcher_settings_open = false;
-                self.ui_preview_widget_state = None;
-                self.app_view_scroll_y = 0;
-            }
-            WidgetAction::ShowTileView => {
-                self.app_view_open = false;
-                self.launcher_settings_open = false;
-                self.search_query.clear();
-                self.ui_preview_widget_state = None;
-                self.app_view_scroll_y = 0;
-            }
-            WidgetAction::SetCategory(cat) => {
-                self.app_view_category = cat;
-                self.search_query.clear();
-                self.ui_preview_widget_state = None;
-                self.app_view_scroll_y = 0;
-            }
-            _ => unreachable!("non launcher-view action routed to launcher-view dispatcher"),
-        }
-        self.draw_launcher(qh, RepaintReason::Pointer);
     }
 
     fn dispatch_launch_action(&mut self, qh: &QueueHandle<MeridianShell>, action: WidgetAction) {
@@ -144,7 +111,6 @@ impl MeridianShell {
         match action {
             WidgetAction::ToggleSettings => {
                 self.launcher_settings_open = true;
-                self.app_view_open = false;
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
             WidgetAction::SetSettingsCategory(cat) => {

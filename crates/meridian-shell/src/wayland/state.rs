@@ -823,7 +823,6 @@ impl MeridianShell {
         } else {
             self.launcher_is_fullscreen = false;
             self.launcher_settings_open = false;
-            self.app_view_open = false;
             self.settings_category = crate::settings_view::SettingsCategory::default();
             self.launcher_layer
                 .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
@@ -868,7 +867,6 @@ impl MeridianShell {
             self.toggle_launcher();
         }
         self.launcher_settings_open = true;
-        self.app_view_open = false;
         self.settings_category = category;
         self.display_mode_dropdown_open = None;
         if category == crate::settings_view::SettingsCategory::Wallpaper
@@ -905,7 +903,6 @@ impl MeridianShell {
             self.toggle_launcher();
         }
         self.launcher_settings_open = true;
-        self.app_view_open = false;
         self.settings_category = crate::settings_view::SettingsCategory::Sound;
         self.audio_snapshot = crate::audio::AudioSnapshot::poll();
         self.launcher_dirty = true;
@@ -1352,7 +1349,11 @@ impl MeridianShell {
         self.launcher_state.close();
         self.launcher_settings_open = false;
         self.settings_pinned_adding = false;
-        self.app_view_open = false;
+        self.launcher_selected_idx = None;
+        self.search_query.clear();
+        self.app_view_scroll_y = 0;
+        self.hovered_bento_idx = None;
+        self.hovered_app_card_idx = None;
         self.launcher_layer
             .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
         self.unmap_launcher(CommitReason::Input);
@@ -1657,7 +1658,6 @@ impl MeridianShell {
             }
             ClickAction::ToggleSettings => {
                 self.launcher_settings_open = true;
-                self.app_view_open = false;
                 self.toggle_launcher();
             }
         }
@@ -1751,7 +1751,6 @@ impl MeridianShell {
             ClickAction::TakeScreenshot => {}
             ClickAction::ToggleSettings => {
                 self.launcher_settings_open = true;
-                self.app_view_open = false;
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
         }

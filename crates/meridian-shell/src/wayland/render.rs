@@ -6,7 +6,7 @@ use wayland_client::QueueHandle;
 
 use crate::{
     audio_popup, buffer, network_popup, notification_popup, panel, status_notifier_popup,
-    thumbnail_popup, ui_preview, workspaces, Painter, Rect, AUDIO_POPUP_HEIGHT, AUDIO_POPUP_WIDTH,
+    thumbnail_popup, workspaces, Painter, Rect, AUDIO_POPUP_HEIGHT, AUDIO_POPUP_WIDTH,
     CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
     NETWORK_POPUP_HEIGHT, NETWORK_POPUP_WIDTH, NOTIFICATION_HEIGHT, NOTIFICATION_WIDTH,
     PANEL_HEIGHT, THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT,
@@ -597,32 +597,24 @@ impl MeridianShell {
                     &self.theme,
                     &state_fn,
                 );
-            } else if self.app_view_open {
-                crate::app_view::draw_app_view(
+            } else {
+                crate::app_view::draw_command_palette(
                     &mut content,
                     LAUNCHER_WIDTH,
                     LAUNCHER_HEIGHT,
+                    &self.pinned_apps,
                     &self.launcher_state.apps,
-                    self.app_view_category,
-                    &self.icon_cache,
-                    &state_fn,
                     &self.search_query,
                     self.app_view_scroll_y,
+                    self.launcher_selected_idx,
                     armed_power,
+                    &self.icon_cache,
                     &self.hidden_execs,
                     self.hovered_app_card_idx,
+                    self.hovered_bento_idx,
+                    self.settings_hovered,
+                    self.hovered_power_btn,
                     &self.theme,
-                );
-            } else {
-                ui_preview::draw_ui_preview_sandbox(
-                    &mut content,
-                    LAUNCHER_WIDTH,
-                    LAUNCHER_HEIGHT,
-                    &self.launcher_state.apps,
-                    &self.icon_cache,
-                    armed_power,
-                    &self.theme,
-                    &state_fn,
                 );
             }
             if let Some(ref cm) = self.context_menu {

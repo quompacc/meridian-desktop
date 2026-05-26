@@ -1,143 +1,198 @@
-use meridian_ui::{
-    effect::{paint_fill, paint_text, rounded_rect_path, truncate_to_fit},
-    paint::Rect,
-    style::{Color, Palette},
-    widget::{Button, Container, Widget},
-    Theme, WidgetState,
-};
+use std::collections::HashSet;
+
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, Transform};
 
 use crate::launcher::DesktopApp;
-use crate::ui::tokens::theme_from_config;
+use crate::panel::PinnedApp;
 use crate::{
     icons::{icon_image_to_pixmap, IconCache},
-    power_footer::build_power_footer_buttons,
+    ui::tokens::theme_from_config,
+};
+use meridian_ui::{
+    effect::{paint_fill, paint_text, rounded_rect_path, truncate_to_fit},
+    paint::Rect,
+    style::Color,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) enum AppCategory {
-    Internet,
-    Kreativ,
-    Buero,
-    Entwicklung,
-    System,
-    Spiele,
-    #[default]
-    Alle,
-}
+// ─── Layout constants ─────────────────────────────────────────────────────────
+pub(crate) const CP_HEADER_H: i32 = 52;
+const CP_DIVIDER_H: i32 = 1;
+const CP_SECTION_LABEL_H: i32 = 24;
+const CP_SECTION_PAD: i32 = 8;
 
-impl AppCategory {
-    pub(crate) fn label(&self) -> &'static str {
-        match self {
-            Self::Internet => "Internet",
-            Self::Kreativ => "Kreativ",
-            Self::Buero => "Büro",
-            Self::Entwicklung => "Entwicklung",
-            Self::System => "System",
-            Self::Spiele => "Spiele",
-            Self::Alle => "Alle",
-        }
-    }
+pub(crate) const CP_BENTO_TILE_W: i32 = 96;
+pub(crate) const CP_BENTO_TILE_H: i32 = 96;
+const CP_BENTO_TILE_GAP: i32 = 8;
+pub(crate) const CP_MAX_BENTO: usize = 8;
+// bento zone: label + top-pad + tiles + bottom-pad
+const CP_BENTO_ZONE_H: i32 =
+    CP_SECTION_LABEL_H + CP_SECTION_PAD + CP_BENTO_TILE_H + CP_SECTION_PAD;
 
-    pub(crate) fn chip_id(&self) -> &'static str {
-        match self {
-            Self::Internet => "cat-internet",
-            Self::Kreativ => "cat-kreativ",
-            Self::Buero => "cat-buero",
-            Self::Entwicklung => "cat-entwicklung",
-            Self::System => "cat-system",
-            Self::Spiele => "cat-spiele",
-            Self::Alle => "cat-alle",
-        }
-    }
+// y-coordinates for the two main zones
+pub(crate) const CP_BENTO_TOP: i32 = CP_HEADER_H + CP_DIVIDER_H; // 53
+pub(crate) const CP_APPS_TOP: i32 = CP_BENTO_TOP + CP_BENTO_ZONE_H + CP_DIVIDER_H; // 190
 
-    pub(crate) fn accent(&self, pal: &Palette) -> Color {
-        match self {
-            Self::Internet => pal.accent,
-            Self::Kreativ => pal.accent_alt,
-            Self::Buero => pal.warning,
-            Self::Entwicklung => pal.success,
-            Self::System => pal.error,
-            Self::Spiele => pal.accent,
-            Self::Alle => pal.accent,
-        }
-    }
+// App grid: 3-col, gutter 21, gap 8 → card = (880−42−16)/3 = 274
+pub(crate) const CP_APP_ROW_H: i32 = 44;
+pub(crate) const CP_APP_COLS: usize = 3;
+pub(crate) const CP_GUTTER: i32 = 21;
+pub(crate) const CP_COL_GAP: i32 = 8;
+pub(crate) const CP_CARD_W: i32 = 274;
 
-    fn tokens(&self) -> &'static [&'static str] {
-        match self {
-            Self::Internet => &["network", "webbrowser", "email", "instantmessaging", "chat"],
-            Self::Kreativ => &[
-                "graphics",
-                "photography",
-                "audio",
-                "video",
-                "music",
-                "audiovideo",
-            ],
-            Self::Buero => &[
-                "office",
-                "wordprocessor",
-                "spreadsheet",
-                "presentation",
-                "viewer",
-            ],
-            Self::Entwicklung => &["development", "ide", "debugger", "revisioncontrol"],
-            Self::System => &[
-                "system",
-                "settings",
-                "security",
-                "filemanager",
-                "filesystem",
-            ],
-            Self::Spiele => &["game", "actiongame", "arcadegame", "boardgame", "logicgame"],
-            Self::Alle => &[],
-        }
-    }
+// Power footer
+pub(crate) const CP_FOOTER_H: i32 = 40;
+// 5 power buttons × 32px + 4 gaps × 8px = 192, right-margin 12 → leftmost btn x = w−12−192 = 676
+const CP_PWR_BTN_SIZE: i32 = 32;
+const CP_PWR_BTN_STRIDE: i32 = 40; // 32 + 8 gap
+const CP_PWR_START_X: i32 = 676;   // for launcher_w=880
 
-    pub(crate) fn matches(&self, app: &DesktopApp) -> bool {
-        if matches!(self, Self::Alle) {
-            return true;
-        }
-        let tokens = self.tokens();
-        app.categories.iter().any(|c| tokens.contains(&c.as_str()))
-    }
-}
+// Header settings button
+const CP_HDR_ICON_W: i32 = 28;
+const CP_HDR_ICON_H: i32 = 28;
+const CP_HDR_ICON_MARGIN_R: i32 = 12;
 
-const ALL_CATEGORIES: [AppCategory; 7] = [
-    AppCategory::Alle,
-    AppCategory::Internet,
-    AppCategory::Kreativ,
-    AppCategory::Buero,
-    AppCategory::Entwicklung,
-    AppCategory::System,
-    AppCategory::Spiele,
+const POWER_IDS: [&str; 5] = [
+    "power-lock",
+    "power-logout",
+    "power-sleep",
+    "power-restart",
+    "power-off",
 ];
+const POWER_ICONS: [&str; 5] = [
+    "system-lock-screen-symbolic",
+    "system-log-out-symbolic",
+    "system-suspend-symbolic",
+    "system-restart-symbolic",
+    "system-shutdown-symbolic",
+];
+const POWER_FALLBACK: [&str; 5] = ["L", "Q", "S", "R", "P"];
 
-pub(crate) const APP_CARD_WIDTH: i32 = 268;
-const APP_CARD_HEIGHT: i32 = 52;
-const APP_CARD_ICON_SIZE: u32 = 24;
-const APP_CARD_CORNER_RADIUS: i32 = 4;
-const DIVIDER_HEIGHT: i32 = 2;
+// ─── Hit testing ──────────────────────────────────────────────────────────────
 
-pub(crate) const APP_GRID_HEADER_H: i32 =
-    SEARCH_BAR_HEIGHT as i32 + CHIPS_BAR_HEIGHT as i32 + DIVIDER_HEIGHT;
-pub(crate) const APP_GRID_FOOTER_H: i32 = FOOTER_HEIGHT as i32 + DIVIDER_HEIGHT;
-pub(crate) const APP_GRID_ROW_H: i32 = APP_CARD_HEIGHT + 8;
-pub(crate) const APP_GRID_COLS: usize = 3;
-const APP_CARD_COL_STRIDE: i32 = APP_CARD_WIDTH + 8;
-pub(crate) const APP_GRID_CONTENT_W: i32 =
-    APP_GRID_COLS as i32 * APP_CARD_WIDTH + (APP_GRID_COLS as i32 - 1) * 8;
-
-pub(crate) fn app_grid_content_x(launcher_width: u32) -> i32 {
-    (launcher_width as i32 - APP_GRID_CONTENT_W) / 2
+fn cp_settings_btn_x(launcher_w: u32) -> i32 {
+    launcher_w as i32 - CP_HDR_ICON_MARGIN_R - CP_HDR_ICON_W
 }
 
-pub(crate) fn collect_filtered_apps<'a>(
+fn cp_hdr_icon_y() -> i32 {
+    (CP_HEADER_H - CP_HDR_ICON_H) / 2
+}
+
+fn cp_footer_y(launcher_h: u32) -> i32 {
+    launcher_h as i32 - CP_FOOTER_H
+}
+
+fn cp_bento_tile_x(n_tiles: usize) -> i32 {
+    let n = n_tiles.min(CP_MAX_BENTO) as i32;
+    let total_w = n * CP_BENTO_TILE_W + (n - 1).max(0) * CP_BENTO_TILE_GAP;
+    (crate::LAUNCHER_WIDTH as i32 - total_w) / 2
+}
+
+pub(crate) fn hit_bento_tile(cx: i32, cy: i32, n_tiles: usize) -> Option<usize> {
+    if n_tiles == 0 {
+        return None;
+    }
+    let n = n_tiles.min(CP_MAX_BENTO) as i32;
+    let tile_y = CP_BENTO_TOP + CP_SECTION_LABEL_H + CP_SECTION_PAD;
+    if cy < tile_y || cy >= tile_y + CP_BENTO_TILE_H {
+        return None;
+    }
+    let strip_x = cp_bento_tile_x(n_tiles);
+    let rel_x = cx - strip_x;
+    if rel_x < 0 {
+        return None;
+    }
+    let stride = CP_BENTO_TILE_W + CP_BENTO_TILE_GAP;
+    let col = rel_x / stride;
+    let in_tile = rel_x % stride < CP_BENTO_TILE_W;
+    if in_tile && col < n {
+        Some(col as usize)
+    } else {
+        None
+    }
+}
+
+pub(crate) fn hit_app_row(
+    cx: i32,
+    cy: i32,
+    scroll_y: i32,
+    launcher_h: u32,
+    search_active: bool,
+) -> Option<usize> {
+    let footer_y = cp_footer_y(launcher_h);
+    let content_y = if search_active {
+        CP_HEADER_H + CP_DIVIDER_H
+    } else {
+        CP_APPS_TOP + CP_SECTION_LABEL_H + CP_SECTION_PAD
+    };
+    if cy < content_y || cy >= footer_y - 1 {
+        return None;
+    }
+    let row_y = cy - content_y + scroll_y;
+    if row_y < 0 {
+        return None;
+    }
+    let row = (row_y / CP_APP_ROW_H) as usize;
+    if search_active {
+        Some(row)
+    } else {
+        let rel_x = cx - CP_GUTTER;
+        if rel_x < 0 {
+            return None;
+        }
+        let col_stride = CP_CARD_W + CP_COL_GAP;
+        let col = (rel_x / col_stride) as usize;
+        if rel_x % col_stride < CP_CARD_W && col < CP_APP_COLS {
+            Some(row * CP_APP_COLS + col)
+        } else {
+            None
+        }
+    }
+}
+
+pub(crate) fn hit_header_settings(cx: i32, cy: i32, launcher_w: u32) -> bool {
+    let bx = cp_settings_btn_x(launcher_w);
+    let by = cp_hdr_icon_y();
+    cx >= bx && cx < bx + CP_HDR_ICON_W && cy >= by && cy < by + CP_HDR_ICON_H
+}
+
+/// Returns power button index 0=lock 1=logout 2=sleep 3=restart 4=off, or None.
+pub(crate) fn hit_footer_power_btn(cx: i32, cy: i32, launcher_h: u32) -> Option<usize> {
+    let footer_y = cp_footer_y(launcher_h);
+    let btn_y = footer_y + (CP_FOOTER_H - CP_PWR_BTN_SIZE) / 2;
+    if cy < btn_y || cy >= btn_y + CP_PWR_BTN_SIZE {
+        return None;
+    }
+    let rel_x = cx - CP_PWR_START_X;
+    if rel_x < 0 {
+        return None;
+    }
+    let btn = (rel_x / CP_PWR_BTN_STRIDE) as usize;
+    let in_btn = rel_x % CP_PWR_BTN_STRIDE < CP_PWR_BTN_SIZE;
+    if in_btn && btn < 5 {
+        Some(btn)
+    } else {
+        None
+    }
+}
+
+pub(crate) fn power_widget_action_for_idx(idx: usize) -> Option<crate::widget_action::WidgetAction> {
+    Some(match idx {
+        0 => crate::widget_action::WidgetAction::PowerLock,
+        1 => crate::widget_action::WidgetAction::PowerLogout,
+        2 => crate::widget_action::WidgetAction::PowerSleep,
+        3 => crate::widget_action::WidgetAction::PowerRestart,
+        4 => crate::widget_action::WidgetAction::PowerOff,
+        _ => return None,
+    })
+}
+
+// ─── App filtering ────────────────────────────────────────────────────────────
+
+pub(crate) fn collect_palette_apps<'a>(
     apps: &'a [DesktopApp],
-    category: AppCategory,
     search_query: &str,
     icon_cache: &IconCache,
-    hidden_execs: &std::collections::HashSet<String>,
+    hidden_execs: &HashSet<String>,
 ) -> Vec<&'a DesktopApp> {
     apps.iter()
         .filter(|app| {
@@ -148,7 +203,6 @@ pub(crate) fn collect_filtered_apps<'a>(
                     .as_deref()
                     .and_then(|name| icon_cache.lookup(name, 24))
                     .is_some()
-                && category.matches(app)
                 && (search_query.is_empty()
                     || app
                         .name
@@ -158,436 +212,407 @@ pub(crate) fn collect_filtered_apps<'a>(
         .collect()
 }
 
-struct Divider {
-    width: i32,
-    color: Color,
-}
-
-impl Widget for Divider {
-    fn style(&self) -> meridian_ui::WidgetStyle {
-        meridian_ui::WidgetStyle {
-            size: meridian_ui::UiSize {
-                width: meridian_ui::ui_length(self.width as f32),
-                height: meridian_ui::ui_length(DIVIDER_HEIGHT as f32),
-            },
-            ..Default::default()
-        }
-    }
-
-    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, _theme: &Theme, _state: WidgetState) {
-        if let Some(path) = rounded_rect_path(area, 0) {
-            paint_fill(canvas, &path, self.color);
-        }
-    }
-}
-
-const SEARCH_BAR_HEIGHT: u32 = 44;
-
-struct SearchBar {
-    width: i32,
-    query: Box<str>,
-}
-
-impl Widget for SearchBar {
-    fn style(&self) -> meridian_ui::WidgetStyle {
-        meridian_ui::WidgetStyle {
-            size: meridian_ui::UiSize {
-                width: meridian_ui::ui_length(self.width as f32),
-                height: meridian_ui::ui_length(SEARCH_BAR_HEIGHT as f32),
-            },
-            ..Default::default()
-        }
-    }
-
-    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
-        let body_color = match state {
-            WidgetState::Idle => theme.palette.surface,
-            WidgetState::Hovered => theme
-                .palette
-                .surface
-                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15),
-            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
-        };
-
-        if let Some(path) = rounded_rect_path(area, 4) {
-            paint_fill(canvas, &path, body_color);
-        }
-
-        let text_x = area.x + 12;
-        let text_baseline = area.y + area.height - 10;
-        let font_size: f32 = 13.0;
-
-        if self.query.is_empty() {
-            let dimmed = Color::rgba(
-                theme.palette.text.r,
-                theme.palette.text.g,
-                theme.palette.text.b,
-                80,
-            );
-            paint_text(
-                canvas,
-                "Apps suchen...",
-                text_x,
-                text_baseline,
-                font_size,
-                dimmed,
-            );
-        } else {
-            paint_text(
-                canvas,
-                &self.query,
-                text_x,
-                text_baseline,
-                font_size,
-                theme.palette.text,
-            );
-        }
-    }
-}
-const CHIPS_BAR_HEIGHT: u32 = 52;
-const FOOTER_HEIGHT: u32 = 56;
-const CHIP_WIDTH: i32 = 104;
-const CHIP_HEIGHT: i32 = 36;
-const FOOTER_SWITCH_WIDTH: i32 = 144;
-const FOOTER_SWITCH_HEIGHT: i32 = 48;
-const FOOTER_POWER_BUTTON_SIZE: i32 = 48;
-const FOOTER_PADDING_X: i32 = 28;
-const FOOTER_CLUSTER_GAP: i32 = 8;
-const POWER_ICON_SIZE: u32 = 32;
-
-struct GridPlaceholder {
-    width: i32,
-    height: i32,
-}
-
-impl Widget for GridPlaceholder {
-    fn style(&self) -> meridian_ui::WidgetStyle {
-        meridian_ui::WidgetStyle {
-            size: meridian_ui::UiSize {
-                width: meridian_ui::ui_length(self.width as f32),
-                height: meridian_ui::ui_length(self.height as f32),
-            },
-            ..Default::default()
-        }
-    }
-
-    fn paint(&self, _area: Rect, _canvas: &mut PixmapMut<'_>, _theme: &Theme, _state: WidgetState) {
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn build_app_view_widget_tree(
-    width: u32,
-    height: u32,
-    _apps: &[DesktopApp],
-    category: AppCategory,
-    icon_cache: &IconCache,
+pub(crate) fn max_scroll_for_palette(
+    apps: &[DesktopApp],
     search_query: &str,
-    _scroll_y: i32,
-    armed_power: Option<(&str, f32)>,
-    theme: &Theme,
-) -> Box<dyn Widget> {
-    let pal = theme.palette;
-
-    let search_bar: Box<dyn Widget> = Box::new(SearchBar {
-        width: width as i32,
-        query: search_query.into(),
-    });
-
-    let active_accent = category.accent(&pal);
-    let chips: Vec<Box<dyn Widget>> = ALL_CATEGORIES
-        .iter()
-        .map(|cat| {
-            let accent = if *cat == category {
-                active_accent
-            } else {
-                pal.surface
-            };
-            Box::new(Button::with_id(
-                cat.chip_id(),
-                cat.label(),
-                accent,
-                CHIP_WIDTH,
-                CHIP_HEIGHT,
-            )) as Box<dyn Widget>
-        })
-        .collect();
-
-    let chip_bar = Container::centered_viewport(
-        width,
-        CHIPS_BAR_HEIGHT,
-        vec![Box::new(Container::row(8, chips)) as Box<dyn Widget>],
-    );
-
-    const DIVIDER_COUNT: u32 = 2;
-    let grid_height = height.saturating_sub(
-        SEARCH_BAR_HEIGHT
-            + CHIPS_BAR_HEIGHT
-            + FOOTER_HEIGHT
-            + DIVIDER_COUNT * DIVIDER_HEIGHT as u32,
-    );
-
-    let grid = Container::centered_viewport(
-        width,
-        grid_height,
-        vec![Box::new(GridPlaceholder {
-            width: width as i32,
-            height: grid_height as i32,
-        }) as Box<dyn Widget>],
-    );
-
-    let settings_icon = icon_cache
-        .lookup("preferences-system-symbolic", POWER_ICON_SIZE)
-        .and_then(icon_image_to_pixmap);
-
-    let footer_left = vec![
-        Box::new(Button::with_id(
-            "show-tile-view",
-            "← Apps",
-            pal.accent,
-            FOOTER_SWITCH_WIDTH,
-            FOOTER_SWITCH_HEIGHT,
-        )) as Box<dyn Widget>,
-        Box::new(Button::with_id_and_icon(
-            "launcher-settings",
-            "Settings",
-            pal.accent_alt,
-            FOOTER_SWITCH_WIDTH,
-            FOOTER_SWITCH_HEIGHT,
-            settings_icon,
-        )) as Box<dyn Widget>,
-    ];
-
-    let footer_right = build_power_footer_buttons(
-        icon_cache,
-        &pal,
-        FOOTER_POWER_BUTTON_SIZE,
-        POWER_ICON_SIZE,
-        armed_power,
-    );
-
-    let footer = Container::footer_row(
-        width,
-        FOOTER_HEIGHT as i32,
-        FOOTER_PADDING_X,
-        FOOTER_CLUSTER_GAP,
-        footer_left,
-        footer_right,
-    );
-
-    let divider_color = Color::rgba(active_accent.r, active_accent.g, active_accent.b, 180);
-    let make_divider = || -> Box<dyn Widget> {
-        Box::new(Divider {
-            width: width as i32,
-            color: divider_color,
-        })
+    icon_cache: &IconCache,
+    hidden_execs: &HashSet<String>,
+    launcher_h: u32,
+) -> i32 {
+    let filtered = collect_palette_apps(apps, search_query, icon_cache, hidden_execs);
+    let search_active = !search_query.is_empty();
+    let content_y = if search_active {
+        CP_HEADER_H + CP_DIVIDER_H
+    } else {
+        CP_APPS_TOP + CP_SECTION_LABEL_H + CP_SECTION_PAD
     };
-
-    Box::new(Container::column(
-        0,
-        vec![
-            search_bar,
-            Box::new(chip_bar) as Box<dyn Widget>,
-            make_divider(),
-            Box::new(grid) as Box<dyn Widget>,
-            make_divider(),
-            Box::new(footer) as Box<dyn Widget>,
-        ],
-    ))
+    let n_rows = if search_active {
+        filtered.len()
+    } else {
+        filtered.len().div_ceil(CP_APP_COLS)
+    };
+    let content_h = n_rows as i32 * CP_APP_ROW_H;
+    let view_h = launcher_h as i32 - content_y - CP_FOOTER_H - 1;
+    (content_h - view_h).max(0)
 }
 
+// ─── Rendering ────────────────────────────────────────────────────────────────
+
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn draw_app_view(
+pub(crate) fn draw_command_palette(
     canvas: &mut [u8],
     width: u32,
     height: u32,
-    apps: &[DesktopApp],
-    category: AppCategory,
-    icon_cache: &IconCache,
-    state_fn: &dyn Fn(&[usize]) -> WidgetState,
+    pinned_apps: &[PinnedApp],
+    all_apps: &[DesktopApp],
     search_query: &str,
     scroll_y: i32,
+    selected_idx: Option<usize>,
     armed_power: Option<(&str, f32)>,
-    hidden_execs: &std::collections::HashSet<String>,
-    hovered_app_card_idx: Option<usize>,
+    icon_cache: &IconCache,
+    hidden_execs: &HashSet<String>,
+    hovered_app_idx: Option<usize>,
+    hovered_bento_idx: Option<usize>,
+    settings_hovered: bool,
+    hovered_power_btn: Option<usize>,
     theme_config: &meridian_config::ThemeConfig,
 ) {
-    let expected_len = (width as usize)
-        .saturating_mul(height as usize)
-        .saturating_mul(4);
-    if canvas.len() != expected_len {
+    let expected = (width as usize) * (height as usize) * 4;
+    if canvas.len() != expected {
         return;
     }
-
     let Some(mut pixmap) = Pixmap::new(width, height) else {
         return;
     };
 
     let theme = theme_from_config(theme_config);
-    pixmap.fill(to_tiny_skia_color(theme.palette.background));
+    let pal = theme.palette;
+    pixmap.fill(to_tiny_skia_color(pal.background));
 
-    let root = build_app_view_widget_tree(
-        width,
-        height,
-        apps,
-        category,
-        icon_cache,
-        search_query,
-        scroll_y,
-        armed_power,
-        &theme,
-    );
-
-    if let Ok(layout) =
-        meridian_ui::compute_layout(&*root, meridian_ui::PixelSize { width, height })
     {
-        let mut pixmap_canvas = pixmap.as_mut();
-        let _ = meridian_ui::render(&*root, &layout, &mut pixmap_canvas, &theme, state_fn);
-    }
+        let mut pm = pixmap.as_mut();
 
-    // Direct grid rendering with scroll support
-    {
-        let grid_start_y = APP_GRID_HEADER_H;
-        let grid_end_y = height as i32 - APP_GRID_FOOTER_H;
-        let grid_h = (grid_end_y - grid_start_y).max(0) as u32;
-        let grid_x = app_grid_content_x(width);
+        draw_header(&mut pm, width, search_query, settings_hovered, icon_cache, &pal);
+        divider(&mut pm, width, CP_HEADER_H, &pal);
 
-        let filtered =
-            collect_filtered_apps(apps, category, search_query, icon_cache, hidden_execs);
-        let rows = filtered.len().div_ceil(APP_GRID_COLS);
-        let content_h = rows as i32 * APP_GRID_ROW_H;
-
-        if let Some(mut grid_pix) = Pixmap::new(width, grid_h) {
-            grid_pix.fill(to_tiny_skia_color(theme.palette.background));
-            {
-                let mut gpm = grid_pix.as_mut();
-
-                for (row_idx, chunk) in filtered.chunks(APP_GRID_COLS).enumerate() {
-                    let row_y = row_idx as i32 * APP_GRID_ROW_H - scroll_y;
-                    if row_y + APP_GRID_ROW_H <= 0 {
-                        continue;
-                    }
-                    if row_y >= grid_h as i32 {
-                        break;
-                    }
-
-                    for (col_idx, app) in chunk.iter().enumerate() {
-                        let card_x = grid_x + col_idx as i32 * APP_CARD_COL_STRIDE;
-                        let card_rect = Rect {
-                            x: card_x,
-                            y: row_y,
-                            width: APP_CARD_WIDTH,
-                            height: APP_CARD_HEIGHT,
-                        };
-
-                        // draw card background
-                        let global_idx = row_idx * APP_GRID_COLS + col_idx;
-                        let bg_color = if hovered_app_card_idx == Some(global_idx) {
-                            theme
-                                .palette
-                                .surface
-                                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15)
-                        } else {
-                            theme.palette.surface
-                        };
-                        if let Some(path) = rounded_rect_path(card_rect, APP_CARD_CORNER_RADIUS) {
-                            paint_fill(&mut gpm, &path, bg_color);
-                        }
-
-                        // draw icon
-                        if let Some(name) = app.icon_name.as_deref() {
-                            if let Some(img) = icon_cache.lookup(name, APP_CARD_ICON_SIZE) {
-                                if let Some(pix) = icon_image_to_pixmap(img) {
-                                    let ix = card_x + 10;
-                                    let iy = row_y + (APP_CARD_HEIGHT - pix.height() as i32) / 2;
-                                    gpm.draw_pixmap(
-                                        ix,
-                                        iy,
-                                        pix.as_ref(),
-                                        &PixmapPaint::default(),
-                                        Transform::identity(),
-                                        None,
-                                    );
-                                }
-                            }
-                        }
-
-                        // draw label
-                        let tx = card_x + 10 + APP_CARD_ICON_SIZE as i32 + 8;
-                        let ty = row_y + APP_CARD_HEIGHT - 10;
-                        let max_label_w = APP_CARD_WIDTH - 10 - APP_CARD_ICON_SIZE as i32 - 8 - 8;
-                        let label = truncate_to_fit(&app.name, max_label_w, 13.0);
-                        paint_text(&mut gpm, &label, tx, ty, 13.0, theme.palette.text);
-                    }
-                }
-
-                // draw scrollbar if needed
-                if content_h > grid_h as i32 {
-                    let track_x = width as i32 - 8;
-                    let track_h = grid_h as i32 - 8;
-                    let thumb_h = ((track_h * grid_h as i32) / content_h).max(20).min(track_h);
-                    let max_scroll = content_h - grid_h as i32;
-                    let thumb_y = 4 + if max_scroll > 0 {
-                        scroll_y * (track_h - thumb_h) / max_scroll
-                    } else {
-                        0
-                    };
-                    let track_col = Color::rgba(
-                        theme.palette.text.r,
-                        theme.palette.text.g,
-                        theme.palette.text.b,
-                        25,
-                    );
-                    let thumb_col = Color::rgba(
-                        theme.palette.accent.r,
-                        theme.palette.accent.g,
-                        theme.palette.accent.b,
-                        180,
-                    );
-                    if let Some(path) = rounded_rect_path(
-                        Rect {
-                            x: track_x,
-                            y: 4,
-                            width: 4,
-                            height: track_h,
-                        },
-                        2,
-                    ) {
-                        paint_fill(&mut gpm, &path, track_col);
-                    }
-                    if let Some(path) = rounded_rect_path(
-                        Rect {
-                            x: track_x,
-                            y: thumb_y,
-                            width: 4,
-                            height: thumb_h,
-                        },
-                        2,
-                    ) {
-                        paint_fill(&mut gpm, &path, thumb_col);
-                    }
-                }
-            }
-
-            pixmap.draw_pixmap(
-                0,
-                grid_start_y,
-                grid_pix.as_ref(),
-                &PixmapPaint::default(),
-                Transform::identity(),
-                None,
+        let search_active = !search_query.is_empty();
+        if search_active {
+            draw_search_results(
+                &mut pm, width, height, all_apps, search_query, scroll_y,
+                selected_idx, icon_cache, hidden_execs, hovered_app_idx, &pal,
+            );
+        } else {
+            draw_bento_strip(&mut pm, width, pinned_apps, icon_cache, hovered_bento_idx, &pal);
+            divider(&mut pm, width, CP_BENTO_TOP + CP_BENTO_ZONE_H, &pal);
+            section_label(&mut pm, "ALLE APPS", CP_APPS_TOP, &pal);
+            draw_app_grid(
+                &mut pm, width, height, all_apps, search_query, scroll_y,
+                selected_idx, icon_cache, hidden_execs, hovered_app_idx, &pal,
             );
         }
+
+        draw_power_footer(&mut pm, width, height, hovered_power_btn, armed_power, icon_cache, &pal);
     }
 
     blit_rgba_to_argb(pixmap.data(), canvas);
+}
+
+fn draw_header(
+    pm: &mut PixmapMut<'_>,
+    width: u32,
+    search_query: &str,
+    settings_hovered: bool,
+    icon_cache: &IconCache,
+    pal: &meridian_ui::style::Palette,
+) {
+    fill_rect(pm, Rect { x: 0, y: 0, width: width as i32, height: CP_HEADER_H }, pal.surface);
+
+    let text_x = 20i32;
+    let text_baseline = CP_HEADER_H - (CP_HEADER_H - 14) / 2 - 2;
+    if search_query.is_empty() {
+        let ph = Color::rgba(pal.text.r, pal.text.g, pal.text.b, 80);
+        paint_text(pm, "Apps suchen...", text_x, text_baseline, 13.0, ph);
+    } else {
+        paint_text(pm, search_query, text_x, text_baseline, 13.0, pal.text);
+    }
+
+    let sx = cp_settings_btn_x(width);
+    let sy = cp_hdr_icon_y();
+    let icon_col = if settings_hovered { pal.text } else { pal.text_dim };
+    if let Some(img) = icon_cache.lookup("preferences-system-symbolic", 22) {
+        if let Some(pix) = icon_image_to_pixmap(img) {
+            let ix = sx + (CP_HDR_ICON_W - pix.width() as i32) / 2;
+            let iy = sy + (CP_HDR_ICON_H - pix.height() as i32) / 2;
+            pm.draw_pixmap(ix, iy, pix.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+            return;
+        }
+    }
+    paint_text(pm, "*", sx + 6, sy + CP_HDR_ICON_H - 4, 14.0, icon_col);
+}
+
+fn draw_bento_strip(
+    pm: &mut PixmapMut<'_>,
+    _width: u32,
+    pinned_apps: &[PinnedApp],
+    icon_cache: &IconCache,
+    hovered_idx: Option<usize>,
+    pal: &meridian_ui::style::Palette,
+) {
+    section_label(pm, "ANGEHEFTET", CP_BENTO_TOP, pal);
+
+    let n = pinned_apps.len().min(CP_MAX_BENTO);
+    if n == 0 {
+        return;
+    }
+    let strip_x = cp_bento_tile_x(n);
+    let tile_y = CP_BENTO_TOP + CP_SECTION_LABEL_H + CP_SECTION_PAD;
+
+    for (i, app) in pinned_apps.iter().take(CP_MAX_BENTO).enumerate() {
+        let tx = strip_x + i as i32 * (CP_BENTO_TILE_W + CP_BENTO_TILE_GAP);
+
+        let bg = if hovered_idx == Some(i) {
+            pal.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12)
+        } else {
+            pal.surface
+        };
+        fill_rect(pm, Rect { x: tx, y: tile_y, width: CP_BENTO_TILE_W, height: CP_BENTO_TILE_H }, bg);
+        // bottom accent line
+        fill_rect(pm, Rect { x: tx, y: tile_y + CP_BENTO_TILE_H - 1, width: CP_BENTO_TILE_W, height: 1 },
+            Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 140));
+
+        // icon – try large then small sizes
+        if let Some(name) = app.icon_name.as_deref() {
+            for &sz in &[48u32, 96, 32, 24] {
+                if let Some(img) = icon_cache.lookup(name, sz) {
+                    if let Some(pix) = icon_image_to_pixmap(img) {
+                        let pw = pix.width() as i32;
+                        let ph = pix.height() as i32;
+                        let ix = tx + (CP_BENTO_TILE_W - pw) / 2;
+                        let icon_center = tile_y + (CP_BENTO_TILE_H * 55) / 100;
+                        let iy = icon_center - ph / 2;
+                        pm.draw_pixmap(ix, iy, pix.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // label
+        let max_w = CP_BENTO_TILE_W - 6;
+        let label = truncate_to_fit(&app.label, max_w, 11.0);
+        let lx = tx + 3;
+        let ly = tile_y + CP_BENTO_TILE_H - 5;
+        paint_text(pm, &label, lx, ly, 11.0, pal.text);
+    }
+}
+
+fn draw_app_grid(
+    pm: &mut PixmapMut<'_>,
+    width: u32,
+    height: u32,
+    apps: &[DesktopApp],
+    search_query: &str,
+    scroll_y: i32,
+    selected_idx: Option<usize>,
+    icon_cache: &IconCache,
+    hidden_execs: &HashSet<String>,
+    hovered_idx: Option<usize>,
+    pal: &meridian_ui::style::Palette,
+) {
+    let content_y = CP_APPS_TOP + CP_SECTION_LABEL_H + CP_SECTION_PAD;
+    let grid_h = (height as i32 - content_y - CP_FOOTER_H - 1).max(0) as u32;
+    let Some(mut grid_pix) = Pixmap::new(width, grid_h) else { return };
+    grid_pix.fill(to_tiny_skia_color(pal.background));
+    {
+        let mut gpm = grid_pix.as_mut();
+        let filtered = collect_palette_apps(apps, search_query, icon_cache, hidden_execs);
+        let n_rows = filtered.len().div_ceil(CP_APP_COLS);
+        let content_h = n_rows as i32 * CP_APP_ROW_H;
+
+        for (global_idx, app) in filtered.iter().enumerate() {
+            let row = global_idx / CP_APP_COLS;
+            let col = global_idx % CP_APP_COLS;
+            let row_y = row as i32 * CP_APP_ROW_H - scroll_y;
+            if row_y + CP_APP_ROW_H <= 0 { continue; }
+            if row_y >= grid_h as i32 { break; }
+
+            let card_x = CP_GUTTER + col as i32 * (CP_CARD_W + CP_COL_GAP);
+            let is_sel = selected_idx == Some(global_idx);
+            let is_hov = hovered_idx == Some(global_idx);
+
+            if is_sel || is_hov {
+                let bg = if is_sel {
+                    pal.surface.lerp(pal.accent, 0.10)
+                } else {
+                    pal.surface
+                };
+                fill_rect(&mut gpm, Rect { x: card_x, y: row_y, width: CP_CARD_W, height: CP_APP_ROW_H }, bg);
+                if is_sel {
+                    fill_rect(&mut gpm, Rect { x: card_x, y: row_y, width: 2, height: CP_APP_ROW_H }, pal.accent);
+                }
+            }
+
+            draw_app_row_content(&mut gpm, app, card_x + 10, row_y, icon_cache, pal);
+        }
+
+        if content_h > grid_h as i32 {
+            draw_scrollbar(&mut gpm, width, grid_h, content_h, scroll_y, pal);
+        }
+    }
+    pm.draw_pixmap(0, content_y, grid_pix.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+}
+
+fn draw_search_results(
+    pm: &mut PixmapMut<'_>,
+    width: u32,
+    height: u32,
+    apps: &[DesktopApp],
+    search_query: &str,
+    scroll_y: i32,
+    selected_idx: Option<usize>,
+    icon_cache: &IconCache,
+    hidden_execs: &HashSet<String>,
+    hovered_idx: Option<usize>,
+    pal: &meridian_ui::style::Palette,
+) {
+    let content_y = CP_HEADER_H + CP_DIVIDER_H;
+    let list_h = (height as i32 - content_y - CP_FOOTER_H - 1).max(0) as u32;
+    let Some(mut list_pix) = Pixmap::new(width, list_h) else { return };
+    list_pix.fill(to_tiny_skia_color(pal.background));
+    {
+        let mut lpm = list_pix.as_mut();
+        let filtered = collect_palette_apps(apps, search_query, icon_cache, hidden_execs);
+        let content_h = filtered.len() as i32 * CP_APP_ROW_H;
+
+        for (idx, app) in filtered.iter().enumerate() {
+            let row_y = idx as i32 * CP_APP_ROW_H - scroll_y;
+            if row_y + CP_APP_ROW_H <= 0 { continue; }
+            if row_y >= list_h as i32 { break; }
+
+            let is_sel = selected_idx == Some(idx);
+            let is_hov = hovered_idx == Some(idx);
+
+            if is_sel || is_hov {
+                let bg = if is_sel {
+                    pal.surface.lerp(pal.accent, 0.10)
+                } else {
+                    pal.surface
+                };
+                fill_rect(&mut lpm, Rect { x: 0, y: row_y, width: width as i32, height: CP_APP_ROW_H }, bg);
+                if is_sel {
+                    fill_rect(&mut lpm, Rect { x: 0, y: row_y, width: 3, height: CP_APP_ROW_H }, pal.accent);
+                }
+            }
+
+            draw_app_row_content(&mut lpm, app, 16, row_y, icon_cache, pal);
+        }
+
+        if content_h > list_h as i32 {
+            draw_scrollbar(&mut lpm, width, list_h, content_h, scroll_y, pal);
+        }
+    }
+    pm.draw_pixmap(0, content_y, list_pix.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+}
+
+fn draw_app_row_content(
+    pm: &mut PixmapMut<'_>,
+    app: &DesktopApp,
+    icon_x: i32,
+    row_y: i32,
+    icon_cache: &IconCache,
+    pal: &meridian_ui::style::Palette,
+) {
+    if let Some(name) = app.icon_name.as_deref() {
+        if let Some(img) = icon_cache.lookup(name, 24) {
+            if let Some(pix) = icon_image_to_pixmap(img) {
+                let iy = row_y + (CP_APP_ROW_H - pix.height() as i32) / 2;
+                pm.draw_pixmap(icon_x, iy, pix.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+            }
+        }
+    }
+    let tx = icon_x + 24 + 8;
+    let ty = row_y + CP_APP_ROW_H - 10;
+    let max_w = 240;
+    let label = truncate_to_fit(&app.name, max_w, 13.0);
+    paint_text(pm, &label, tx, ty, 13.0, pal.text);
+}
+
+fn draw_power_footer(
+    pm: &mut PixmapMut<'_>,
+    width: u32,
+    launcher_h: u32,
+    hovered_idx: Option<usize>,
+    armed_power: Option<(&str, f32)>,
+    icon_cache: &IconCache,
+    pal: &meridian_ui::style::Palette,
+) {
+    let footer_y = cp_footer_y(launcher_h);
+    // divider + background
+    fill_rect(pm, Rect { x: 0, y: footer_y - 1, width: width as i32, height: 1 }, divider_col(pal));
+    fill_rect(pm, Rect { x: 0, y: footer_y, width: width as i32, height: CP_FOOTER_H }, pal.surface);
+
+    let btn_y = footer_y + (CP_FOOTER_H - CP_PWR_BTN_SIZE) / 2;
+
+    for i in 0..5usize {
+        let bx = CP_PWR_START_X + i as i32 * CP_PWR_BTN_STRIDE;
+        let is_hov = hovered_idx == Some(i);
+        let is_armed = armed_power
+            .map(|(id, _)| id == POWER_IDS[i])
+            .unwrap_or(false);
+
+        let col = if is_armed {
+            pal.error
+        } else if is_hov {
+            pal.text
+        } else {
+            pal.text_dim
+        };
+
+        let drawn = if let Some(img) = icon_cache.lookup(POWER_ICONS[i], 22) {
+            if let Some(pix) = icon_image_to_pixmap(img) {
+                let ix = bx + (CP_PWR_BTN_SIZE - pix.width() as i32) / 2;
+                let iy = btn_y + (CP_PWR_BTN_SIZE - pix.height() as i32) / 2;
+                pm.draw_pixmap(ix, iy, pix.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+                true
+            } else { false }
+        } else { false };
+
+        if !drawn {
+            paint_text(pm, POWER_FALLBACK[i], bx + 8, btn_y + CP_PWR_BTN_SIZE - 6, 14.0, col);
+        }
+
+        // arm progress bar
+        if is_armed {
+            if let Some((_, p)) = armed_power.filter(|(id, _)| *id == POWER_IDS[i]) {
+                let bar_w = (CP_PWR_BTN_SIZE as f32 * p) as i32;
+                fill_rect(pm, Rect { x: bx, y: btn_y + CP_PWR_BTN_SIZE - 1, width: bar_w, height: 1 }, pal.error);
+            }
+        }
+    }
+}
+
+fn draw_scrollbar(
+    pm: &mut PixmapMut<'_>,
+    width: u32,
+    view_h: u32,
+    content_h: i32,
+    scroll_y: i32,
+    pal: &meridian_ui::style::Palette,
+) {
+    let track_x = width as i32 - 6;
+    let track_h = view_h as i32 - 8;
+    if track_h <= 0 { return; }
+    let thumb_h = ((track_h * view_h as i32) / content_h).max(20).min(track_h);
+    let max_scroll = (content_h - view_h as i32).max(1);
+    let thumb_y = 4 + scroll_y * (track_h - thumb_h) / max_scroll;
+    let track_col = Color::rgba(pal.text.r, pal.text.g, pal.text.b, 25);
+    let thumb_col = Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 180);
+    fill_rect(pm, Rect { x: track_x, y: 4, width: 4, height: track_h }, track_col);
+    fill_rect(pm, Rect { x: track_x, y: thumb_y, width: 4, height: thumb_h }, thumb_col);
+}
+
+fn section_label(pm: &mut PixmapMut<'_>, label: &str, y: i32, pal: &meridian_ui::style::Palette) {
+    paint_text(pm, label, CP_GUTTER, y + CP_SECTION_LABEL_H - 6, 10.0, pal.text_dim);
+}
+
+fn divider(pm: &mut PixmapMut<'_>, width: u32, y: i32, pal: &meridian_ui::style::Palette) {
+    fill_rect(pm, Rect { x: 0, y, width: width as i32, height: CP_DIVIDER_H }, divider_col(pal));
+}
+
+fn divider_col(pal: &meridian_ui::style::Palette) -> Color {
+    Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 60)
+}
+
+fn fill_rect(pm: &mut PixmapMut<'_>, rect: Rect, color: Color) {
+    if let Some(path) = rounded_rect_path(rect, 0) {
+        paint_fill(pm, &path, color);
+    }
 }
 
 fn blit_rgba_to_argb(src: &[u8], dst: &mut [u8]) {
     if src.len() != dst.len() || !src.len().is_multiple_of(4) {
         return;
     }
-
     for (rgba, argb) in src.chunks_exact(4).zip(dst.chunks_exact_mut(4)) {
         argb[0] = rgba[2];
         argb[1] = rgba[1];
@@ -596,197 +621,73 @@ fn blit_rgba_to_argb(src: &[u8], dst: &mut [u8]) {
     }
 }
 
-fn to_tiny_skia_color(color: meridian_ui::style::Color) -> tiny_skia::Color {
+fn to_tiny_skia_color(color: Color) -> tiny_skia::Color {
     tiny_skia::Color::from_rgba8(color.r, color.g, color.b, color.a)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs,
-        path::PathBuf,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use super::*;
 
-    use super::{build_app_view_widget_tree, AppCategory, SearchBar};
-    use crate::icons::{IconCache, IconLoader};
-    use crate::launcher::DesktopApp;
-    use meridian_ui::{Theme, Widget};
-
-    struct TempDir {
-        path: PathBuf,
-    }
-
-    impl TempDir {
-        fn new(label: &str) -> Self {
-            let mut path = std::env::temp_dir();
-            let nanos = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .expect("clock")
-                .as_nanos();
-            path.push(format!(
-                "meridian-shell-app-view-{label}-{}-{nanos}",
-                std::process::id()
-            ));
-            fs::create_dir_all(&path).expect("create temp dir");
-            Self { path }
-        }
-
-        fn path(&self) -> &PathBuf {
-            &self.path
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.path);
-        }
-    }
-
-    fn write_theme_index(path: &std::path::Path, directories: &[&str]) {
-        let mut body = format!(
-            "[Icon Theme]\nName=Theme\nInherits=\nDirectories={}\n\n",
-            directories.join(",")
-        );
-        for directory in directories {
-            let size: u32 = directory
-                .split('x')
-                .next()
-                .unwrap_or("0")
-                .parse()
-                .unwrap_or(0);
-            body.push_str(&format!("[{directory}]\nType=Fixed\nSize={size}\n\n"));
-        }
-        fs::write(path, body).expect("write index.theme");
-    }
-
-    fn write_png(path: &std::path::Path) {
-        use png::{BitDepth, ColorType, Encoder};
-        let file = fs::File::create(path).expect("create png");
-        let mut encoder = Encoder::new(file, 24, 24);
-        encoder.set_color(ColorType::Rgba);
-        encoder.set_depth(BitDepth::Eight);
-        let mut writer = encoder.write_header().expect("write header");
-        let data = vec![255u8; 24 * 24 * 4];
-        writer.write_image_data(&data).expect("write data");
-    }
-
-    fn test_icon_cache() -> (TempDir, IconCache) {
-        let temp = TempDir::new("app-view");
-        let icons_root = temp.path().join("icons");
-        let theme_root = icons_root.join("Adwaita");
-        let apps = theme_root.join("22x22/apps");
-        fs::create_dir_all(&apps).expect("create apps dir");
-        write_theme_index(&theme_root.join("index.theme"), &["22x22/apps"]);
-        write_png(&apps.join("firefox.png"));
-        write_png(&apps.join("utilities-terminal.png"));
-
-        let loader = IconLoader::new_for_tests("Adwaita", vec![icons_root], vec![]);
-        let mut cache = IconCache::new_for_tests(loader);
-        cache.warm(&["firefox"], 24);
-        cache.warm(&["utilities-terminal"], 24);
-        (temp, cache)
-    }
-
-    fn firefox_app() -> DesktopApp {
-        let mut app = DesktopApp::new("Firefox".into(), vec!["firefox".into()], false);
-        app.icon_name = Some("firefox".into());
-        app.categories = vec!["network".into(), "webbrowser".into()];
-        app
+    #[test]
+    fn blit_rgba_to_argb_swaps_red_and_blue() {
+        let src = [0x12u8, 0x34, 0x56, 0x78];
+        let mut dst = [0u8; 4];
+        blit_rgba_to_argb(&src, &mut dst);
+        assert_eq!(dst, [0x56, 0x34, 0x12, 0x78]);
     }
 
     #[test]
-    fn search_bar_style_returns_correct_size() {
-        let bar = SearchBar {
-            width: 880,
-            query: "".into(),
-        };
-        let style = bar.style();
-        assert_eq!(style.size.width, meridian_ui::ui_length(880.0));
-        assert_eq!(
-            style.size.height,
-            meridian_ui::ui_length(super::SEARCH_BAR_HEIGHT as f32)
-        );
+    fn blit_twice_roundtrips() {
+        let src = [0x12u8, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0];
+        let mut mid = [0u8; 8];
+        let mut dst = [0u8; 8];
+        blit_rgba_to_argb(&src, &mut mid);
+        blit_rgba_to_argb(&mid, &mut dst);
+        assert_eq!(dst, src);
     }
 
     #[test]
-    fn app_category_chip_id_mapping() {
-        assert_eq!(AppCategory::Internet.chip_id(), "cat-internet");
-        assert_eq!(AppCategory::Kreativ.chip_id(), "cat-kreativ");
-        assert_eq!(AppCategory::Buero.chip_id(), "cat-buero");
-        assert_eq!(AppCategory::Entwicklung.chip_id(), "cat-entwicklung");
-        assert_eq!(AppCategory::System.chip_id(), "cat-system");
-        assert_eq!(AppCategory::Spiele.chip_id(), "cat-spiele");
-        assert_eq!(AppCategory::Alle.chip_id(), "cat-alle");
+    fn hit_bento_tile_correct_columns() {
+        // 8 tiles: strip_x = (880−824)/2 = 28; stride=104
+        let n = 8;
+        let tile_y = CP_BENTO_TOP + CP_SECTION_LABEL_H + CP_SECTION_PAD;
+        assert_eq!(hit_bento_tile(50, tile_y + 10, n), Some(0));
+        assert_eq!(hit_bento_tile(132, tile_y + 10, n), Some(1)); // 28+104=132
+        assert_eq!(hit_bento_tile(28, tile_y - 1, n), None);
+        assert_eq!(hit_bento_tile(10, tile_y + 10, n), None); // before strip
     }
 
     #[test]
-    fn build_app_view_widget_tree_empty_apps() {
-        let icon_cache = IconCache::new();
-        let tree = build_app_view_widget_tree(
-            880,
-            620,
-            &[],
-            AppCategory::Alle,
-            &icon_cache,
-            "",
-            0,
-            None,
-            &Theme::TOKYO_NIGHT_METRO,
-        );
-        let children = tree.children();
-        assert_eq!(
-            children.len(),
-            6,
-            "root column should have 6 children (search, chips, divider, grid, divider, footer)"
-        );
+    fn hit_app_row_grid_mode() {
+        // content_y = 190+24+8=222; col0: x in [21,295)
+        let idx = hit_app_row(CP_GUTTER + 5, 222 + 5, 0, 620, false);
+        assert_eq!(idx, Some(0));
+        let idx = hit_app_row(CP_GUTTER + CP_CARD_W + CP_COL_GAP + 5, 222 + 5, 0, 620, false);
+        assert_eq!(idx, Some(1)); // col 1
     }
 
     #[test]
-    fn app_view_search_filters_by_query_match() {
-        let (_temp, icon_cache) = test_icon_cache();
-        let app = firefox_app();
-        let tree = build_app_view_widget_tree(
-            880,
-            620,
-            &[app],
-            AppCategory::Internet,
-            &icon_cache,
-            "fire",
-            0,
-            None,
-            &Theme::TOKYO_NIGHT_METRO,
-        );
-        let children = tree.children();
-        assert_eq!(children.len(), 6);
-        // child[3] is the grid container (now contains a GridPlaceholder)
-        let grid = &children[3];
-        let grid_children = grid.children();
-        // grid viewport has 1 child: the GridPlaceholder
-        assert_eq!(grid_children.len(), 1);
+    fn hit_app_row_search_mode() {
+        // content_y = 53
+        assert_eq!(hit_app_row(100, 53 + 5, 0, 620, true), Some(0));
+        assert_eq!(hit_app_row(100, 53 + 44 + 5, 0, 620, true), Some(1));
     }
 
     #[test]
-    fn app_view_search_excludes_non_matching_query() {
-        let (_temp, icon_cache) = test_icon_cache();
-        let app = firefox_app();
-        let tree = build_app_view_widget_tree(
-            880,
-            620,
-            &[app],
-            AppCategory::Internet,
-            &icon_cache,
-            "zzznomatch",
-            0,
-            None,
-            &Theme::TOKYO_NIGHT_METRO,
-        );
-        let children = tree.children();
-        assert_eq!(children.len(), 6);
-        // child[3] is the grid container (now contains a GridPlaceholder)
-        let grid = &children[3];
-        let grid_children = grid.children();
-        // grid viewport has 1 child: the GridPlaceholder
-        assert_eq!(grid_children.len(), 1);
+    fn hit_footer_power_btn_range() {
+        // btn 0: x=[676,708), y=[footer+4, footer+36); footer=580
+        let h = 620u32;
+        assert_eq!(hit_footer_power_btn(680, 588, h), Some(0));
+        assert_eq!(hit_footer_power_btn(720, 588, h), Some(1)); // 676+40=716..748
+        assert_eq!(hit_footer_power_btn(680, 570, h), None); // above footer
+    }
+
+    #[test]
+    fn hit_header_settings_btn() {
+        // w=880: x=[840,868), y=[12,40)
+        assert!(hit_header_settings(850, 20, 880));
+        assert!(!hit_header_settings(850, 5, 880));
+        assert!(!hit_header_settings(800, 20, 880));
     }
 }
