@@ -579,6 +579,7 @@ impl MeridianShell {
                     LAUNCHER_WIDTH,
                     LAUNCHER_HEIGHT,
                     self.settings_category,
+                    &self.settings_search,
                     &self.available_themes,
                     &self.theme_name,
                     &self.available_wallpapers,

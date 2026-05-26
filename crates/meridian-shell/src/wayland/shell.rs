@@ -363,6 +363,7 @@ pub(crate) struct MeridianShell {
     pub(crate) desktop_context_menu: Option<crate::context_menu::DesktopContextMenuState>,
     pub(crate) hidden_execs: std::collections::HashSet<String>,
     pub(crate) search_query: String,
+    pub(crate) settings_search: String,
     pub(crate) calendar_dirty: bool,
     pub(crate) workspace_dirty: bool,
     pub(crate) network_dirty: bool,

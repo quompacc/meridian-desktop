@@ -1,4 +1,4 @@
-use crate::settings_view::{SettingsCategory, SettingsRootCategory};
+use crate::settings_view::SettingsCategory;
 
 const SETTINGS_THEME_PREFIX: &str = "settings-theme-";
 const SETTINGS_WALLPAPER_PREFIX: &str = "settings-wallpaper-";
@@ -81,12 +81,6 @@ fn exact_action_for_id(id: &str) -> Option<WidgetAction> {
         "power-lock" => Some(WidgetAction::PowerLock),
         "power-logout" => Some(WidgetAction::PowerLogout),
         "launcher-settings" | "show-tile-view" => Some(WidgetAction::ToggleSettings),
-        "settings-root-desktop" => Some(WidgetAction::SetSettingsCategory(
-            SettingsRootCategory::Desktop.first_category(),
-        )),
-        "settings-root-system" => Some(WidgetAction::SetSettingsCategory(
-            SettingsRootCategory::System.first_category(),
-        )),
         "wallpaper-mode-fill" => Some(WidgetAction::SetWallpaperMode(meridian_config::WallpaperMode::Fill)),
         "wallpaper-mode-fit" => Some(WidgetAction::SetWallpaperMode(meridian_config::WallpaperMode::Fit)),
         "wallpaper-mode-center" => Some(WidgetAction::SetWallpaperMode(meridian_config::WallpaperMode::Center)),

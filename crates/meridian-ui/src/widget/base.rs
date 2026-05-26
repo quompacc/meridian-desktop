@@ -92,6 +92,41 @@ impl Container {
         )
     }
 
+    /// Column viewport anchored to the top, children centered horizontally.
+    /// Optional top/side padding and inter-child gap.
+    pub fn top_viewport(
+        width: u32,
+        height: u32,
+        pad_top: i32,
+        pad_x: i32,
+        gap: i32,
+        children: Vec<Box<dyn Widget>>,
+    ) -> Self {
+        Self::new(
+            Style {
+                flex_direction: FlexDirection::Column,
+                justify_content: Some(JustifyContent::FlexStart),
+                align_items: Some(AlignItems::Center),
+                size: Size {
+                    width: length(width as f32),
+                    height: length(height as f32),
+                },
+                padding: taffy::prelude::Rect {
+                    left: length(pad_x.max(0) as f32),
+                    right: length(pad_x.max(0) as f32),
+                    top: length(pad_top.max(0) as f32),
+                    bottom: length(0.0),
+                },
+                gap: Size {
+                    width: length(0.0),
+                    height: length(gap.max(0) as f32),
+                },
+                ..Default::default()
+            },
+            children,
+        )
+    }
+
     pub fn flow(
         viewport_width: u32,
         viewport_height: u32,

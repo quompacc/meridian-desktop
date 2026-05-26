@@ -22,7 +22,6 @@ mod notification_popup;
 mod notifications;
 mod panel;
 mod panel_view;
-mod power_footer;
 mod printers;
 mod settings_view;
 mod status_notifier;

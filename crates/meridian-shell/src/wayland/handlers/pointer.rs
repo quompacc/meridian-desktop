@@ -278,7 +278,8 @@ impl PointerHandler for MeridianShell {
                     let tree = if self.launcher_settings_open {
                         crate::settings_view::build_settings_widget_tree(
                             crate::LAUNCHER_WIDTH, crate::LAUNCHER_HEIGHT,
-                            self.settings_category, &self.available_themes, &self.theme_name,
+                            self.settings_category, &self.settings_search,
+                            &self.available_themes, &self.theme_name,
                             &self.available_wallpapers, &self.wallpaper_thumbnails,
                             self.wallpaper_path.as_deref(), self.wallpaper_mode,
                             &self.pinned_apps, &self.output_workspaces,
@@ -412,6 +413,7 @@ impl PointerHandler for MeridianShell {
                             crate::LAUNCHER_WIDTH,
                             crate::LAUNCHER_HEIGHT,
                             self.settings_category,
+                            &self.settings_search,
                             &self.available_themes,
                             &self.theme_name,
                             &self.available_wallpapers,

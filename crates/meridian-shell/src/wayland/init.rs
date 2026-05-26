@@ -519,6 +519,7 @@ pub(crate) fn initialize(
         desktop_context_menu: None,
         hidden_execs: crate::wayland::state::load_hidden_apps(),
         search_query: String::new(),
+        settings_search: String::new(),
         calendar_dirty: true,
         workspace_dirty: true,
         network_dirty: true,

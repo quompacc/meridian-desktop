@@ -110,11 +110,25 @@ impl KeyboardHandler for MeridianShell {
             return;
         }
 
-        // ── Settings view: Escape → back to palette ───────────────────────────
+        // ── Settings view: type-to-search; Escape clears then exits ───────────
         if self.launcher_settings_open {
             if is_escape {
-                self.launcher_settings_open = false;
-                self.ui_preview_widget_state = None;
+                if !self.settings_search.is_empty() {
+                    self.settings_search.clear();
+                } else {
+                    self.launcher_settings_open = false;
+                    self.ui_preview_widget_state = None;
+                }
+                self.draw_launcher(qh, RepaintReason::Keyboard);
+                return;
+            }
+            if event.keysym == Keysym::BackSpace {
+                self.settings_search.pop();
+                self.draw_launcher(qh, RepaintReason::Keyboard);
+                return;
+            }
+            if let Some(ch) = event.keysym.key_char().filter(|c| !c.is_control()) {
+                self.settings_search.push(ch);
                 self.draw_launcher(qh, RepaintReason::Keyboard);
             }
             return;

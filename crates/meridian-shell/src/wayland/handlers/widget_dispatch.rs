@@ -110,7 +110,14 @@ impl MeridianShell {
     fn dispatch_settings_action(&mut self, qh: &QueueHandle<MeridianShell>, action: WidgetAction) {
         match action {
             WidgetAction::ToggleSettings => {
-                self.launcher_settings_open = true;
+                self.launcher_settings_open = !self.launcher_settings_open;
+                if self.launcher_settings_open {
+                    // entering settings — start with an empty search
+                    self.settings_search.clear();
+                } else {
+                    // returning to the command palette
+                    self.ui_preview_widget_state = None;
+                }
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
             WidgetAction::SetSettingsCategory(cat) => {

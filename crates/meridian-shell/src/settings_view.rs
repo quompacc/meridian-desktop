@@ -5,7 +5,8 @@ use meridian_ui::{
     style::Color,
     ui_length,
     widget::{Button, Container, Widget},
-    Rect, Theme, UiSize, WidgetState, WidgetStyle,
+    AlignItems, FlexDirection, JustifyContent, Rect, TaffyRect, Theme, UiSize, WidgetState,
+    WidgetStyle,
 };
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, PixmapRef, Transform};
 
@@ -21,39 +22,6 @@ use meridian_ipc::{OutputModeState, OutputWorkspaceState};
 use crate::ui::tokens::theme_from_config;
 
 // ─── SettingsCategory ────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum SettingsRootCategory {
-    #[default]
-    Desktop,
-    System,
-}
-
-impl SettingsRootCategory {
-    pub const ALL: &'static [SettingsRootCategory] =
-        &[SettingsRootCategory::Desktop, SettingsRootCategory::System];
-
-    pub fn label(&self) -> &'static str {
-        match self {
-            SettingsRootCategory::Desktop => "Desktop",
-            SettingsRootCategory::System => "System",
-        }
-    }
-
-    pub fn chip_id(&self) -> &'static str {
-        match self {
-            SettingsRootCategory::Desktop => "settings-root-desktop",
-            SettingsRootCategory::System => "settings-root-system",
-        }
-    }
-
-    pub fn first_category(&self) -> SettingsCategory {
-        match self {
-            SettingsRootCategory::Desktop => SettingsCategory::Theme,
-            SettingsRootCategory::System => SettingsCategory::SystemOverview,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SettingsCategory {
@@ -93,45 +61,20 @@ impl SettingsCategory {
         SettingsCategory::Updates,
     ];
 
-    pub fn root(&self) -> SettingsRootCategory {
-        match self {
-            SettingsCategory::Theme
-            | SettingsCategory::Cursor
-            | SettingsCategory::Wallpaper
-            | SettingsCategory::PinnedApps => SettingsRootCategory::Desktop,
-            SettingsCategory::SystemOverview
-            | SettingsCategory::Display
-            | SettingsCategory::Network
-            | SettingsCategory::Bluetooth
-            | SettingsCategory::Sound
-            | SettingsCategory::Printers
-            | SettingsCategory::Power
-            | SettingsCategory::Users
-            | SettingsCategory::Updates => SettingsRootCategory::System,
-        }
-    }
-
-    pub fn all_for_root(root: SettingsRootCategory) -> &'static [SettingsCategory] {
-        match root {
-            SettingsRootCategory::Desktop => SettingsCategory::DESKTOP,
-            SettingsRootCategory::System => SettingsCategory::SYSTEM,
-        }
-    }
-
     pub fn label(&self) -> &'static str {
         match self {
-            SettingsCategory::Theme => "Theme",
-            SettingsCategory::Cursor => "Cursor",
-            SettingsCategory::Display => "Display",
-            SettingsCategory::Wallpaper => "Wallpaper",
-            SettingsCategory::PinnedApps => "Pinned Apps",
-            SettingsCategory::SystemOverview => "Overview",
-            SettingsCategory::Network => "Network",
+            SettingsCategory::Theme => "Design",
+            SettingsCategory::Cursor => "Mauszeiger",
+            SettingsCategory::Display => "Anzeige",
+            SettingsCategory::Wallpaper => "Hintergrund",
+            SettingsCategory::PinnedApps => "Angeheftet",
+            SettingsCategory::SystemOverview => "Übersicht",
+            SettingsCategory::Network => "Netzwerk",
             SettingsCategory::Bluetooth => "Bluetooth",
-            SettingsCategory::Sound => "Sound",
-            SettingsCategory::Printers => "Printers",
-            SettingsCategory::Power => "Power",
-            SettingsCategory::Users => "Users",
+            SettingsCategory::Sound => "Audio",
+            SettingsCategory::Printers => "Drucker",
+            SettingsCategory::Power => "Energie",
+            SettingsCategory::Users => "Benutzer",
             SettingsCategory::Updates => "Updates",
         }
     }
@@ -204,17 +147,8 @@ impl SettingsCategory {
 // ─── Widget-based launcher sub-page ─────────────────────────────────────────
 
 const HEADER_HEIGHT: u32 = 52;
-const CHIPS_BAR_HEIGHT: u32 = 36;
-const ROOT_CHIP_W: i32 = 100;
-const ROOT_CHIP_H: i32 = 26;
 const SIDEBAR_W: u32 = 160;
 const SIDEBAR_ROW_H: i32 = 44;
-const FOOTER_HEIGHT: u32 = 40;
-const FOOTER_SWITCH_WIDTH: i32 = 120;
-const FOOTER_SWITCH_HEIGHT: i32 = 32;
-
-const FOOTER_PADDING_X: i32 = 28;
-const FOOTER_CLUSTER_GAP: i32 = 8;
 
 const DIVIDER_HEIGHT: u32 = 2;
 const THEME_ROW_H: i32 = 44;
@@ -573,13 +507,20 @@ const DISPLAY_MODE_OPTION_IDS: [[&str; DISPLAY_MODE_OPTION_MAX]; 16] = [
     ],
 ];
 
-struct SettingsHeader {
+const SETTINGS_BACK_W: i32 = 52;
+
+/// Header bar: paints the surface background and lays out the back button +
+/// search field as a centred row. Matches the command palette header height.
+struct SettingsHeaderBar {
     width: i32,
+    children: Vec<Box<dyn Widget>>,
 }
 
-impl Widget for SettingsHeader {
+impl Widget for SettingsHeaderBar {
     fn style(&self) -> WidgetStyle {
         WidgetStyle {
+            flex_direction: FlexDirection::Row,
+            align_items: Some(AlignItems::Center),
             size: UiSize {
                 width: ui_length(self.width as f32),
                 height: ui_length(HEADER_HEIGHT as f32),
@@ -592,9 +533,142 @@ impl Widget for SettingsHeader {
         if let Some(path) = rounded_rect_path(area, 0) {
             paint_fill(canvas, &path, theme.palette.surface);
         }
+    }
+
+    fn children(&self) -> &[Box<dyn Widget>] {
+        &self.children
+    }
+}
+
+/// Clickable back arrow that returns to the command palette. Shares the
+/// "show-tile-view" id so it dispatches ToggleSettings like the footer button.
+struct SettingsBackButton;
+
+impl Widget for SettingsBackButton {
+    fn id(&self) -> Option<&'static str> {
+        Some("show-tile-view")
+    }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(SETTINGS_BACK_W as f32),
+                height: ui_length(HEADER_HEIGHT as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let hot = matches!(state, WidgetState::Hovered | WidgetState::Pressed);
+        if hot {
+            let bg = theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.08);
+            if let Some(path) = rounded_rect_path(area, 0) {
+                paint_fill(canvas, &path, bg);
+            }
+        }
+        let col = if hot {
+            theme.palette.text
+        } else {
+            theme.palette.accent
+        };
+        let baseline = area.y + (area.height + 16) / 2;
+        paint_text(canvas, "\u{2190}", area.x + 18, baseline, 17.0, col);
+    }
+}
+
+/// Search field filling the rest of the header. Type-to-filter; the actual
+/// query lives in MeridianShell.settings_search and is fed in via `query`.
+struct SettingsSearchField {
+    width: i32,
+    query: Box<str>,
+}
+
+impl Widget for SettingsSearchField {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.width as f32),
+                height: ui_length(HEADER_HEIGHT as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+        let pal = theme.palette;
         let baseline = area.y + (area.height + 13) / 2;
-        paint_text(canvas, "←", area.x + 16, baseline, 15.0, theme.palette.accent);
-        paint_text(canvas, "Einstellungen", area.x + 38, baseline, 13.0, theme.palette.text);
+        let text_x = area.x + 4;
+        if self.query.is_empty() {
+            let ph = Color::rgba(pal.text.r, pal.text.g, pal.text.b, 80);
+            paint_text(canvas, "Einstellungen durchsuchen…", text_x, baseline, 13.0, ph);
+        } else {
+            paint_text(canvas, &self.query, text_x, baseline, 13.0, pal.text);
+        }
+    }
+}
+
+/// Full-height sidebar panel: paints a distinct surface_alt background and
+/// stacks its children (section labels + category rows) from the top.
+struct SidebarPanel {
+    width: i32,
+    height: i32,
+    bg: Color,
+    children: Vec<Box<dyn Widget>>,
+}
+
+impl Widget for SidebarPanel {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            flex_direction: FlexDirection::Column,
+            justify_content: Some(JustifyContent::FlexStart),
+            align_items: Some(AlignItems::Stretch),
+            size: UiSize {
+                width: ui_length(self.width as f32),
+                height: ui_length(self.height as f32),
+            },
+            padding: TaffyRect {
+                left: ui_length(0.0),
+                right: ui_length(0.0),
+                top: ui_length(10.0),
+                bottom: ui_length(0.0),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, _theme: &Theme, _state: WidgetState) {
+        if let Some(path) = rounded_rect_path(area, 0) {
+            paint_fill(canvas, &path, self.bg);
+        }
+    }
+
+    fn children(&self) -> &[Box<dyn Widget>] {
+        &self.children
+    }
+}
+
+/// Small dim all-caps group label inside the sidebar (e.g. "DARSTELLUNG").
+struct SidebarSectionLabel {
+    text: &'static str,
+    width: i32,
+    pad_top: i32,
+}
+
+impl Widget for SidebarSectionLabel {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.width as f32),
+                height: ui_length((self.pad_top + 18) as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+        let c = Color::rgba(theme.palette.text.r, theme.palette.text.g, theme.palette.text.b, 105);
+        paint_text(canvas, self.text, area.x + 16, area.y + area.height - 6, 10.0, c);
     }
 }
 
@@ -621,14 +695,14 @@ impl Widget for SettingsSidebarRow {
     }
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        // Sidebar sits on a surface_alt panel; idle rows blend with it, the
+        // selected row gets a subtle accent tint + left bar.
+        let base = theme.palette.surface_alt;
         let bg = match state {
-            WidgetState::Idle if self.is_selected => theme.palette.surface_alt,
-            WidgetState::Idle => theme.palette.surface,
-            WidgetState::Hovered => theme
-                .palette
-                .surface
-                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
-            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.15),
+            WidgetState::Idle if self.is_selected => base.lerp(self.accent, 0.16),
+            WidgetState::Idle => base,
+            WidgetState::Hovered => base.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.06),
+            WidgetState::Pressed => base.lerp(Color::rgb(0, 0, 0), 0.12),
         };
         if let Some(path) = rounded_rect_path(area, 0) {
             paint_fill(canvas, &path, bg);
@@ -1906,6 +1980,7 @@ pub(crate) fn build_settings_widget_tree(
     width: u32,
     height: u32,
     selected: SettingsCategory,
+    search: &str,
     available_themes: &[String],
     current_theme: &str,
     available_wallpapers: &[WallpaperEntry],
@@ -1925,59 +2000,68 @@ pub(crate) fn build_settings_widget_tree(
 ) -> Box<dyn Widget> {
     let pal = theme.palette;
 
-    let header = Box::new(SettingsHeader {
+    let header = Box::new(SettingsHeaderBar {
         width: width as i32,
+        children: vec![
+            Box::new(SettingsBackButton) as Box<dyn Widget>,
+            Box::new(SettingsSearchField {
+                width: width as i32 - SETTINGS_BACK_W,
+                query: search.into(),
+            }) as Box<dyn Widget>,
+        ],
     }) as Box<dyn Widget>;
 
-    let selected_root = selected.root();
-
-    // Root-category chip bar. The content area stays compact while each root
-    // owns its own sidebar skeleton.
-    let root_chips: Vec<Box<dyn Widget>> = SettingsRootCategory::ALL
-        .iter()
-        .map(|root| {
-            let accent = if *root == selected_root {
-                pal.accent
-            } else {
-                pal.text_dim
-            };
-            Box::new(Button::with_id(
-                root.chip_id(),
-                root.label(),
-                accent,
-                ROOT_CHIP_W,
-                ROOT_CHIP_H,
-            )) as Box<dyn Widget>
-        })
-        .collect();
-    let chip_bar = Container::centered_viewport(
-        width,
-        CHIPS_BAR_HEIGHT,
-        vec![Box::new(Container::row(8, root_chips)) as Box<dyn Widget>],
-    );
-
-    let divider_color = Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 180);
-    let content_h = height
-        .saturating_sub(HEADER_HEIGHT + CHIPS_BAR_HEIGHT + FOOTER_HEIGHT + 2 * DIVIDER_HEIGHT);
+    let divider_color = Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 140);
+    // No root tabs anymore — the two groups live as labelled sections inside
+    // one full-height sidebar.
+    let content_h = height.saturating_sub(HEADER_HEIGHT + DIVIDER_HEIGHT);
     let content_w = width.saturating_sub(SIDEBAR_W + 1);
 
-    // Left sidebar — sub-categories of the selected root category
-    let sidebar_rows: Vec<Box<dyn Widget>> = SettingsCategory::all_for_root(selected_root)
-        .iter()
-        .map(|cat| {
-            Box::new(SettingsSidebarRow {
+    // Left sidebar — grouped sections (Darstellung / System), all categories
+    // listed, anchored to the top.
+    let query = search.trim().to_lowercase();
+    let mut sidebar_children: Vec<Box<dyn Widget>> = Vec::new();
+    let groups: [(&str, &[SettingsCategory], i32); 2] = [
+        ("DARSTELLUNG", SettingsCategory::DESKTOP, 0),
+        ("SYSTEM", SettingsCategory::SYSTEM, 14),
+    ];
+    let mut any_match = false;
+    for (title, cats, pad_top) in groups {
+        let matching: Vec<&SettingsCategory> = cats
+            .iter()
+            .filter(|cat| query.is_empty() || cat.label().to_lowercase().contains(&query))
+            .collect();
+        if matching.is_empty() {
+            continue;
+        }
+        any_match = true;
+        sidebar_children.push(Box::new(SidebarSectionLabel {
+            text: title,
+            width: SIDEBAR_W as i32,
+            pad_top,
+        }) as Box<dyn Widget>);
+        for cat in matching {
+            sidebar_children.push(Box::new(SettingsSidebarRow {
                 cat: *cat,
                 is_selected: *cat == selected,
                 accent: pal.accent,
                 row_width: SIDEBAR_W as i32,
-            }) as Box<dyn Widget>
-        })
-        .collect();
-    let sidebar = Box::new(Container::centered_viewport(
-        SIDEBAR_W,
-        content_h,
-        vec![Box::new(Container::column(0, sidebar_rows)) as Box<dyn Widget>],
-    )) as Box<dyn Widget>;
+            }) as Box<dyn Widget>);
+        }
+    }
+    if !any_match {
+        sidebar_children.push(Box::new(SidebarSectionLabel {
+            text: "KEINE TREFFER",
+            width: SIDEBAR_W as i32,
+            pad_top: 8,
+        }) as Box<dyn Widget>);
+    }
+    let sidebar = Box::new(SidebarPanel {
+        width: SIDEBAR_W as i32,
+        height: content_h as i32,
+        bg: pal.surface_alt,
+        children: sidebar_children,
+    }) as Box<dyn Widget>;
 
     let vsep = Box::new(VerticalDivider {
         height: content_h as i32,
@@ -2001,9 +2085,12 @@ pub(crate) fn build_settings_widget_tree(
                     }) as Box<dyn Widget>
                 })
                 .collect();
-            Box::new(Container::centered_viewport(
+            Box::new(Container::top_viewport(
                 content_w,
                 content_h,
+                14,
+                16,
+                4,
                 vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
             ))
         }
@@ -2057,9 +2144,12 @@ pub(crate) fn build_settings_widget_tree(
                     }));
                 }
             }
-            let wallpaper_list = Container::centered_viewport(
+            let wallpaper_list = Container::top_viewport(
                 content_w,
                 list_h,
+                0,
+                16,
+                2,
                 vec![Box::new(Container::column(2, rows)) as Box<dyn Widget>],
             );
             Box::new(Container::column(
@@ -2147,9 +2237,12 @@ pub(crate) fn build_settings_widget_tree(
                     }
                 }
             }
-            Box::new(Container::centered_viewport(
+            Box::new(Container::top_viewport(
                 content_w,
                 content_h,
+                14,
+                16,
+                4,
                 vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
             ))
         }
@@ -2193,9 +2286,12 @@ pub(crate) fn build_settings_widget_tree(
                     .collect();
 
                 let list_h = content_h.saturating_sub(40);
-                let list = Box::new(Container::centered_viewport(
+                let list = Box::new(Container::top_viewport(
                     content_w,
                     list_h,
+                    0,
+                    16,
+                    2,
                     vec![Box::new(Container::column(2, rows)) as Box<dyn Widget>],
                 )) as Box<dyn Widget>;
 
@@ -2267,9 +2363,12 @@ pub(crate) fn build_settings_widget_tree(
                         .collect();
 
                     let list_h = content_h.saturating_sub(40);
-                    let list = Box::new(Container::centered_viewport(
+                    let list = Box::new(Container::top_viewport(
                         content_w,
                         list_h,
+                        0,
+                        16,
+                        2,
                         vec![Box::new(Container::column(2, rows)) as Box<dyn Widget>],
                     )) as Box<dyn Widget>;
 
@@ -2282,9 +2381,12 @@ pub(crate) fn build_settings_widget_tree(
         | SettingsCategory::Bluetooth
         | SettingsCategory::Power
         | SettingsCategory::Users
-        | SettingsCategory::Updates => Box::new(Container::centered_viewport(
+        | SettingsCategory::Updates => Box::new(Container::top_viewport(
             content_w,
             content_h,
+            14,
+            16,
+            4,
             vec![Box::new(Container::column(
                 4,
                 vec![Box::new(SettingsSkeletonCard {
@@ -2332,9 +2434,12 @@ pub(crate) fn build_settings_widget_tree(
                 }
             }
 
-            Box::new(Container::centered_viewport(
+            Box::new(Container::top_viewport(
                 content_w,
                 content_h,
+                14,
+                16,
+                4,
                 vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
             ))
         }
@@ -2366,15 +2471,21 @@ pub(crate) fn build_settings_widget_tree(
                 }
             }
 
-            Box::new(Container::centered_viewport(
+            Box::new(Container::top_viewport(
                 content_w,
                 content_h,
+                14,
+                16,
+                4,
                 vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
             ))
         }
-        other => Box::new(Container::centered_viewport(
+        other => Box::new(Container::top_viewport(
             content_w,
             content_h,
+            14,
+            16,
+            4,
             vec![Box::new(SettingsPlaceholder {
                 width: content_w as i32,
                 text: other.placeholder(),
@@ -2384,41 +2495,14 @@ pub(crate) fn build_settings_widget_tree(
 
     let body = Box::new(Container::row(0, vec![sidebar, vsep, content])) as Box<dyn Widget>;
 
-    let footer_left = vec![Box::new(Button::with_id(
-        "show-tile-view",
-        "\u{2190} Launcher",
-        pal.accent,
-        FOOTER_SWITCH_WIDTH,
-        FOOTER_SWITCH_HEIGHT,
-    )) as Box<dyn Widget>];
+    // No footer: the header back arrow handles "return to launcher". The body
+    // (sidebar + content) runs to the bottom edge for a grounded look.
+    let divider = Box::new(Divider {
+        width: width as i32,
+        color: divider_color,
+    }) as Box<dyn Widget>;
 
-    let footer = Container::footer_row(
-        width,
-        FOOTER_HEIGHT as i32,
-        FOOTER_PADDING_X,
-        FOOTER_CLUSTER_GAP,
-        footer_left,
-        vec![],
-    );
-
-    let make_divider = || {
-        Box::new(Divider {
-            width: width as i32,
-            color: divider_color,
-        }) as Box<dyn Widget>
-    };
-
-    Box::new(Container::column(
-        0,
-        vec![
-            header,
-            Box::new(chip_bar) as Box<dyn Widget>,
-            make_divider(),
-            body,
-            make_divider(),
-            Box::new(footer) as Box<dyn Widget>,
-        ],
-    ))
+    Box::new(Container::column(0, vec![header, divider, body]))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2427,6 +2511,7 @@ pub(crate) fn draw_settings_launcher(
     width: u32,
     height: u32,
     selected: SettingsCategory,
+    search: &str,
     available_themes: &[String],
     current_theme: &str,
     available_wallpapers: &[WallpaperEntry],
@@ -2465,6 +2550,7 @@ pub(crate) fn draw_settings_launcher(
         width,
         height,
         selected,
+        search,
         available_themes,
         current_theme,
         available_wallpapers,
