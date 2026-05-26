@@ -13,7 +13,7 @@ use crate::audio::{AudioDevice, AudioServiceState, AudioSnapshot};
 use crate::icons::{icon_image_to_pixmap, IconCache};
 use crate::launcher::DesktopApp;
 use crate::panel::PinnedApp;
-use crate::power_footer::build_power_footer_buttons;
+
 use crate::printers::{PrinterInfo, PrinterServiceState, PrinterSnapshot};
 use meridian_config::{ThemeConfig, WallpaperEntry, WallpaperMode};
 use meridian_ipc::{OutputModeState, OutputWorkspaceState};
@@ -203,19 +203,19 @@ impl SettingsCategory {
 
 // ─── Widget-based launcher sub-page ─────────────────────────────────────────
 
-const HEADER_HEIGHT: u32 = 44;
-const CHIPS_BAR_HEIGHT: u32 = 44;
-const ROOT_CHIP_W: i32 = 120;
-const ROOT_CHIP_H: i32 = 32;
+const HEADER_HEIGHT: u32 = 52;
+const CHIPS_BAR_HEIGHT: u32 = 36;
+const ROOT_CHIP_W: i32 = 100;
+const ROOT_CHIP_H: i32 = 26;
 const SIDEBAR_W: u32 = 160;
 const SIDEBAR_ROW_H: i32 = 44;
-const FOOTER_HEIGHT: u32 = 56;
-const FOOTER_SWITCH_WIDTH: i32 = 144;
-const FOOTER_SWITCH_HEIGHT: i32 = 48;
-const FOOTER_POWER_BUTTON_SIZE: i32 = 48;
+const FOOTER_HEIGHT: u32 = 40;
+const FOOTER_SWITCH_WIDTH: i32 = 120;
+const FOOTER_SWITCH_HEIGHT: i32 = 32;
+
 const FOOTER_PADDING_X: i32 = 28;
 const FOOTER_CLUSTER_GAP: i32 = 8;
-const POWER_ICON_SIZE: u32 = 32;
+
 const DIVIDER_HEIGHT: u32 = 2;
 const THEME_ROW_H: i32 = 44;
 const THEME_ROW_CORNER: i32 = 4;
@@ -592,24 +592,9 @@ impl Widget for SettingsHeader {
         if let Some(path) = rounded_rect_path(area, 0) {
             paint_fill(canvas, &path, theme.palette.surface);
         }
-        paint_text(
-            canvas,
-            "Settings",
-            area.x + 20,
-            area.y + area.height - 12,
-            13.0,
-            theme.palette.text_dim,
-        );
-        // Thin accent underline
-        let strip = Rect {
-            x: area.x + 20,
-            y: area.y + area.height - 2,
-            width: 52,
-            height: 2,
-        };
-        if let Some(path) = rounded_rect_path(strip, 0) {
-            paint_fill(canvas, &path, theme.palette.accent);
-        }
+        let baseline = area.y + (area.height + 13) / 2;
+        paint_text(canvas, "←", area.x + 16, baseline, 15.0, theme.palette.accent);
+        paint_text(canvas, "Einstellungen", area.x + 38, baseline, 13.0, theme.palette.text);
     }
 }
 
@@ -1935,7 +1920,7 @@ pub(crate) fn build_settings_widget_tree(
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
-    armed_power: Option<(&str, f32)>,
+    _armed_power: Option<(&str, f32)>,
     theme: &Theme,
 ) -> Box<dyn Widget> {
     let pal = theme.palette;
@@ -2401,19 +2386,11 @@ pub(crate) fn build_settings_widget_tree(
 
     let footer_left = vec![Box::new(Button::with_id(
         "show-tile-view",
-        "\u{2190} Home",
+        "\u{2190} Launcher",
         pal.accent,
         FOOTER_SWITCH_WIDTH,
         FOOTER_SWITCH_HEIGHT,
     )) as Box<dyn Widget>];
-
-    let footer_right = build_power_footer_buttons(
-        icon_cache,
-        &pal,
-        FOOTER_POWER_BUTTON_SIZE,
-        POWER_ICON_SIZE,
-        armed_power,
-    );
 
     let footer = Container::footer_row(
         width,
@@ -2421,7 +2398,7 @@ pub(crate) fn build_settings_widget_tree(
         FOOTER_PADDING_X,
         FOOTER_CLUSTER_GAP,
         footer_left,
-        footer_right,
+        vec![],
     );
 
     let make_divider = || {
@@ -2464,7 +2441,7 @@ pub(crate) fn draw_settings_launcher(
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
-    armed_power: Option<(&str, f32)>,
+    _armed_power: Option<(&str, f32)>,
     theme_config: &ThemeConfig,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
 ) {
@@ -2502,7 +2479,7 @@ pub(crate) fn draw_settings_launcher(
         pinned_adding,
         all_apps,
         icon_cache,
-        armed_power,
+        None,
         &theme,
     );
     if let Ok(layout) =

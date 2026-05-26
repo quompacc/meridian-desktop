@@ -80,7 +80,7 @@ fn exact_action_for_id(id: &str) -> Option<WidgetAction> {
         "power-sleep" => Some(WidgetAction::PowerSleep),
         "power-lock" => Some(WidgetAction::PowerLock),
         "power-logout" => Some(WidgetAction::PowerLogout),
-        "launcher-settings" => Some(WidgetAction::ToggleSettings),
+        "launcher-settings" | "show-tile-view" => Some(WidgetAction::ToggleSettings),
         "settings-root-desktop" => Some(WidgetAction::SetSettingsCategory(
             SettingsRootCategory::Desktop.first_category(),
         )),
