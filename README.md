@@ -86,15 +86,29 @@ compositor; on exit it is dropped, which closes the logind session.
 
 ![Meridian Desktop](assets/desktop.png)
 
-*Desktop after login: panel at the bottom with the compass-rose launcher
-on the left, pinned tiles (term · web · files), and the right-side
-cluster (workspaces · network · screenshot · clock). Live on DRM/KMS —
-no nested compositor.*
+*Desktop after login: a floating, frosted-glass island panel (the
+wallpaper shows through) with the compass-rose launcher and pinned apps
+on the left and the system cluster (network · audio · workspaces · clock)
+on the right. The wallpaper is the live compass renderer. Running on
+DRM/KMS — no nested compositor.*
 
 ![Meridian Desktop — launcher open](assets/launcher.png)
 
-*App grid open, KDE apps detected from `*.desktop` files, pinned row at
-the bottom of the sidebar, power actions on the right.*
+*The command-palette launcher: type-to-search header, a bento strip of
+pinned apps, and a three-column grid of everything else (KDE apps
+detected from `*.desktop` files). Rounded corners and a soft drop shadow.*
+
+![Meridian Desktop — settings](assets/settings.png)
+
+*Settings live inside the launcher surface: a full-height grouped sidebar
+(Darstellung / System), a working back arrow, and a search box that
+filters categories by name, keyword, or content (theme/wallpaper names).*
+
+![Meridian Desktop — window shadows](assets/window-shadow.png)
+
+*Server-side decorations with an analytic soft drop shadow — a rounded-box
+SDF pixel shader (after Evan Wallace's rounded-rectangle shadows) rendered
+by the compositor, consistent across GTK/Qt/KDE toolkits and translucency-safe.*
 
 ## Build & Run
 

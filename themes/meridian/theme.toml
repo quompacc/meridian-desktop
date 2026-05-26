@@ -14,11 +14,11 @@ success = "#6fa08c"
 [decorations]
 border_width = 1
 corner_radius = 0
-shadow = false
-shadow_radius = 16
-shadow_radius_top = 8
-shadow_alpha = 0.18
-shadow_offset_y = 0
+shadow = true
+shadow_radius = 22
+shadow_radius_top = 11
+shadow_alpha = 0.40
+shadow_offset_y = 3
 gap = 8
 
 [fonts]
