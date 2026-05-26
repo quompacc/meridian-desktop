@@ -643,11 +643,43 @@ impl MeridianShell {
                 let vx = self.launcher_visual_x.max(0) as usize;
                 let vy = self.launcher_visual_y.max(0) as usize;
                 canvas.fill(0);
+                // Soft drop shadow around the rounded launcher, painted before
+                // the content so the rounded corners keep their shadow.
+                crate::soft_shadow::draw_soft_shadow(
+                    canvas,
+                    width as i32,
+                    height as i32,
+                    vx as i32,
+                    vy as i32,
+                    lw as i32,
+                    lh as i32,
+                    12.0,
+                    18.0,
+                    0.16,
+                    4,
+                    false,
+                );
+                // Composite the (premultiplied) content over the shadow so the
+                // transparent rounded corners reveal the shadow underneath.
                 for y in 0..lh {
                     let src = &content[y * lw * 4..(y + 1) * lw * 4];
-                    let dst = (vy + y) * fw * 4 + vx * 4;
-                    if dst + lw * 4 <= canvas.len() {
-                        canvas[dst..dst + lw * 4].copy_from_slice(src);
+                    let dst_off = (vy + y) * fw * 4 + vx * 4;
+                    if dst_off + lw * 4 > canvas.len() {
+                        continue;
+                    }
+                    let dst = &mut canvas[dst_off..dst_off + lw * 4];
+                    for x in 0..lw {
+                        let s = &src[x * 4..x * 4 + 4];
+                        let sa = s[3] as u32;
+                        if sa == 255 {
+                            dst[x * 4..x * 4 + 4].copy_from_slice(s);
+                        } else if sa != 0 {
+                            let inv = 255 - sa;
+                            for k in 0..4 {
+                                dst[x * 4 + k] =
+                                    (s[k] as u32 + dst[x * 4 + k] as u32 * inv / 255) as u8;
+                            }
+                        }
                     }
                 }
             } else {

@@ -19,7 +19,7 @@ use crate::{
     panel::{PanelWindowEntry, PinnedApp},
     status_notifier::StatusNotifierItem,
     ClickAction, ClickZone, Rect as ShellRect, PANEL_BOTTOM_GAP, PANEL_HEIGHT,
-    PANEL_SIDE_MARGIN, PANEL_SURFACE_HEIGHT,
+    PANEL_SIDE_MARGIN, PANEL_SURFACE_HEIGHT, PANEL_TOP_SHADOW,
 };
 
 const CHIP_H: i32 = 28;
@@ -52,6 +52,7 @@ const ISLAND_RADIUS: i32 = 12;
 const SIDE_MARGIN: i32 = PANEL_SIDE_MARGIN as i32;
 const BOTTOM_GAP: i32 = PANEL_BOTTOM_GAP as i32;
 const SURFACE_H: i32 = PANEL_SURFACE_HEIGHT as i32;
+const ISLAND_TOP: i32 = PANEL_TOP_SHADOW as i32;
 // Segment divider chrome
 const DIVIDER_W: i32 = 11;
 // Frosted-glass island: more transparent body, a milky veil, and a fine
@@ -516,6 +517,9 @@ impl Widget for PanelChip {
         // pivot). Skip the bg fill + accent strip and let the icon
         // speak for itself.
         let is_launcher = self.id == "panel-launcher";
+        // Reconstruct the bar top from the chip rect so absolute placements
+        // survive the panel top-shadow margin (chip is centred in the bar).
+        let bar_top = area.y - (PANEL_H - area.height) / 2;
 
         if is_launcher {
             let halo_color = match state {
@@ -536,7 +540,7 @@ impl Widget for PanelChip {
                 };
                 let halo = Rect {
                     x: area.x + 1,
-                    y: 2,
+                    y: bar_top + 2,
                     width: area.width - 2,
                     height: PANEL_H - 4,
                 };
@@ -573,7 +577,7 @@ impl Widget for PanelChip {
             // oversized rose extends slightly above/below the chip's
             // own rectangle, not just within it.
             let y = if is_launcher {
-                (PANEL_H - ih) / 2 + if state == WidgetState::Pressed { 1 } else { 0 }
+                bar_top + (PANEL_H - ih) / 2 + if state == WidgetState::Pressed { 1 } else { 0 }
             } else {
                 area.y + (area.height - ACCENT_LINE_H - ih) / 2
             };
@@ -1109,7 +1113,7 @@ pub(crate) fn build_panel_widget_tree(
             padding: TaffyRect {
                 left: ui_length(SIDE_MARGIN as f32),
                 right: ui_length(SIDE_MARGIN as f32),
-                top: ui_length(0.0),
+                top: ui_length(ISLAND_TOP as f32),
                 bottom: ui_length(BOTTOM_GAP as f32),
             },
             ..Default::default()
@@ -1273,16 +1277,31 @@ pub(crate) fn draw_panel_ui(
     };
     let outline = Rect {
         x: SIDE_MARGIN,
-        y: 0,
+        y: ISLAND_TOP,
         width: inner_w,
         height: PANEL_H,
     };
     let body = Rect {
         x: SIDE_MARGIN + 1,
-        y: 1,
+        y: ISLAND_TOP + 1,
         width: (inner_w - 2).max(0),
         height: PANEL_H - 2,
     };
+    // Soft drop shadow around the floating island (cast up onto the desktop).
+    crate::soft_shadow::draw_soft_shadow(
+        pixmap.data_mut(),
+        width as i32,
+        height as i32,
+        outline.x,
+        outline.y,
+        outline.width,
+        outline.height,
+        ISLAND_RADIUS as f32,
+        13.0,
+        0.16,
+        0,
+        true,
+    );
     {
         let mut pc = pixmap.as_mut();
         if let Some(path) = rounded_rect_path(outline, ISLAND_RADIUS) {
@@ -1310,7 +1329,7 @@ pub(crate) fn draw_panel_ui(
         let hl = Color::rgba(0xFF, 0xFF, 0xFF, 26);
         let highlight = Rect {
             x: SIDE_MARGIN + ISLAND_RADIUS,
-            y: 1,
+            y: ISLAND_TOP + 1,
             width: (inner_w - 2 * ISLAND_RADIUS).max(0),
             height: 1,
         };

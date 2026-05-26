@@ -22,6 +22,7 @@ mod notification_popup;
 mod notifications;
 mod panel;
 mod panel_view;
+mod soft_shadow;
 mod printers;
 mod settings_view;
 mod status_notifier;
@@ -50,7 +51,10 @@ pub const PANEL_HEIGHT: u32 = 42;
 /// strip (PANEL_SURFACE_HEIGHT) but only the inset island is painted.
 pub const PANEL_BOTTOM_GAP: u32 = 8;
 pub const PANEL_SIDE_MARGIN: u32 = 12;
-pub const PANEL_SURFACE_HEIGHT: u32 = PANEL_HEIGHT + PANEL_BOTTOM_GAP;
+/// Room above the island so the panel can cast a soft shadow upward onto the
+/// desktop (the island is positioned PANEL_TOP_SHADOW below the surface top).
+pub const PANEL_TOP_SHADOW: u32 = 16;
+pub const PANEL_SURFACE_HEIGHT: u32 = PANEL_TOP_SHADOW + PANEL_HEIGHT + PANEL_BOTTOM_GAP;
 pub const LAUNCHER_WIDTH: u32 = 880;
 pub const LAUNCHER_HEIGHT: u32 = 620;
 pub const CALENDAR_POPUP_WIDTH: u32 = 280;
