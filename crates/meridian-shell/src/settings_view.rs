@@ -97,6 +97,54 @@ impl SettingsCategory {
         }
     }
 
+    /// Extra German search terms so the settings search matches intent, not
+    /// just the visible category label (e.g. "wlan" -> Netzwerk, "akku" -> Energie).
+    pub fn search_keywords(&self) -> &'static [&'static str] {
+        match self {
+            SettingsCategory::Theme => {
+                &["theme", "erscheinungsbild", "farbe", "farben", "dunkel", "hell",
+                  "dark", "light", "akzent", "palette", "stil"]
+            }
+            SettingsCategory::Cursor => &["cursor", "zeiger", "maus", "pointer", "größe"],
+            SettingsCategory::Wallpaper => {
+                &["wallpaper", "hintergrund", "bild", "tapete", "desktop", "foto"]
+            }
+            SettingsCategory::PinnedApps => {
+                &["pinned", "angeheftet", "favoriten", "panel", "dock", "verknüpfung", "apps"]
+            }
+            SettingsCategory::SystemOverview => {
+                &["übersicht", "overview", "system", "info", "version", "gerät", "status"]
+            }
+            SettingsCategory::Display => {
+                &["anzeige", "display", "monitor", "auflösung", "bildschirm", "skalierung",
+                  "helligkeit", "ausgabe"]
+            }
+            SettingsCategory::Network => {
+                &["netzwerk", "network", "wlan", "wifi", "w-lan", "ethernet", "vpn", "dns",
+                  "internet", "verbindung", "lan"]
+            }
+            SettingsCategory::Bluetooth => {
+                &["bluetooth", "funk", "kopfhörer", "gerät", "pairing", "koppeln", "headset"]
+            }
+            SettingsCategory::Sound => {
+                &["audio", "sound", "ton", "lautstärke", "lautsprecher", "mikrofon",
+                  "pipewire", "wiedergabe"]
+            }
+            SettingsCategory::Printers => &["drucker", "printer", "cups", "drucken", "scan"],
+            SettingsCategory::Power => {
+                &["energie", "power", "akku", "batterie", "ruhezustand", "suspend", "standby",
+                  "helligkeit", "sparmodus"]
+            }
+            SettingsCategory::Users => {
+                &["benutzer", "user", "konto", "anmeldung", "login", "passwort", "yubikey",
+                  "authentifizierung", "account"]
+            }
+            SettingsCategory::Updates => {
+                &["updates", "aktualisierung", "paket", "upgrade", "wartung", "version"]
+            }
+        }
+    }
+
     pub fn placeholder(&self) -> &'static str {
         match self {
             SettingsCategory::Theme => "",
@@ -2020,6 +2068,44 @@ pub(crate) fn build_settings_widget_tree(
     // Left sidebar — grouped sections (Darstellung / System), all categories
     // listed, anchored to the top.
     let query = search.trim().to_lowercase();
+    // Widened match: category label, static keywords, and dynamic content
+    // (theme / wallpaper names) so the search reflects intent.
+    let cat_matches = |cat: &SettingsCategory| -> bool {
+        if query.is_empty() {
+            return true;
+        }
+        if cat.label().to_lowercase().contains(&query) {
+            return true;
+        }
+        if cat
+            .search_keywords()
+            .iter()
+            .any(|kw| kw.contains(query.as_str()))
+        {
+            return true;
+        }
+        match cat {
+            SettingsCategory::Theme => available_themes
+                .iter()
+                .any(|t| t.to_lowercase().contains(&query)),
+            SettingsCategory::Wallpaper => available_wallpapers
+                .iter()
+                .any(|w| w.display_name.to_lowercase().contains(&query)),
+            _ => false,
+        }
+    };
+    // While searching, preview the first matching category if the stored
+    // selection was filtered out — the whole view follows the query.
+    let effective_selected = if query.is_empty() || cat_matches(&selected) {
+        selected
+    } else {
+        SettingsCategory::DESKTOP
+            .iter()
+            .chain(SettingsCategory::SYSTEM.iter())
+            .copied()
+            .find(|cat| cat_matches(cat))
+            .unwrap_or(selected)
+    };
     let mut sidebar_children: Vec<Box<dyn Widget>> = Vec::new();
     let groups: [(&str, &[SettingsCategory], i32); 2] = [
         ("DARSTELLUNG", SettingsCategory::DESKTOP, 0),
@@ -2027,10 +2113,8 @@ pub(crate) fn build_settings_widget_tree(
     ];
     let mut any_match = false;
     for (title, cats, pad_top) in groups {
-        let matching: Vec<&SettingsCategory> = cats
-            .iter()
-            .filter(|cat| query.is_empty() || cat.label().to_lowercase().contains(&query))
-            .collect();
+        let matching: Vec<&SettingsCategory> =
+            cats.iter().filter(|cat| cat_matches(cat)).collect();
         if matching.is_empty() {
             continue;
         }
@@ -2043,7 +2127,7 @@ pub(crate) fn build_settings_widget_tree(
         for cat in matching {
             sidebar_children.push(Box::new(SettingsSidebarRow {
                 cat: *cat,
-                is_selected: *cat == selected,
+                is_selected: *cat == effective_selected,
                 accent: pal.accent,
                 row_width: SIDEBAR_W as i32,
             }) as Box<dyn Widget>);
@@ -2068,13 +2152,21 @@ pub(crate) fn build_settings_widget_tree(
         color: divider_color,
     }) as Box<dyn Widget>;
 
-    let content: Box<dyn Widget> = match selected {
+    let content: Box<dyn Widget> = match effective_selected {
         SettingsCategory::Theme => {
             let row_w = content_w as i32;
+            // Filter the list by the query only when a theme name actually
+            // matches; a keyword-only hit (e.g. "dunkel") keeps the full list.
+            let name_hit = !query.is_empty()
+                && available_themes
+                    .iter()
+                    .take(THEME_WIDGET_IDS.len())
+                    .any(|t| t.to_lowercase().contains(&query));
             let rows: Vec<Box<dyn Widget>> = available_themes
                 .iter()
                 .take(THEME_WIDGET_IDS.len())
                 .enumerate()
+                .filter(|(_, name)| !name_hit || name.to_lowercase().contains(&query))
                 .map(|(i, name)| {
                     Box::new(ThemeRow {
                         index: i,
@@ -2132,7 +2224,20 @@ pub(crate) fn build_settings_widget_tree(
                     text: "No wallpapers found in /usr/share/wallpapers or ~/Pictures",
                 }));
             } else {
-                for (i, entry) in available_wallpapers.iter().take(entry_slots).enumerate() {
+                // Filter by query only when a wallpaper name matches; keep the
+                // original index so thumbnails and click ids stay aligned.
+                let name_hit = !query.is_empty()
+                    && available_wallpapers
+                        .iter()
+                        .any(|w| w.display_name.to_lowercase().contains(&query));
+                let mut shown = 0usize;
+                for (i, entry) in available_wallpapers.iter().enumerate() {
+                    if name_hit && !entry.display_name.to_lowercase().contains(&query) {
+                        continue;
+                    }
+                    if shown >= entry_slots {
+                        break;
+                    }
                     let thumbnail = wallpaper_thumbnails.get(i).and_then(|t| t.clone());
                     rows.push(Box::new(WallpaperRow {
                         index: i,
@@ -2142,6 +2247,7 @@ pub(crate) fn build_settings_widget_tree(
                         accent: pal.accent,
                         row_width: row_w,
                     }));
+                    shown += 1;
                 }
             }
             let wallpaper_list = Container::top_viewport(
