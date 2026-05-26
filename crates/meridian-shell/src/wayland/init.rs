@@ -24,7 +24,7 @@ use crate::{
     default_pinned_apps, icons::IconCache, launcher, network::NetworkController, panel,
     TextRenderer, AUDIO_POPUP_HEIGHT, AUDIO_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT,
     CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT,
-    NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, PANEL_HEIGHT, SHELL_POPUP_BOTTOM_MARGIN,
+    NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, SHELL_POPUP_BOTTOM_MARGIN,
     THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT,
     WORKSPACE_POPUP_WIDTH,
 };
@@ -191,8 +191,8 @@ pub(crate) fn initialize(
         None,
     );
     panel.set_anchor(Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
-    panel.set_size(0, PANEL_HEIGHT);
-    panel.set_exclusive_zone(PANEL_HEIGHT as i32);
+    panel.set_size(0, crate::PANEL_SURFACE_HEIGHT);
+    panel.set_exclusive_zone(crate::PANEL_SURFACE_HEIGHT as i32);
     panel.set_keyboard_interactivity(KeyboardInteractivity::None);
     info!("Panel surface created");
 

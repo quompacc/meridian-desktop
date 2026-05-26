@@ -18,7 +18,8 @@ use crate::{
     network::NetworkState,
     panel::{PanelWindowEntry, PinnedApp},
     status_notifier::StatusNotifierItem,
-    ClickAction, ClickZone, Rect as ShellRect, PANEL_HEIGHT,
+    ClickAction, ClickZone, Rect as ShellRect, PANEL_BOTTOM_GAP, PANEL_HEIGHT,
+    PANEL_SIDE_MARGIN, PANEL_SURFACE_HEIGHT,
 };
 
 const CHIP_H: i32 = 28;
@@ -44,6 +45,14 @@ const LEFT_PADDING: i32 = 8;
 const RIGHT_PADDING: i32 = 10;
 const CHIP_RADIUS: i32 = 3;
 const GAP: i32 = 4;
+
+// Floating island
+const ISLAND_RADIUS: i32 = 12;
+const SIDE_MARGIN: i32 = PANEL_SIDE_MARGIN as i32;
+const BOTTOM_GAP: i32 = PANEL_BOTTOM_GAP as i32;
+const SURFACE_H: i32 = PANEL_SURFACE_HEIGHT as i32;
+// Segment divider chrome
+const DIVIDER_W: i32 = 11;
 
 const FONT_SIZE: f32 = 14.0;
 const ACCENT_LINE_H: i32 = 2;
@@ -422,6 +431,36 @@ const SNI_PANEL_IDS: [&str; 8] = [
 ];
 
 // ── PanelChip ───────────────────────────────────────────────────────────────
+
+/// Thin vertical hairline that separates logical groups (segments) within a
+/// cluster. Purely decorative — no id, so it is never a click target.
+struct PanelDivider;
+
+impl Widget for PanelDivider {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(DIVIDER_W as f32),
+                height: ui_length(CHIP_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+        let pal = theme.palette;
+        let col = Color::rgba(pal.text.r, pal.text.g, pal.text.b, 38);
+        let line = Rect {
+            x: area.x + DIVIDER_W / 2,
+            y: area.y + 6,
+            width: 1,
+            height: (area.height - 12).max(1),
+        };
+        if let Some(path) = rounded_rect_path(line, 0) {
+            paint_fill(canvas, &path, col);
+        }
+    }
+}
 
 struct PanelChip {
     id: &'static str,
@@ -893,6 +932,9 @@ pub(crate) fn build_panel_widget_tree(
         LAUNCHER_W,
         false,
     )));
+    if !pinned_apps.is_empty() {
+        left_children.push(Box::new(PanelDivider));
+    }
     for (idx, app) in pinned_apps.iter().enumerate() {
         let (window_count, has_focused) = windows_for_pinned_app(app, window_entries);
         let icon = app
@@ -966,6 +1008,9 @@ pub(crate) fn build_panel_widget_tree(
             false,
         )));
     }
+    if !right_children.is_empty() {
+        right_children.push(Box::new(PanelDivider));
+    }
     right_children.extend([
         Box::new(PanelChip::new(
             "panel-screenshot",
@@ -988,6 +1033,7 @@ pub(crate) fn build_panel_widget_tree(
             AUDIO_W,
             audio_popup_open,
         )),
+        Box::new(PanelDivider) as Box<dyn Widget>,
         Box::new(PanelChip::new(
             "panel-workspace",
             ws_text,
@@ -1016,13 +1062,15 @@ pub(crate) fn build_panel_widget_tree(
         right_children,
     );
 
-    Box::new(Container::new(
+    // The bar holds the three clusters and is inset to the island content box.
+    let inner_w = (width as i32 - 2 * SIDE_MARGIN).max(0);
+    let bar = Container::new(
         WidgetStyle {
             flex_direction: FlexDirection::Row,
             justify_content: Some(JustifyContent::SpaceBetween),
             align_items: Some(AlignItems::Center),
             size: UiSize {
-                width: ui_length(width as f32),
+                width: ui_length(inner_w as f32),
                 height: ui_length(PANEL_H as f32),
             },
             padding: TaffyRect {
@@ -1038,6 +1086,28 @@ pub(crate) fn build_panel_widget_tree(
             Box::new(center_cluster) as Box<dyn Widget>,
             Box::new(right_cluster) as Box<dyn Widget>,
         ],
+    );
+
+    // Outer surface wrapper: full width, inset on the sides + a bottom gap so
+    // the island floats. The padding offsets the bar so render() and the click
+    // zones inherit the inset automatically.
+    Box::new(Container::new(
+        WidgetStyle {
+            flex_direction: FlexDirection::Row,
+            align_items: Some(AlignItems::FlexStart),
+            size: UiSize {
+                width: ui_length(width as f32),
+                height: ui_length(SURFACE_H as f32),
+            },
+            padding: TaffyRect {
+                left: ui_length(SIDE_MARGIN as f32),
+                right: ui_length(SIDE_MARGIN as f32),
+                top: ui_length(0.0),
+                bottom: ui_length(BOTTOM_GAP as f32),
+            },
+            ..Default::default()
+        },
+        vec![Box::new(bar) as Box<dyn Widget>],
     ))
 }
 
@@ -1155,10 +1225,48 @@ pub(crate) fn draw_panel_ui(
     let Some(mut pixmap) = Pixmap::new(width, height) else {
         return;
     };
-    let bg = theme.palette.surface_alt;
-    pixmap.fill(tiny_skia::Color::from_rgba8(bg.r, bg.g, bg.b, 0xff));
+    // Transparent everywhere; only the inset island is painted, so the
+    // wallpaper shows through the side margins and the bottom gap.
+    pixmap.fill(tiny_skia::Color::TRANSPARENT);
 
     let mut pixmap_canvas = pixmap.as_mut();
+
+    // Floating island: a 1px lighter border (drawn as a slightly larger
+    // rounded rect) with the surface_alt body inset on top of it, plus a
+    // subtle top highlight for a touch of dimension.
+    let inner_w = (width as i32 - 2 * SIDE_MARGIN).max(0);
+    let bg = theme.palette.surface_alt;
+    let border = bg.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12);
+    let outline = Rect {
+        x: SIDE_MARGIN,
+        y: 0,
+        width: inner_w,
+        height: PANEL_H,
+    };
+    if let Some(path) = rounded_rect_path(outline, ISLAND_RADIUS) {
+        paint_fill(&mut pixmap_canvas, &path, border);
+    }
+    let body = Rect {
+        x: SIDE_MARGIN + 1,
+        y: 1,
+        width: (inner_w - 2).max(0),
+        height: PANEL_H - 2,
+    };
+    if let Some(path) = rounded_rect_path(body, ISLAND_RADIUS - 1) {
+        paint_fill(&mut pixmap_canvas, &path, bg);
+    }
+    // Top highlight hairline just inside the rounded top edge.
+    let hl = bg.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.06);
+    let highlight = Rect {
+        x: SIDE_MARGIN + ISLAND_RADIUS,
+        y: 1,
+        width: (inner_w - 2 * ISLAND_RADIUS).max(0),
+        height: 1,
+    };
+    if let Some(path) = rounded_rect_path(highlight, 0) {
+        paint_fill(&mut pixmap_canvas, &path, hl);
+    }
+
     let _ = render(&*root, &layout, &mut pixmap_canvas, &theme, state_fn);
 
     if intro_progress < 1.0 {

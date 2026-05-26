@@ -9,7 +9,7 @@ use crate::{
     thumbnail_popup, workspaces, Painter, Rect, AUDIO_POPUP_HEIGHT, AUDIO_POPUP_WIDTH,
     CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
     NETWORK_POPUP_HEIGHT, NETWORK_POPUP_WIDTH, NOTIFICATION_HEIGHT, NOTIFICATION_WIDTH,
-    PANEL_HEIGHT, THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT,
+    THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT,
     WORKSPACE_POPUP_WIDTH,
 };
 
@@ -223,7 +223,7 @@ impl MeridianShell {
         let panel_active_workspace = self.panel_active_workspace();
         let panel_window_entries = self.panel_window_entries(panel_active_workspace);
         let width = self.width;
-        let height = PANEL_HEIGHT;
+        let height = crate::PANEL_SURFACE_HEIGHT;
         let clock = if self.last_clock.is_empty() {
             time::formatted_time()
         } else {

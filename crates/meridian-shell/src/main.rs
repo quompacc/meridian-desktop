@@ -45,6 +45,12 @@ const NETWORK_IDLE_POLL: Duration = Duration::from_secs(15);
 const NETWORK_ACTIVE_POLL: Duration = Duration::from_secs(2);
 
 pub const PANEL_HEIGHT: u32 = 42;
+/// Floating island panel: gap below the island (toward the screen edge) and
+/// horizontal inset on each side. The layer surface spans the full bottom
+/// strip (PANEL_SURFACE_HEIGHT) but only the inset island is painted.
+pub const PANEL_BOTTOM_GAP: u32 = 8;
+pub const PANEL_SIDE_MARGIN: u32 = 12;
+pub const PANEL_SURFACE_HEIGHT: u32 = PANEL_HEIGHT + PANEL_BOTTOM_GAP;
 pub const LAUNCHER_WIDTH: u32 = 880;
 pub const LAUNCHER_HEIGHT: u32 = 620;
 pub const CALENDAR_POPUP_WIDTH: u32 = 280;

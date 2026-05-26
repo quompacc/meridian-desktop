@@ -514,7 +514,7 @@ impl PointerHandler for MeridianShell {
                     );
                     let pixel_size = meridian_ui::PixelSize {
                         width: self.width,
-                        height: crate::PANEL_HEIGHT,
+                        height: crate::PANEL_SURFACE_HEIGHT,
                     };
                     if let Ok(layout) = meridian_ui::compute_layout(&*tree, pixel_size) {
                         let pos = meridian_ui::PointerPosition {

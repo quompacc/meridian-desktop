@@ -31,7 +31,7 @@ fn panel_global_activation_point(
     let y = output_height
         .map(|height| {
             height
-                .saturating_sub(crate::PANEL_HEIGHT as i32)
+                .saturating_sub(crate::PANEL_SURFACE_HEIGHT as i32)
                 .saturating_add(local_y)
         })
         .unwrap_or(local_y);
