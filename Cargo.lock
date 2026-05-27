@@ -1397,6 +1397,7 @@ name = "meridian-compositor"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.11.1",
+ "cgmath",
  "image",
  "libc",
  "meridian-boot-common",

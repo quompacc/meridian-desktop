@@ -62,6 +62,9 @@ pub struct DecorationManager {
     icon_cache: IconCache,
     /// Lazily-compiled rounded-box soft-shadow pixel shader.
     shadow_shader: Option<GlesPixelProgram>,
+    /// Lazily-compiled rounded-rectangle fill/outline pixel shader, used for
+    /// the rounded titlebar (fill) and the rounded window border (outline).
+    rounded_quad_shader: Option<GlesPixelProgram>,
 }
 
 impl DecorationManager {
@@ -70,6 +73,7 @@ impl DecorationManager {
             decorations: HashMap::new(),
             icon_cache: IconCache::new(BUTTON_ICON_PX, BUTTON_STROKE_WIDTH),
             shadow_shader: None,
+            rounded_quad_shader: None,
         }
     }
 

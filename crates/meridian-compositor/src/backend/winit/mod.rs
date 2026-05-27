@@ -37,6 +37,7 @@ render_elements! {
     Decoration=SolidColorRenderElement,
     DecorationIcon=Wrap<MemoryRenderBufferRenderElement<GlesRenderer>>,
     Shadow=PixelShaderElement,
+    ClippedSurface=crate::backend::clipped_surface::ClippedSurfaceRenderElement,
     Wallpaper=TextureRenderElement<GlesTexture>,
     Layer=WaylandSurfaceRenderElement<GlesRenderer>,
 }

@@ -72,6 +72,90 @@ fn shadow_uniform_names() -> [UniformName<'static>; 6] {
     ]
 }
 
+/// Rounded-rectangle fill/outline pixel shader (GLSL ES 100). With
+/// `u_thickness == 0` it fills a per-corner-rounded rect (used for the
+/// titlebar, rounding only its top corners); with `u_thickness > 0` it draws a
+/// rounded outline ring of that thickness (used for the 1px window border,
+/// rounding all four outer corners). Per-corner radii in `u_radius` are
+/// (top-left, top-right, bottom-right, bottom-left), all in physical pixels.
+/// Coverage math after cosmic-comp's rounded_outline.frag (orig. niri).
+const ROUNDED_QUAD_SHADER_SRC: &str = r#"
+precision highp float;
+uniform vec2 size;
+uniform float alpha;
+uniform vec3 u_color;
+uniform float u_thickness;
+uniform vec4 u_radius;
+uniform float u_scale;
+varying vec2 v_coords;
+
+float rounding_alpha(vec2 coords, vec2 sz, vec4 radius) {
+    vec2 center;
+    float r;
+    if (coords.x < radius.x && coords.y < radius.x) {
+        r = radius.x; center = vec2(r, r);
+    } else if (sz.x - radius.y < coords.x && coords.y < radius.y) {
+        r = radius.y; center = vec2(sz.x - r, r);
+    } else if (sz.x - radius.z < coords.x && sz.y - radius.z < coords.y) {
+        r = radius.z; center = vec2(sz.x - r, sz.y - r);
+    } else if (coords.x < radius.w && sz.y - radius.w < coords.y) {
+        r = radius.w; center = vec2(r, sz.y - r);
+    } else {
+        return 1.0;
+    }
+    float dist = distance(coords, center);
+    float half_px = 0.5 / u_scale;
+    return 1.0 - smoothstep(r - half_px, r + half_px, dist);
+}
+
+void main() {
+    vec2 loc = v_coords * size;
+    float outer = rounding_alpha(loc, size, u_radius);
+    float inner = 1.0;
+    if (u_thickness > 0.0) {
+        vec2 iloc = loc - vec2(u_thickness);
+        vec2 isize = size - vec2(u_thickness * 2.0);
+        if (0.0 <= iloc.x && iloc.x <= isize.x && 0.0 <= iloc.y && iloc.y <= isize.y) {
+            vec4 iradius = u_radius - vec4(u_thickness);
+            inner = 1.0 - rounding_alpha(iloc, isize, iradius);
+        }
+    }
+    float cov = outer * inner;
+    gl_FragColor = vec4(u_color, 1.0) * (cov * alpha);
+}
+"#;
+
+fn rounded_quad_uniform_names() -> [UniformName<'static>; 4] {
+    [
+        UniformName::new("u_color", UniformType::_3f),
+        UniformName::new("u_thickness", UniformType::_1f),
+        UniformName::new("u_radius", UniformType::_4f),
+        UniformName::new("u_scale", UniformType::_1f),
+    ]
+}
+
+/// Build a rounded fill/outline `PixelShaderElement` over `area` (logical).
+/// `radius`/`thickness` are physical pixels; `thickness == 0.0` fills.
+fn rounded_quad_element(
+    prog: &smithay::backend::renderer::gles::GlesPixelProgram,
+    area: Rectangle<i32, Logical>,
+    color: [f32; 3],
+    radius_phys: (f32, f32, f32, f32),
+    thickness_phys: f32,
+    scale: f32,
+) -> PixelShaderElement {
+    let uniforms = vec![
+        Uniform::new("u_color", color),
+        Uniform::new("u_thickness", thickness_phys),
+        Uniform::new(
+            "u_radius",
+            [radius_phys.0, radius_phys.1, radius_phys.2, radius_phys.3],
+        ),
+        Uniform::new("u_scale", scale),
+    ];
+    PixelShaderElement::new(prog.clone(), area, None, 1.0, uniforms, Kind::Unspecified)
+}
+
 impl DecorationManager {
     #[allow(clippy::too_many_arguments)]
     pub fn render_elements(
@@ -90,7 +174,16 @@ impl DecorationManager {
                 Err(err) => tracing::warn!("shadow shader compile failed: {:?}", err),
             }
         }
+        if self.rounded_quad_shader.is_none() {
+            match renderer
+                .compile_custom_pixel_shader(ROUNDED_QUAD_SHADER_SRC, &rounded_quad_uniform_names())
+            {
+                Ok(prog) => self.rounded_quad_shader = Some(prog),
+                Err(err) => tracing::warn!("rounded-quad shader compile failed: {:?}", err),
+            }
+        }
         let shadow_shader = self.shadow_shader.clone();
+        let rounded_quad_shader = self.rounded_quad_shader.clone();
         let key = Self::key(surface);
         let deco = match self.decorations.get_mut(&key) {
             Some(d) => d,
@@ -141,6 +234,17 @@ impl DecorationManager {
         let x = window_loc.x;
         let y = window_loc.y;
         let ps = scale.x;
+        // Window corner rounding: titlebar gets rounded *top* corners, the
+        // border becomes a rounded outline, and the shadow radius follows. The
+        // client content's bottom corners are clipped separately in the
+        // backend (see `ClippedSurfaceRenderElement`). All disabled at radius 0.
+        let cr = theme.corner_radius as i32;
+        // Maximized windows are rounded too: they float as a card above the
+        // panel rather than touching the bottom edge (the work area reserves
+        // the panel's exclusive zone). should_draw() already excludes truly
+        // undecorated/fullscreen surfaces.
+        let rounded = cr > 0 && rounded_quad_shader.is_some();
+        let rphys = cr as f32 * ps as f32;
         let mut elements: SmallVec<[DecorationRenderElement; 32]> = SmallVec::new();
 
         let phys = |lx: i32, ly: i32| -> Point<i32, Physical> {
@@ -255,54 +359,92 @@ impl DecorationManager {
                 ));
             }
 
-            elements.push(DecorationRenderElement::Solid(
-                SolidColorRenderElement::from_buffer(
-                    &deco.buffers.titlebar,
-                    phys(x, y),
-                    scale,
-                    1.0,
-                    Kind::Unspecified,
-                ),
-            ));
+            if rounded {
+                let titlebar_col = if deco.is_focused {
+                    colors.surface
+                } else {
+                    colors.surface_alt
+                };
+                let [r, g, b, _] = titlebar_col.as_f32_array();
+                if let Some(ref prog) = rounded_quad_shader {
+                    elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
+                        prog,
+                        frame_metrics.titlebar_rect,
+                        [r, g, b],
+                        (rphys, rphys, 0.0, 0.0),
+                        0.0,
+                        ps as f32,
+                    )));
+                }
+            } else {
+                elements.push(DecorationRenderElement::Solid(
+                    SolidColorRenderElement::from_buffer(
+                        &deco.buffers.titlebar,
+                        phys(x, y),
+                        scale,
+                        1.0,
+                        Kind::Unspecified,
+                    ),
+                ));
+            }
         }
 
         if bw > 0 {
-            elements.push(DecorationRenderElement::Solid(
-                SolidColorRenderElement::from_buffer(
-                    &deco.buffers.border_top,
-                    phys(x, y),
-                    scale,
-                    1.0,
-                    Kind::Unspecified,
-                ),
-            ));
-            elements.push(DecorationRenderElement::Solid(
-                SolidColorRenderElement::from_buffer(
-                    &deco.buffers.border_left,
-                    phys(x, y + title_h),
-                    scale,
-                    1.0,
-                    Kind::Unspecified,
-                ),
-            ));
-            elements.push(DecorationRenderElement::Solid(
-                SolidColorRenderElement::from_buffer(
-                    &deco.buffers.border_right,
-                    phys(x + bw + cw, y + title_h),
-                    scale,
-                    1.0,
-                    Kind::Unspecified,
-                ),
-            ));
-            elements.push(DecorationRenderElement::Solid(
-                SolidColorRenderElement::from_buffer(
-                    &deco.buffers.border_bottom,
-                    phys(x, y + title_h + bw + ch),
-                    scale,
-                    1.0,
-                    Kind::Unspecified,
-                ),
-            ));
+            if rounded {
+                // One rounded outline ring around the whole frame replaces the
+                // four straight border strips, so the outer corners round
+                // cleanly with no square nubs. Drawn below the titlebar fill,
+                // so the top edge stays covered by the titlebar (matches the
+                // square look: no border line across the top).
+                let [r, g, b, _] = colors.border.as_f32_array();
+                if let Some(ref prog) = rounded_quad_shader {
+                    elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
+                        prog,
+                        frame_metrics.frame_rect,
+                        [r, g, b],
+                        (rphys, rphys, rphys, rphys),
+                        bw as f32 * ps as f32,
+                        ps as f32,
+                    )));
+                }
+            } else {
+                elements.push(DecorationRenderElement::Solid(
+                    SolidColorRenderElement::from_buffer(
+                        &deco.buffers.border_top,
+                        phys(x, y),
+                        scale,
+                        1.0,
+                        Kind::Unspecified,
+                    ),
+                ));
+                elements.push(DecorationRenderElement::Solid(
+                    SolidColorRenderElement::from_buffer(
+                        &deco.buffers.border_left,
+                        phys(x, y + title_h),
+                        scale,
+                        1.0,
+                        Kind::Unspecified,
+                    ),
+                ));
+                elements.push(DecorationRenderElement::Solid(
+                    SolidColorRenderElement::from_buffer(
+                        &deco.buffers.border_right,
+                        phys(x + bw + cw, y + title_h),
+                        scale,
+                        1.0,
+                        Kind::Unspecified,
+                    ),
+                ));
+                elements.push(DecorationRenderElement::Solid(
+                    SolidColorRenderElement::from_buffer(
+                        &deco.buffers.border_bottom,
+                        phys(x, y + title_h + bw + ch),
+                        scale,
+                        1.0,
+                        Kind::Unspecified,
+                    ),
+                ));
+            }
         }
 
         // Analytic soft drop shadow via the rounded-box SDF pixel shader.
@@ -334,9 +476,9 @@ impl DecorationManager {
                 let hx = (fw as f32 / 2.0) * psf;
                 let hy = (fh as f32 / 2.0) * psf;
                 let blur = spread as f32 * psf;
-                // Square soft shadow for now (matches square windows; bump once
-                // window corners are rounded so the radii stay in sync).
-                let radius = 0.0f32;
+                // Match the shadow's rounding to the window corners so the soft
+                // edge hugs the rounded frame instead of a square silhouette.
+                let radius = if rounded { rphys } else { 0.0f32 };
 
                 let uniforms = vec![
                     Uniform::new("u_frame_center", (cx, cy)),

@@ -13,7 +13,7 @@ success = "#6fa08c"
 
 [decorations]
 border_width = 1
-corner_radius = 0
+corner_radius = 10
 shadow = true
 shadow_radius = 22
 shadow_radius_top = 11

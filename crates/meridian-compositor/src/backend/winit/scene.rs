@@ -61,28 +61,50 @@ fn render_window_toplevel_elements<C>(
     window: &Window,
     window_loc: smithay::utils::Point<i32, smithay::utils::Logical>,
     scale: Scale<f64>,
+    clip: Option<(
+        smithay::backend::renderer::gles::GlesTexProgram,
+        smithay::utils::Rectangle<f64, smithay::utils::Logical>,
+        [u8; 4],
+    )>,
     out: &mut Vec<C>,
 ) where
-    C: From<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>>,
+    C: From<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>>
+        + From<crate::backend::clipped_surface::ClippedSurfaceRenderElement>,
 {
     match window.underlying_surface() {
         WindowSurface::Wayland(toplevel) => {
-            out.extend(
-                render_elements_from_surface_tree::<
-                    GlesRenderer,
-                    WaylandSurfaceRenderElement<GlesRenderer>,
-                >(
-                    renderer,
-                    toplevel.wl_surface(),
-                    window_loc.to_physical_precise_round(scale),
-                    scale,
-                    1.0,
-                    Kind::Unspecified,
-                )
-                .into_iter()
-                .map(SpaceRenderElements::from)
-                .map(C::from),
+            let elements = render_elements_from_surface_tree::<
+                GlesRenderer,
+                WaylandSurfaceRenderElement<GlesRenderer>,
+            >(
+                renderer,
+                toplevel.wl_surface(),
+                window_loc.to_physical_precise_round(scale),
+                scale,
+                1.0,
+                Kind::Unspecified,
             );
+            match clip {
+                Some((prog, geo, radius)) => {
+                    out.extend(elements.into_iter().map(|e| {
+                        C::from(crate::backend::clipped_surface::ClippedSurfaceRenderElement::new(
+                            prog.clone(),
+                            e,
+                            scale,
+                            geo,
+                            radius,
+                        ))
+                    }));
+                }
+                None => {
+                    out.extend(
+                        elements
+                            .into_iter()
+                            .map(SpaceRenderElements::from)
+                            .map(C::from),
+                    );
+                }
+            }
         }
         WindowSurface::X11(_) => {
             out.extend(
@@ -178,6 +200,7 @@ pub(super) fn render_elements_for_output(
 
         render_window_popup_elements(renderer, window, render_loc, scale, &mut scratch.normal);
 
+        let mut content_clip = None;
         if let Some(wl_surf) = window.wl_surface().map(|s| s.into_owned()) {
             let metrics = state.decoration_manager.ssd_render_metrics(
                 &wl_surf,
@@ -209,9 +232,26 @@ pub(super) fn render_elements_for_output(
                         }
                     }),
             );
+
+            if let Some(r) = state
+                .decoration_manager
+                .content_corner_radius(&wl_surf, &theme.decorations)
+            {
+                if let Some(prog) = crate::backend::clipped_surface::clip_shader(renderer) {
+                    let r8 = r.min(255) as u8;
+                    content_clip = Some((prog, metrics.client_rect.to_f64(), [r8, 0, r8, 0]));
+                }
+            }
         }
 
-        render_window_toplevel_elements(renderer, window, render_loc, scale, &mut scratch.normal);
+        render_window_toplevel_elements(
+            renderer,
+            window,
+            render_loc,
+            scale,
+            content_clip,
+            &mut scratch.normal,
+        );
     }
 
     let wallpaper_elem = wallpaper_cache

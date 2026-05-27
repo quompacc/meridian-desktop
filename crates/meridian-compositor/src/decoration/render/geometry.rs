@@ -275,6 +275,24 @@ impl DecorationManager {
         let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (0, 0).into(), bw, title_h);
         SsdChromeMetrics::new(metrics).decoration_inset()
     }
+
+    /// Radius (physical-agnostic, logical px) to round the *client content's*
+    /// bottom corners with, or `None` when the window should stay square.
+    /// Inset by the border width so the content curve nests inside the rounded
+    /// border outline. Kept in sync with the rounding gate in
+    /// `render::elements` (decorated, radius > 0).
+    pub fn content_corner_radius(
+        &self,
+        surface: &WlSurface,
+        theme: &Decorations,
+    ) -> Option<u32> {
+        let deco = self.decorations.get(&Self::key(surface))?;
+        if !deco.should_draw() || theme.corner_radius == 0 {
+            return None;
+        }
+        let bw = deco.border_width(theme);
+        Some((theme.corner_radius as i32 - bw).max(0) as u32)
+    }
 }
 
 #[cfg(test)]

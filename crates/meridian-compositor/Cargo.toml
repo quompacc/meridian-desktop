@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 bitflags = { workspace = true }
+cgmath = "0.18"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 libc = "0.2"
 meridian-config = { path = "../meridian-config" }
