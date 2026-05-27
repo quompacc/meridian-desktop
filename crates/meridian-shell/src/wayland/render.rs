@@ -485,6 +485,19 @@ impl MeridianShell {
     }
 
     pub(crate) fn unmap_desktop_menu(&mut self, _reason: CommitReason) {
+        // Re-assert a valid, anchored, non-zero size *before* committing the
+        // null buffer. Hiding the menu often coincides with a re-arrange (e.g.
+        // the "Launcher öffnen" item opens the fullscreen launcher), and during
+        // that arrange smithay can see this single-anchored (TOP|LEFT) surface
+        // with a 0 width and post a protocol error that tears down the whole
+        // shell. Keeping anchor+size valid on the unmap commit prevents it.
+        use smithay_client_toolkit::shell::wlr_layer::Anchor;
+        let h = crate::context_menu::menu_height(crate::context_menu::desktop_item_list().len())
+            .max(1) as u32;
+        self.desktop_menu_layer
+            .set_anchor(Anchor::TOP | Anchor::LEFT);
+        self.desktop_menu_layer
+            .set_size(crate::context_menu::MENU_WIDTH as u32, h);
         self.desktop_menu_layer.wl_surface().attach(None, 0, 0);
         self.desktop_menu_layer.commit();
     }

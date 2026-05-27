@@ -126,20 +126,31 @@ impl LayerShellHandler for MeridianShell {
             let desired_h =
                 crate::context_menu::menu_height(crate::context_menu::desktop_item_list().len())
                     as u32;
-            let width = if configure.new_size.0 > 0 {
-                configure.new_size.0
-            } else {
-                crate::context_menu::MENU_WIDTH as u32
-            };
-            let height = if configure.new_size.1 > 0 {
+            // Re-assert the menu's fixed geometry on every configure, exactly
+            // like the other popups below. The menu is a fixed-size,
+            // single-anchored (TOP|LEFT) overlay; the compositor may suggest a
+            // different size (observed: 640x367), and adopting that left the
+            // surface able to commit a stale/zero width — a layer-shell
+            // protocol error for a single-anchored surface that tore down the
+            // whole shell (panel + launcher) on right-click.
+            self.desktop_menu_layer
+                .set_anchor(Anchor::TOP | Anchor::LEFT);
+            if let Some(ref menu) = self.desktop_context_menu {
+                self.desktop_menu_layer
+                    .set_margin(menu.y.max(0), 0, 0, menu.x.max(0));
+            }
+            self.desktop_menu_layer
+                .set_size(crate::context_menu::MENU_WIDTH as u32, desired_h);
+            tracing::debug!(
+                "desktop menu configure: forcing {}x{} (compositor suggested {}x{})",
+                crate::context_menu::MENU_WIDTH,
+                desired_h,
+                configure.new_size.0,
                 configure.new_size.1
-            } else {
-                desired_h
-            };
-            tracing::debug!("desktop menu configure: size={}x{}", width, height);
+            );
             self.desktop_menu_configured = true;
-            self.desktop_menu_width = width.max(1);
-            self.desktop_menu_height = height.max(1);
+            self.desktop_menu_width = crate::context_menu::MENU_WIDTH as u32;
+            self.desktop_menu_height = desired_h.max(1);
             if self.desktop_menu_open {
                 self.draw_desktop_menu(qh, RepaintReason::LayerConfigure);
             }
