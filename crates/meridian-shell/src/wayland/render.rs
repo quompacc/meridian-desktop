@@ -643,6 +643,7 @@ impl MeridianShell {
                     LAUNCHER_HEIGHT,
                     cm,
                     &items,
+                    &[],
                     &self.theme,
                 );
             }

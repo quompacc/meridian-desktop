@@ -2,18 +2,19 @@ use meridian_config::ThemeConfig;
 use meridian_ui::{
     effect::{paint_border, paint_fill, paint_text, rounded_rect_path},
     paint::Rect,
-    style::Color,
 };
 use tiny_skia::Pixmap;
 
 use crate::ui::tokens::palette_from_config;
 
-pub(crate) const MENU_WIDTH: i32 = 200;
+pub(crate) const MENU_WIDTH: i32 = 236;
+const ICON_SZ: f32 = 16.0;
+const ICON_GAP: i32 = 12;
 const ITEM_H: i32 = 36;
 const VPAD: i32 = 6;
 const PADDING_X: i32 = 14;
 const FONT_SIZE: f32 = 13.0;
-const CORNER_R: i32 = 6;
+const CORNER_R: i32 = 10;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ContextMenuAction {
@@ -187,13 +188,172 @@ fn hit_item_at(x: i32, y: i32, n: usize, px: f64, py: f64) -> Option<usize> {
     None
 }
 
+/// Monochrome line-art glyphs for menu entries, drawn in the theme text colour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MenuIcon {
+    Terminal,
+    Launcher,
+    Display,
+    Wallpaper,
+    Settings,
+}
+
+fn icon_for_desktop(action: DesktopContextMenuAction) -> MenuIcon {
+    match action {
+        DesktopContextMenuAction::Terminal => MenuIcon::Terminal,
+        DesktopContextMenuAction::Launcher => MenuIcon::Launcher,
+        DesktopContextMenuAction::DisplaySettings => MenuIcon::Display,
+        DesktopContextMenuAction::WallpaperSettings => MenuIcon::Wallpaper,
+        DesktopContextMenuAction::Settings => MenuIcon::Settings,
+    }
+}
+
+/// Draw a 16-unit-viewbox line-art icon at (`ox`,`oy`) scaled to `sz` px.
+fn draw_menu_icon(
+    canvas: &mut tiny_skia::PixmapMut<'_>,
+    ox: f32,
+    oy: f32,
+    sz: f32,
+    icon: MenuIcon,
+    color: meridian_ui::style::Color,
+) {
+    use tiny_skia::{FillRule, LineCap, LineJoin, Paint, PathBuilder, Stroke, Transform};
+    let mut paint = Paint::default();
+    paint.anti_alias = true;
+    paint.set_color_rgba8(color.r, color.g, color.b, color.a);
+    let sw = (sz / 16.0 * 1.5).max(1.0);
+    let stroke = Stroke {
+        width: sw,
+        line_cap: LineCap::Round,
+        line_join: LineJoin::Round,
+        ..Default::default()
+    };
+    let m = |x: f32, y: f32| (ox + x / 16.0 * sz, oy + y / 16.0 * sz);
+    let stroke_pb = |canvas: &mut tiny_skia::PixmapMut<'_>, pb: PathBuilder| {
+        if let Some(path) = pb.finish() {
+            canvas.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+        }
+    };
+    match icon {
+        MenuIcon::Terminal => {
+            let mut pb = PathBuilder::new();
+            let (l, t) = m(2.0, 3.5);
+            let (r, b) = m(14.0, 12.5);
+            pb.move_to(l, t);
+            pb.line_to(r, t);
+            pb.line_to(r, b);
+            pb.line_to(l, b);
+            pb.close();
+            stroke_pb(canvas, pb);
+            let mut pb2 = PathBuilder::new();
+            let (a, c) = m(4.5, 6.0);
+            let (d, e) = m(6.8, 8.0);
+            let (f, g) = m(4.5, 10.0);
+            pb2.move_to(a, c);
+            pb2.line_to(d, e);
+            pb2.line_to(f, g);
+            stroke_pb(canvas, pb2);
+            let mut pb3 = PathBuilder::new();
+            let (u0, uy) = m(8.2, 10.0);
+            let (u1, _) = m(11.5, 10.0);
+            pb3.move_to(u0, uy);
+            pb3.line_to(u1, uy);
+            stroke_pb(canvas, pb3);
+        }
+        MenuIcon::Launcher => {
+            for &(cx, cy) in &[(4.6, 4.6), (11.4, 4.6), (4.6, 11.4), (11.4, 11.4)] {
+                let (px, py) = m(cx, cy);
+                let half = sz / 16.0 * 2.3;
+                if let Some(rect) =
+                    tiny_skia::Rect::from_xywh(px - half, py - half, half * 2.0, half * 2.0)
+                {
+                    let mut pb = PathBuilder::new();
+                    pb.push_rect(rect);
+                    if let Some(path) = pb.finish() {
+                        canvas.fill_path(
+                            &path,
+                            &paint,
+                            FillRule::Winding,
+                            Transform::identity(),
+                            None,
+                        );
+                    }
+                }
+            }
+        }
+        MenuIcon::Display => {
+            let mut pb = PathBuilder::new();
+            let (l, t) = m(2.5, 3.5);
+            let (r, b) = m(13.5, 10.5);
+            pb.move_to(l, t);
+            pb.line_to(r, t);
+            pb.line_to(r, b);
+            pb.line_to(l, b);
+            pb.close();
+            stroke_pb(canvas, pb);
+            let mut pb2 = PathBuilder::new();
+            let (sx, sy0) = m(8.0, 10.5);
+            let (_, sy1) = m(8.0, 12.8);
+            pb2.move_to(sx, sy0);
+            pb2.line_to(sx, sy1);
+            let (b0, by) = m(5.5, 12.8);
+            let (b1, _) = m(10.5, 12.8);
+            pb2.move_to(b0, by);
+            pb2.line_to(b1, by);
+            stroke_pb(canvas, pb2);
+        }
+        MenuIcon::Wallpaper => {
+            let mut pb = PathBuilder::new();
+            let (l, t) = m(2.5, 3.5);
+            let (r, b) = m(13.5, 12.5);
+            pb.move_to(l, t);
+            pb.line_to(r, t);
+            pb.line_to(r, b);
+            pb.line_to(l, b);
+            pb.close();
+            stroke_pb(canvas, pb);
+            let mut pb2 = PathBuilder::new();
+            let (cx, cy) = m(6.0, 6.3);
+            pb2.push_circle(cx, cy, sz / 16.0 * 1.3);
+            stroke_pb(canvas, pb2);
+            let mut pb3 = PathBuilder::new();
+            let (a, c) = m(3.5, 11.8);
+            let (d, e) = m(7.2, 7.5);
+            let (f, g) = m(13.0, 11.8);
+            pb3.move_to(a, c);
+            pb3.line_to(d, e);
+            pb3.line_to(f, g);
+            stroke_pb(canvas, pb3);
+        }
+        MenuIcon::Settings => {
+            let knobs = [(4.0f32, 11.0f32), (8.0, 5.0), (12.0, 9.5)];
+            for &(yy, kx) in &knobs {
+                let mut pb = PathBuilder::new();
+                let (l, y) = m(2.5, yy);
+                let (r, _) = m(13.5, yy);
+                pb.move_to(l, y);
+                pb.line_to(r, y);
+                stroke_pb(canvas, pb);
+                let (cx, cy) = m(kx, yy);
+                let mut pbk = PathBuilder::new();
+                pbk.push_circle(cx, cy, sz / 16.0 * 1.7);
+                if let Some(path) = pbk.finish() {
+                    canvas.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+                }
+            }
+        }
+    }
+}
+
 /// Render the context menu as an overlay onto the existing BGRA `canvas`.
+/// `icons` is parallel to `items` (empty = no icon column).
 pub(crate) fn draw_overlay(
     canvas: &mut [u8],
     canvas_w: u32,
     canvas_h: u32,
     state: &ContextMenuState,
     items: &[(&str, ContextMenuAction)],
+    icons: &[MenuIcon],
     theme_config: &ThemeConfig,
 ) {
     let n = items.len();
@@ -242,24 +402,42 @@ pub(crate) fn draw_overlay(
         };
 
         if state.hover_idx == Some(i) {
-            if let Some(p) = rounded_rect_path(item_rect, 4) {
+            // Subtle steel-blue accent wash + a left accent marker, matching the
+            // window-control cluster and the rest of the redesigned chrome.
+            if let Some(p) = rounded_rect_path(item_rect, 6) {
                 paint_fill(
                     &mut pm.as_mut(),
                     &p,
-                    pal.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12),
+                    pal.surface_alt.lerp(pal.accent, 0.20),
                 );
+            }
+            let marker = Rect {
+                x: item_rect.x + 1,
+                y: item_top + 7,
+                width: 3,
+                height: ITEM_H - 14,
+            };
+            if let Some(mp) = rounded_rect_path(marker, 1) {
+                paint_fill(&mut pm.as_mut(), &mp, pal.accent);
             }
         }
 
+        let text_x = if let Some(icon) = icons.get(i).copied() {
+            let iy = item_top as f32 + (ITEM_H as f32 - ICON_SZ) / 2.0;
+            draw_menu_icon(
+                &mut pm.as_mut(),
+                PADDING_X as f32,
+                iy,
+                ICON_SZ,
+                icon,
+                pal.text,
+            );
+            PADDING_X + ICON_SZ as i32 + ICON_GAP
+        } else {
+            PADDING_X
+        };
         let text_y = item_top + ITEM_H - 10;
-        paint_text(
-            &mut pm.as_mut(),
-            label,
-            PADDING_X,
-            text_y,
-            FONT_SIZE,
-            pal.text,
-        );
+        paint_text(&mut pm.as_mut(), label, text_x, text_y, FONT_SIZE, pal.text);
     }
 
     blit_over(
@@ -284,6 +462,10 @@ pub(crate) fn draw_desktop_overlay(
         .iter()
         .map(|(label, _)| (*label, ContextMenuAction::Launch))
         .collect();
+    let icons: Vec<MenuIcon> = items
+        .iter()
+        .map(|(_, action)| icon_for_desktop(*action))
+        .collect();
     let local_state = ContextMenuState {
         x: state.x,
         y: state.y,
@@ -300,6 +482,7 @@ pub(crate) fn draw_desktop_overlay(
         canvas_h,
         &local_state,
         &app_items,
+        &icons,
         theme_config,
     );
 }
@@ -457,7 +640,7 @@ mod tests {
         let s = state(false, false);
         let items = item_list(false, false, false);
         let mut canvas = vec![0u8; 880 * 620 * 4];
-        draw_overlay(&mut canvas, 880, 620, &s, &items, &ThemeConfig::default());
+        draw_overlay(&mut canvas, 880, 620, &s, &items, &[], &ThemeConfig::default());
     }
 
     #[test]
@@ -465,7 +648,7 @@ mod tests {
         let s = state(false, false);
         let items = item_list(false, false, false);
         let mut canvas = vec![0u8; 880 * 620 * 4];
-        draw_overlay(&mut canvas, 880, 620, &s, &items, &ThemeConfig::default());
+        draw_overlay(&mut canvas, 880, 620, &s, &items, &[], &ThemeConfig::default());
         // At least some pixel in the menu area should be non-zero.
         let row_stride = 880 * 4;
         let menu_start = (s.y * row_stride + s.x * 4) as usize;
