@@ -239,9 +239,13 @@ pub(crate) fn maximized_client_loc_from_output(
     ))
 }
 
-// Temporary fixed bottom reservation for normal-window workarea.
-// Keep this local so we can later replace it with layer-shell exclusive-zone derived workarea.
-pub(crate) const NORMAL_WINDOW_BOTTOM_RESERVED_PX: i32 = 36;
+// Fixed bottom reservation for the window workarea. The floating panel's
+// layer-shell exclusive zone is 66px (meridian-shell PANEL_SURFACE_HEIGHT);
+// we reserve a bit more so a maximized window floats as a rounded card with a
+// clear gap above the panel instead of its shadow merging into the panel's.
+// TODO: derive the 66 from the actual layer-shell exclusive zone rather than
+// hardcoding the panel's height.
+pub(crate) const NORMAL_WINDOW_BOTTOM_RESERVED_PX: i32 = 84;
 
 pub(crate) fn normal_window_workarea_from_output_geometry(
     output_geometry: OutputGeometry,
