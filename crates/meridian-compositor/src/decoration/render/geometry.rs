@@ -3,7 +3,8 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, Rectangle, Size};
 
 use super::super::{
-    DecorationManager, BUTTON_HEIGHT, BUTTON_MARGIN, BUTTON_WIDTH, TITLE_BAR_HEIGHT,
+    DecorationManager, BUTTON_WIDTH, CONTROL_CLUSTER_HEIGHT, CONTROL_CLUSTER_RIGHT_MARGIN,
+    TITLE_BAR_HEIGHT,
 };
 
 pub(crate) const SSD_RESIZE_HANDLE_THICKNESS: i32 = 8;
@@ -91,6 +92,8 @@ pub(crate) struct SsdButtonMetrics {
     pub(crate) close_rect: Rectangle<i32, Logical>,
     pub(crate) maximize_rect: Rectangle<i32, Logical>,
     pub(crate) minimize_rect: Rectangle<i32, Logical>,
+    /// Bounding rect of the whole control pill (the three segments combined).
+    pub(crate) pill_rect: Rectangle<i32, Logical>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -129,30 +132,33 @@ impl SsdChromeMetrics {
             return None;
         }
 
+        // Three contiguous segments (minimize, maximize, close left→right)
+        // forming one pill, right-aligned in the titlebar and centred
+        // vertically. Both rendering and hit-testing read these rects, so the
+        // visual pill and the click targets always match.
+        let seg_w = BUTTON_WIDTH;
+        let seg_h = CONTROL_CLUSTER_HEIGHT;
+        let pill_w = seg_w * 3;
         let frame_right = self.frame.frame_origin.x + self.frame.frame_size.w;
-        let close_x = frame_right - BUTTON_WIDTH - BUTTON_MARGIN;
-        let close_y = self.frame.frame_origin.y
-            + (self.frame.titlebar_height - BUTTON_HEIGHT) / 2
-            + self.frame.border_width;
-        let max_x = close_x - BUTTON_WIDTH - BUTTON_MARGIN / 2;
-        let min_x = max_x - BUTTON_WIDTH - BUTTON_MARGIN / 2;
-        let close_rect = Rectangle::new(
-            (close_x, close_y).into(),
-            (BUTTON_WIDTH, BUTTON_HEIGHT).into(),
-        );
-        let maximize_rect = Rectangle::new(
-            (max_x, close_y).into(),
-            (BUTTON_WIDTH, BUTTON_HEIGHT).into(),
-        );
-        let minimize_rect = Rectangle::new(
-            (min_x, close_y).into(),
-            (BUTTON_WIDTH, BUTTON_HEIGHT).into(),
-        );
+        let pill_x = frame_right - CONTROL_CLUSTER_RIGHT_MARGIN - pill_w;
+        // Centre the pill in the *visible* titlebar interior — from the window
+        // top down to the accent separator (which sits 2px above the content) —
+        // rather than the full fill, so the separator's visual weight at the
+        // bottom doesn't make the pill read as sitting low.
+        let interior_h = self.frame.titlebar_height + self.frame.border_width - 2;
+        let seg_y = self.frame.frame_origin.y + (interior_h - seg_h) / 2;
+
+        let seg = |x: i32| Rectangle::new((x, seg_y).into(), (seg_w, seg_h).into());
+        let minimize_rect = seg(pill_x);
+        let maximize_rect = seg(pill_x + seg_w);
+        let close_rect = seg(pill_x + seg_w * 2);
+        let pill_rect = Rectangle::new((pill_x, seg_y).into(), (pill_w, seg_h).into());
 
         Some(SsdButtonMetrics {
             close_rect,
             maximize_rect,
             minimize_rect,
+            pill_rect,
         })
     }
 
@@ -342,12 +348,17 @@ mod tests {
         let chrome = SsdChromeMetrics::new(frame);
         let buttons = chrome.button_metrics().expect("titlebar buttons");
 
-        assert_eq!(buttons.close_rect.loc, Point::from((604, 4)));
-        assert_eq!(buttons.maximize_rect.loc, Point::from((568, 4)));
-        assert_eq!(buttons.minimize_rect.loc, Point::from((532, 4)));
-        assert_eq!(buttons.close_rect.size, Size::from((32, 28)));
-        assert_eq!(buttons.maximize_rect.size, Size::from((32, 28)));
-        assert_eq!(buttons.minimize_rect.size, Size::from((32, 28)));
+        // Three contiguous 32x22 segments, right-aligned with a 10px margin in
+        // a 644px-wide frame: pill_x = 644 - 10 - 96 = 538. seg_y centres the
+        // 22px pill in the interior above the separator: (32+2-2-22)/2 = 5.
+        assert_eq!(buttons.minimize_rect.loc, Point::from((538, 5)));
+        assert_eq!(buttons.maximize_rect.loc, Point::from((570, 5)));
+        assert_eq!(buttons.close_rect.loc, Point::from((602, 5)));
+        assert_eq!(buttons.close_rect.size, Size::from((32, 22)));
+        assert_eq!(buttons.maximize_rect.size, Size::from((32, 22)));
+        assert_eq!(buttons.minimize_rect.size, Size::from((32, 22)));
+        assert_eq!(buttons.pill_rect.loc, Point::from((538, 5)));
+        assert_eq!(buttons.pill_rect.size, Size::from((96, 22)));
     }
 
     #[test]
