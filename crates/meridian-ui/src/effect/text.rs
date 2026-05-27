@@ -18,6 +18,30 @@ use crate::style::Color;
 
 const UI_FONT_DATA: &[u8] = include_bytes!("../../assets/fonts/AdwaitaSans-Regular.ttf");
 
+/// Glyph coverage exponent (< 1.0 thickens strokes slightly). macOS-style text
+/// renders a touch heavier than the raw outline coverage; this "stem darkening"
+/// together with the gamma-correct blend below is what stops light text on dark
+/// backgrounds from looking thin and muddy.
+const COVERAGE_GAMMA: f32 = 0.82;
+
+#[inline]
+fn srgb_to_linear(c: f32) -> f32 {
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+#[inline]
+fn linear_to_srgb(c: f32) -> f32 {
+    if c <= 0.003_130_8 {
+        c * 12.92
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    }
+}
+
 static UI_FONT: OnceLock<Font> = OnceLock::new();
 
 pub fn ui_font() -> &'static Font {
@@ -67,6 +91,14 @@ pub fn paint_text(
     let stride = canvas_w as usize * 4;
     let data = canvas.data_mut();
 
+    // Glyph colour in linear light (constant across the run).
+    let color_a = color.a as f32 / 255.0;
+    let src_lin = [
+        srgb_to_linear(color.r as f32 / 255.0),
+        srgb_to_linear(color.g as f32 / 255.0),
+        srgb_to_linear(color.b as f32 / 255.0),
+    ];
+
     let mut pen_x = x as f32;
     for c in text.chars() {
         let (metrics, bitmap) = font.rasterize(c, size_px);
@@ -89,16 +121,34 @@ pub fn paint_text(
                 if alpha == 0 {
                     continue;
                 }
+                // Gamma-correct "over": composite in linear light, not in raw
+                // sRGB bytes (the latter darkens antialiased edges and is what
+                // made small text read as muddy/blurry). The canvas is
+                // premultiplied sRGB, so un-premultiply the destination, blend
+                // straight in linear, then re-premultiply.
+                let cov = (alpha as f32 / 255.0).powf(COVERAGE_GAMMA) * color_a;
                 let idx = dy as usize * stride + dx as usize * 4;
-                let src_a = ((alpha as u16) * (color.a as u16) / 255) as u8;
-                let inv = 255u16 - src_a as u16;
-                let src_r = ((color.r as u16) * (src_a as u16) / 255) as u8;
-                let src_g = ((color.g as u16) * (src_a as u16) / 255) as u8;
-                let src_b = ((color.b as u16) * (src_a as u16) / 255) as u8;
-                data[idx] = (src_r as u16 + (data[idx] as u16) * inv / 255) as u8;
-                data[idx + 1] = (src_g as u16 + (data[idx + 1] as u16) * inv / 255) as u8;
-                data[idx + 2] = (src_b as u16 + (data[idx + 2] as u16) * inv / 255) as u8;
-                data[idx + 3] = (src_a as u16 + (data[idx + 3] as u16) * inv / 255) as u8;
+                let dst_a = data[idx + 3] as f32 / 255.0;
+                let dst_lin = if dst_a <= 0.0 {
+                    [0.0f32; 3]
+                } else {
+                    [
+                        srgb_to_linear(((data[idx] as f32 / 255.0) / dst_a).min(1.0)),
+                        srgb_to_linear(((data[idx + 1] as f32 / 255.0) / dst_a).min(1.0)),
+                        srgb_to_linear(((data[idx + 2] as f32 / 255.0) / dst_a).min(1.0)),
+                    ]
+                };
+                let keep = dst_a * (1.0 - cov);
+                let out_a = cov + keep;
+                if out_a <= 0.0 {
+                    continue;
+                }
+                for off in 0..3 {
+                    let lin = (src_lin[off] * cov + dst_lin[off] * keep) / out_a;
+                    data[idx + off] =
+                        (linear_to_srgb(lin).clamp(0.0, 1.0) * out_a * 255.0).round() as u8;
+                }
+                data[idx + 3] = (out_a.clamp(0.0, 1.0) * 255.0).round() as u8;
             }
         }
 
