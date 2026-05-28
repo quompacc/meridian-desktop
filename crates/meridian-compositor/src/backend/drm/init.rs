@@ -913,16 +913,25 @@ fn register_repaint_timer_source(
                 );
                 drm.dirty_stats.report_if_due(tick_started);
             }
-            // Idle screen blanking: blank after timeout if not inhibited
+            // Idle screen blanking
             if let Some(timeout) = state.idle_timeout {
-                if !state.idle_blanked && !state.idle_inhibitors.is_inhibited() {
-                    if state.last_activity.elapsed() >= timeout {
-                        tracing::info!("idle timeout reached, blanking outputs");
-                        state.idle_blanked = true;
-                        if let Some(drm) = state.drm_backend.as_mut() {
-                            for out in drm.outputs.iter_mut() {
-                                out.needs_repaint = true;
-                            }
+                if state.idle_blanked {
+                    // Keep submitting frames while blanked so the DRM/KMS
+                    // display link stays active (virtio-gpu goes to
+                    // hardware-DPMS-off if we stop flipping for too long).
+                    if let Some(drm) = state.drm_backend.as_mut() {
+                        for out in drm.outputs.iter_mut() {
+                            out.needs_repaint = true;
+                        }
+                    }
+                } else if !state.idle_inhibitors.is_inhibited()
+                    && state.last_activity.elapsed() >= timeout
+                {
+                    tracing::info!("idle timeout reached, blanking outputs");
+                    state.idle_blanked = true;
+                    if let Some(drm) = state.drm_backend.as_mut() {
+                        for out in drm.outputs.iter_mut() {
+                            out.needs_repaint = true;
                         }
                     }
                 }

@@ -17,6 +17,7 @@ impl MeridianState {
             if let Some(drm) = self.drm_backend.as_mut() {
                 for out in drm.outputs.iter_mut() {
                     out.compositor.reset_buffers();
+                    out.compositor.reset_buffer_ages();
                 }
             }
             self.mark_all_outputs_dirty("idle-wake");

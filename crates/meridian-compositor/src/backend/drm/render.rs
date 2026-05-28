@@ -603,7 +603,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
             );
         }
 
-        let bg = [0.0_f32; 4];
+        let bg = if state.idle_blanked { [0.0_f32, 0.0, 0.0, 1.0] } else { [0.0_f32; 4] };
         let commit_started = Instant::now();
         let mut frame_queued = false;
         match out
