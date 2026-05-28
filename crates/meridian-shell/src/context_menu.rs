@@ -127,7 +127,7 @@ pub(crate) fn desktop_item_list() -> Vec<(&'static str, DesktopContextMenuAction
         ("Terminal öffnen", DesktopContextMenuAction::Terminal),
         ("Launcher öffnen", DesktopContextMenuAction::Launcher),
         ("Dateimanager öffnen", DesktopContextMenuAction::FileManager),
-        ("Einstellungen \u{25B8}", DesktopContextMenuAction::Settings),
+        ("Einstellungen", DesktopContextMenuAction::Settings),
     ]
 }
 
@@ -391,8 +391,36 @@ fn draw_menu_icon(
     }
 }
 
+/// Draw a small right-pointing solid triangle at the right edge of a menu item,
+/// indicating that hovering/clicking opens a submenu.
+fn draw_submenu_arrow_indicator(
+    canvas: &mut tiny_skia::PixmapMut<'_>,
+    menu_w: i32,
+    item_top: i32,
+    color: meridian_ui::style::Color,
+) {
+    use tiny_skia::{FillRule, Paint, PathBuilder, Transform};
+    let mut paint = Paint::default();
+    paint.anti_alias = true;
+    paint.set_color_rgba8(color.r, color.g, color.b, (color.a as u32 * 160 / 255) as u8);
+    let cx = (menu_w - PADDING_X + 2) as f32;
+    let cy = (item_top + ITEM_H / 2) as f32;
+    let h = 6.0f32;
+    let w = 4.0f32;
+    let mut pb = PathBuilder::new();
+    pb.move_to(cx - w / 2.0, cy - h / 2.0);
+    pb.line_to(cx + w / 2.0, cy);
+    pb.line_to(cx - w / 2.0, cy + h / 2.0);
+    pb.close();
+    if let Some(path) = pb.finish() {
+        canvas.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    }
+}
+
 /// Render the context menu as an overlay onto the existing BGRA `canvas`.
 /// `icons` is parallel to `items` (empty = no icon column).
+/// `submenu_arrows`: parallel to `items`; if `true` for index `i`, a right-pointing
+/// arrow is drawn at the right edge of that item to indicate a flyout.
 pub(crate) fn draw_overlay(
     canvas: &mut [u8],
     canvas_w: u32,
@@ -400,6 +428,7 @@ pub(crate) fn draw_overlay(
     state: &ContextMenuState,
     items: &[(&str, ContextMenuAction)],
     icons: &[MenuIcon],
+    submenu_arrows: &[bool],
     theme_config: &ThemeConfig,
 ) {
     let n = items.len();
@@ -482,6 +511,11 @@ pub(crate) fn draw_overlay(
         };
         let text_y = item_top + ITEM_H - 10;
         paint_text(&mut pm.as_mut(), label, text_x, text_y, FONT_SIZE, pal.text);
+
+        // Right-pointing triangle for items that open a submenu
+        if submenu_arrows.get(i).copied().unwrap_or(false) {
+            draw_submenu_arrow_indicator(&mut pm.as_mut(), mw as i32, item_top, pal.text);
+        }
     }
 
     blit_over(
@@ -524,6 +558,11 @@ pub(crate) fn draw_desktop_overlay(
         .iter()
         .map(|(label, _)| (*label, ContextMenuAction::Launch))
         .collect();
+    // submenu_arrows: mark the Settings item with a right-pointing triangle
+    let mut submenu_arrows = vec![false; app_items.len()];
+    if SETTINGS_ITEM_IDX < submenu_arrows.len() {
+        submenu_arrows[SETTINGS_ITEM_IDX] = true;
+    }
     draw_overlay(
         canvas,
         canvas_w,
@@ -531,6 +570,7 @@ pub(crate) fn draw_desktop_overlay(
         &local_state,
         &app_items,
         &icons,
+        &submenu_arrows,
         theme_config,
     );
 
@@ -753,7 +793,7 @@ mod tests {
         let s = state(false, false);
         let items = item_list(false, false, false);
         let mut canvas = vec![0u8; 880 * 620 * 4];
-        draw_overlay(&mut canvas, 880, 620, &s, &items, &[], &ThemeConfig::default());
+        draw_overlay(&mut canvas, 880, 620, &s, &items, &[], &[], &ThemeConfig::default());
     }
 
     #[test]
@@ -761,7 +801,7 @@ mod tests {
         let s = state(false, false);
         let items = item_list(false, false, false);
         let mut canvas = vec![0u8; 880 * 620 * 4];
-        draw_overlay(&mut canvas, 880, 620, &s, &items, &[], &ThemeConfig::default());
+        draw_overlay(&mut canvas, 880, 620, &s, &items, &[], &[], &ThemeConfig::default());
         // At least some pixel in the menu area should be non-zero.
         let row_stride = 880 * 4;
         let menu_start = (s.y * row_stride + s.x * 4) as usize;

@@ -408,6 +408,20 @@ impl MeridianShell {
         }
     }
 
+    /// Resize the desktop-menu surface to match whether the settings flyout is open.
+    /// Must be called whenever `desktop_context_menu.submenu_open` changes.
+    pub(crate) fn resize_desktop_menu_surface(&mut self, submenu_open: bool) {
+        use smithay_client_toolkit::shell::wlr_layer::Anchor;
+        let n = crate::context_menu::desktop_item_list().len();
+        let new_w = crate::context_menu::total_menu_width(submenu_open) as u32;
+        let new_h = crate::context_menu::surface_height(n, submenu_open).max(1) as u32;
+        self.desktop_menu_width = new_w;
+        self.desktop_menu_height = new_h;
+        self.desktop_menu_buffer = None;
+        self.desktop_menu_layer.set_anchor(Anchor::TOP | Anchor::LEFT);
+        self.desktop_menu_layer.set_size(new_w, new_h);
+    }
+
     pub(crate) fn draw_desktop_menu(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
         debug!(
             "draw_desktop_menu: reason={:?} open={} configured={} size={}x{}",
@@ -650,6 +664,7 @@ impl MeridianShell {
                     LAUNCHER_HEIGHT,
                     cm,
                     &items,
+                    &[],
                     &[],
                     &self.theme,
                 );

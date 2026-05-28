@@ -140,18 +140,7 @@ impl PointerHandler for MeridianShell {
                             .desktop_context_menu
                             .as_ref()
                             .map_or(false, |m| m.submenu_open);
-                        let n = context_menu::desktop_item_list().len();
-                        let new_w =
-                            context_menu::total_menu_width(submenu_open) as u32;
-                        let new_h =
-                            context_menu::surface_height(n, submenu_open) as u32;
-                        self.desktop_menu_width = new_w;
-                        self.desktop_menu_height = new_h.max(1);
-                        self.desktop_menu_buffer = None;
-                        use smithay_client_toolkit::shell::wlr_layer::Anchor;
-                        self.desktop_menu_layer
-                            .set_anchor(Anchor::TOP | Anchor::LEFT);
-                        self.desktop_menu_layer.set_size(new_w, new_h.max(1));
+                        self.resize_desktop_menu_surface(submenu_open);
                     }
                     if changed {
                         self.draw_desktop_menu(qh, RepaintReason::Pointer);
