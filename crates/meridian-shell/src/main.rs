@@ -9,6 +9,7 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 mod app_view;
+mod autostart;
 mod audio;
 mod audio_popup;
 mod buffer;
@@ -120,6 +121,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut event_loop = EventLoop::try_new()?;
     let (mut shell, qh) = wayland::initialize(&mut event_loop)?;
+    autostart::launch_autostart_apps();
 
     insert_ipc_event_source(&mut event_loop, qh.clone(), &shell)?;
     insert_tick_timer(&mut event_loop, qh.clone())?;
