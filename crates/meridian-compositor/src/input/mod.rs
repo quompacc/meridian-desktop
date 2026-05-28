@@ -11,6 +11,14 @@ impl MeridianState {
         let was_blanked = std::mem::replace(&mut self.idle_blanked, false);
         self.last_activity = std::time::Instant::now();
         if was_blanked {
+            // reset_buffers forces smithay to treat the next frame as fully
+            // damaged -- without it render_frame returns is_empty=true because
+            // wl_surfaces have no new commits since the black frame.
+            if let Some(drm) = self.drm_backend.as_mut() {
+                for out in drm.outputs.iter_mut() {
+                    out.compositor.reset_buffers();
+                }
+            }
             self.mark_all_outputs_dirty("idle-wake");
         }
         if self.lock_manager.is_locked_or_pending() {
