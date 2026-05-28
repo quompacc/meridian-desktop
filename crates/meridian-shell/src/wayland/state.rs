@@ -518,13 +518,16 @@ impl MeridianShell {
             .max(crate::context_menu::MENU_WIDTH as u32) as i32;
         let desktop_h = self.desktop_height.max(1) as i32;
         let (x, y) = crate::context_menu::desktop_clamp_position(x, y, desktop_w, desktop_h);
+        let n_desktop = crate::context_menu::desktop_item_list().len();
         let menu_height =
-            crate::context_menu::menu_height(crate::context_menu::desktop_item_list().len()) as u32;
+            crate::context_menu::surface_height(n_desktop, false) as u32;
 
         self.desktop_context_menu = Some(crate::context_menu::DesktopContextMenuState {
             x,
             y,
             hover_idx: None,
+            submenu_open: false,
+            submenu_hover_idx: None,
         });
         self.desktop_menu_open = true;
         self.desktop_menu_width = crate::context_menu::MENU_WIDTH as u32;

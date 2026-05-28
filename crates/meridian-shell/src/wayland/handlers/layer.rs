@@ -123,34 +123,30 @@ impl LayerShellHandler for MeridianShell {
             self.desktop_layer.wl_surface().attach(None, 0, 0);
             self.desktop_layer.commit();
         } else if self.desktop_menu_layer == *layer {
-            let desired_h =
-                crate::context_menu::menu_height(crate::context_menu::desktop_item_list().len())
-                    as u32;
-            // Re-assert the menu's fixed geometry on every configure, exactly
-            // like the other popups below. The menu is a fixed-size,
-            // single-anchored (TOP|LEFT) overlay; the compositor may suggest a
-            // different size (observed: 640x367), and adopting that left the
-            // surface able to commit a stale/zero width — a layer-shell
-            // protocol error for a single-anchored surface that tore down the
-            // whole shell (panel + launcher) on right-click.
+            // Re-assert the menu's current desired geometry. desktop_menu_width /
+            // desktop_menu_height are maintained by open_desktop_context_menu and
+            // the pointer handler (they widen when the settings flyout opens).
+            // Never recompute from the item list here — that would ignore the
+            // expanded width and cause the same protocol error we fixed before.
+            let desired_w = self.desktop_menu_width.max(crate::context_menu::MENU_WIDTH as u32);
+            let desired_h = self.desktop_menu_height.max(1);
             self.desktop_menu_layer
                 .set_anchor(Anchor::TOP | Anchor::LEFT);
             if let Some(ref menu) = self.desktop_context_menu {
                 self.desktop_menu_layer
                     .set_margin(menu.y.max(0), 0, 0, menu.x.max(0));
             }
-            self.desktop_menu_layer
-                .set_size(crate::context_menu::MENU_WIDTH as u32, desired_h);
+            self.desktop_menu_layer.set_size(desired_w, desired_h);
             tracing::debug!(
                 "desktop menu configure: forcing {}x{} (compositor suggested {}x{})",
-                crate::context_menu::MENU_WIDTH,
+                desired_w,
                 desired_h,
                 configure.new_size.0,
                 configure.new_size.1
             );
             self.desktop_menu_configured = true;
-            self.desktop_menu_width = crate::context_menu::MENU_WIDTH as u32;
-            self.desktop_menu_height = desired_h.max(1);
+            self.desktop_menu_width = desired_w;
+            self.desktop_menu_height = desired_h;
             if self.desktop_menu_open {
                 self.draw_desktop_menu(qh, RepaintReason::LayerConfigure);
             }

@@ -8,6 +8,11 @@ use tiny_skia::Pixmap;
 use crate::ui::tokens::palette_from_config;
 
 pub(crate) const MENU_WIDTH: i32 = 236;
+pub(crate) const SUBMENU_GAP: i32 = 6;
+pub(crate) const SUBMENU_WIDTH: i32 = 188;
+/// Index of the "Einstellungen ▸" item in desktop_item_list().
+pub(crate) const SETTINGS_ITEM_IDX: usize = 3;
+
 const ICON_SZ: f32 = 16.0;
 const ICON_GAP: i32 = 12;
 const ITEM_H: i32 = 36;
@@ -15,6 +20,30 @@ const VPAD: i32 = 6;
 const PADDING_X: i32 = 14;
 const FONT_SIZE: f32 = 13.0;
 const CORNER_R: i32 = 10;
+
+/// Total surface width depending on whether the settings flyout is open.
+pub(crate) fn total_menu_width(submenu_open: bool) -> i32 {
+    if submenu_open {
+        MENU_WIDTH + SUBMENU_GAP + SUBMENU_WIDTH
+    } else {
+        MENU_WIDTH
+    }
+}
+
+/// Height of the settings flyout panel (no separator).
+pub(crate) fn submenu_height() -> i32 {
+    VPAD * 2 + submenu_items().len() as i32 * ITEM_H
+}
+
+/// Combined surface height for the given main-menu item count and submenu state.
+pub(crate) fn surface_height(n: usize, submenu_open: bool) -> i32 {
+    let main_h = menu_height(n);
+    if submenu_open {
+        main_h.max(submenu_height())
+    } else {
+        main_h
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ContextMenuAction {
@@ -43,9 +72,19 @@ pub(crate) struct ContextMenuState {
 pub(crate) enum DesktopContextMenuAction {
     Terminal,
     Launcher,
-    DisplaySettings,
-    WallpaperSettings,
+    FileManager,
     Settings,
+}
+
+/// Sub-actions for the "Einstellungen ▸" flyout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SettingsSubAction {
+    Display,
+    Wallpaper,
+    Theme,
+    Sound,
+    Network,
+    Power,
 }
 
 pub(crate) struct DesktopContextMenuState {
@@ -53,6 +92,9 @@ pub(crate) struct DesktopContextMenuState {
     pub x: i32,
     pub y: i32,
     pub hover_idx: Option<usize>,
+    /// Whether the settings flyout is currently shown.
+    pub submenu_open: bool,
+    pub submenu_hover_idx: Option<usize>,
 }
 
 /// Build the item list from the current state flags.
@@ -84,15 +126,19 @@ pub(crate) fn desktop_item_list() -> Vec<(&'static str, DesktopContextMenuAction
     vec![
         ("Terminal öffnen", DesktopContextMenuAction::Terminal),
         ("Launcher öffnen", DesktopContextMenuAction::Launcher),
-        (
-            "Display-Einstellungen",
-            DesktopContextMenuAction::DisplaySettings,
-        ),
-        (
-            "Wallpaper-Einstellungen",
-            DesktopContextMenuAction::WallpaperSettings,
-        ),
-        ("Einstellungen", DesktopContextMenuAction::Settings),
+        ("Dateimanager öffnen", DesktopContextMenuAction::FileManager),
+        ("Einstellungen \u{25B8}", DesktopContextMenuAction::Settings),
+    ]
+}
+
+pub(crate) fn submenu_items() -> Vec<(&'static str, SettingsSubAction)> {
+    vec![
+        ("Anzeige", SettingsSubAction::Display),
+        ("Hintergrund", SettingsSubAction::Wallpaper),
+        ("Design", SettingsSubAction::Theme),
+        ("Sound", SettingsSubAction::Sound),
+        ("Netzwerk", SettingsSubAction::Network),
+        ("Energie", SettingsSubAction::Power),
     ]
 }
 
@@ -169,8 +215,31 @@ pub(crate) fn desktop_hit_item_local(px: f64, py: f64) -> Option<usize> {
         x: 0,
         y: 0,
         hover_idx: None,
+        submenu_open: false,
+        submenu_hover_idx: None,
     };
     desktop_hit_item(&state, px, py)
+}
+
+/// True when `px` falls inside the settings flyout column (surface-local coords).
+pub(crate) fn is_in_submenu_area(px: f64) -> bool {
+    let lx = px as i32;
+    lx >= MENU_WIDTH + SUBMENU_GAP && lx < MENU_WIDTH + SUBMENU_GAP + SUBMENU_WIDTH
+}
+
+/// Returns the 0-based flyout item index under surface-local `(px, py)`, or `None`.
+pub(crate) fn submenu_hit_item_local(px: f64, py: f64) -> Option<usize> {
+    let lx = px as i32 - MENU_WIDTH - SUBMENU_GAP;
+    let ly = py as i32;
+    let n = submenu_items().len();
+    if lx < 0 || lx >= SUBMENU_WIDTH {
+        return None;
+    }
+    if ly < VPAD || ly >= VPAD + n as i32 * ITEM_H {
+        return None;
+    }
+    let i = ((ly - VPAD) / ITEM_H) as usize;
+    if i < n { Some(i) } else { None }
 }
 
 fn hit_item_at(x: i32, y: i32, n: usize, px: f64, py: f64) -> Option<usize> {
@@ -193,8 +262,7 @@ fn hit_item_at(x: i32, y: i32, n: usize, px: f64, py: f64) -> Option<usize> {
 pub(crate) enum MenuIcon {
     Terminal,
     Launcher,
-    Display,
-    Wallpaper,
+    FileManager,
     Settings,
 }
 
@@ -202,8 +270,7 @@ fn icon_for_desktop(action: DesktopContextMenuAction) -> MenuIcon {
     match action {
         DesktopContextMenuAction::Terminal => MenuIcon::Terminal,
         DesktopContextMenuAction::Launcher => MenuIcon::Launcher,
-        DesktopContextMenuAction::DisplaySettings => MenuIcon::Display,
-        DesktopContextMenuAction::WallpaperSettings => MenuIcon::Wallpaper,
+        DesktopContextMenuAction::FileManager => MenuIcon::FileManager,
         DesktopContextMenuAction::Settings => MenuIcon::Settings,
     }
 }
@@ -281,49 +348,28 @@ fn draw_menu_icon(
                 }
             }
         }
-        MenuIcon::Display => {
+        MenuIcon::FileManager => {
+            // Folder icon: body + tab
             let mut pb = PathBuilder::new();
-            let (l, t) = m(2.5, 3.5);
-            let (r, b) = m(13.5, 10.5);
+            let (l, t) = m(2.0, 6.0);
+            let (r, b) = m(14.0, 13.0);
+            // folder body
             pb.move_to(l, t);
             pb.line_to(r, t);
             pb.line_to(r, b);
             pb.line_to(l, b);
             pb.close();
             stroke_pb(canvas, pb);
+            // folder tab (top-left)
             let mut pb2 = PathBuilder::new();
-            let (sx, sy0) = m(8.0, 10.5);
-            let (_, sy1) = m(8.0, 12.8);
-            pb2.move_to(sx, sy0);
-            pb2.line_to(sx, sy1);
-            let (b0, by) = m(5.5, 12.8);
-            let (b1, _) = m(10.5, 12.8);
-            pb2.move_to(b0, by);
-            pb2.line_to(b1, by);
+            let (tl, tt) = m(2.0, 4.0);
+            let (tr, _) = m(7.5, 4.0);
+            let (_, tb) = m(0.0, 6.0);
+            pb2.move_to(tl, tb);
+            pb2.line_to(tl, tt);
+            pb2.line_to(tr, tt);
+            pb2.line_to(tr, tb);
             stroke_pb(canvas, pb2);
-        }
-        MenuIcon::Wallpaper => {
-            let mut pb = PathBuilder::new();
-            let (l, t) = m(2.5, 3.5);
-            let (r, b) = m(13.5, 12.5);
-            pb.move_to(l, t);
-            pb.line_to(r, t);
-            pb.line_to(r, b);
-            pb.line_to(l, b);
-            pb.close();
-            stroke_pb(canvas, pb);
-            let mut pb2 = PathBuilder::new();
-            let (cx, cy) = m(6.0, 6.3);
-            pb2.push_circle(cx, cy, sz / 16.0 * 1.3);
-            stroke_pb(canvas, pb2);
-            let mut pb3 = PathBuilder::new();
-            let (a, c) = m(3.5, 11.8);
-            let (d, e) = m(7.2, 7.5);
-            let (f, g) = m(13.0, 11.8);
-            pb3.move_to(a, c);
-            pb3.line_to(d, e);
-            pb3.line_to(f, g);
-            stroke_pb(canvas, pb3);
         }
         MenuIcon::Settings => {
             let knobs = [(4.0f32, 11.0f32), (8.0, 5.0), (12.0, 9.5)];
@@ -402,8 +448,6 @@ pub(crate) fn draw_overlay(
         };
 
         if state.hover_idx == Some(i) {
-            // Subtle steel-blue accent wash + a left accent marker, matching the
-            // window-control cluster and the rest of the redesigned chrome.
             if let Some(p) = rounded_rect_path(item_rect, 6) {
                 paint_fill(
                     &mut pm.as_mut(),
@@ -450,6 +494,7 @@ pub(crate) fn draw_overlay(
     );
 }
 
+/// Render the desktop context menu (main + optional settings flyout) onto BGRA `canvas`.
 pub(crate) fn draw_desktop_overlay(
     canvas: &mut [u8],
     canvas_w: u32,
@@ -458,14 +503,13 @@ pub(crate) fn draw_desktop_overlay(
     items: &[(&str, DesktopContextMenuAction)],
     theme_config: &ThemeConfig,
 ) {
-    let app_items: Vec<(&str, ContextMenuAction)> = items
-        .iter()
-        .map(|(label, _)| (*label, ContextMenuAction::Launch))
-        .collect();
-    let icons: Vec<MenuIcon> = items
-        .iter()
-        .map(|(_, action)| icon_for_desktop(*action))
-        .collect();
+    let icons: Vec<MenuIcon> = items.iter().map(|(_, a)| icon_for_desktop(*a)).collect();
+    // When the flyout is open, keep the Settings item highlighted in the main menu.
+    let effective_hover = if state.submenu_open {
+        Some(SETTINGS_ITEM_IDX)
+    } else {
+        state.hover_idx
+    };
     let local_state = ContextMenuState {
         x: state.x,
         y: state.y,
@@ -474,8 +518,12 @@ pub(crate) fn draw_desktop_overlay(
         is_terminal: false,
         is_pinned: false,
         running_window_id: None,
-        hover_idx: state.hover_idx,
+        hover_idx: effective_hover,
     };
+    let app_items: Vec<(&str, ContextMenuAction)> = items
+        .iter()
+        .map(|(label, _)| (*label, ContextMenuAction::Launch))
+        .collect();
     draw_overlay(
         canvas,
         canvas_w,
@@ -485,6 +533,71 @@ pub(crate) fn draw_desktop_overlay(
         &icons,
         theme_config,
     );
+
+    if state.submenu_open {
+        draw_submenu_overlay(canvas, canvas_w, canvas_h, state, theme_config);
+    }
+}
+
+/// Render the settings flyout panel to the right of the main menu.
+fn draw_submenu_overlay(
+    canvas: &mut [u8],
+    canvas_w: u32,
+    canvas_h: u32,
+    state: &DesktopContextMenuState,
+    theme_config: &ThemeConfig,
+) {
+    let items = submenu_items();
+    let n = items.len();
+    let mw = SUBMENU_WIDTH as u32;
+    let mh = submenu_height() as u32;
+    let Some(mut pm) = Pixmap::new(mw, mh) else {
+        return;
+    };
+    let pal = palette_from_config(theme_config);
+
+    let bg_rect = Rect { x: 0, y: 0, width: mw as i32, height: mh as i32 };
+    let Some(bg_path) = rounded_rect_path(bg_rect, CORNER_R) else { return };
+    paint_fill(&mut pm.as_mut(), &bg_path, pal.surface_alt);
+    paint_border(&mut pm.as_mut(), &bg_path, pal.border, 1.0);
+
+    for (i, (label, _)) in items.iter().enumerate() {
+        let item_top = VPAD + i as i32 * ITEM_H;
+        let item_rect = Rect {
+            x: 2,
+            y: item_top,
+            width: mw as i32 - 4,
+            height: ITEM_H,
+        };
+
+        if state.submenu_hover_idx == Some(i) {
+            if let Some(p) = rounded_rect_path(item_rect, 6) {
+                paint_fill(&mut pm.as_mut(), &p, pal.surface_alt.lerp(pal.accent, 0.20));
+            }
+            let marker = Rect {
+                x: item_rect.x + 1,
+                y: item_top + 7,
+                width: 3,
+                height: ITEM_H - 14,
+            };
+            if let Some(mp) = rounded_rect_path(marker, 1) {
+                paint_fill(&mut pm.as_mut(), &mp, pal.accent);
+            }
+        }
+
+        let text_y = item_top + ITEM_H - 10;
+        paint_text(&mut pm.as_mut(), label, PADDING_X, text_y, FONT_SIZE, pal.text);
+    }
+
+    blit_over(
+        canvas,
+        canvas_w as i32,
+        canvas_h as i32,
+        &pm,
+        state.x + MENU_WIDTH + SUBMENU_GAP,
+        state.y,
+    );
+    let _ = n; // used via items.iter().enumerate()
 }
 
 /// Alpha-composite a tiny_skia Pixmap (premultiplied RGBA) over a Wayland BGRA canvas.
@@ -656,16 +769,40 @@ mod tests {
             .iter()
             .any(|b| *b != 0));
     }
+
     #[test]
-    fn desktop_item_list_contains_core_actions() {
+    fn desktop_item_list_has_four_items_with_settings_last() {
         let items = desktop_item_list();
+        assert_eq!(items.len(), 4);
         assert_eq!(items[0].1, DesktopContextMenuAction::Terminal);
-        assert!(items
-            .iter()
-            .any(|(_, action)| *action == DesktopContextMenuAction::DisplaySettings));
-        assert!(items
-            .iter()
-            .any(|(_, action)| *action == DesktopContextMenuAction::WallpaperSettings));
+        assert_eq!(items[1].1, DesktopContextMenuAction::Launcher);
+        assert_eq!(items[2].1, DesktopContextMenuAction::FileManager);
+        assert_eq!(items[SETTINGS_ITEM_IDX].1, DesktopContextMenuAction::Settings);
+    }
+
+    #[test]
+    fn submenu_items_has_expected_categories() {
+        let items = submenu_items();
+        assert!(items.iter().any(|(_, a)| *a == SettingsSubAction::Display));
+        assert!(items.iter().any(|(_, a)| *a == SettingsSubAction::Wallpaper));
+        assert!(items.iter().any(|(_, a)| *a == SettingsSubAction::Theme));
+        assert!(items.iter().any(|(_, a)| *a == SettingsSubAction::Sound));
+        assert!(items.iter().any(|(_, a)| *a == SettingsSubAction::Network));
+        assert!(items.iter().any(|(_, a)| *a == SettingsSubAction::Power));
+    }
+
+    #[test]
+    fn submenu_hit_item_local_returns_correct_index() {
+        let sub_x = (MENU_WIDTH + SUBMENU_GAP + 10) as f64;
+        let first_mid_y = (VPAD + ITEM_H / 2) as f64;
+        assert_eq!(submenu_hit_item_local(sub_x, first_mid_y), Some(0));
+        assert_eq!(submenu_hit_item_local(5.0, first_mid_y), None);
+    }
+
+    #[test]
+    fn total_menu_width_grows_when_submenu_open() {
+        assert_eq!(total_menu_width(false), MENU_WIDTH);
+        assert!(total_menu_width(true) > MENU_WIDTH);
     }
 
     #[test]
@@ -674,6 +811,8 @@ mod tests {
             x: 40,
             y: 50,
             hover_idx: None,
+            submenu_open: false,
+            submenu_hover_idx: None,
         };
         assert_eq!(desktop_hit_item(&state, 55.0, 65.0), Some(0));
         assert_eq!(desktop_hit_item(&state, 5.0, 65.0), None);

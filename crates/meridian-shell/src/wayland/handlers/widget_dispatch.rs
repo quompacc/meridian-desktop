@@ -370,16 +370,37 @@ impl MeridianShell {
                     self.handle_panel_click(qh, crate::wayland::ClickAction::ToggleLauncher);
                 }
             }
-            DesktopContextMenuAction::DisplaySettings => {
-                self.open_settings_category(qh, crate::settings_view::SettingsCategory::Display);
-            }
-            DesktopContextMenuAction::WallpaperSettings => {
-                self.open_settings_category(qh, crate::settings_view::SettingsCategory::Wallpaper);
+            DesktopContextMenuAction::FileManager => {
+                let command = meridian_ipc::ShellCommand::LaunchApp {
+                    program: "nautilus".to_string(),
+                    args: Vec::new(),
+                    terminal: false,
+                };
+                if !self.ipc.send(&command) {
+                    tracing::warn!("IPC unavailable, desktop file manager launch skipped");
+                }
             }
             DesktopContextMenuAction::Settings => {
                 self.open_settings_category(qh, crate::settings_view::SettingsCategory::Theme);
             }
         }
+    }
+
+    pub(crate) fn handle_settings_sub_action(
+        &mut self,
+        qh: &QueueHandle<MeridianShell>,
+        action: crate::context_menu::SettingsSubAction,
+    ) {
+        use crate::context_menu::SettingsSubAction;
+        let cat = match action {
+            SettingsSubAction::Display => crate::settings_view::SettingsCategory::Display,
+            SettingsSubAction::Wallpaper => crate::settings_view::SettingsCategory::Wallpaper,
+            SettingsSubAction::Theme => crate::settings_view::SettingsCategory::Theme,
+            SettingsSubAction::Sound => crate::settings_view::SettingsCategory::Sound,
+            SettingsSubAction::Network => crate::settings_view::SettingsCategory::Network,
+            SettingsSubAction::Power => crate::settings_view::SettingsCategory::Power,
+        };
+        self.open_settings_category(qh, cat);
     }
 
     pub(crate) fn handle_context_menu_action(

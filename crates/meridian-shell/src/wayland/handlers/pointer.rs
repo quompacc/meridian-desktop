@@ -98,36 +98,96 @@ impl PointerHandler for MeridianShell {
 
             if self.pointer_surface == SurfaceKind::DesktopMenu {
                 if let PointerEventKind::Motion { .. } = event.kind {
-                    let new_hover =
-                        context_menu::desktop_hit_item_local(event.position.0, event.position.1);
-                    let hover_changed = if let Some(ref mut menu) = self.desktop_context_menu {
-                        if new_hover != menu.hover_idx {
-                            menu.hover_idx = new_hover;
-                            true
-                        } else {
-                            false
-                        }
+                    let (px, py) = event.position;
+                    let in_submenu = context_menu::is_in_submenu_area(px);
+                    // When cursor is in the flyout column keep the Settings item
+                    // highlighted in the main menu; otherwise normal hit-test.
+                    let new_hover = if in_submenu {
+                        Some(context_menu::SETTINGS_ITEM_IDX)
                     } else {
-                        false
+                        context_menu::desktop_hit_item_local(px, py)
                     };
-                    if hover_changed {
+                    let new_sub_hover = if in_submenu {
+                        context_menu::submenu_hit_item_local(px, py)
+                    } else {
+                        None
+                    };
+                    let want_submenu = new_hover == Some(context_menu::SETTINGS_ITEM_IDX);
+
+                    let (changed, submenu_toggled) =
+                        if let Some(ref mut menu) = self.desktop_context_menu {
+                            let mut ch = false;
+                            let toggled = want_submenu != menu.submenu_open;
+                            if new_hover != menu.hover_idx {
+                                menu.hover_idx = new_hover;
+                                ch = true;
+                            }
+                            if new_sub_hover != menu.submenu_hover_idx {
+                                menu.submenu_hover_idx = new_sub_hover;
+                                ch = true;
+                            }
+                            if toggled {
+                                menu.submenu_open = want_submenu;
+                                ch = true;
+                            }
+                            (ch, toggled)
+                        } else {
+                            (false, false)
+                        };
+
+                    if submenu_toggled {
+                        let submenu_open = self
+                            .desktop_context_menu
+                            .as_ref()
+                            .map_or(false, |m| m.submenu_open);
+                        let n = context_menu::desktop_item_list().len();
+                        let new_w =
+                            context_menu::total_menu_width(submenu_open) as u32;
+                        let new_h =
+                            context_menu::surface_height(n, submenu_open) as u32;
+                        self.desktop_menu_width = new_w;
+                        self.desktop_menu_height = new_h.max(1);
+                        self.desktop_menu_buffer = None;
+                        use smithay_client_toolkit::shell::wlr_layer::Anchor;
+                        self.desktop_menu_layer
+                            .set_anchor(Anchor::TOP | Anchor::LEFT);
+                        self.desktop_menu_layer.set_size(new_w, new_h.max(1));
+                    }
+                    if changed {
                         self.draw_desktop_menu(qh, RepaintReason::Pointer);
                     }
                     continue;
                 }
 
                 if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
-                    let hit =
-                        context_menu::desktop_hit_item_local(event.position.0, event.position.1);
-                    let action = hit.and_then(|idx| {
-                        context_menu::desktop_item_list()
-                            .get(idx)
-                            .map(|item| item.1)
-                    });
+                    let (px, py) = event.position;
+                    let in_submenu = context_menu::is_in_submenu_area(px)
+                        && self
+                            .desktop_context_menu
+                            .as_ref()
+                            .map_or(false, |m| m.submenu_open);
+                    let sub_action = if in_submenu {
+                        context_menu::submenu_hit_item_local(px, py).and_then(|idx| {
+                            context_menu::submenu_items().get(idx).map(|item| item.1)
+                        })
+                    } else {
+                        None
+                    };
+                    let main_action = if sub_action.is_none() {
+                        context_menu::desktop_hit_item_local(px, py).and_then(|idx| {
+                            context_menu::desktop_item_list()
+                                .get(idx)
+                                .map(|item| item.1)
+                        })
+                    } else {
+                        None
+                    };
                     self.desktop_context_menu = None;
                     self.desktop_menu_open = false;
                     self.unmap_desktop_menu(crate::wayland::CommitReason::Input);
-                    if let Some(action) = action {
+                    if let Some(sub) = sub_action {
+                        self.handle_settings_sub_action(qh, sub);
+                    } else if let Some(action) = main_action {
                         self.handle_desktop_context_menu_action(qh, action);
                     }
                     continue;
