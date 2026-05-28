@@ -163,6 +163,7 @@ pub(super) fn parse_action(input: &str) -> Result<Action, String> {
         }
         "close" | "close-window" => Ok(Action::CloseWindow),
         "toggle-launcher" => Ok(Action::ToggleLauncher),
+        "lock" | "lock-session" => Ok(Action::LockSession),
         "reload-config" => Ok(Action::ReloadConfig),
         "quit" | "exit" => Ok(Action::Quit),
         other => Err(format!("unknown action: {:?}", other)),

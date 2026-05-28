@@ -1,0 +1,20 @@
+[package]
+name = "meridian-lock"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "meridian-lock"
+path = "src/main.rs"
+
+[dependencies]
+ab_glyph = { workspace = true }
+libc = "0.2"
+pam-sys = "1.0.0-alpha5"
+tiny-skia = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+xkbcommon = "0.8"
+zeroize = "1"

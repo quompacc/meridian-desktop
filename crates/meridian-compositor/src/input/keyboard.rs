@@ -217,6 +217,9 @@ pub fn handle_keyboard<I: InputBackend>(
         Action::ToggleLauncher => {
             state.broadcast_toggle_launcher();
         }
+        Action::LockSession => {
+            state.spawn_lock_screen();
+        }
         Action::ReloadConfig => {
             state.reload_config();
         }

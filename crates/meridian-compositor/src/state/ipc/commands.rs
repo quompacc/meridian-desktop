@@ -298,7 +298,23 @@ impl MeridianState {
 
         tracing::warn!("focus-window requested unknown id: {}", id);
     }
+
+    pub fn spawn_lock_screen(&self) {
+        let display = self.socket_name.to_string_lossy().to_string();
+        let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+            format!("/run/user/{}", unsafe { libc::geteuid() })
+        });
+        match std::process::Command::new("meridian-lock")
+            .env("WAYLAND_DISPLAY", &display)
+            .env("XDG_RUNTIME_DIR", &xdg_runtime)
+            .spawn()
+        {
+            Ok(_child) => tracing::info!("spawned meridian-lock"),
+            Err(e) => tracing::warn!("failed to spawn meridian-lock: {}", e),
+        }
+    }
 }
+
 
 fn spawn_and_reap_launch(mut launch: Command, program: &str, args: &[String]) {
     let mut child = match launch.spawn() {

@@ -28,6 +28,7 @@ pub(super) fn default_bindings() -> HashMap<String, String> {
         ("Super+Up", "resize-tile vertical -5%"),
         ("Super+Down", "resize-tile vertical 5%"),
         ("Super+Space", "toggle-launcher"),
+        ("Super+L", "lock-session"),
         ("Super+Q", "close-window"),
     ]
     .into_iter()

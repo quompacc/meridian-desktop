@@ -1434,6 +1434,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "meridian-lock"
+version = "0.1.0"
+dependencies = [
+ "ab_glyph",
+ "libc",
+ "pam-sys",
+ "tiny-skia",
+ "tracing",
+ "tracing-subscriber",
+ "wayland-client",
+ "wayland-protocols",
+ "xkbcommon 0.8.0",
+ "zeroize",
+]
+
+[[package]]
 name = "meridian-login"
 version = "0.1.0"
 dependencies = [

@@ -74,6 +74,7 @@ pub(crate) enum DesktopContextMenuAction {
     Launcher,
     FileManager,
     Settings,
+    LockScreen,
 }
 
 /// Sub-actions for the "Einstellungen ▸" flyout.
@@ -128,6 +129,7 @@ pub(crate) fn desktop_item_list() -> Vec<(&'static str, DesktopContextMenuAction
         ("Launcher öffnen", DesktopContextMenuAction::Launcher),
         ("Dateimanager öffnen", DesktopContextMenuAction::FileManager),
         ("Einstellungen", DesktopContextMenuAction::Settings),
+        ("Bildschirm sperren", DesktopContextMenuAction::LockScreen),
     ]
 }
 
@@ -264,6 +266,7 @@ pub(crate) enum MenuIcon {
     Launcher,
     FileManager,
     Settings,
+    Lock,
 }
 
 fn icon_for_desktop(action: DesktopContextMenuAction) -> MenuIcon {
@@ -272,6 +275,7 @@ fn icon_for_desktop(action: DesktopContextMenuAction) -> MenuIcon {
         DesktopContextMenuAction::Launcher => MenuIcon::Launcher,
         DesktopContextMenuAction::FileManager => MenuIcon::FileManager,
         DesktopContextMenuAction::Settings => MenuIcon::Settings,
+        DesktopContextMenuAction::LockScreen => MenuIcon::Lock,
     }
 }
 
@@ -387,6 +391,25 @@ fn draw_menu_icon(
                     canvas.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
                 }
             }
+        }
+        MenuIcon::Lock => {
+            // Padlock body
+            let mut pb = PathBuilder::new();
+            let (bx, by) = m(4.0, 8.0);
+            let (bw, bh) = (sz / 16.0 * 8.0, sz / 16.0 * 6.0);
+            pb.move_to(bx, by);
+            pb.line_to(bx + bw, by);
+            pb.line_to(bx + bw, by + bh);
+            pb.line_to(bx, by + bh);
+            pb.close();
+            stroke_pb(canvas, pb);
+            // Shackle (top arc of padlock)
+            let (cx2, cy2) = m(8.0, 8.0);
+            let r2 = sz / 16.0 * 3.0;
+            let mut pb2 = PathBuilder::new();
+            pb2.move_to(cx2 - r2, cy2);
+            pb2.cubic_to(cx2 - r2, cy2 - r2 * 1.2, cx2 + r2, cy2 - r2 * 1.2, cx2 + r2, cy2);
+            stroke_pb(canvas, pb2);
         }
     }
 }
@@ -715,7 +738,7 @@ mod tests {
     #[test]
     fn item_list_terminal_pinned_has_four_items() {
         let items = item_list(true, true, false);
-        assert_eq!(items.len(), 4);
+        assert_eq!(items.len(), 5);
         assert!(matches!(items[0].1, ContextMenuAction::Launch));
         assert!(matches!(items[1].1, ContextMenuAction::NewWindow));
         assert!(matches!(items[2].1, ContextMenuAction::UnpinFromPanel));
@@ -811,13 +834,14 @@ mod tests {
     }
 
     #[test]
-    fn desktop_item_list_has_four_items_with_settings_last() {
+    fn desktop_item_list_has_five_items_with_settings_at_idx_three() {
         let items = desktop_item_list();
-        assert_eq!(items.len(), 4);
+        assert_eq!(items.len(), 5);
         assert_eq!(items[0].1, DesktopContextMenuAction::Terminal);
         assert_eq!(items[1].1, DesktopContextMenuAction::Launcher);
         assert_eq!(items[2].1, DesktopContextMenuAction::FileManager);
         assert_eq!(items[SETTINGS_ITEM_IDX].1, DesktopContextMenuAction::Settings);
+        assert_eq!(items[4].1, DesktopContextMenuAction::LockScreen);
     }
 
     #[test]

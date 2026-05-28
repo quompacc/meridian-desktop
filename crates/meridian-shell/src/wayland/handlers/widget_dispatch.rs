@@ -383,6 +383,17 @@ impl MeridianShell {
             DesktopContextMenuAction::Settings => {
                 self.open_settings_category(qh, crate::settings_view::SettingsCategory::Theme);
             }
+            DesktopContextMenuAction::LockScreen => {
+                let wayland_display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
+                let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
+                if let Err(e) = std::process::Command::new("meridian-lock")
+                    .env("WAYLAND_DISPLAY", &wayland_display)
+                    .env("XDG_RUNTIME_DIR", &xdg_runtime)
+                    .spawn()
+                {
+                    tracing::warn!("failed to spawn meridian-lock: {}", e);
+                }
+            }
         }
     }
 

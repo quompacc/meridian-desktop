@@ -37,6 +37,7 @@ pub enum Action {
     ResizeTile { dir: SplitDir, delta: f32 },
     CloseWindow,
     ToggleLauncher,
+    LockSession,
     ReloadConfig,
     Quit,
 }
