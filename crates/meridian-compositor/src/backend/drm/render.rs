@@ -561,7 +561,11 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
         serve_screencopy_frames(state, renderer, out, out_size);
         process_thumbnail_requests(state, renderer, out, out_size);
 
-        let elements = out.scratch_final.as_slice();
+        let elements: &[MeridianRenderElements] = if state.idle_blanked {
+            &[]
+        } else {
+            out.scratch_final.as_slice()
+        };
 
         let layer_surface_count =
             out.scratch_lower_layer_data.len() + out.scratch_upper_layer_data.len();

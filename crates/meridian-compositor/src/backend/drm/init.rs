@@ -913,6 +913,20 @@ fn register_repaint_timer_source(
                 );
                 drm.dirty_stats.report_if_due(tick_started);
             }
+            // Idle screen blanking: blank after timeout if not inhibited
+            if let Some(timeout) = state.idle_timeout {
+                if !state.idle_blanked && !state.idle_inhibitors.is_inhibited() {
+                    if state.last_activity.elapsed() >= timeout {
+                        tracing::info!("idle timeout reached, blanking outputs");
+                        state.idle_blanked = true;
+                        if let Some(drm) = state.drm_backend.as_mut() {
+                            for out in drm.outputs.iter_mut() {
+                                out.needs_repaint = true;
+                            }
+                        }
+                    }
+                }
+            }
             TimeoutAction::ToDuration(repaint_interval)
         },
     )?;

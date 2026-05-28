@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ffi::OsString, time::Instant};
+use std::{collections::HashMap, ffi::OsString, time::{Duration, Instant}};
 
 use meridian_config::{KeybindConfig, OutputEntry, ThemeManager};
 use meridian_wm::WmWorkspace;
@@ -398,6 +398,9 @@ pub struct MeridianState {
     pub screencopy_sessions: Vec<CaptureSession>,
     pub pending_screencopy_frames: Vec<(CaptureFrame, Output)>,
     pub pending_thumbnail_requests: Vec<ThumbnailRequest>,
+    pub last_activity: Instant,
+    pub idle_blanked: bool,
+    pub idle_timeout: Option<Duration>,
 }
 
 impl MeridianState {

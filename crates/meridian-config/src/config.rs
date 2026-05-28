@@ -16,12 +16,15 @@ use tracing::{info, warn};
 #[derive(Debug, Clone)]
 pub struct GeneralConfig {
     pub theme: String,
+    /// Screen blank timeout in seconds. None = disabled.
+    pub idle_timeout_secs: Option<u64>,
 }
 
 impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
             theme: "default".to_string(),
+            idle_timeout_secs: Some(300),
         }
     }
 }
@@ -131,6 +134,7 @@ impl MeridianConfig {
             keybinds,
             general: GeneralConfig {
                 theme: toml.general.theme,
+                idle_timeout_secs: toml.general.idle_timeout_secs,
             },
             cursor: toml.cursor.map(|cursor| CursorConfig {
                 theme: cursor.theme,
@@ -225,12 +229,15 @@ struct MeridianToml {
 #[serde(default)]
 struct GeneralToml {
     theme: String,
+    #[serde(default)]
+    idle_timeout_secs: Option<u64>,
 }
 
 impl Default for GeneralToml {
     fn default() -> Self {
         Self {
             theme: "default".to_string(),
+            idle_timeout_secs: Some(300),
         }
     }
 }

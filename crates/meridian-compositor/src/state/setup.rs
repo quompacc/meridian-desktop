@@ -3,7 +3,7 @@ use std::{
     ffi::OsString,
     io::Error,
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use meridian_config::{MeridianConfig, OutputEntry, ThemeManager};
@@ -707,6 +707,7 @@ impl MeridianState {
         let image_copy_capture_state = ImageCopyCaptureState::new::<MeridianState>(&display_handle);
 
         let meridian_config = MeridianConfig::load();
+        let idle_timeout = meridian_config.general.idle_timeout_secs.map(Duration::from_secs);
         let output_config_entries = meridian_config.outputs.clone();
         let output_layout = super::OutputLayout::from_config_entries(&output_config_entries);
         let mut theme_manager = ThemeManager::new();
@@ -788,6 +789,9 @@ impl MeridianState {
             screencopy_sessions: Vec::new(),
             pending_screencopy_frames: Vec::new(),
             pending_thumbnail_requests: Vec::new(),
+            last_activity: Instant::now(),
+            idle_blanked: false,
+            idle_timeout,
         })
     }
 

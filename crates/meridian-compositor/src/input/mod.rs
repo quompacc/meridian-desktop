@@ -8,6 +8,11 @@ use crate::state::MeridianState;
 impl MeridianState {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
         self.idle_notifier.notify_activity(&self.seat);
+        let was_blanked = std::mem::replace(&mut self.idle_blanked, false);
+        self.last_activity = std::time::Instant::now();
+        if was_blanked {
+            self.mark_all_outputs_dirty("idle-wake");
+        }
         if self.lock_manager.is_locked_or_pending() {
             match &event {
                 InputEvent::Keyboard { .. } => {}

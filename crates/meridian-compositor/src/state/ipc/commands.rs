@@ -145,6 +145,7 @@ impl MeridianState {
         self.output_layout = OutputLayout::from_config_entries(&self.output_config_entries);
         self.reapply_output_layout(&previous_outputs);
         self.keybind_config = config.keybinds;
+        self.idle_timeout = config.general.idle_timeout_secs.map(std::time::Duration::from_secs);
 
         if changes.theme_changed {
             tracing::info!(
