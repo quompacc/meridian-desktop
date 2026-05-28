@@ -805,15 +805,13 @@ impl MeridianShell {
             };
 
             let mut painter = Painter::new(canvas, width as i32, height as i32);
-            painter.clear(self.theme.colors.surface_alt);
+            crate::popup_card::draw_card_body(&mut painter, &self.theme);
             let card = Rect {
-                x: 4,
-                y: 4,
-                w: width as i32 - 8,
-                h: height as i32 - 8,
+                x: 0,
+                y: 0,
+                w: width as i32,
+                h: height as i32,
             };
-            painter.rect(card, self.theme.colors.surface);
-            painter.stroke_rect(card, self.theme.colors.border);
 
             let maybe_model = time::local_date().and_then(|date| {
                 CalendarMonthModel::for_month(
@@ -835,27 +833,26 @@ impl MeridianShell {
                     usize::from(model.first_weekday_col0)
                 );
 
-                let content = Rect {
-                    x: card.x + 12,
-                    y: card.y + 8,
-                    w: card.w - 24,
-                    h: card.h - 16,
-                };
-                let header_rect = Rect {
-                    x: content.x,
-                    y: content.y,
-                    w: content.w,
-                    h: 24,
-                };
-                let header_text = format!("{:02} / {}", model.month, model.year);
-                painter.text_centered(
+                let header_text = format!(
+                    "{} {}",
+                    german_month_name(model.month),
+                    model.year
+                );
+                crate::popup_card::draw_card_title(
+                    &mut painter,
                     &self.font,
+                    &self.theme,
                     &header_text,
-                    header_rect,
-                    self.theme.colors.text,
                 );
 
-                let weekday_y = header_rect.y + header_rect.h + 8;
+                let content = Rect {
+                    x: card.x + crate::popup_card::PAD_X,
+                    y: crate::popup_card::BODY_TOP,
+                    w: card.w - 2 * crate::popup_card::PAD_X,
+                    h: (card.h - crate::popup_card::BODY_TOP - crate::popup_card::PAD_BOTTOM).max(1),
+                };
+
+                let weekday_y = content.y;
                 let weekday_h = 18;
                 for (col, label) in labels.iter().enumerate() {
                     let x0 = content.x + (col as i32 * content.w) / 7;
@@ -869,7 +866,7 @@ impl MeridianShell {
                             w: x1 - x0,
                             h: weekday_h,
                         },
-                        self.theme.colors.text,
+                        self.theme.colors.text_dim,
                     );
                 }
 
@@ -937,6 +934,8 @@ impl MeridianShell {
                 painter.text_centered(&self.font, &time_text, text_rect, self.theme.colors.text);
             }
 
+            drop(painter);
+            round_buffer_corners(canvas, width as usize, height as usize, crate::popup_card::CARD_RADIUS);
             if let Err(err) = buf.attach_to(self.calendar_layer.wl_surface()) {
                 warn!(
                     "calendar popup buffer attach failed: reason={:?} width={} height={} error={}",
@@ -1028,6 +1027,8 @@ impl MeridianShell {
                 },
                 &mut self.workspace_state,
             );
+            drop(painter);
+            round_buffer_corners(canvas, width as usize, height as usize, crate::popup_card::CARD_RADIUS);
 
             if let Err(err) = buf.attach_to(self.workspace_layer.wl_surface()) {
                 warn!(
@@ -1113,6 +1114,8 @@ impl MeridianShell {
                 &self.theme,
                 self.network_controller.state(),
             );
+            drop(painter);
+            round_buffer_corners(canvas, width as usize, height as usize, crate::popup_card::CARD_RADIUS);
 
             if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {
                 warn!(
@@ -1191,6 +1194,8 @@ impl MeridianShell {
                 &self.theme,
                 &self.audio_snapshot,
             );
+            drop(painter);
+            round_buffer_corners(canvas, width as usize, height as usize, crate::popup_card::CARD_RADIUS);
 
             if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {
                 warn!(
@@ -1485,6 +1490,25 @@ impl MeridianShell {
         if std::fs::write(&tmp_path, snapshot).is_ok() {
             let _ = std::fs::rename(tmp_path, path);
         }
+    }
+}
+
+/// German month name from a 1-based month number.
+fn german_month_name(month: u8) -> &'static str {
+    match month {
+        1 => "Januar",
+        2 => "Februar",
+        3 => "März",
+        4 => "April",
+        5 => "Mai",
+        6 => "Juni",
+        7 => "Juli",
+        8 => "August",
+        9 => "September",
+        10 => "Oktober",
+        11 => "November",
+        12 => "Dezember",
+        _ => "",
     }
 }
 

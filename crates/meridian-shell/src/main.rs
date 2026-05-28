@@ -22,6 +22,7 @@ mod network_popup;
 mod notification_popup;
 mod notifications;
 mod panel;
+mod popup_card;
 mod panel_view;
 mod soft_shadow;
 mod printers;
@@ -61,11 +62,11 @@ pub const LAUNCHER_HEIGHT: u32 = 620;
 pub const CALENDAR_POPUP_WIDTH: u32 = 280;
 pub const CALENDAR_POPUP_HEIGHT: u32 = 220;
 pub const WORKSPACE_POPUP_WIDTH: u32 = 280;
-pub const WORKSPACE_POPUP_HEIGHT: u32 = 200;
+pub const WORKSPACE_POPUP_HEIGHT: u32 = 184;
 pub const NETWORK_POPUP_WIDTH: u32 = 280;
-pub const NETWORK_POPUP_HEIGHT: u32 = 150;
-pub const AUDIO_POPUP_WIDTH: u32 = 300;
-pub const AUDIO_POPUP_HEIGHT: u32 = 172;
+pub const NETWORK_POPUP_HEIGHT: u32 = 200;
+pub const AUDIO_POPUP_WIDTH: u32 = 280;
+pub const AUDIO_POPUP_HEIGHT: u32 = 200;
 pub const AUDIO_POPUP_RIGHT_MARGIN: i32 = 126;
 pub const SNI_MENU_RIGHT_MARGIN: i32 = 8;
 pub const SHELL_POPUP_BOTTOM_MARGIN: i32 = 2;
@@ -113,11 +114,44 @@ pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
     ]
 }
 
+fn install_panic_logger() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let backtrace = std::backtrace::Backtrace::capture();
+        let payload = info.payload().downcast_ref::<&str>().map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "<unknown panic>".to_string());
+        let loc = info.location().map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown location>".to_string());
+        let pid = std::process::id();
+        let line = format!(
+            "[{}] meridian-shell panic pid={}\n  at: {}\n  msg: {}\n  trace: {:?}\n\n",
+            chrono_now(), pid, loc, payload, backtrace
+        );
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true).append(true)
+            .open("/tmp/meridian-shell-panic.log")
+        {
+            use std::io::Write;
+            let _ = f.write_all(line.as_bytes());
+        }
+        default_hook(info);
+    }));
+}
+
+fn chrono_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    format!("{}", secs)
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let env_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info"))
         .add_directive("usvg=error".parse().expect("static directive parses"));
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
+
+    install_panic_logger();
 
     let mut event_loop = EventLoop::try_new()?;
     let (mut shell, qh) = wayland::initialize(&mut event_loop)?;

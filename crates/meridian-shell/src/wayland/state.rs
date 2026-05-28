@@ -912,6 +912,28 @@ impl MeridianShell {
         self.panel_dirty = true;
     }
 
+    fn open_network_settings_from_tray(&mut self, reason: CommitReason) {
+        if self.calendar_popup_open {
+            self.close_calendar_popup(reason);
+        }
+        if self.workspace_popup_open {
+            self.close_workspace_popup(reason);
+        }
+        if self.network_popup_open {
+            self.close_network_popup(reason);
+        }
+        if self.audio_popup_open {
+            self.close_audio_popup(reason);
+        }
+        if !self.launcher_state.open {
+            self.toggle_launcher();
+        }
+        self.launcher_settings_open = true;
+        self.settings_category = crate::settings_view::SettingsCategory::Network;
+        self.launcher_dirty = true;
+        self.panel_dirty = true;
+    }
+
     pub(super) fn toggle_calendar_popup(&mut self, reason: CommitReason) {
         if self.calendar_popup_open {
             self.close_calendar_popup(reason);
@@ -1581,6 +1603,11 @@ impl MeridianShell {
                 self.draw_panel(qh, RepaintReason::Pointer);
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
+            ClickAction::OpenNetworkSettings => {
+                self.open_network_settings_from_tray(CommitReason::Input);
+                self.draw_panel(qh, RepaintReason::Pointer);
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
             ClickAction::CloseStatusNotifierMenu => {
                 self.close_status_notifier_menu(CommitReason::Input);
             }
@@ -1748,6 +1775,7 @@ impl MeridianShell {
             ClickAction::ToggleNetworkPopup => {}
             ClickAction::ToggleAudioPopup => {}
             ClickAction::OpenSoundSettings => {}
+            ClickAction::OpenNetworkSettings => {}
             ClickAction::ActivateStatusNotifierItem(_) => {}
             ClickAction::CloseStatusNotifierMenu => {}
             ClickAction::Clock => {}
@@ -2156,6 +2184,7 @@ mod tests {
         let config = MeridianConfig {
             general: GeneralConfig {
                 theme: "default".to_string(),
+                idle_timeout_secs: None,
             },
             cursor: Some(meridian_config::CursorConfig {
                 theme: "default".to_string(),
@@ -2183,6 +2212,7 @@ mod tests {
         let config = MeridianConfig {
             general: GeneralConfig {
                 theme: "definitely-not-a-theme".to_string(),
+                idle_timeout_secs: None,
             },
             ..Default::default()
         };

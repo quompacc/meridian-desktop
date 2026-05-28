@@ -740,7 +740,7 @@ impl PointerHandler for MeridianShell {
                                     self.status_notifier_menu_height,
                                     event.position.0,
                                     event.position.1,
-                                );
+                                ).is_some();
                                 if inside {
                                     None
                                 } else {
@@ -761,16 +761,17 @@ impl PointerHandler for MeridianShell {
                                 None => Some(crate::wayland::ClickAction::ToggleAudioPopup),
                             }
                         } else {
-                            let inside = popup_hit_test(
+                            match crate::network_popup::popup_hit_test(
                                 self.network_width,
                                 self.network_height,
                                 event.position.0,
                                 event.position.1,
-                            );
-                            if inside {
-                                None
-                            } else {
-                                Some(crate::wayland::ClickAction::ToggleNetworkPopup)
+                            ) {
+                                Some(crate::network_popup::NetworkPopupHit::SettingsLink) => {
+                                    Some(crate::wayland::ClickAction::OpenNetworkSettings)
+                                }
+                                Some(crate::network_popup::NetworkPopupHit::Card) => None,
+                                None => Some(crate::wayland::ClickAction::ToggleNetworkPopup),
                             }
                         }
                     }

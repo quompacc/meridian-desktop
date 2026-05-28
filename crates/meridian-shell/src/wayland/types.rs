@@ -30,6 +30,7 @@ pub enum ClickAction {
     ToggleNetworkPopup,
     ToggleAudioPopup,
     OpenSoundSettings,
+    OpenNetworkSettings,
     ActivateStatusNotifierItem(usize),
     CloseStatusNotifierMenu,
     Clock,
@@ -48,6 +49,7 @@ impl ClickAction {
             ClickAction::ToggleNetworkPopup => "toggle-network-popup".to_string(),
             ClickAction::ToggleAudioPopup => "toggle-audio-popup".to_string(),
             ClickAction::OpenSoundSettings => "open-sound-settings".to_string(),
+            ClickAction::OpenNetworkSettings => "open-network-settings".to_string(),
             ClickAction::ActivateStatusNotifierItem(idx) => {
                 format!("activate-status-notifier-item-{idx}")
             }

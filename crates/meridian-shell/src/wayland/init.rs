@@ -345,7 +345,7 @@ pub(crate) fn initialize(
     info!("Wayland connection flushed, entering event loop");
 
     let font = TextRenderer::new(&theme.fonts.ui, 13);
-    let pool = SlotPool::new(1024 * 1024 * 4, &shm)?;
+    let pool = SlotPool::new(1024 * 1024 * 16, &shm)?;
     let launcher_apps = launcher::DesktopApp::load_system();
 
     let pinned_apps: Vec<panel::PinnedApp> = if meridian_config.panel.pinned.is_empty() {

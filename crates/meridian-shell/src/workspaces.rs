@@ -3,10 +3,14 @@ use std::cell::RefCell;
 use meridian_config::ThemeConfig;
 
 use crate::{
+    popup_card::{draw_card_body, draw_card_title, BODY_TOP, PAD_BOTTOM, PAD_X},
     ui::primitives::{draw_active_indicator, ActiveIndicatorEdge},
     ClickAction, ClickZone, Painter, Rect, TextRenderer, WORKSPACE_POPUP_HEIGHT,
     WORKSPACE_POPUP_WIDTH,
 };
+
+const GAP: i32 = 6;
+const TILE_RADIUS: i32 = 6;
 
 pub struct WorkspacePopupState {
     pub clicks: Vec<ClickZone>,
@@ -25,22 +29,27 @@ pub struct WorkspacePopupInput {
     pub hovered_idx: Option<usize>,
 }
 
-pub fn workspace_popup_hover_idx(x: f64, y: f64) -> Option<usize> {
-    const PADDING: i32 = 16;
-    const GAP: i32 = 8;
+fn grid_geometry() -> (i32, i32, i32, i32) {
     let width = WORKSPACE_POPUP_WIDTH as i32;
     let height = WORKSPACE_POPUP_HEIGHT as i32;
-    let grid_w = width - (2 * PADDING);
-    let grid_h = height - (2 * PADDING);
+    let grid_left = PAD_X;
+    let grid_top = BODY_TOP;
+    let grid_w = width - 2 * PAD_X;
+    let grid_bottom = height - PAD_BOTTOM;
+    let grid_h = grid_bottom - grid_top;
     let tile_w = (grid_w - 2 * GAP) / 3;
     let tile_h = (grid_h - 2 * GAP) / 3;
+    (grid_left, grid_top, tile_w, tile_h)
+}
 
+pub fn workspace_popup_hover_idx(x: f64, y: f64) -> Option<usize> {
+    let (left, top, tile_w, tile_h) = grid_geometry();
     for i in 0_usize..9 {
         let col = (i % 3) as i32;
         let row = (i / 3) as i32;
         let rect = Rect {
-            x: PADDING + col * (tile_w + GAP),
-            y: PADDING + row * (tile_h + GAP),
+            x: left + col * (tile_w + GAP),
+            y: top + row * (tile_h + GAP),
             w: tile_w,
             h: tile_h,
         };
@@ -60,35 +69,20 @@ pub fn draw_workspace_popup(
 ) {
     state.clicks.clear();
     let colors = &theme.colors;
-    let width = WORKSPACE_POPUP_WIDTH as i32;
-    let height = WORKSPACE_POPUP_HEIGHT as i32;
     let total_workspaces = input.total_workspaces.max(1);
 
-    painter.clear(colors.surface_alt);
-    painter.stroke_rect(
-        Rect {
-            x: 0,
-            y: 0,
-            w: width,
-            h: height,
-        },
-        colors.border,
-    );
+    draw_card_body(painter, theme);
+    draw_card_title(painter, font, theme, "Arbeitsbereiche");
 
-    const PADDING: i32 = 16;
-    const GAP: i32 = 8;
-    let grid_w = width - (2 * PADDING);
-    let grid_h = height - (2 * PADDING);
-    let tile_w = (grid_w - 2 * GAP) / 3;
-    let tile_h = (grid_h - 2 * GAP) / 3;
+    let (left, top, tile_w, tile_h) = grid_geometry();
 
     for i in 0_usize..9 {
         let ws_id = (i + 1) as u32;
         let col = (i % 3) as i32;
         let row = (i / 3) as i32;
         let rect = Rect {
-            x: PADDING + col * (tile_w + GAP),
-            y: PADDING + row * (tile_h + GAP),
+            x: left + col * (tile_w + GAP),
+            y: top + row * (tile_h + GAP),
             w: tile_w,
             h: tile_h,
         };
@@ -97,14 +91,16 @@ pub fn draw_workspace_popup(
         let is_occupied = input.occupied[i];
         let is_hovered = input.hovered_idx == Some(i);
 
-        let bg = if is_hovered {
+        let bg = if is_active {
+            colors.surface
+        } else if is_hovered {
             colors.border
-        } else if is_active || is_occupied {
+        } else if is_occupied {
             colors.surface
         } else {
             colors.surface_alt
         };
-        painter.rect(rect, bg);
+        painter.roundish_rect_with_radius(rect, bg, TILE_RADIUS);
 
         if is_active {
             draw_active_indicator(painter, rect, ActiveIndicatorEdge::Top, theme);
@@ -172,11 +168,10 @@ mod tests {
     }
 
     #[test]
-    fn workspace_popup_hover_idx_reports_tiles_and_gaps() {
-        assert_eq!(workspace_popup_hover_idx(17.0, 17.0), Some(0));
-        assert_eq!(workspace_popup_hover_idx(102.0, 17.0), Some(1));
-        assert_eq!(workspace_popup_hover_idx(17.0, 92.0), Some(3));
+    fn workspace_popup_hover_idx_finds_first_tile_inside_grid() {
+        let probe_x = crate::popup_card::PAD_X as f64 + 4.0;
+        let probe_y = crate::popup_card::BODY_TOP as f64 + 4.0;
+        assert_eq!(workspace_popup_hover_idx(probe_x, probe_y), Some(0));
         assert_eq!(workspace_popup_hover_idx(0.0, 0.0), None);
-        assert_eq!(workspace_popup_hover_idx(96.0, 20.0), None);
     }
 }

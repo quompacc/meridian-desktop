@@ -820,7 +820,7 @@ impl Widget for PanelWindowChip {
             WidgetState::Pressed => base_bg.lerp(Color::rgb(0, 0, 0), 0.10),
         };
 
-        if let Some(ref path) = rounded_rect_path(area, CHIP_RADIUS) {
+        if let Some(ref path) = rounded_rect_path(area, CHIP_HL_RADIUS) {
             paint_fill(canvas, path, bg);
         }
 
