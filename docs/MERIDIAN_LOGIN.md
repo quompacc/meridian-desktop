@@ -121,7 +121,7 @@ bootsplash -> meridian-login -> meridian -> meridian-shell
 - Unit-Tests liegen direkt in `src/main.rs`, `auth.rs`, `session.rs` und
   `input.rs`.
 - Clippy ist Pflicht:
-  `cargo clippy --workspace -- -D warnings`
+  `cargo clippy --workspace --all-targets -- -D warnings`
 - Realtest:
   `sudo scripts/test-login-uinput.py --prepare-user --run --lock-user`
 - Logout via IPC:

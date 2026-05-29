@@ -1,16 +1,18 @@
 # Testing Guide
 
 ## Standardchecks
-Diese vier Checks sind die Baseline:
-1. `cargo fmt`
+Diese Checks sind die Baseline und werden vom pre-push-Hook
+(`.githooks/pre-push`, aktivieren mit `git config core.hooksPath .githooks`)
+und der GitHub-CI erzwungen:
+1. `cargo fmt --all -- --check`
 2. `cargo test --workspace`
 3. `cargo check --workspace`
-4. `cargo clippy --workspace -- -D warnings`
+4. `cargo clippy --workspace --all-targets -- -D warnings`
 
 ## Pflicht nach Codeänderungen
 - Nach Rust-Codeänderungen: `cargo fmt`
 - Nach Rust-Codeänderungen: `cargo check --workspace`
-- Nach Rust-Codeänderungen: `cargo clippy --workspace -- -D warnings`
+- Nach Rust-Codeänderungen: `cargo clippy --workspace --all-targets -- -D warnings`
 - Bei Test-/Logikänderungen zusätzlich: `cargo test --workspace`
 
 ## Wann ausführen

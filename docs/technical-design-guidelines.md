@@ -40,8 +40,8 @@ These guidelines define implementation discipline for Meridian patches.
 
 ## Validation Gates
 - Rust changes must pass:
-  - `cargo fmt --check`
-  - `cargo check --workspace`
+  - `cargo fmt --all -- --check`
+  - `cargo clippy --workspace --all-targets -- -D warnings`
   - `cargo test --workspace`
   - `git diff --check`
 
