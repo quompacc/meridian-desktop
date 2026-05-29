@@ -170,15 +170,12 @@ fn find_x11_window_with_workspace(
     state: &MeridianState,
     surface: &X11Surface,
 ) -> Option<(usize, Window)> {
-    (0..state.workspaces.count()).find_map(|workspace| {
-        state
-            .workspaces
-            .space_at(workspace)
-            .elements()
-            .find(|window| matches!(window.x11_surface(), Some(x11) if x11 == surface))
-            .cloned()
-            .map(|window| (workspace, window))
-    })
+    state
+        .workspaces
+        .find_element_workspace(
+            |window| matches!(window.x11_surface(), Some(x11) if x11 == surface),
+        )
+        .map(|(workspace, window)| (workspace, window.clone()))
 }
 
 fn find_x11_surface_by_window_id(state: &MeridianState, window_id: u32) -> Option<X11Surface> {
