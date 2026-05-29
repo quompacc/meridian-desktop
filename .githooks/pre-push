@@ -1,0 +1,30 @@
+#!/bin/sh
+# Meridian pre-push-Gate: Formatierung, Lints und Tests muessen gruen sein,
+# bevor gepusht wird. Spiegelt die Pflichtchecks aus CLAUDE.md/AGENTS.md.
+#
+# Im Notfall umgehbar mit:  git push --no-verify
+#
+# Aktiviert via:  git config core.hooksPath .githooks
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "pre-push [1/3]: cargo fmt --all -- --check"
+if ! cargo fmt --all -- --check; then
+    echo "pre-push: ABGEBROCHEN - Formatierung. Fix: 'cargo fmt --all'." >&2
+    exit 1
+fi
+
+echo "pre-push [2/3]: cargo clippy --workspace --all-targets -- -D warnings"
+if ! cargo clippy --workspace --all-targets -- -D warnings; then
+    echo "pre-push: ABGEBROCHEN - clippy meldet Warnings/Errors." >&2
+    exit 1
+fi
+
+echo "pre-push [3/3]: cargo test --workspace"
+if ! cargo test --workspace; then
+    echo "pre-push: ABGEBROCHEN - Tests rot." >&2
+    exit 1
+fi
+
+echo "pre-push: alle Checks gruen."
