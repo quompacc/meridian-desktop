@@ -1,13 +1,46 @@
 //! Read-only package update status for the Settings "Updates" page.
 //!
-//! Uses `apt list --upgradable` (read-only, no lock). Degrades gracefully if
-//! apt is unavailable. The parser is unit-tested against fixture output.
+//! `apt list --upgradable` is a slow subprocess (seconds, and it can block on
+//! an apt lock), so it must NEVER run on the single-threaded shell event loop
+//! — doing so freezes the whole desktop. Instead it runs once in a background
+//! thread and the result is cached; the page shows a placeholder until it
+//! lands. The parser is unit-tested against fixture output.
 
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 const MAX_LISTED: usize = 12;
 
+type UpdateRows = Vec<(String, String)>;
+
+static CACHE: OnceLock<Mutex<Option<UpdateRows>>> = OnceLock::new();
+static STARTED: AtomicBool = AtomicBool::new(false);
+
+fn cache() -> &'static Mutex<Option<UpdateRows>> {
+    CACHE.get_or_init(|| Mutex::new(None))
+}
+
+/// Non-blocking: returns the cached rows, kicking off the background apt query
+/// on first call. Never runs apt on the calling (event-loop) thread, so the
+/// shell cannot freeze on it.
 pub fn updates_rows() -> Vec<(String, String)> {
+    if !STARTED.swap(true, Ordering::SeqCst) {
+        std::thread::spawn(|| {
+            let rows = query_blocking();
+            if let Ok(mut guard) = cache().lock() {
+                *guard = Some(rows);
+            }
+        });
+    }
+    cache()
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+        .unwrap_or_else(|| vec![("Status".to_string(), "wird ermittelt …".to_string())])
+}
+
+fn query_blocking() -> Vec<(String, String)> {
     match Command::new("apt").args(["list", "--upgradable"]).output() {
         Ok(out) if out.status.success() => {
             rows_from(&parse_upgradable(&String::from_utf8_lossy(&out.stdout)))
