@@ -1,5 +1,6 @@
 use std::{
     ffi::{CStr, CString},
+    mem::ManuallyDrop,
     path::PathBuf,
     ptr,
 };
@@ -12,20 +13,30 @@ pub(crate) const ADWAITA_SANS_REGULAR: &[u8] =
     include_bytes!("../../assets/fonts/AdwaitaSans-Regular.ttf");
 
 pub struct TextRenderer {
-    face: ft::Face,
-    library: ft::Library,
+    // Drop order is load-bearing: the FreeType face must be released
+    // (FT_Done_Face) before its library (FT_Done_FreeType), or the face
+    // teardown touches freed library memory. ManuallyDrop + the explicit
+    // Drop below enforce this regardless of field declaration order.
+    face: ManuallyDrop<ft::Face>,
+    library: ManuallyDrop<ft::Library>,
 }
 
 impl TextRenderer {
     pub fn new(pattern: &str, pixels: u32) -> Option<Self> {
         let library = ft::Library::new().ok()?;
         if let Ok(face) = ft::Face::new_from_memory(&library, ADWAITA_SANS_REGULAR, pixels) {
-            return Some(Self { face, library });
+            return Some(Self {
+                face: ManuallyDrop::new(face),
+                library: ManuallyDrop::new(library),
+            });
         }
 
         let font_path = fontconfig_match(pattern).or_else(|| fontconfig_match("sans"))?;
         let face = ft::Face::new(&library, &font_path, pixels).ok()?;
-        Some(Self { face, library })
+        Some(Self {
+            face: ManuallyDrop::new(face),
+            library: ManuallyDrop::new(library),
+        })
     }
 
     pub fn draw_text(
@@ -82,7 +93,12 @@ impl TextRenderer {
 
 impl Drop for TextRenderer {
     fn drop(&mut self) {
-        let _ = &self.library;
+        // SAFETY: both fields are live (constructed once, dropped only here).
+        // Face before library, per FreeType's ownership rule.
+        unsafe {
+            ManuallyDrop::drop(&mut self.face);
+            ManuallyDrop::drop(&mut self.library);
+        }
     }
 }
 
