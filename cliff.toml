@@ -48,6 +48,7 @@ commit_parsers = [
     { message = "^ci", group = "<!-- 5 -->Tooling" },
     { message = "^build", group = "<!-- 5 -->Tooling" },
     { message = "^chore", group = "<!-- 5 -->Tooling" },
+    { message = ".*", group = "<!-- 6 -->Other" },
 ]
 protect_breaking_commits = false
 filter_commits = false

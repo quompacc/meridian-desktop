@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+# On every vX.Y.Z tag: build release notes with git-cliff (latest section)
+# and create a Codeberg/Forgejo release via the API using the automatic
+# job token.
+jobs:
+  release:
+    runs-on: docker
+    container:
+      image: debian:bookworm-slim
+    steps:
+      - name: Install tooling
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            curl ca-certificates git jq tar
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install git-cliff
+        run: |
+          curl -fsSL \
+            https://github.com/orhun/git-cliff/releases/download/v2.13.1/git-cliff-2.13.1-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C /usr/local/bin --strip-components=1 \
+              git-cliff-2.13.1/git-cliff
+          git-cliff --version
+
+      - name: Generate release notes
+        run: |
+          git config --global --add safe.directory "$PWD"
+          git-cliff --latest --strip all -o RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
+
+      - name: Publish Forgejo release
+        run: |
+          body="$(jq -Rs . < RELEASE_NOTES.md)"
+          curl -fsSL -X POST \
+            "${GITHUB_SERVER_URL}/api/v1/repos/${GITHUB_REPOSITORY}/releases" \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"${GITHUB_REF_NAME}\",\"name\":\"Meridian ${GITHUB_REF_NAME}\",\"body\":${body}}"
