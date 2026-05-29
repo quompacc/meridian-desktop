@@ -1368,7 +1368,7 @@ dependencies = [
 
 [[package]]
 name = "meridian"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "meridian-compositor",
@@ -1379,14 +1379,14 @@ dependencies = [
 
 [[package]]
 name = "meridian-boot-common"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "drm 0.15.0",
 ]
 
 [[package]]
 name = "meridian-compass-render"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ab_glyph",
  "tiny-skia",
@@ -1394,7 +1394,7 @@ dependencies = [
 
 [[package]]
 name = "meridian-compositor"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bitflags 2.11.1",
  "cgmath",
@@ -1415,7 +1415,7 @@ dependencies = [
 
 [[package]]
 name = "meridian-config"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "bitflags 2.11.1",
  "serde",
@@ -1426,7 +1426,7 @@ dependencies = [
 
 [[package]]
 name = "meridian-ipc"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "libc",
  "serde",
@@ -1435,7 +1435,7 @@ dependencies = [
 
 [[package]]
 name = "meridian-lock"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ab_glyph",
  "libc",
@@ -1451,7 +1451,7 @@ dependencies = [
 
 [[package]]
 name = "meridian-login"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "drm 0.15.0",
  "evdev",
@@ -1469,7 +1469,7 @@ dependencies = [
 
 [[package]]
 name = "meridian-polkit"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ab_glyph",
  "libc",
@@ -1491,7 +1491,7 @@ dependencies = [
 
 [[package]]
 name = "meridian-portal"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "meridian-ipc",
  "tokio",
@@ -1502,7 +1502,7 @@ dependencies = [
 
 [[package]]
 name = "meridian-shell"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "image",
  "libc",
@@ -1525,7 +1525,7 @@ dependencies = [
 
 [[package]]
 name = "meridian-ui"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "fontdue",
  "taffy",
@@ -1534,7 +1534,7 @@ dependencies = [
 
 [[package]]
 name = "meridian-wm"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "smithay",
  "tracing",

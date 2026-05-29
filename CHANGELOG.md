@@ -10,6 +10,26 @@ single version.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-29
+
+### Fixed
+
+- Audit M1/M2 — async-signal-safe privilege drop, lock SHM realloc
+- Audit L1/L2 -- wipe leaked PAM responses, drop per-frame alloc
+- Audit FT-1 -- enforce FreeType face/library drop order
+- Audit XW-1 -- clean up X11 windows on non-active workspaces
+- Audit GR-1 -- confine move-grab to the window's own workspace
+- Audit CFG-1 -- Color::from_str panic on multibyte config values
+
+### Documentation
+
+- Align check commands with the enforced gates
+
+### Tooling
+
+- Drop Codeberg/Forgejo workflows, GitHub-only
+- Drop leftover keyboard keylog and gratuitous unsafe Sync
+
 ## [0.2.0] - 2026-05-29
 
 ### Documentation
@@ -44,6 +64,7 @@ shared compass renderer.
   running fmt/clippy/test, and unit tests for `meridian-lock` and
   `meridian-polkit`.
 
-[Unreleased]: https://github.com/quompacc/meridian-desktop/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/quompacc/meridian-desktop/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/quompacc/meridian-desktop/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/quompacc/meridian-desktop/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/quompacc/meridian-desktop/releases/tag/v0.1.0
