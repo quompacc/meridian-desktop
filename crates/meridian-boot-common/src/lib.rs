@@ -64,7 +64,6 @@ pub fn select_boot_mode(modes: &[drm::control::Mode]) -> Option<drm::control::Mo
     filtered.first().copied().or_else(|| modes.first().copied())
 }
 
-
 /// Persisted desktop appearance, read by the boot chain (bootsplash, login) so
 /// the compass and login chrome match the active desktop theme. Written by the
 /// compositor when the theme is (re)loaded. Defaults to Dark when absent.

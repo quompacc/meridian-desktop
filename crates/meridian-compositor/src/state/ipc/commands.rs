@@ -145,16 +145,19 @@ impl MeridianState {
         self.output_layout = OutputLayout::from_config_entries(&self.output_config_entries);
         self.reapply_output_layout(&previous_outputs);
         self.keybind_config = config.keybinds;
-        self.idle_timeout = config.general.idle_timeout_secs.map(std::time::Duration::from_secs);
+        self.idle_timeout = config
+            .general
+            .idle_timeout_secs
+            .map(std::time::Duration::from_secs);
 
         if changes.theme_changed {
             tracing::info!(
                 "theme override changed: {}",
                 self.theme_manager.current().name
             );
-            let _ = meridian_boot_common::write_appearance(
-                super::super::setup::theme_appearance(self.theme_manager.current()),
-            );
+            let _ = meridian_boot_common::write_appearance(super::super::setup::theme_appearance(
+                self.theme_manager.current(),
+            ));
         }
         if changes.wallpaper_changed {
             tracing::info!("wallpaper override changed");
@@ -302,9 +305,8 @@ impl MeridianState {
 
     pub fn spawn_lock_screen(&self) {
         let display = self.socket_name.to_string_lossy().to_string();
-        let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
-            format!("/run/user/{}", unsafe { libc::geteuid() })
-        });
+        let xdg_runtime = std::env::var("XDG_RUNTIME_DIR")
+            .unwrap_or_else(|_| format!("/run/user/{}", unsafe { libc::geteuid() }));
         match std::process::Command::new("meridian-lock")
             .env("WAYLAND_DISPLAY", &display)
             .env("XDG_RUNTIME_DIR", &xdg_runtime)
@@ -315,7 +317,6 @@ impl MeridianState {
         }
     }
 }
-
 
 fn spawn_and_reap_launch(mut launch: Command, program: &str, args: &[String]) {
     let mut child = match launch.spawn() {

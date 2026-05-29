@@ -87,13 +87,15 @@ fn render_window_toplevel_elements<C>(
             match clip {
                 Some((prog, geo, radius)) => {
                     out.extend(elements.into_iter().map(|e| {
-                        C::from(crate::backend::clipped_surface::ClippedSurfaceRenderElement::new(
-                            prog.clone(),
-                            e,
-                            scale,
-                            geo,
-                            radius,
-                        ))
+                        C::from(
+                            crate::backend::clipped_surface::ClippedSurfaceRenderElement::new(
+                                prog.clone(),
+                                e,
+                                scale,
+                                geo,
+                                radius,
+                            ),
+                        )
                     }));
                 }
                 None => {

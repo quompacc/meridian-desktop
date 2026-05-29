@@ -18,8 +18,8 @@ use crate::{
     network::NetworkState,
     panel::{PanelWindowEntry, PinnedApp},
     status_notifier::StatusNotifierItem,
-    ClickAction, ClickZone, Rect as ShellRect, PANEL_BOTTOM_GAP, PANEL_HEIGHT,
-    PANEL_SIDE_MARGIN, PANEL_SURFACE_HEIGHT, PANEL_TOP_SHADOW,
+    ClickAction, ClickZone, Rect as ShellRect, PANEL_BOTTOM_GAP, PANEL_HEIGHT, PANEL_SIDE_MARGIN,
+    PANEL_SURFACE_HEIGHT, PANEL_TOP_SHADOW,
 };
 
 const CHIP_H: i32 = 28;
@@ -1175,9 +1175,7 @@ fn apply_frost_noise(data: &mut [u8], w: usize, _h: usize, x0: i32, y0: i32, x1:
             if idx + 4 > data.len() || data[idx + 3] == 0 {
                 continue;
             }
-            let mut n = (x as u32)
-                .wrapping_mul(374_761_393)
-                ^ (y as u32).wrapping_mul(668_265_263);
+            let mut n = (x as u32).wrapping_mul(374_761_393) ^ (y as u32).wrapping_mul(668_265_263);
             n = (n ^ (n >> 13)).wrapping_mul(1_274_126_177);
             n ^= n >> 16;
             let delta = ((n & 0xff) as i32 - 128) * PANEL_NOISE_STRENGTH / 128;

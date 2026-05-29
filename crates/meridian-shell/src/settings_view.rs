@@ -101,47 +101,119 @@ impl SettingsCategory {
     /// just the visible category label (e.g. "wlan" -> Netzwerk, "akku" -> Energie).
     pub fn search_keywords(&self) -> &'static [&'static str] {
         match self {
-            SettingsCategory::Theme => {
-                &["theme", "erscheinungsbild", "farbe", "farben", "dunkel", "hell",
-                  "dark", "light", "akzent", "palette", "stil"]
-            }
+            SettingsCategory::Theme => &[
+                "theme",
+                "erscheinungsbild",
+                "farbe",
+                "farben",
+                "dunkel",
+                "hell",
+                "dark",
+                "light",
+                "akzent",
+                "palette",
+                "stil",
+            ],
             SettingsCategory::Cursor => &["cursor", "zeiger", "maus", "pointer", "größe"],
-            SettingsCategory::Wallpaper => {
-                &["wallpaper", "hintergrund", "bild", "tapete", "desktop", "foto"]
-            }
-            SettingsCategory::PinnedApps => {
-                &["pinned", "angeheftet", "favoriten", "panel", "dock", "verknüpfung", "apps"]
-            }
-            SettingsCategory::SystemOverview => {
-                &["übersicht", "overview", "system", "info", "version", "gerät", "status"]
-            }
-            SettingsCategory::Display => {
-                &["anzeige", "display", "monitor", "auflösung", "bildschirm", "skalierung",
-                  "helligkeit", "ausgabe"]
-            }
-            SettingsCategory::Network => {
-                &["netzwerk", "network", "wlan", "wifi", "w-lan", "ethernet", "vpn", "dns",
-                  "internet", "verbindung", "lan"]
-            }
-            SettingsCategory::Bluetooth => {
-                &["bluetooth", "funk", "kopfhörer", "gerät", "pairing", "koppeln", "headset"]
-            }
-            SettingsCategory::Sound => {
-                &["audio", "sound", "ton", "lautstärke", "lautsprecher", "mikrofon",
-                  "pipewire", "wiedergabe"]
-            }
+            SettingsCategory::Wallpaper => &[
+                "wallpaper",
+                "hintergrund",
+                "bild",
+                "tapete",
+                "desktop",
+                "foto",
+            ],
+            SettingsCategory::PinnedApps => &[
+                "pinned",
+                "angeheftet",
+                "favoriten",
+                "panel",
+                "dock",
+                "verknüpfung",
+                "apps",
+            ],
+            SettingsCategory::SystemOverview => &[
+                "übersicht",
+                "overview",
+                "system",
+                "info",
+                "version",
+                "gerät",
+                "status",
+            ],
+            SettingsCategory::Display => &[
+                "anzeige",
+                "display",
+                "monitor",
+                "auflösung",
+                "bildschirm",
+                "skalierung",
+                "helligkeit",
+                "ausgabe",
+            ],
+            SettingsCategory::Network => &[
+                "netzwerk",
+                "network",
+                "wlan",
+                "wifi",
+                "w-lan",
+                "ethernet",
+                "vpn",
+                "dns",
+                "internet",
+                "verbindung",
+                "lan",
+            ],
+            SettingsCategory::Bluetooth => &[
+                "bluetooth",
+                "funk",
+                "kopfhörer",
+                "gerät",
+                "pairing",
+                "koppeln",
+                "headset",
+            ],
+            SettingsCategory::Sound => &[
+                "audio",
+                "sound",
+                "ton",
+                "lautstärke",
+                "lautsprecher",
+                "mikrofon",
+                "pipewire",
+                "wiedergabe",
+            ],
             SettingsCategory::Printers => &["drucker", "printer", "cups", "drucken", "scan"],
-            SettingsCategory::Power => {
-                &["energie", "power", "akku", "batterie", "ruhezustand", "suspend", "standby",
-                  "helligkeit", "sparmodus"]
-            }
-            SettingsCategory::Users => {
-                &["benutzer", "user", "konto", "anmeldung", "login", "passwort", "yubikey",
-                  "authentifizierung", "account"]
-            }
-            SettingsCategory::Updates => {
-                &["updates", "aktualisierung", "paket", "upgrade", "wartung", "version"]
-            }
+            SettingsCategory::Power => &[
+                "energie",
+                "power",
+                "akku",
+                "batterie",
+                "ruhezustand",
+                "suspend",
+                "standby",
+                "helligkeit",
+                "sparmodus",
+            ],
+            SettingsCategory::Users => &[
+                "benutzer",
+                "user",
+                "konto",
+                "anmeldung",
+                "login",
+                "passwort",
+                "yubikey",
+                "authentifizierung",
+                "account",
+            ],
+            SettingsCategory::Updates => &[
+                "updates",
+                "aktualisierung",
+                "paket",
+                "upgrade",
+                "wartung",
+                "version",
+            ],
         }
     }
 
@@ -610,7 +682,10 @@ impl Widget for SettingsBackButton {
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
         let hot = matches!(state, WidgetState::Hovered | WidgetState::Pressed);
         if hot {
-            let bg = theme.palette.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.08);
+            let bg = theme
+                .palette
+                .surface
+                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.08);
             if let Some(path) = rounded_rect_path(area, 0) {
                 paint_fill(canvas, &path, bg);
             }
@@ -649,7 +724,14 @@ impl Widget for SettingsSearchField {
         let text_x = area.x + 4;
         if self.query.is_empty() {
             let ph = Color::rgba(pal.text.r, pal.text.g, pal.text.b, 80);
-            paint_text(canvas, "Einstellungen durchsuchen…", text_x, baseline, 13.0, ph);
+            paint_text(
+                canvas,
+                "Einstellungen durchsuchen…",
+                text_x,
+                baseline,
+                13.0,
+                ph,
+            );
         } else {
             paint_text(canvas, &self.query, text_x, baseline, 13.0, pal.text);
         }
@@ -715,8 +797,20 @@ impl Widget for SidebarSectionLabel {
     }
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
-        let c = Color::rgba(theme.palette.text.r, theme.palette.text.g, theme.palette.text.b, 105);
-        paint_text(canvas, self.text, area.x + 16, area.y + area.height - 6, 10.0, c);
+        let c = Color::rgba(
+            theme.palette.text.r,
+            theme.palette.text.g,
+            theme.palette.text.b,
+            105,
+        );
+        paint_text(
+            canvas,
+            self.text,
+            area.x + 16,
+            area.y + area.height - 6,
+            10.0,
+            c,
+        );
     }
 }
 
@@ -2113,8 +2207,7 @@ pub(crate) fn build_settings_widget_tree(
     ];
     let mut any_match = false;
     for (title, cats, pad_top) in groups {
-        let matching: Vec<&SettingsCategory> =
-            cats.iter().filter(|cat| cat_matches(cat)).collect();
+        let matching: Vec<&SettingsCategory> = cats.iter().filter(|cat| cat_matches(cat)).collect();
         if matching.is_empty() {
             continue;
         }

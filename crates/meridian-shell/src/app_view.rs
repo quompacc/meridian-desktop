@@ -1,6 +1,9 @@
 use std::collections::HashSet;
 
-use tiny_skia::{FillRule, LineCap, LineJoin, Paint as SkPaint, PathBuilder, Pixmap, PixmapMut, PixmapPaint, Stroke, Transform};
+use tiny_skia::{
+    FillRule, LineCap, LineJoin, Paint as SkPaint, PathBuilder, Pixmap, PixmapMut, PixmapPaint,
+    Stroke, Transform,
+};
 
 use crate::launcher::DesktopApp;
 use crate::panel::PinnedApp;
@@ -25,8 +28,7 @@ pub(crate) const CP_BENTO_TILE_H: i32 = 72;
 const CP_BENTO_TILE_GAP: i32 = 8;
 pub(crate) const CP_MAX_BENTO: usize = 8;
 // bento zone: label + top-pad + tiles + bottom-pad
-const CP_BENTO_ZONE_H: i32 =
-    CP_SECTION_LABEL_H + CP_SECTION_PAD + CP_BENTO_TILE_H + CP_SECTION_PAD;
+const CP_BENTO_ZONE_H: i32 = CP_SECTION_LABEL_H + CP_SECTION_PAD + CP_BENTO_TILE_H + CP_SECTION_PAD;
 
 // y-coordinates for the two main zones
 pub(crate) const CP_BENTO_TOP: i32 = CP_HEADER_H + CP_DIVIDER_H; // 53
@@ -44,7 +46,7 @@ pub(crate) const CP_FOOTER_H: i32 = 40;
 // 5 power buttons × 32px + 4 gaps × 8px = 192, right-margin 12 → leftmost btn x = w−12−192 = 676
 const CP_PWR_BTN_SIZE: i32 = 32;
 const CP_PWR_BTN_STRIDE: i32 = 40; // 32 + 8 gap
-const CP_PWR_START_X: i32 = 676;   // for launcher_w=880
+const CP_PWR_START_X: i32 = 676; // for launcher_w=880
 
 // Header settings button
 const CP_HDR_ICON_W: i32 = 28;
@@ -167,7 +169,9 @@ pub(crate) fn hit_footer_power_btn(cx: i32, cy: i32, launcher_h: u32) -> Option<
     }
 }
 
-pub(crate) fn power_widget_action_for_idx(idx: usize) -> Option<crate::widget_action::WidgetAction> {
+pub(crate) fn power_widget_action_for_idx(
+    idx: usize,
+) -> Option<crate::widget_action::WidgetAction> {
     Some(match idx {
         0 => crate::widget_action::WidgetAction::PowerLock,
         1 => crate::widget_action::WidgetAction::PowerLogout,
@@ -264,22 +268,54 @@ pub(crate) fn draw_command_palette(
     {
         let mut pm = pixmap.as_mut();
 
-        draw_header(&mut pm, width, search_query, settings_hovered, icon_cache, &pal);
+        draw_header(
+            &mut pm,
+            width,
+            search_query,
+            settings_hovered,
+            icon_cache,
+            &pal,
+        );
         divider(&mut pm, width, CP_HEADER_H, &pal);
 
         let search_active = !search_query.is_empty();
         if search_active {
             draw_search_results(
-                &mut pm, width, height, all_apps, search_query, scroll_y,
-                selected_idx, icon_cache, hidden_execs, hovered_app_idx, &pal,
+                &mut pm,
+                width,
+                height,
+                all_apps,
+                search_query,
+                scroll_y,
+                selected_idx,
+                icon_cache,
+                hidden_execs,
+                hovered_app_idx,
+                &pal,
             );
         } else {
-            draw_bento_strip(&mut pm, width, pinned_apps, icon_cache, hovered_bento_idx, &pal);
+            draw_bento_strip(
+                &mut pm,
+                width,
+                pinned_apps,
+                icon_cache,
+                hovered_bento_idx,
+                &pal,
+            );
             divider(&mut pm, width, CP_BENTO_TOP + CP_BENTO_ZONE_H, &pal);
             section_label(&mut pm, "ALLE APPS", CP_APPS_TOP, &pal);
             draw_app_grid(
-                &mut pm, width, height, all_apps, search_query, scroll_y,
-                selected_idx, icon_cache, hidden_execs, hovered_app_idx, &pal,
+                &mut pm,
+                width,
+                height,
+                all_apps,
+                search_query,
+                scroll_y,
+                selected_idx,
+                icon_cache,
+                hidden_execs,
+                hovered_app_idx,
+                &pal,
             );
         }
 
@@ -297,7 +333,16 @@ fn draw_header(
     _icon_cache: &IconCache,
     pal: &meridian_ui::style::Palette,
 ) {
-    fill_rect(pm, Rect { x: 0, y: 0, width: width as i32, height: CP_HEADER_H }, pal.surface);
+    fill_rect(
+        pm,
+        Rect {
+            x: 0,
+            y: 0,
+            width: width as i32,
+            height: CP_HEADER_H,
+        },
+        pal.surface,
+    );
 
     let text_x = 20i32;
     let text_baseline = CP_HEADER_H - (CP_HEADER_H - 14) / 2 - 2;
@@ -310,7 +355,11 @@ fn draw_header(
 
     let sx = cp_settings_btn_x(width);
     let sy = cp_hdr_icon_y();
-    let icon_col = if settings_hovered { pal.text } else { pal.text_dim };
+    let icon_col = if settings_hovered {
+        pal.text
+    } else {
+        pal.text_dim
+    };
     draw_settings_symbol(pm, sx + CP_HDR_ICON_W / 2, sy + CP_HDR_ICON_H / 2, icon_col);
 }
 
@@ -339,10 +388,27 @@ fn draw_bento_strip(
         } else {
             pal.surface
         };
-        fill_rect(pm, Rect { x: tx, y: tile_y, width: CP_BENTO_TILE_W, height: CP_BENTO_TILE_H }, bg);
+        fill_rect(
+            pm,
+            Rect {
+                x: tx,
+                y: tile_y,
+                width: CP_BENTO_TILE_W,
+                height: CP_BENTO_TILE_H,
+            },
+            bg,
+        );
         // bottom accent line
-        fill_rect(pm, Rect { x: tx, y: tile_y + CP_BENTO_TILE_H - 1, width: CP_BENTO_TILE_W, height: 1 },
-            Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 140));
+        fill_rect(
+            pm,
+            Rect {
+                x: tx,
+                y: tile_y + CP_BENTO_TILE_H - 1,
+                width: CP_BENTO_TILE_W,
+                height: 1,
+            },
+            Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 140),
+        );
 
         // icon – try large then small sizes
         if let Some(name) = app.icon_name.as_deref() {
@@ -354,7 +420,14 @@ fn draw_bento_strip(
                         let ix = tx + (CP_BENTO_TILE_W - pw) / 2;
                         let icon_center = tile_y + (CP_BENTO_TILE_H * 55) / 100;
                         let iy = icon_center - ph / 2;
-                        pm.draw_pixmap(ix, iy, pix.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+                        pm.draw_pixmap(
+                            ix,
+                            iy,
+                            pix.as_ref(),
+                            &PixmapPaint::default(),
+                            Transform::identity(),
+                            None,
+                        );
                         break;
                     }
                 }
@@ -386,7 +459,9 @@ fn draw_app_grid(
 ) {
     let content_y = CP_APPS_TOP + CP_SECTION_LABEL_H + CP_SECTION_PAD;
     let grid_h = (height as i32 - content_y - CP_FOOTER_H - 1).max(0) as u32;
-    let Some(mut grid_pix) = Pixmap::new(width, grid_h) else { return };
+    let Some(mut grid_pix) = Pixmap::new(width, grid_h) else {
+        return;
+    };
     grid_pix.fill(to_tiny_skia_color(pal.background));
     {
         let mut gpm = grid_pix.as_mut();
@@ -398,8 +473,12 @@ fn draw_app_grid(
             let row = global_idx / CP_APP_COLS;
             let col = global_idx % CP_APP_COLS;
             let row_y = row as i32 * CP_APP_ROW_H - scroll_y;
-            if row_y + CP_APP_ROW_H <= 0 { continue; }
-            if row_y >= grid_h as i32 { break; }
+            if row_y + CP_APP_ROW_H <= 0 {
+                continue;
+            }
+            if row_y >= grid_h as i32 {
+                break;
+            }
 
             let card_x = CP_GUTTER + col as i32 * (CP_CARD_W + CP_COL_GAP);
             let is_sel = selected_idx == Some(global_idx);
@@ -411,9 +490,27 @@ fn draw_app_grid(
                 } else {
                     pal.surface
                 };
-                fill_rect(&mut gpm, Rect { x: card_x, y: row_y, width: CP_CARD_W, height: CP_APP_ROW_H }, bg);
+                fill_rect(
+                    &mut gpm,
+                    Rect {
+                        x: card_x,
+                        y: row_y,
+                        width: CP_CARD_W,
+                        height: CP_APP_ROW_H,
+                    },
+                    bg,
+                );
                 if is_sel {
-                    fill_rect(&mut gpm, Rect { x: card_x, y: row_y, width: 2, height: CP_APP_ROW_H }, pal.accent);
+                    fill_rect(
+                        &mut gpm,
+                        Rect {
+                            x: card_x,
+                            y: row_y,
+                            width: 2,
+                            height: CP_APP_ROW_H,
+                        },
+                        pal.accent,
+                    );
                 }
             }
 
@@ -424,7 +521,14 @@ fn draw_app_grid(
             draw_scrollbar(&mut gpm, width, grid_h, content_h, scroll_y, pal);
         }
     }
-    pm.draw_pixmap(0, content_y, grid_pix.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+    pm.draw_pixmap(
+        0,
+        content_y,
+        grid_pix.as_ref(),
+        &PixmapPaint::default(),
+        Transform::identity(),
+        None,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -443,7 +547,9 @@ fn draw_search_results(
 ) {
     let content_y = CP_HEADER_H + CP_DIVIDER_H;
     let list_h = (height as i32 - content_y - CP_FOOTER_H - 1).max(0) as u32;
-    let Some(mut list_pix) = Pixmap::new(width, list_h) else { return };
+    let Some(mut list_pix) = Pixmap::new(width, list_h) else {
+        return;
+    };
     list_pix.fill(to_tiny_skia_color(pal.background));
     {
         let mut lpm = list_pix.as_mut();
@@ -452,8 +558,12 @@ fn draw_search_results(
 
         for (idx, app) in filtered.iter().enumerate() {
             let row_y = idx as i32 * CP_APP_ROW_H - scroll_y;
-            if row_y + CP_APP_ROW_H <= 0 { continue; }
-            if row_y >= list_h as i32 { break; }
+            if row_y + CP_APP_ROW_H <= 0 {
+                continue;
+            }
+            if row_y >= list_h as i32 {
+                break;
+            }
 
             let is_sel = selected_idx == Some(idx);
             let is_hov = hovered_idx == Some(idx);
@@ -464,9 +574,27 @@ fn draw_search_results(
                 } else {
                     pal.surface
                 };
-                fill_rect(&mut lpm, Rect { x: 0, y: row_y, width: width as i32, height: CP_APP_ROW_H }, bg);
+                fill_rect(
+                    &mut lpm,
+                    Rect {
+                        x: 0,
+                        y: row_y,
+                        width: width as i32,
+                        height: CP_APP_ROW_H,
+                    },
+                    bg,
+                );
                 if is_sel {
-                    fill_rect(&mut lpm, Rect { x: 0, y: row_y, width: 3, height: CP_APP_ROW_H }, pal.accent);
+                    fill_rect(
+                        &mut lpm,
+                        Rect {
+                            x: 0,
+                            y: row_y,
+                            width: 3,
+                            height: CP_APP_ROW_H,
+                        },
+                        pal.accent,
+                    );
                 }
             }
 
@@ -477,7 +605,14 @@ fn draw_search_results(
             draw_scrollbar(&mut lpm, width, list_h, content_h, scroll_y, pal);
         }
     }
-    pm.draw_pixmap(0, content_y, list_pix.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+    pm.draw_pixmap(
+        0,
+        content_y,
+        list_pix.as_ref(),
+        &PixmapPaint::default(),
+        Transform::identity(),
+        None,
+    );
 }
 
 fn draw_app_row_content(
@@ -492,7 +627,14 @@ fn draw_app_row_content(
         if let Some(img) = icon_cache.lookup(name, 24) {
             if let Some(pix) = icon_image_to_pixmap(img) {
                 let iy = row_y + (CP_APP_ROW_H - pix.height() as i32) / 2;
-                pm.draw_pixmap(icon_x, iy, pix.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+                pm.draw_pixmap(
+                    icon_x,
+                    iy,
+                    pix.as_ref(),
+                    &PixmapPaint::default(),
+                    Transform::identity(),
+                    None,
+                );
             }
         }
     }
@@ -513,8 +655,26 @@ fn draw_power_footer(
 ) {
     let footer_y = cp_footer_y(launcher_h);
     // divider + background
-    fill_rect(pm, Rect { x: 0, y: footer_y - 1, width: width as i32, height: 1 }, divider_col(pal));
-    fill_rect(pm, Rect { x: 0, y: footer_y, width: width as i32, height: CP_FOOTER_H }, pal.surface);
+    fill_rect(
+        pm,
+        Rect {
+            x: 0,
+            y: footer_y - 1,
+            width: width as i32,
+            height: 1,
+        },
+        divider_col(pal),
+    );
+    fill_rect(
+        pm,
+        Rect {
+            x: 0,
+            y: footer_y,
+            width: width as i32,
+            height: CP_FOOTER_H,
+        },
+        pal.surface,
+    );
 
     let btn_y = footer_y + (CP_FOOTER_H - CP_PWR_BTN_SIZE) / 2;
 
@@ -534,25 +694,44 @@ fn draw_power_footer(
             pal.text_dim
         };
 
-        draw_power_symbol(pm, i, bx + CP_PWR_BTN_SIZE / 2, btn_y + CP_PWR_BTN_SIZE / 2, col);
+        draw_power_symbol(
+            pm,
+            i,
+            bx + CP_PWR_BTN_SIZE / 2,
+            btn_y + CP_PWR_BTN_SIZE / 2,
+            col,
+        );
 
         // arm progress bar
         if is_armed {
             if let Some((_, p)) = armed_power.filter(|(id, _)| *id == POWER_IDS[i]) {
                 let bar_w = (CP_PWR_BTN_SIZE as f32 * p) as i32;
-                fill_rect(pm, Rect { x: bx, y: btn_y + CP_PWR_BTN_SIZE - 1, width: bar_w, height: 1 }, pal.error);
+                fill_rect(
+                    pm,
+                    Rect {
+                        x: bx,
+                        y: btn_y + CP_PWR_BTN_SIZE - 1,
+                        width: bar_w,
+                        height: 1,
+                    },
+                    pal.error,
+                );
             }
         }
     }
 }
-
 
 fn draw_settings_symbol(pm: &mut PixmapMut<'_>, cx: i32, cy: i32, col: meridian_ui::style::Color) {
     let ts_col = tiny_skia::Color::from_rgba8(col.r, col.g, col.b, col.a);
     let mut paint = SkPaint::default();
     paint.set_color(ts_col);
     paint.anti_alias = true;
-    let stroke = Stroke { width: 1.5, line_cap: LineCap::Round, line_join: LineJoin::Round, ..Default::default() };
+    let stroke = Stroke {
+        width: 1.5,
+        line_cap: LineCap::Round,
+        line_join: LineJoin::Round,
+        ..Default::default()
+    };
     let fx = cx as f32;
     let fy = cy as f32;
     // Three slider lines
@@ -574,25 +753,47 @@ fn draw_settings_symbol(pm: &mut PixmapMut<'_>, cx: i32, cy: i32, col: meridian_
     }
 }
 
-
-fn arc_seg(pb: &mut PathBuilder, cx: f32, cy: f32, r: f32, start_deg: f32, end_deg: f32, first_move: bool) {
+fn arc_seg(
+    pb: &mut PathBuilder,
+    cx: f32,
+    cy: f32,
+    r: f32,
+    start_deg: f32,
+    end_deg: f32,
+    first_move: bool,
+) {
     let n = ((end_deg - start_deg).abs() / 5.0).ceil() as usize + 2;
     for i in 0..=n {
         let t = (start_deg + (end_deg - start_deg) * i as f32 / n as f32).to_radians();
         let x = cx + r * t.cos();
         let y = cy + r * t.sin();
-        if i == 0 && first_move { pb.move_to(x, y); } else { pb.line_to(x, y); }
+        if i == 0 && first_move {
+            pb.move_to(x, y);
+        } else {
+            pb.line_to(x, y);
+        }
     }
 }
 
-fn draw_power_symbol(pm: &mut PixmapMut<'_>, idx: usize, cx: i32, cy: i32, col: meridian_ui::style::Color) {
+fn draw_power_symbol(
+    pm: &mut PixmapMut<'_>,
+    idx: usize,
+    cx: i32,
+    cy: i32,
+    col: meridian_ui::style::Color,
+) {
     let fx = cx as f32;
     let fy = cy as f32;
     let ts_col = tiny_skia::Color::from_rgba8(col.r, col.g, col.b, col.a);
     let mut paint = SkPaint::default();
     paint.set_color(ts_col);
     paint.anti_alias = true;
-    let stroke = Stroke { width: 1.5, line_cap: LineCap::Round, line_join: LineJoin::Round, ..Default::default() };
+    let stroke = Stroke {
+        width: 1.5,
+        line_cap: LineCap::Round,
+        line_join: LineJoin::Round,
+        ..Default::default()
+    };
     let do_stroke = |pm: &mut PixmapMut<'_>, pb: PathBuilder| {
         if let Some(p) = pb.finish() {
             pm.stroke_path(&p, &paint, &stroke, Transform::identity(), None);
@@ -684,22 +885,58 @@ fn draw_scrollbar(
 ) {
     let track_x = width as i32 - 6;
     let track_h = view_h as i32 - 8;
-    if track_h <= 0 { return; }
+    if track_h <= 0 {
+        return;
+    }
     let thumb_h = ((track_h * view_h as i32) / content_h).max(20).min(track_h);
     let max_scroll = (content_h - view_h as i32).max(1);
     let thumb_y = 4 + scroll_y * (track_h - thumb_h) / max_scroll;
     let track_col = Color::rgba(pal.text.r, pal.text.g, pal.text.b, 25);
     let thumb_col = Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 180);
-    fill_rect(pm, Rect { x: track_x, y: 4, width: 4, height: track_h }, track_col);
-    fill_rect(pm, Rect { x: track_x, y: thumb_y, width: 4, height: thumb_h }, thumb_col);
+    fill_rect(
+        pm,
+        Rect {
+            x: track_x,
+            y: 4,
+            width: 4,
+            height: track_h,
+        },
+        track_col,
+    );
+    fill_rect(
+        pm,
+        Rect {
+            x: track_x,
+            y: thumb_y,
+            width: 4,
+            height: thumb_h,
+        },
+        thumb_col,
+    );
 }
 
 fn section_label(pm: &mut PixmapMut<'_>, label: &str, y: i32, pal: &meridian_ui::style::Palette) {
-    paint_text(pm, label, CP_GUTTER, y + CP_SECTION_LABEL_H - 6, 10.0, pal.text_dim);
+    paint_text(
+        pm,
+        label,
+        CP_GUTTER,
+        y + CP_SECTION_LABEL_H - 6,
+        10.0,
+        pal.text_dim,
+    );
 }
 
 fn divider(pm: &mut PixmapMut<'_>, width: u32, y: i32, pal: &meridian_ui::style::Palette) {
-    fill_rect(pm, Rect { x: 0, y, width: width as i32, height: CP_DIVIDER_H }, divider_col(pal));
+    fill_rect(
+        pm,
+        Rect {
+            x: 0,
+            y,
+            width: width as i32,
+            height: CP_DIVIDER_H,
+        },
+        divider_col(pal),
+    );
 }
 
 fn divider_col(pal: &meridian_ui::style::Palette) -> Color {
@@ -758,7 +995,10 @@ mod tests {
         let strip_x = cp_bento_tile_x(n);
         let stride = CP_BENTO_TILE_W + CP_BENTO_TILE_GAP;
         assert_eq!(hit_bento_tile(strip_x + 10, tile_y + 10, n), Some(0));
-        assert_eq!(hit_bento_tile(strip_x + stride + 10, tile_y + 10, n), Some(1));
+        assert_eq!(
+            hit_bento_tile(strip_x + stride + 10, tile_y + 10, n),
+            Some(1)
+        );
         assert_eq!(hit_bento_tile(strip_x + 10, tile_y - 1, n), None); // wrong row
         assert_eq!(hit_bento_tile(strip_x - 1, tile_y + 10, n), None); // before strip
     }
@@ -768,7 +1008,13 @@ mod tests {
         // content_y = 190+24+8=222; col0: x in [21,295)
         let idx = hit_app_row(CP_GUTTER + 5, 222 + 5, 0, 620, false);
         assert_eq!(idx, Some(0));
-        let idx = hit_app_row(CP_GUTTER + CP_CARD_W + CP_COL_GAP + 5, 222 + 5, 0, 620, false);
+        let idx = hit_app_row(
+            CP_GUTTER + CP_CARD_W + CP_COL_GAP + 5,
+            222 + 5,
+            0,
+            620,
+            false,
+        );
         assert_eq!(idx, Some(1)); // col 1
     }
 

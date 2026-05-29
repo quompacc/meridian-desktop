@@ -1,4 +1,8 @@
-use std::{collections::HashMap, ffi::OsString, time::{Duration, Instant}};
+use std::{
+    collections::HashMap,
+    ffi::OsString,
+    time::{Duration, Instant},
+};
 
 use meridian_config::{KeybindConfig, OutputEntry, ThemeManager};
 use meridian_wm::WmWorkspace;

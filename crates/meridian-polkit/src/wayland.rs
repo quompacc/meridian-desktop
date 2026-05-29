@@ -24,9 +24,7 @@ use wayland_client::{
     },
     Connection, Dispatch, EventQueue, QueueHandle, WEnum,
 };
-use wayland_protocols_wlr::layer_shell::v1::client::{
-    zwlr_layer_shell_v1, zwlr_layer_surface_v1,
-};
+use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use xkbcommon::xkb;
 use zeroize::Zeroizing;
 
@@ -153,9 +151,7 @@ impl AppState {
     fn reload_theme(&mut self) {
         let config = MeridianConfig::load();
         let mut manager = ThemeManager::new();
-        if !config.general.theme.is_empty()
-            && config.general.theme != manager.current().name
-        {
+        if !config.general.theme.is_empty() && config.general.theme != manager.current().name {
             if let Err(err) = manager.set_theme(&config.general.theme) {
                 warn!(
                     "polkit: failed to reload theme {:?}: {} (keeping previous)",
@@ -234,9 +230,8 @@ impl AppState {
             (),
         );
         layer_surface.set_size(POPUP_W, POPUP_H);
-        layer_surface.set_keyboard_interactivity(
-            zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive,
-        );
+        layer_surface
+            .set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive);
         // No anchor → centered by the compositor.
         surface.commit();
         self.popup = Some(PopupSurface {
@@ -292,9 +287,7 @@ impl AppState {
                     p.shm_size = 0;
                 }
             }
-            let fd = unsafe {
-                libc::memfd_create(c"meridian-polkit".as_ptr(), 0)
-            };
+            let fd = unsafe { libc::memfd_create(c"meridian-polkit".as_ptr(), 0) };
             if fd < 0 {
                 warn!("memfd_create failed");
                 return;
@@ -384,7 +377,8 @@ impl AppState {
                 active.status = ui::Status::Checking;
                 let username = active.identity.username.clone();
                 let cookie = active.cookie.clone();
-                let password = std::mem::replace(&mut active.password, Zeroizing::new(String::new()));
+                let password =
+                    std::mem::replace(&mut active.password, Zeroizing::new(String::new()));
                 // Stash for redraw: show "Checking" but keep password
                 // count at 0. We took it out so the user can keep
                 // typing while PAM is running; on failure we wipe.
@@ -544,10 +538,9 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppState {
                 key,
                 state: WEnum::Value(wl_keyboard::KeyState::Pressed),
                 ..
+            } if state.handle_key(key) => {
+                state.draw(qh);
             }
-                if state.handle_key(key) => {
-                    state.draw(qh);
-                }
             _ => {}
         }
     }

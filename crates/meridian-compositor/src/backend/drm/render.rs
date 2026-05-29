@@ -349,9 +349,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                         .decoration_manager
                         .content_corner_radius(&wl_surf, &theme.decorations)
                     {
-                        if let Some(prog) =
-                            crate::backend::clipped_surface::clip_shader(renderer)
-                        {
+                        if let Some(prog) = crate::backend::clipped_surface::clip_shader(renderer) {
                             let r8 = r.min(255) as u8;
                             content_clip =
                                 Some((prog, metrics.client_rect.to_f64(), [r8, 0, r8, 0]));
@@ -603,7 +601,11 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
             );
         }
 
-        let bg = if state.idle_blanked { [0.0_f32, 0.0, 0.0, 1.0] } else { [0.0_f32; 4] };
+        let bg = if state.idle_blanked {
+            [0.0_f32, 0.0, 0.0, 1.0]
+        } else {
+            [0.0_f32; 4]
+        };
         let commit_started = Instant::now();
         let mut frame_queued = false;
         match out

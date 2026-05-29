@@ -282,9 +282,7 @@ fn select_output_from_infos_for_point(
 mod tests {
     use smithay::utils::Transform;
 
-    use crate::state::{
-            OutputGeometry, OutputId, OutputInfo, NORMAL_WINDOW_BOTTOM_RESERVED_PX,
-        };
+    use crate::state::{OutputGeometry, OutputId, OutputInfo, NORMAL_WINDOW_BOTTOM_RESERVED_PX};
 
     use super::{normal_maximize_frame_for_output, select_output_from_infos_for_point};
 

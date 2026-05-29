@@ -216,7 +216,6 @@ impl SsdChromeMetrics {
             bottom_right_corner,
         })
     }
-
 }
 
 impl DecorationManager {
@@ -287,11 +286,7 @@ impl DecorationManager {
     /// Inset by the border width so the content curve nests inside the rounded
     /// border outline. Kept in sync with the rounding gate in
     /// `render::elements` (decorated, radius > 0).
-    pub fn content_corner_radius(
-        &self,
-        surface: &WlSurface,
-        theme: &Decorations,
-    ) -> Option<u32> {
+    pub fn content_corner_radius(&self, surface: &WlSurface, theme: &Decorations) -> Option<u32> {
         let deco = self.decorations.get(&Self::key(surface))?;
         if !deco.should_draw() || theme.corner_radius == 0 {
             return None;

@@ -125,7 +125,14 @@ pub fn draw_status_row(
         .map(|r| r.measure_text(status))
         .unwrap_or(status.chars().count() as i32 * 8);
     let status_x = width - PAD_X - status_w;
-    painter.text_clipped(font, status, status_x, baseline, status_w, theme.colors.text);
+    painter.text_clipped(
+        font,
+        status,
+        status_x,
+        baseline,
+        status_w,
+        theme.colors.text,
+    );
     let dot_x = status_x - STATUS_DOT_SIZE - 8;
     let dot_y = row_y + (ROW_HEIGHT - STATUS_DOT_SIZE) / 2;
     painter.roundish_rect_with_radius(
@@ -210,7 +217,14 @@ pub fn draw_volume_row(
         }
     }
 
-    painter.text_clipped(font, &value_text, value_x, baseline, value_w, theme.colors.text);
+    painter.text_clipped(
+        font,
+        &value_text,
+        value_x,
+        baseline,
+        value_w,
+        theme.colors.text,
+    );
 }
 
 /// Right-aligned cyan link with a chevron at the bottom of the popup.

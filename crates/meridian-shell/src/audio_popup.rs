@@ -39,7 +39,15 @@ pub fn draw_audio_popup(
         AudioServiceState::Running => ("Aktiv", colors.success),
         AudioServiceState::Unavailable => ("Nicht verfügbar", colors.text_dim),
     };
-    draw_status_row(painter, font, theme, "Status", status_text, dot_color, row_y);
+    draw_status_row(
+        painter,
+        font,
+        theme,
+        "Status",
+        status_text,
+        dot_color,
+        row_y,
+    );
     row_y += ROW_HEIGHT;
 
     let output = snapshot

@@ -418,7 +418,8 @@ impl MeridianShell {
         self.desktop_menu_width = new_w;
         self.desktop_menu_height = new_h;
         self.desktop_menu_buffer = None;
-        self.desktop_menu_layer.set_anchor(Anchor::TOP | Anchor::LEFT);
+        self.desktop_menu_layer
+            .set_anchor(Anchor::TOP | Anchor::LEFT);
         self.desktop_menu_layer.set_size(new_w, new_h);
     }
 
@@ -512,8 +513,8 @@ impl MeridianShell {
         use smithay_client_toolkit::shell::wlr_layer::Anchor;
         let base_w = crate::context_menu::MENU_WIDTH as u32;
         let base_h =
-            crate::context_menu::menu_height(crate::context_menu::desktop_item_list().len())
-                .max(1) as u32;
+            crate::context_menu::menu_height(crate::context_menu::desktop_item_list().len()).max(1)
+                as u32;
         self.desktop_menu_width = base_w;
         self.desktop_menu_height = base_h;
         self.desktop_menu_layer
@@ -833,11 +834,7 @@ impl MeridianShell {
                     usize::from(model.first_weekday_col0)
                 );
 
-                let header_text = format!(
-                    "{} {}",
-                    german_month_name(model.month),
-                    model.year
-                );
+                let header_text = format!("{} {}", german_month_name(model.month), model.year);
                 crate::popup_card::draw_card_title(
                     &mut painter,
                     &self.font,
@@ -849,7 +846,8 @@ impl MeridianShell {
                     x: card.x + crate::popup_card::PAD_X,
                     y: crate::popup_card::BODY_TOP,
                     w: card.w - 2 * crate::popup_card::PAD_X,
-                    h: (card.h - crate::popup_card::BODY_TOP - crate::popup_card::PAD_BOTTOM).max(1),
+                    h: (card.h - crate::popup_card::BODY_TOP - crate::popup_card::PAD_BOTTOM)
+                        .max(1),
                 };
 
                 let weekday_y = content.y;
@@ -934,7 +932,12 @@ impl MeridianShell {
                 painter.text_centered(&self.font, &time_text, text_rect, self.theme.colors.text);
             }
 
-            round_buffer_corners(canvas, width as usize, height as usize, crate::popup_card::CARD_RADIUS);
+            round_buffer_corners(
+                canvas,
+                width as usize,
+                height as usize,
+                crate::popup_card::CARD_RADIUS,
+            );
             if let Err(err) = buf.attach_to(self.calendar_layer.wl_surface()) {
                 warn!(
                     "calendar popup buffer attach failed: reason={:?} width={} height={} error={}",
@@ -1026,7 +1029,12 @@ impl MeridianShell {
                 },
                 &mut self.workspace_state,
             );
-            round_buffer_corners(canvas, width as usize, height as usize, crate::popup_card::CARD_RADIUS);
+            round_buffer_corners(
+                canvas,
+                width as usize,
+                height as usize,
+                crate::popup_card::CARD_RADIUS,
+            );
 
             if let Err(err) = buf.attach_to(self.workspace_layer.wl_surface()) {
                 warn!(
@@ -1112,7 +1120,12 @@ impl MeridianShell {
                 &self.theme,
                 self.network_controller.state(),
             );
-            round_buffer_corners(canvas, width as usize, height as usize, crate::popup_card::CARD_RADIUS);
+            round_buffer_corners(
+                canvas,
+                width as usize,
+                height as usize,
+                crate::popup_card::CARD_RADIUS,
+            );
 
             if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {
                 warn!(
@@ -1196,7 +1209,12 @@ impl MeridianShell {
                 &self.theme,
                 &self.audio_snapshot,
             );
-            round_buffer_corners(canvas, width as usize, height as usize, crate::popup_card::CARD_RADIUS);
+            round_buffer_corners(
+                canvas,
+                width as usize,
+                height as usize,
+                crate::popup_card::CARD_RADIUS,
+            );
 
             if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {
                 warn!(

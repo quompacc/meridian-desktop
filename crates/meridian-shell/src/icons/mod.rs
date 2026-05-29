@@ -6,7 +6,6 @@ mod theme_index;
 
 pub use cache::IconCache;
 
-
 #[derive(Debug, Clone)]
 pub struct IconImage {
     pub width: u32,

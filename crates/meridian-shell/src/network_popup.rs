@@ -40,7 +40,15 @@ pub fn draw_network_popup(
         NetworkState::Disconnected => ("Aus", colors.error),
         NetworkState::Offline => ("Nicht verfügbar", colors.text_dim),
     };
-    draw_status_row(painter, font, theme, "Status", status_text, dot_color, row_y);
+    draw_status_row(
+        painter,
+        font,
+        theme,
+        "Status",
+        status_text,
+        dot_color,
+        row_y,
+    );
     row_y += ROW_HEIGHT;
 
     if let NetworkState::Connected {

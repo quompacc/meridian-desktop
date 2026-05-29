@@ -241,7 +241,11 @@ pub(crate) fn submenu_hit_item_local(px: f64, py: f64) -> Option<usize> {
         return None;
     }
     let i = ((ly - VPAD) / ITEM_H) as usize;
-    if i < n { Some(i) } else { None }
+    if i < n {
+        Some(i)
+    } else {
+        None
+    }
 }
 
 fn hit_item_at(x: i32, y: i32, n: usize, px: f64, py: f64) -> Option<usize> {
@@ -390,7 +394,13 @@ fn draw_menu_icon(
                 let mut pbk = PathBuilder::new();
                 pbk.push_circle(cx, cy, sz / 16.0 * 1.7);
                 if let Some(path) = pbk.finish() {
-                    canvas.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+                    canvas.fill_path(
+                        &path,
+                        &paint,
+                        FillRule::Winding,
+                        Transform::identity(),
+                        None,
+                    );
                 }
             }
         }
@@ -410,7 +420,14 @@ fn draw_menu_icon(
             let r2 = sz / 16.0 * 3.0;
             let mut pb2 = PathBuilder::new();
             pb2.move_to(cx2 - r2, cy2);
-            pb2.cubic_to(cx2 - r2, cy2 - r2 * 1.2, cx2 + r2, cy2 - r2 * 1.2, cx2 + r2, cy2);
+            pb2.cubic_to(
+                cx2 - r2,
+                cy2 - r2 * 1.2,
+                cx2 + r2,
+                cy2 - r2 * 1.2,
+                cx2 + r2,
+                cy2,
+            );
             stroke_pb(canvas, pb2);
         }
     }
@@ -429,7 +446,12 @@ fn draw_submenu_arrow_indicator(
         anti_alias: true,
         ..Default::default()
     };
-    paint.set_color_rgba8(color.r, color.g, color.b, (color.a as u32 * 160 / 255) as u8);
+    paint.set_color_rgba8(
+        color.r,
+        color.g,
+        color.b,
+        (color.a as u32 * 160 / 255) as u8,
+    );
     let cx = (menu_w - PADDING_X + 2) as f32;
     let cy = (item_top + ITEM_H / 2) as f32;
     let h = 6.0f32;
@@ -440,7 +462,13 @@ fn draw_submenu_arrow_indicator(
     pb.line_to(cx - w / 2.0, cy + h / 2.0);
     pb.close();
     if let Some(path) = pb.finish() {
-        canvas.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+        canvas.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 }
 
@@ -506,11 +534,7 @@ pub(crate) fn draw_overlay(
 
         if state.hover_idx == Some(i) {
             if let Some(p) = rounded_rect_path(item_rect, 6) {
-                paint_fill(
-                    &mut pm.as_mut(),
-                    &p,
-                    pal.surface_alt.lerp(pal.accent, 0.20),
-                );
+                paint_fill(&mut pm.as_mut(), &p, pal.surface_alt.lerp(pal.accent, 0.20));
             }
             let marker = Rect {
                 x: item_rect.x + 1,
@@ -624,8 +648,15 @@ fn draw_submenu_overlay(
     };
     let pal = palette_from_config(theme_config);
 
-    let bg_rect = Rect { x: 0, y: 0, width: mw as i32, height: mh as i32 };
-    let Some(bg_path) = rounded_rect_path(bg_rect, CORNER_R) else { return };
+    let bg_rect = Rect {
+        x: 0,
+        y: 0,
+        width: mw as i32,
+        height: mh as i32,
+    };
+    let Some(bg_path) = rounded_rect_path(bg_rect, CORNER_R) else {
+        return;
+    };
     paint_fill(&mut pm.as_mut(), &bg_path, pal.surface_alt);
     paint_border(&mut pm.as_mut(), &bg_path, pal.border, 1.0);
 
@@ -654,7 +685,14 @@ fn draw_submenu_overlay(
         }
 
         let text_y = item_top + ITEM_H - 10;
-        paint_text(&mut pm.as_mut(), label, PADDING_X, text_y, FONT_SIZE, pal.text);
+        paint_text(
+            &mut pm.as_mut(),
+            label,
+            PADDING_X,
+            text_y,
+            FONT_SIZE,
+            pal.text,
+        );
     }
 
     blit_over(
@@ -821,7 +859,16 @@ mod tests {
         let s = state(false, false);
         let items = item_list(false, false, false);
         let mut canvas = vec![0u8; 880 * 620 * 4];
-        draw_overlay(&mut canvas, 880, 620, &s, &items, &[], &[], &ThemeConfig::default());
+        draw_overlay(
+            &mut canvas,
+            880,
+            620,
+            &s,
+            &items,
+            &[],
+            &[],
+            &ThemeConfig::default(),
+        );
     }
 
     #[test]
@@ -829,7 +876,16 @@ mod tests {
         let s = state(false, false);
         let items = item_list(false, false, false);
         let mut canvas = vec![0u8; 880 * 620 * 4];
-        draw_overlay(&mut canvas, 880, 620, &s, &items, &[], &[], &ThemeConfig::default());
+        draw_overlay(
+            &mut canvas,
+            880,
+            620,
+            &s,
+            &items,
+            &[],
+            &[],
+            &ThemeConfig::default(),
+        );
         // At least some pixel in the menu area should be non-zero.
         let row_stride = 880 * 4;
         let menu_start = (s.y * row_stride + s.x * 4) as usize;
@@ -845,7 +901,10 @@ mod tests {
         assert_eq!(items[0].1, DesktopContextMenuAction::Terminal);
         assert_eq!(items[1].1, DesktopContextMenuAction::Launcher);
         assert_eq!(items[2].1, DesktopContextMenuAction::FileManager);
-        assert_eq!(items[SETTINGS_ITEM_IDX].1, DesktopContextMenuAction::Settings);
+        assert_eq!(
+            items[SETTINGS_ITEM_IDX].1,
+            DesktopContextMenuAction::Settings
+        );
         assert_eq!(items[4].1, DesktopContextMenuAction::LockScreen);
     }
 
@@ -853,7 +912,9 @@ mod tests {
     fn submenu_items_has_expected_categories() {
         let items = submenu_items();
         assert!(items.iter().any(|(_, a)| *a == SettingsSubAction::Display));
-        assert!(items.iter().any(|(_, a)| *a == SettingsSubAction::Wallpaper));
+        assert!(items
+            .iter()
+            .any(|(_, a)| *a == SettingsSubAction::Wallpaper));
         assert!(items.iter().any(|(_, a)| *a == SettingsSubAction::Theme));
         assert!(items.iter().any(|(_, a)| *a == SettingsSubAction::Sound));
         assert!(items.iter().any(|(_, a)| *a == SettingsSubAction::Network));

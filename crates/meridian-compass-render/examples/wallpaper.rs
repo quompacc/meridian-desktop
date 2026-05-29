@@ -36,7 +36,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut pm = Pixmap::new(w, h).ok_or("failed to allocate pixmap")?;
 
-    let base = if light { Style::chart() } else { Style::default() };
+    let base = if light {
+        Style::chart()
+    } else {
+        Style::default()
+    };
     let style = Style {
         radius_factor: WALLPAPER_RADIUS,
         ..base

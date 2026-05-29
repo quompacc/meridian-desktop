@@ -82,15 +82,18 @@ impl KeyboardHandler for MeridianShell {
 
         // ── Desktop context menu: full keyboard navigation ────────────────────
         if self.desktop_menu_open {
-            let is_down  = event.keysym == Keysym::Down;
-            let is_up    = event.keysym == Keysym::Up;
+            let is_down = event.keysym == Keysym::Down;
+            let is_up = event.keysym == Keysym::Up;
             let is_right = event.keysym == Keysym::Right;
-            let is_left  = event.keysym == Keysym::Left;
-            let is_enter = event.keysym == Keysym::Return
-                || event.keysym == Keysym::KP_Enter;
+            let is_left = event.keysym == Keysym::Left;
+            let is_enter = event.keysym == Keysym::Return || event.keysym == Keysym::KP_Enter;
 
             if is_escape {
-                if self.desktop_context_menu.as_ref().is_some_and(|m| m.submenu_open) {
+                if self
+                    .desktop_context_menu
+                    .as_ref()
+                    .is_some_and(|m| m.submenu_open)
+                {
                     // First Esc: close submenu only
                     if let Some(ref mut menu) = self.desktop_context_menu {
                         menu.submenu_open = false;
@@ -108,27 +111,51 @@ impl KeyboardHandler for MeridianShell {
             }
 
             let n_main = crate::context_menu::desktop_item_list().len();
-            let n_sub  = crate::context_menu::submenu_items().len();
-            let submenu_open = self.desktop_context_menu
-                .as_ref().is_some_and(|m| m.submenu_open);
+            let n_sub = crate::context_menu::submenu_items().len();
+            let submenu_open = self
+                .desktop_context_menu
+                .as_ref()
+                .is_some_and(|m| m.submenu_open);
 
             if is_down || is_up {
                 if submenu_open {
                     if let Some(ref mut menu) = self.desktop_context_menu {
-                        let cur = menu.submenu_hover_idx.unwrap_or(if is_down { n_sub } else { n_sub + 1 });
-                        menu.submenu_hover_idx = Some(if is_down {
-                            if cur + 1 < n_sub { cur + 1 } else { 0 }
+                        let cur = menu.submenu_hover_idx.unwrap_or(if is_down {
+                            n_sub
                         } else {
-                            if cur > 0 { cur - 1 } else { n_sub - 1 }
+                            n_sub + 1
+                        });
+                        menu.submenu_hover_idx = Some(if is_down {
+                            if cur + 1 < n_sub {
+                                cur + 1
+                            } else {
+                                0
+                            }
+                        } else {
+                            if cur > 0 {
+                                cur - 1
+                            } else {
+                                n_sub - 1
+                            }
                         });
                     }
                 } else {
                     if let Some(ref mut menu) = self.desktop_context_menu {
-                        let cur = menu.hover_idx.unwrap_or(if is_down { n_main } else { n_main + 1 });
+                        let cur =
+                            menu.hover_idx
+                                .unwrap_or(if is_down { n_main } else { n_main + 1 });
                         let next = if is_down {
-                            if cur + 1 < n_main { cur + 1 } else { 0 }
+                            if cur + 1 < n_main {
+                                cur + 1
+                            } else {
+                                0
+                            }
                         } else {
-                            if cur > 0 { cur - 1 } else { n_main - 1 }
+                            if cur > 0 {
+                                cur - 1
+                            } else {
+                                n_main - 1
+                            }
                         };
                         menu.hover_idx = Some(next);
                         // Auto-open submenu when Settings item is reached
@@ -140,8 +167,10 @@ impl KeyboardHandler for MeridianShell {
                             menu.submenu_hover_idx = None;
                         }
                     }
-                    let new_submenu = self.desktop_context_menu
-                        .as_ref().is_some_and(|m| m.submenu_open);
+                    let new_submenu = self
+                        .desktop_context_menu
+                        .as_ref()
+                        .is_some_and(|m| m.submenu_open);
                     if new_submenu != submenu_open {
                         self.resize_desktop_menu_surface(new_submenu);
                     }
@@ -151,7 +180,9 @@ impl KeyboardHandler for MeridianShell {
             }
 
             if is_right && !submenu_open {
-                if self.desktop_context_menu.as_ref()
+                if self
+                    .desktop_context_menu
+                    .as_ref()
                     .is_some_and(|m| m.hover_idx == Some(crate::context_menu::SETTINGS_ITEM_IDX))
                 {
                     if let Some(ref mut menu) = self.desktop_context_menu {
@@ -176,7 +207,9 @@ impl KeyboardHandler for MeridianShell {
 
             if is_enter {
                 if submenu_open {
-                    let sub_action = self.desktop_context_menu.as_ref()
+                    let sub_action = self
+                        .desktop_context_menu
+                        .as_ref()
                         .and_then(|m| m.submenu_hover_idx)
                         .and_then(|idx| crate::context_menu::submenu_items().get(idx).map(|i| i.1));
                     self.desktop_context_menu = None;
@@ -186,9 +219,15 @@ impl KeyboardHandler for MeridianShell {
                         self.handle_settings_sub_action(qh, sub);
                     }
                 } else {
-                    let action = self.desktop_context_menu.as_ref()
+                    let action = self
+                        .desktop_context_menu
+                        .as_ref()
                         .and_then(|m| m.hover_idx)
-                        .and_then(|idx| crate::context_menu::desktop_item_list().get(idx).map(|i| i.1));
+                        .and_then(|idx| {
+                            crate::context_menu::desktop_item_list()
+                                .get(idx)
+                                .map(|i| i.1)
+                        });
                     self.desktop_context_menu = None;
                     self.desktop_menu_open = false;
                     self.unmap_desktop_menu(CommitReason::Input);
@@ -293,10 +332,18 @@ impl KeyboardHandler for MeridianShell {
             if n > 0 {
                 self.launcher_selected_idx = Some(match self.launcher_selected_idx {
                     None => {
-                        if is_down { 0 } else { n - 1 }
+                        if is_down {
+                            0
+                        } else {
+                            n - 1
+                        }
                     }
                     Some(i) => {
-                        if is_down { (i + 1).min(n - 1) } else { i.saturating_sub(1) }
+                        if is_down {
+                            (i + 1).min(n - 1)
+                        } else {
+                            i.saturating_sub(1)
+                        }
                     }
                 });
             }

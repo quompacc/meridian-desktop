@@ -15,6 +15,8 @@
 //! relative to the window, not the individual surface.
 
 use cgmath::{Matrix3, Vector2};
+use smithay::backend::renderer::gles::{UniformName, UniformType};
+use smithay::utils::user_data::UserDataMap;
 use smithay::{
     backend::renderer::{
         element::{
@@ -26,8 +28,6 @@ use smithay::{
     },
     utils::{Buffer, Logical, Physical, Point, Rectangle, Scale, Size, Transform},
 };
-use smithay::backend::renderer::gles::{UniformName, UniformType};
-use smithay::utils::user_data::UserDataMap;
 
 const CLIP_SHADER_SRC: &str = include_str!("clipped_surface.frag");
 

@@ -142,8 +142,8 @@ impl CompositorHandler for MeridianState {
                 // Exclusive-interactive layer surfaces (e.g. the polkit auth
                 // popup) typing into whichever window happened to be focused
                 // before they opened.
-                let wants_focus = keyboard_interactivity == KeyboardInteractivity::Exclusive
-                    && has_buffer;
+                let wants_focus =
+                    keyboard_interactivity == KeyboardInteractivity::Exclusive && has_buffer;
                 if namespace == "meridian-launcher" {
                     tracing::debug!(
                         "launcher layer cached state: output={} layer={:?} anchor={:?} margin={:?} exclusive_zone={:?} requested_size={:?} geometry={:?} keyboard_interactivity={:?} has_buffer={}",
@@ -189,8 +189,7 @@ impl CompositorHandler for MeridianState {
                             output_name
                         );
                     }
-                } else if keyboard_interactivity == KeyboardInteractivity::Exclusive
-                    && !has_buffer
+                } else if keyboard_interactivity == KeyboardInteractivity::Exclusive && !has_buffer
                 {
                     // Exclusive layer just unmapped (attach(None) commit).
                     // Release focus so the next focusable surface takes over;

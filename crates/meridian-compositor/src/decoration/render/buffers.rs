@@ -20,7 +20,6 @@ pub(super) fn effective_shadow_radius(theme_radius: i32, focused: bool) -> i32 {
     }
 }
 
-
 #[allow(clippy::too_many_arguments)]
 pub(super) fn update_buffers(
     deco: &mut WindowDecoration,

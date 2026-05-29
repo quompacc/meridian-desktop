@@ -20,8 +20,7 @@ use wayland_protocols::ext::session_lock::v1::client::{
 use xkbcommon::xkb;
 use zeroize::Zeroizing;
 
-static FONT_DATA: &[u8] =
-    include_bytes!("../../meridian-ui/assets/fonts/AdwaitaSans-Regular.ttf");
+static FONT_DATA: &[u8] = include_bytes!("../../meridian-ui/assets/fonts/AdwaitaSans-Regular.ttf");
 
 // ── colours (RGBA, tiny-skia order) ──────────────────────────────────────────
 const BG: u32 = 0xFF1A1B26;
@@ -100,45 +99,42 @@ impl Dispatch<wl_registry::WlRegistry, ()> for AppState {
         _: &Connection,
         qh: &QueueHandle<Self>,
     ) {
-        if let wl_registry::Event::Global { name, interface, version } = event {
+        if let wl_registry::Event::Global {
+            name,
+            interface,
+            version,
+        } = event
+        {
             match interface.as_str() {
                 "wl_compositor" => {
-                    state.compositor =
-                        Some(registry.bind::<wl_compositor::WlCompositor, _, _>(
-                            name,
-                            version.min(5),
-                            qh,
-                            (),
-                        ));
+                    state.compositor = Some(registry.bind::<wl_compositor::WlCompositor, _, _>(
+                        name,
+                        version.min(5),
+                        qh,
+                        (),
+                    ));
                 }
                 "wl_shm" => {
                     state.shm = Some(registry.bind::<wl_shm::WlShm, _, _>(name, 1, qh, ()));
                 }
                 "wl_seat" => {
-                    state.seat = Some(registry.bind::<wl_seat::WlSeat, _, _>(
-                        name,
-                        version.min(7),
-                        qh,
-                        (),
-                    ));
+                    state.seat =
+                        Some(registry.bind::<wl_seat::WlSeat, _, _>(name, version.min(7), qh, ()));
                 }
                 "wl_output" => {
-                    let output = registry.bind::<wl_output::WlOutput, _, _>(
-                        name,
-                        version.min(3),
-                        qh,
-                        (),
-                    );
+                    let output =
+                        registry.bind::<wl_output::WlOutput, _, _>(name, version.min(3), qh, ());
                     state.pending_outputs.push(output);
                 }
                 "ext_session_lock_manager_v1" => {
                     state.lock_manager = Some(
-                        registry.bind::<ext_session_lock_manager_v1::ExtSessionLockManagerV1, _, _>(
-                            name,
-                            1,
-                            qh,
-                            (),
-                        ),
+                        registry
+                            .bind::<ext_session_lock_manager_v1::ExtSessionLockManagerV1, _, _>(
+                                name,
+                                1,
+                                qh,
+                                (),
+                            ),
                     );
                 }
                 _ => {}
@@ -172,7 +168,10 @@ impl Dispatch<wl_seat::WlSeat, ()> for AppState {
         _: &Connection,
         qh: &QueueHandle<Self>,
     ) {
-        if let wl_seat::Event::Capabilities { capabilities: WEnum::Value(caps) } = event {
+        if let wl_seat::Event::Capabilities {
+            capabilities: WEnum::Value(caps),
+        } = event
+        {
             if caps.contains(wl_seat::Capability::Keyboard) {
                 seat.get_keyboard(qh, ());
             }
@@ -279,11 +278,7 @@ fn handle_key(state: &mut AppState, linux_key: u32) {
         xkbcommon::xkb::keysyms::KEY_BackSpace => {
             // Remove last UTF-8 character
             let mut s = std::mem::take(&mut *state.password);
-            let new_len = s
-                .char_indices()
-                .next_back()
-                .map(|(i, _)| i)
-                .unwrap_or(0);
+            let new_len = s.char_indices().next_back().map(|(i, _)| i).unwrap_or(0);
             s.truncate(new_len);
             *state.password = s;
             if state.status == LockStatus::Failed {
@@ -366,11 +361,20 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, ()> for AppS
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let ext_session_lock_surface_v1::Event::Configure { serial, width, height } = event {
+        if let ext_session_lock_surface_v1::Event::Configure {
+            serial,
+            width,
+            height,
+        } = event
+        {
             lock_surface_proxy.ack_configure(serial);
             let w = width.max(1);
             let h = height.max(1);
-            if let Some(ls) = state.lock_surfaces.iter_mut().find(|ls| &ls.lock_surface == lock_surface_proxy) {
+            if let Some(ls) = state
+                .lock_surfaces
+                .iter_mut()
+                .find(|ls| &ls.lock_surface == lock_surface_proxy)
+            {
                 if ls.width != w || ls.height != h {
                     if !ls.shm_ptr.is_null() {
                         unsafe { libc::munmap(ls.shm_ptr as *mut _, ls.shm_size) };
@@ -481,7 +485,13 @@ fn fill_rect(pm: &mut PixmapMut, x: f32, y: f32, w: f32, h: f32, r: f32, col: u3
     let path = pb.finish().unwrap();
     let mut paint = Paint::default();
     paint.set_color(color(col));
-    pm.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    pm.fill_path(
+        &path,
+        &paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 }
 
 fn fill_circle(pm: &mut PixmapMut, cx: f32, cy: f32, radius: f32, col: u32) {
@@ -498,7 +508,13 @@ fn fill_circle(pm: &mut PixmapMut, cx: f32, cy: f32, radius: f32, col: u32) {
     let path = pb.finish().unwrap();
     let mut paint = Paint::default();
     paint.set_color(color(col));
-    pm.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    pm.fill_path(
+        &path,
+        &paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
 }
 
 fn draw_lock_icon(pm: &mut PixmapMut, cx: f32, cy: f32, col: u32) {
@@ -667,7 +683,15 @@ fn render_frame(
     draw_lock_icon(&mut pm_mut, cx, card_y + 50.0, ACCENT);
 
     // "Meridian Desktop" title
-    draw_text_centered(&mut pm_mut, font, 20.0, cx, card_y + 82.0, "Meridian Desktop", TEXT);
+    draw_text_centered(
+        &mut pm_mut,
+        font,
+        20.0,
+        cx,
+        card_y + 82.0,
+        "Meridian Desktop",
+        TEXT,
+    );
 
     // Username
     draw_text_centered(&mut pm_mut, font, 14.0, cx, card_y + 114.0, username, DIM);
@@ -675,9 +699,29 @@ fn render_frame(
     // Password field
     let field_x = cx - FIELD_W / 2.0;
     let field_y = card_y + 150.0;
-    let field_border_col = if status == &LockStatus::Failed { ERR } else { FIELD_BORDER };
-    fill_rect(&mut pm_mut, field_x - 1.0, field_y - 1.0, FIELD_W + 2.0, FIELD_H + 2.0, 9.0, field_border_col);
-    fill_rect(&mut pm_mut, field_x, field_y, FIELD_W, FIELD_H, 8.0, FIELD_BG);
+    let field_border_col = if status == &LockStatus::Failed {
+        ERR
+    } else {
+        FIELD_BORDER
+    };
+    fill_rect(
+        &mut pm_mut,
+        field_x - 1.0,
+        field_y - 1.0,
+        FIELD_W + 2.0,
+        FIELD_H + 2.0,
+        9.0,
+        field_border_col,
+    );
+    fill_rect(
+        &mut pm_mut,
+        field_x,
+        field_y,
+        FIELD_W,
+        FIELD_H,
+        8.0,
+        FIELD_BG,
+    );
 
     // Password dots
     let dot_r = 5.0;
@@ -710,7 +754,15 @@ fn render_frame(
         LockStatus::Pending => ("Authentifizierung …", TEXT),
         LockStatus::Failed => ("Falsches Passwort", ERR),
     };
-    draw_text_centered(&mut pm_mut, font, 13.0, cx, status_y, status_text, status_col);
+    draw_text_centered(
+        &mut pm_mut,
+        font,
+        13.0,
+        cx,
+        status_y,
+        status_text,
+        status_col,
+    );
 
     // Convert RGBA → BGRA (wl_shm ARGB8888 is BGRA in memory)
     let mut pixels = pm.take();
@@ -753,7 +805,14 @@ fn render_surface(state: &mut AppState, idx: usize, qh: &QueueHandle<AppState>) 
     }
 
     let font = FontRef::try_from_slice(FONT_DATA).unwrap();
-    let pixels = render_frame(w, h, state.password.len(), &state.username, &state.status, &font);
+    let pixels = render_frame(
+        w,
+        h,
+        state.password.len(),
+        &state.username,
+        &state.status,
+        &font,
+    );
 
     let ls = &mut state.lock_surfaces[idx];
 
@@ -775,8 +834,7 @@ fn render_surface(state: &mut AppState, idx: usize, qh: &QueueHandle<AppState>) 
     }
 
     // Copy pixels into shm
-    let dst =
-        unsafe { std::slice::from_raw_parts_mut(ls.shm_ptr, pixels.len().min(ls.shm_size)) };
+    let dst = unsafe { std::slice::from_raw_parts_mut(ls.shm_ptr, pixels.len().min(ls.shm_size)) };
     dst.copy_from_slice(&pixels[..dst.len()]);
 
     // Attach + damage + commit
@@ -844,7 +902,9 @@ fn main() {
 
     let display = conn.display();
     display.get_registry(&qh, ());
-    event_queue.roundtrip(&mut state).expect("initial roundtrip");
+    event_queue
+        .roundtrip(&mut state)
+        .expect("initial roundtrip");
 
     let lock_manager = state
         .lock_manager
@@ -913,8 +973,11 @@ fn main() {
         // Flush + poll with 20 ms timeout so we can check auth_rx
         let _ = conn.flush();
         let wl_fd = conn.as_fd().as_raw_fd();
-        let mut pfd =
-            libc::pollfd { fd: wl_fd, events: libc::POLLIN, revents: 0 };
+        let mut pfd = libc::pollfd {
+            fd: wl_fd,
+            events: libc::POLLIN,
+            revents: 0,
+        };
         unsafe { libc::poll(&mut pfd, 1, 20) };
 
         if let Err(e) = event_queue.dispatch_pending(&mut state) {
@@ -939,16 +1002,9 @@ mod tests {
     // genau wie zur Laufzeit auflöst (Keycode = evdev + 8).
     fn us_keymap_state() -> xkb::State {
         let ctx = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
-        let keymap = xkb::Keymap::new_from_names(
-            &ctx,
-            "",
-            "",
-            "us",
-            "",
-            None,
-            xkb::KEYMAP_COMPILE_NO_FLAGS,
-        )
-        .expect("compile us keymap (needs xkb data installed)");
+        let keymap =
+            xkb::Keymap::new_from_names(&ctx, "", "", "us", "", None, xkb::KEYMAP_COMPILE_NO_FLAGS)
+                .expect("compile us keymap (needs xkb data installed)");
         xkb::State::new(&keymap)
     }
 

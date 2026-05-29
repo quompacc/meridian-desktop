@@ -173,13 +173,14 @@ trait Authority {
 
 fn unix_session_subject(session_id: &str) -> (String, HashMap<String, Value<'static>>) {
     let mut details: HashMap<String, Value<'static>> = HashMap::new();
-    details.insert("session-id".to_string(), Value::from(session_id.to_string()));
+    details.insert(
+        "session-id".to_string(),
+        Value::from(session_id.to_string()),
+    );
     ("unix-session".to_string(), details)
 }
 
-fn parse_identities(
-    raw: &[(String, HashMap<String, OwnedValue>)],
-) -> Vec<Identity> {
+fn parse_identities(raw: &[(String, HashMap<String, OwnedValue>)]) -> Vec<Identity> {
     raw.iter()
         .filter_map(|(kind, details)| {
             if kind != "unix-user" {

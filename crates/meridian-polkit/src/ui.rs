@@ -119,7 +119,11 @@ pub fn render(
         // Password field.
         let field_x = cx - FIELD_W / 2.0;
         let field_y = card_y + 208.0;
-        let border_col = if view.status == Status::Failed { err } else { border };
+        let border_col = if view.status == Status::Failed {
+            err
+        } else {
+            border
+        };
         fill_rect(
             &mut pm_mut,
             field_x - 1.0,
@@ -218,7 +222,13 @@ pub fn fill_rect(pm: &mut PixmapMut, x: f32, y: f32, w: f32, h: f32, r: f32, col
         let mut paint = Paint::default();
         paint.set_color(rgba_to_color(col));
         paint.anti_alias = true;
-        pm.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+        pm.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 }
 
@@ -229,7 +239,13 @@ fn fill_circle(pm: &mut PixmapMut, cx: f32, cy: f32, r: f32, col: u32) {
         let mut paint = Paint::default();
         paint.set_color(rgba_to_color(col));
         paint.anti_alias = true;
-        pm.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+        pm.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
     }
 }
 
@@ -279,8 +295,7 @@ pub fn draw_text(
     let mut x = pen_x;
     for ch in text.chars() {
         let id = scaled.glyph_id(ch);
-        let glyph =
-            id.with_scale_and_position(PxScale::from(size), ab_glyph::point(x, baseline_y));
+        let glyph = id.with_scale_and_position(PxScale::from(size), ab_glyph::point(x, baseline_y));
         if let Some(outline) = font.outline_glyph(glyph) {
             let b = outline.px_bounds();
             outline.draw(|gx, gy, alpha| {
@@ -422,7 +437,11 @@ mod tests {
         assert_eq!(lines.len(), 2);
         // Letzte Zeile endet mit U+2026 (ellipsis) = UTF-8 0xE2 0x80 0xA6.
         assert!(
-            lines.last().unwrap().as_bytes().ends_with(&[0xe2, 0x80, 0xa6]),
+            lines
+                .last()
+                .unwrap()
+                .as_bytes()
+                .ends_with(&[0xe2, 0x80, 0xa6]),
             "last line should end with ellipsis, got {:?}",
             lines
         );

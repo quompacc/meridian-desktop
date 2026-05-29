@@ -1,4 +1,4 @@
-use std::ffi::{CString};
+use std::ffi::CString;
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 
@@ -39,8 +39,10 @@ unsafe extern "C" fn conv_cb(
     if num_msg <= 0 || appdata.is_null() || msg.is_null() || out_resp.is_null() {
         return PAM_CONV_ERR;
     }
-    let resp = calloc(num_msg as usize, std::mem::size_of::<pam_response>() as size_t)
-        as *mut pam_response;
+    let resp = calloc(
+        num_msg as usize,
+        std::mem::size_of::<pam_response>() as size_t,
+    ) as *mut pam_response;
     if resp.is_null() {
         return PAM_BUF_ERR;
     }
@@ -101,7 +103,10 @@ pub fn authenticate(username: &str, password: &Zeroizing<String>) -> bool {
     };
     let service_c = CString::new(PAM_SERVICE).unwrap();
 
-    let conv_data = Box::new(ConvData { user: user_c.clone(), pass: pass_c });
+    let conv_data = Box::new(ConvData {
+        user: user_c.clone(),
+        pass: pass_c,
+    });
     let conv_data_ptr = Box::into_raw(conv_data);
 
     let conversation = pam_conv {
@@ -111,7 +116,12 @@ pub fn authenticate(username: &str, password: &Zeroizing<String>) -> bool {
 
     let mut pamh: *mut pam_handle_t = ptr::null_mut();
     let rc = unsafe {
-        pam_start(service_c.as_ptr(), user_c.as_ptr(), &conversation, &mut pamh)
+        pam_start(
+            service_c.as_ptr(),
+            user_c.as_ptr(),
+            &conversation,
+            &mut pamh,
+        )
     };
     if rc != PAM_SUCCESS || pamh.is_null() {
         tracing::warn!("pam_start failed: rc={}", rc);
@@ -119,7 +129,10 @@ pub fn authenticate(username: &str, password: &Zeroizing<String>) -> bool {
         return false;
     }
 
-    let mut guard = PamGuard { pamh, status: PAM_SUCCESS };
+    let mut guard = PamGuard {
+        pamh,
+        status: PAM_SUCCESS,
+    };
     let rc = unsafe { pam_authenticate(guard.pamh, 0) };
     guard.status = rc;
     let ok = rc == PAM_SUCCESS;

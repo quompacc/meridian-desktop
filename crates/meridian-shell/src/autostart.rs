@@ -12,7 +12,11 @@ pub fn launch_autostart_apps() {
                 if path.extension().and_then(|e| e.to_str()) != Some("desktop") {
                     continue;
                 }
-                let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned();
                 if !entries.iter().any(|(n, _)| n == &name) {
                     entries.push((name, path));
                 }
@@ -90,7 +94,10 @@ fn parse_desktop_file(path: &std::path::Path) -> Option<DesktopSpec> {
         return None;
     }
 
-    Some(DesktopSpec { exec_argv: argv, hidden })
+    Some(DesktopSpec {
+        exec_argv: argv,
+        hidden,
+    })
 }
 
 /// Parse a desktop file Exec= value into argv, stripping field codes.
@@ -128,8 +135,10 @@ fn parse_exec(exec: &str) -> Vec<String> {
 }
 
 fn is_field_code(s: &str) -> bool {
-    matches!(s, "%f" | "%F" | "%u" | "%U" | "%d" | "%D" | "%n" | "%N"
-               | "%i" | "%c" | "%k" | "%v" | "%m")
+    matches!(
+        s,
+        "%f" | "%F" | "%u" | "%U" | "%d" | "%D" | "%n" | "%N" | "%i" | "%c" | "%k" | "%v" | "%m"
+    )
 }
 
 fn autostart_dirs() -> Vec<PathBuf> {
@@ -141,8 +150,7 @@ fn autostart_dirs() -> Vec<PathBuf> {
         dirs.push(PathBuf::from(home).join(".config/autostart"));
     }
     // System-level
-    let system_dirs = std::env::var("XDG_CONFIG_DIRS")
-        .unwrap_or_else(|_| "/etc/xdg".to_string());
+    let system_dirs = std::env::var("XDG_CONFIG_DIRS").unwrap_or_else(|_| "/etc/xdg".to_string());
     for d in system_dirs.split(':') {
         if !d.is_empty() {
             dirs.push(PathBuf::from(d).join("autostart"));

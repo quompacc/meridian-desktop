@@ -128,7 +128,9 @@ impl LayerShellHandler for MeridianShell {
             // the pointer handler (they widen when the settings flyout opens).
             // Never recompute from the item list here — that would ignore the
             // expanded width and cause the same protocol error we fixed before.
-            let desired_w = self.desktop_menu_width.max(crate::context_menu::MENU_WIDTH as u32);
+            let desired_w = self
+                .desktop_menu_width
+                .max(crate::context_menu::MENU_WIDTH as u32);
             let desired_h = self.desktop_menu_height.max(1);
             self.desktop_menu_layer
                 .set_anchor(Anchor::TOP | Anchor::LEFT);

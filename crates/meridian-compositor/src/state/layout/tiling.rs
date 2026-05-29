@@ -112,9 +112,7 @@ fn select_tiling_output_from_infos(infos: &[OutputInfo]) -> Option<SelectedTilin
 mod tests {
     use smithay::utils::Transform;
 
-    use crate::state::{
-            OutputGeometry, OutputId, OutputInfo, NORMAL_WINDOW_BOTTOM_RESERVED_PX,
-        };
+    use crate::state::{OutputGeometry, OutputId, OutputInfo, NORMAL_WINDOW_BOTTOM_RESERVED_PX};
 
     use super::select_tiling_output_from_infos;
 

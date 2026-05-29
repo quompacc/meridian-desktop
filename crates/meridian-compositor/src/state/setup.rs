@@ -125,9 +125,7 @@ pub(crate) fn apply_config_overrides(
 /// background luminance: chart (light) for bright grounds, else midnight.
 /// Map a theme to light/dark by background luminance. Shared by the
 /// compass intro style and the persisted boot-chain appearance.
-pub(crate) fn theme_appearance(
-    theme: &meridian_config::Theme,
-) -> meridian_boot_common::Appearance {
+pub(crate) fn theme_appearance(theme: &meridian_config::Theme) -> meridian_boot_common::Appearance {
     let bg = theme.config.colors.background;
     let lum = 0.299 * bg.r as f32 + 0.587 * bg.g as f32 + 0.114 * bg.b as f32;
     if lum > 140.0 {
@@ -137,9 +135,7 @@ pub(crate) fn theme_appearance(
     }
 }
 
-fn compass_intro_style(
-    theme: &meridian_config::Theme,
-) -> meridian_compass_render::Style {
+fn compass_intro_style(theme: &meridian_config::Theme) -> meridian_compass_render::Style {
     if theme_appearance(theme).is_light() {
         meridian_compass_render::Style::chart()
     } else {
@@ -707,7 +703,10 @@ impl MeridianState {
         let image_copy_capture_state = ImageCopyCaptureState::new::<MeridianState>(&display_handle);
 
         let meridian_config = MeridianConfig::load();
-        let idle_timeout = meridian_config.general.idle_timeout_secs.map(Duration::from_secs);
+        let idle_timeout = meridian_config
+            .general
+            .idle_timeout_secs
+            .map(Duration::from_secs);
         let output_config_entries = meridian_config.outputs.clone();
         let output_layout = super::OutputLayout::from_config_entries(&output_config_entries);
         let mut theme_manager = ThemeManager::new();
@@ -718,13 +717,10 @@ impl MeridianState {
         // Arm the login->desktop compass zoom: the wallpaper shows the
         // compass at login size from the first frame; render.rs then
         // shrinks it to wallpaper size and settles onto the static image.
-        wallpaper_manager
-            .begin_intro(compass_intro_style(theme_manager.current()), 0.32);
+        wallpaper_manager.begin_intro(compass_intro_style(theme_manager.current()), 0.32);
         // Persist appearance so the boot chain (bootsplash, login) matches
         // the active theme on the next boot.
-        let _ = meridian_boot_common::write_appearance(theme_appearance(
-            theme_manager.current(),
-        ));
+        let _ = meridian_boot_common::write_appearance(theme_appearance(theme_manager.current()));
 
         Ok(Self {
             start_time: Instant::now(),

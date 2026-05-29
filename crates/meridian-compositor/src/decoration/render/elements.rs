@@ -20,7 +20,6 @@ use super::{
     geometry::{SsdChromeMetrics, SsdFrameMetrics},
 };
 
-
 /// Rounded-box soft drop-shadow pixel shader (GLSL ES 100). Computes the
 /// signed distance to the (optionally rounded) window rect and fades the
 /// shadow smoothly across `u_blur` — a seamless analytic shadow, no 9-slice
@@ -328,9 +327,12 @@ impl DecorationManager {
 
                 if let Some(h) = hovered {
                     let (rect, col, alpha, radii) = match h {
-                        HoveredButton::Close => {
-                            (buttons.close_rect, colors.error, 0.55f32, (0.0, pr, pr, 0.0))
-                        }
+                        HoveredButton::Close => (
+                            buttons.close_rect,
+                            colors.error,
+                            0.55f32,
+                            (0.0, pr, pr, 0.0),
+                        ),
                         HoveredButton::Maximize => (
                             buttons.maximize_rect,
                             colors.accent,
@@ -501,8 +503,8 @@ impl DecorationManager {
         // Replaces the old 9-slice bitmap (seams/notches at the corners).
         if theme.shadow && bw > 0 {
             if let Some(ref prog) = shadow_shader {
-                let spread = effective_shadow_radius(theme.shadow_radius as i32, deco.is_focused)
-                    .max(1);
+                let spread =
+                    effective_shadow_radius(theme.shadow_radius as i32, deco.is_focused).max(1);
                 let oy = theme.shadow_offset_y;
                 let shadow_alpha = effective_shadow_alpha(theme.shadow_alpha, deco.is_focused);
 

@@ -22,8 +22,7 @@ use tracing_subscriber::EnvFilter;
 
 use crate::wayland::{AppState, PamResult};
 
-static FONT_DATA: &[u8] =
-    include_bytes!("../../meridian-ui/assets/fonts/AdwaitaSans-Regular.ttf");
+static FONT_DATA: &[u8] = include_bytes!("../../meridian-ui/assets/fonts/AdwaitaSans-Regular.ttf");
 
 fn install_panic_logger() {
     let default_hook = std::panic::take_hook();
@@ -70,8 +69,7 @@ fn chrono_now() -> String {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
     install_panic_logger();
 

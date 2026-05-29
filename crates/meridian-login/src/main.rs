@@ -535,8 +535,7 @@ fn keyboard_layout_label(status: &KeyboardStatus) -> String {
 /// Light appearance, read once from the boot-chain marker at startup and
 /// consulted by the metro_* card colours and the compass style so the
 /// login matches the active desktop theme.
-static LIGHT_APPEARANCE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+static LIGHT_APPEARANCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 fn light_appearance() -> bool {
     LIGHT_APPEARANCE.load(std::sync::atomic::Ordering::Relaxed)

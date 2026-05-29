@@ -9,9 +9,9 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 mod app_view;
-mod autostart;
 mod audio;
 mod audio_popup;
+mod autostart;
 mod buffer;
 mod context_menu;
 mod draw;
@@ -22,11 +22,11 @@ mod network_popup;
 mod notification_popup;
 mod notifications;
 mod panel;
-mod popup_card;
 mod panel_view;
-mod soft_shadow;
+mod popup_card;
 mod printers;
 mod settings_view;
+mod soft_shadow;
 mod status_notifier;
 mod status_notifier_popup;
 mod thumbnail_popup;
@@ -118,18 +118,28 @@ fn install_panic_logger() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let backtrace = std::backtrace::Backtrace::capture();
-        let payload = info.payload().downcast_ref::<&str>().map(|s| s.to_string())
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
             .or_else(|| info.payload().downcast_ref::<String>().cloned())
             .unwrap_or_else(|| "<unknown panic>".to_string());
-        let loc = info.location().map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+        let loc = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
             .unwrap_or_else(|| "<unknown location>".to_string());
         let pid = std::process::id();
         let line = format!(
             "[{}] meridian-shell panic pid={}\n  at: {}\n  msg: {}\n  trace: {:?}\n\n",
-            chrono_now(), pid, loc, payload, backtrace
+            chrono_now(),
+            pid,
+            loc,
+            payload,
+            backtrace
         );
         if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true).append(true)
+            .create(true)
+            .append(true)
             .open("/tmp/meridian-shell-panic.log")
         {
             use std::io::Write;
@@ -141,7 +151,10 @@ fn install_panic_logger() {
 
 fn chrono_now() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     format!("{}", secs)
 }
 

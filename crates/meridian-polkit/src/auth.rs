@@ -47,11 +47,7 @@ fn find_helper() -> Option<&'static str> {
 /// Drive the helper for a single auth attempt. Blocking.
 /// Returns `true` if the helper reported SUCCESS (and therefore already
 /// invoked `AuthenticationAgentResponse` on polkitd).
-pub fn authenticate_via_helper(
-    username: &str,
-    cookie: &str,
-    password: &Zeroizing<String>,
-) -> bool {
+pub fn authenticate_via_helper(username: &str, cookie: &str, password: &Zeroizing<String>) -> bool {
     let Some(helper) = find_helper() else {
         tracing::error!("polkit-agent-helper-1 not found on system");
         return false;

@@ -16,7 +16,10 @@ const SETTINGS_CATEGORY_ACTIONS: &[(&str, SettingsCategory)] = &[
     ("settings-cat-display", SettingsCategory::Display),
     ("settings-cat-wallpaper", SettingsCategory::Wallpaper),
     ("settings-cat-pinned", SettingsCategory::PinnedApps),
-    ("settings-cat-system-overview", SettingsCategory::SystemOverview),
+    (
+        "settings-cat-system-overview",
+        SettingsCategory::SystemOverview,
+    ),
     ("settings-cat-network", SettingsCategory::Network),
     ("settings-cat-bluetooth", SettingsCategory::Bluetooth),
     ("settings-cat-sound", SettingsCategory::Sound),
@@ -28,7 +31,10 @@ const SETTINGS_CATEGORY_ACTIONS: &[(&str, SettingsCategory)] = &[
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum WidgetAction {
-    LaunchApp { program: String, args: Vec<String> },
+    LaunchApp {
+        program: String,
+        args: Vec<String>,
+    },
     LaunchExec(String),
     ToggleCalendar,
     ToggleNetworkPopup,
@@ -52,20 +58,39 @@ pub(crate) enum WidgetAction {
     PinnedAddApp(usize),
     SetPrimaryOutput(usize),
     ToggleOutputModeDropdown(usize),
-    SetOutputMode { output_index: usize, mode_index: usize },
+    SetOutputMode {
+        output_index: usize,
+        mode_index: usize,
+    },
 }
 
 pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
     exact_action_for_id(id)
         .or_else(|| settings_category_action_for_id(id))
-        .or_else(|| parse_indexed_action(id, SETTINGS_THEME_PREFIX, WidgetAction::ApplyThemeByIndex))
-        .or_else(|| parse_indexed_action(id, SETTINGS_WALLPAPER_PREFIX, WidgetAction::ApplyWallpaperByIndex))
+        .or_else(|| {
+            parse_indexed_action(id, SETTINGS_THEME_PREFIX, WidgetAction::ApplyThemeByIndex)
+        })
+        .or_else(|| {
+            parse_indexed_action(
+                id,
+                SETTINGS_WALLPAPER_PREFIX,
+                WidgetAction::ApplyWallpaperByIndex,
+            )
+        })
         .or_else(|| parse_indexed_action(id, PINNED_MOVE_UP_PREFIX, WidgetAction::PinnedMoveUp))
         .or_else(|| parse_indexed_action(id, PINNED_MOVE_DOWN_PREFIX, WidgetAction::PinnedMoveDown))
         .or_else(|| parse_indexed_action(id, PINNED_REMOVE_PREFIX, WidgetAction::PinnedRemove))
         .or_else(|| parse_indexed_action(id, PINNED_ADD_APP_PREFIX, WidgetAction::PinnedAddApp))
-        .or_else(|| parse_indexed_action(id, DISPLAY_PRIMARY_PREFIX, WidgetAction::SetPrimaryOutput))
-        .or_else(|| parse_indexed_action(id, DISPLAY_MODE_TOGGLE_PREFIX, WidgetAction::ToggleOutputModeDropdown))
+        .or_else(|| {
+            parse_indexed_action(id, DISPLAY_PRIMARY_PREFIX, WidgetAction::SetPrimaryOutput)
+        })
+        .or_else(|| {
+            parse_indexed_action(
+                id,
+                DISPLAY_MODE_TOGGLE_PREFIX,
+                WidgetAction::ToggleOutputModeDropdown,
+            )
+        })
         .or_else(|| parse_display_mode_select_action(id))
 }
 
@@ -81,10 +106,18 @@ fn exact_action_for_id(id: &str) -> Option<WidgetAction> {
         "power-lock" => Some(WidgetAction::PowerLock),
         "power-logout" => Some(WidgetAction::PowerLogout),
         "launcher-settings" | "show-tile-view" => Some(WidgetAction::ToggleSettings),
-        "wallpaper-mode-fill" => Some(WidgetAction::SetWallpaperMode(meridian_config::WallpaperMode::Fill)),
-        "wallpaper-mode-fit" => Some(WidgetAction::SetWallpaperMode(meridian_config::WallpaperMode::Fit)),
-        "wallpaper-mode-center" => Some(WidgetAction::SetWallpaperMode(meridian_config::WallpaperMode::Center)),
-        "wallpaper-mode-tile" => Some(WidgetAction::SetWallpaperMode(meridian_config::WallpaperMode::Tile)),
+        "wallpaper-mode-fill" => Some(WidgetAction::SetWallpaperMode(
+            meridian_config::WallpaperMode::Fill,
+        )),
+        "wallpaper-mode-fit" => Some(WidgetAction::SetWallpaperMode(
+            meridian_config::WallpaperMode::Fit,
+        )),
+        "wallpaper-mode-center" => Some(WidgetAction::SetWallpaperMode(
+            meridian_config::WallpaperMode::Center,
+        )),
+        "wallpaper-mode-tile" => Some(WidgetAction::SetWallpaperMode(
+            meridian_config::WallpaperMode::Tile,
+        )),
         "wallpaper-browse" => Some(WidgetAction::BrowseWallpaper),
         "pinned-add-open" => Some(WidgetAction::PinnedOpenAdd),
         "pinned-add-close" => Some(WidgetAction::PinnedCloseAdd),
@@ -99,7 +132,11 @@ fn settings_category_action_for_id(id: &str) -> Option<WidgetAction> {
         .map(WidgetAction::SetSettingsCategory)
 }
 
-fn parse_indexed_action(id: &str, prefix: &str, action: impl FnOnce(usize) -> WidgetAction) -> Option<WidgetAction> {
+fn parse_indexed_action(
+    id: &str,
+    prefix: &str,
+    action: impl FnOnce(usize) -> WidgetAction,
+) -> Option<WidgetAction> {
     id.strip_prefix(prefix)?.parse::<usize>().ok().map(action)
 }
 
@@ -123,26 +160,45 @@ mod tests {
 
     #[test]
     fn action_for_id_power_logout() {
-        assert_eq!(action_for_id("power-logout"), Some(WidgetAction::PowerLogout));
+        assert_eq!(
+            action_for_id("power-logout"),
+            Some(WidgetAction::PowerLogout)
+        );
     }
 
     #[test]
     fn action_for_id_settings_category() {
         assert_eq!(
             action_for_id("settings-cat-display"),
-            Some(WidgetAction::SetSettingsCategory(crate::settings_view::SettingsCategory::Display))
+            Some(WidgetAction::SetSettingsCategory(
+                crate::settings_view::SettingsCategory::Display
+            ))
         );
         assert_eq!(
             action_for_id("settings-cat-wallpaper"),
-            Some(WidgetAction::SetSettingsCategory(crate::settings_view::SettingsCategory::Wallpaper))
+            Some(WidgetAction::SetSettingsCategory(
+                crate::settings_view::SettingsCategory::Wallpaper
+            ))
         );
     }
 
     #[test]
     fn action_for_id_indexed_ids() {
-        assert_eq!(action_for_id("settings-theme-12"), Some(WidgetAction::ApplyThemeByIndex(12)));
-        assert_eq!(action_for_id("pinned-remove-8"), Some(WidgetAction::PinnedRemove(8)));
-        assert_eq!(action_for_id("display-mode-select-1-3"), Some(WidgetAction::SetOutputMode { output_index: 1, mode_index: 3 }));
+        assert_eq!(
+            action_for_id("settings-theme-12"),
+            Some(WidgetAction::ApplyThemeByIndex(12))
+        );
+        assert_eq!(
+            action_for_id("pinned-remove-8"),
+            Some(WidgetAction::PinnedRemove(8))
+        );
+        assert_eq!(
+            action_for_id("display-mode-select-1-3"),
+            Some(WidgetAction::SetOutputMode {
+                output_index: 1,
+                mode_index: 3
+            })
+        );
     }
 
     #[test]
