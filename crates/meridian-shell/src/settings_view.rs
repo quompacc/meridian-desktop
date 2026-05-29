@@ -218,52 +218,6 @@ impl SettingsCategory {
             ],
         }
     }
-
-    pub fn placeholder(&self) -> &'static str {
-        match self {
-            SettingsCategory::Theme => "",
-            SettingsCategory::Cursor => "Cursor theme + size - coming soon",
-            SettingsCategory::Display => "",
-            SettingsCategory::Wallpaper => "Wallpaper path + mode - coming soon",
-            SettingsCategory::PinnedApps => "Reorder / add / remove pinned apps - coming soon",
-            SettingsCategory::SystemOverview => "System overview - coming soon",
-            SettingsCategory::Network => "Network status and connections - coming soon",
-            SettingsCategory::Bluetooth => "Bluetooth devices and pairing - coming soon",
-            SettingsCategory::Sound => "Audio devices and volume routing - coming soon",
-            SettingsCategory::Printers => "Printer setup and queue status - coming soon",
-            SettingsCategory::Power => "Power mode, suspend, and battery settings - coming soon",
-            SettingsCategory::Users => "Users, login, and authentication - coming soon",
-            SettingsCategory::Updates => "System update status - coming soon",
-        }
-    }
-
-    pub fn skeleton_detail(&self) -> &'static str {
-        match self {
-            SettingsCategory::SystemOverview => {
-                "Device summary, Meridian version, session state, and quick health checks."
-            }
-            SettingsCategory::Network => {
-                "Connections, Wi-Fi, Ethernet, VPN, DNS, and connection diagnostics."
-            }
-            SettingsCategory::Bluetooth => "Adapters, pairing, trusted devices, and input devices.",
-            SettingsCategory::Sound => {
-                "PipeWire devices, input/output routing, and volume defaults."
-            }
-            SettingsCategory::Printers => {
-                "Printer discovery, CUPS queues, default printer, and print-job status."
-            }
-            SettingsCategory::Power => {
-                "Suspend policy, power profiles, battery status, brightness, and idle behavior."
-            }
-            SettingsCategory::Users => {
-                "Local users, login options, password flow, and YubiKey authentication."
-            }
-            SettingsCategory::Updates => {
-                "Package update status, last check, pending restarts, and maintenance actions."
-            }
-            _ => self.placeholder(),
-        }
-    }
 }
 
 // ─── Widget-based launcher sub-page ─────────────────────────────────────────
@@ -284,7 +238,6 @@ const DISPLAY_MODE_COMBO_W: i32 = 188;
 const DISPLAY_MODE_OPTION_H: i32 = 34;
 const DISPLAY_MODE_OPTION_MAX: usize = 8;
 const DISPLAY_OUTPUT_MAX: usize = 16;
-const SYSTEM_CARD_H: i32 = 116;
 const PRINTER_SUMMARY_H: i32 = 92;
 const PRINTER_ROW_H: i32 = 72;
 const PRINTER_MAX: usize = 8;
@@ -1227,67 +1180,6 @@ impl Widget for SettingsPlaceholder {
         );
     }
 }
-
-struct SettingsSkeletonCard {
-    title: &'static str,
-    detail: &'static str,
-    row_width: i32,
-    accent: Color,
-}
-
-impl Widget for SettingsSkeletonCard {
-    fn style(&self) -> WidgetStyle {
-        WidgetStyle {
-            size: UiSize {
-                width: ui_length(self.row_width as f32),
-                height: ui_length(SYSTEM_CARD_H as f32),
-            },
-            ..Default::default()
-        }
-    }
-
-    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
-        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
-            paint_fill(canvas, &path, theme.palette.surface);
-        }
-
-        let strip = Rect {
-            x: area.x,
-            y: area.y + 10,
-            width: 3,
-            height: area.height - 20,
-        };
-        if let Some(path) = rounded_rect_path(strip, 1) {
-            paint_fill(canvas, &path, self.accent);
-        }
-
-        paint_text(
-            canvas,
-            self.title,
-            area.x + 18,
-            area.y + 32,
-            14.0,
-            theme.palette.text,
-        );
-        paint_text(
-            canvas,
-            "COMING SOON",
-            area.x + 18,
-            area.y + 56,
-            10.5,
-            self.accent,
-        );
-        paint_text(
-            canvas,
-            self.detail,
-            area.x + 18,
-            area.y + 86,
-            12.0,
-            theme.palette.text_dim,
-        );
-    }
-}
-
 struct SoundSummaryCard {
     snapshot: AudioSnapshot,
     row_width: i32,
@@ -2711,22 +2603,46 @@ pub(crate) fn build_settings_widget_tree(
                 vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
             ))
         }
-        SettingsCategory::Bluetooth | SettingsCategory::Updates => {
+        SettingsCategory::Bluetooth => {
+            let row_w = content_w as i32;
+            let rows: Vec<Box<dyn Widget>> = crate::bluetooth::bluetooth_rows()
+                .into_iter()
+                .map(|(label, value)| {
+                    Box::new(SystemInfoRow {
+                        label: label.into(),
+                        value: value.into(),
+                        row_width: row_w,
+                    }) as Box<dyn Widget>
+                })
+                .collect();
             Box::new(Container::top_viewport(
                 content_w,
                 content_h,
                 14,
                 16,
                 4,
-                vec![Box::new(Container::column(
-                    4,
-                    vec![Box::new(SettingsSkeletonCard {
-                        title: selected.label(),
-                        detail: selected.skeleton_detail(),
-                        row_width: content_w as i32,
-                        accent: pal.accent,
-                    }) as Box<dyn Widget>],
-                )) as Box<dyn Widget>],
+                vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
+            ))
+        }
+        SettingsCategory::Updates => {
+            let row_w = content_w as i32;
+            let rows: Vec<Box<dyn Widget>> = crate::updates::updates_rows()
+                .into_iter()
+                .map(|(label, value)| {
+                    Box::new(SystemInfoRow {
+                        label: label.into(),
+                        value: value.into(),
+                        row_width: row_w,
+                    }) as Box<dyn Widget>
+                })
+                .collect();
+            Box::new(Container::top_viewport(
+                content_w,
+                content_h,
+                14,
+                16,
+                4,
+                vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
             ))
         }
         SettingsCategory::Sound => {
@@ -2812,17 +2728,27 @@ pub(crate) fn build_settings_widget_tree(
                 vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
             ))
         }
-        other => Box::new(Container::top_viewport(
-            content_w,
-            content_h,
-            14,
-            16,
-            4,
-            vec![Box::new(SettingsPlaceholder {
-                width: content_w as i32,
-                text: other.placeholder(),
-            }) as Box<dyn Widget>],
-        )),
+        SettingsCategory::Cursor => {
+            let row_w = content_w as i32;
+            let rows: Vec<Box<dyn Widget>> = crate::cursor::cursor_rows()
+                .into_iter()
+                .map(|(label, value)| {
+                    Box::new(SystemInfoRow {
+                        label: label.into(),
+                        value: value.into(),
+                        row_width: row_w,
+                    }) as Box<dyn Widget>
+                })
+                .collect();
+            Box::new(Container::top_viewport(
+                content_w,
+                content_h,
+                14,
+                16,
+                4,
+                vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
+            ))
+        }
     };
 
     let body = Box::new(Container::row(0, vec![sidebar, vsep, content])) as Box<dyn Widget>;
