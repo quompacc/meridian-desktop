@@ -1582,6 +1582,7 @@ impl XwmHandler for MeridianState {
             started_maximized: false,
             started_fullscreen: false,
             drag_restore_done: false,
+            workspace: self.workspaces.active,
         };
         let serial = SERIAL_COUNTER.next_serial();
         pointer.set_grab(self, grab, serial, Focus::Clear);

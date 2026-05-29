@@ -471,6 +471,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                             started_maximized,
                             started_fullscreen,
                             drag_restore_done: false,
+                            workspace: state.workspaces.active,
                         };
                         pointer.set_grab(state, grab, serial, Focus::Clear);
                     }

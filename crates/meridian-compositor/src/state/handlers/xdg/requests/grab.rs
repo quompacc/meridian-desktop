@@ -58,6 +58,7 @@ pub(crate) fn handle_move_request(
             started_maximized,
             started_fullscreen,
             drag_restore_done: false,
+            workspace: state.workspaces.active,
         };
         let Some(pointer) = seat.get_pointer() else {
             tracing::debug!("ignoring move request: seat has no pointer");

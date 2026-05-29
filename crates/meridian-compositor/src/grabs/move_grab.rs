@@ -630,6 +630,10 @@ fn maybe_restore_xwayland_snapped_drag(
 pub struct MoveSurfaceGrab {
     pub start_data: PointerGrabStartData<MeridianState>,
     pub window: Window,
+    /// Workspace the window lives on, captured at grab start. The drag maps
+    /// the window into THIS space (not the active one), so switching
+    /// workspace mid-drag cannot duplicate it across workspaces.
+    pub workspace: usize,
     pub initial_window_location: Point<i32, Logical>,
     pub latest_pointer_location: Option<Point<f64, Logical>>,
     pub started_maximized: bool,
@@ -716,7 +720,7 @@ impl PointerGrab<MeridianState> for MoveSurfaceGrab {
 
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
-        data.workspaces.active_space_mut().map_element(
+        data.workspaces.space_at_mut(self.workspace).map_element(
             self.window.clone(),
             new_location.to_i32_round(),
             true,
@@ -747,6 +751,13 @@ impl PointerGrab<MeridianState> for MoveSurfaceGrab {
             let should_maximize =
                 should_maximize_on_move_release(&self.window, release_action.map(|(_, a)| a));
             handle.unset_grab(self, data, event.serial, event.time, true);
+            // Release actions target the active (visible) workspace. If a
+            // workspace switch happened mid-drag, the window stayed on its own
+            // workspace (see motion); applying active-space actions here would
+            // duplicate it, so leave it where it was dragged.
+            if data.workspaces.active != self.workspace {
+                return;
+            }
             if should_maximize {
                 maximize_window_from_move_release(data, &self.window);
             } else if let Some((output_geometry, action)) = release_action {
