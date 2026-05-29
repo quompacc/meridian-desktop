@@ -893,6 +893,32 @@ impl MeridianState {
         id
     }
 
+    /// Move any window stranded off every live output back onto the primary
+    /// output's origin. Called after the output set changes (removal or a
+    /// resolution shrink) so a window is never left unreachable off-screen.
+    /// The reclamp logic is unit-tested in workspace.rs via a mock element.
+    /// Returns the number of windows relocated.
+    fn reclamp_windows_to_live_outputs(&mut self) -> usize {
+        let live_outputs: Vec<smithay::utils::Rectangle<i32, smithay::utils::Logical>> = self
+            .output_registry
+            .list()
+            .iter()
+            .map(|o| {
+                smithay::utils::Rectangle::new(
+                    (o.geometry.x, o.geometry.y).into(),
+                    (o.geometry.width, o.geometry.height).into(),
+                )
+            })
+            .collect();
+        let fallback: smithay::utils::Point<i32, smithay::utils::Logical> = self
+            .output_registry
+            .primary()
+            .map(|p| (p.geometry.x, p.geometry.y).into())
+            .unwrap_or_default();
+        self.workspaces
+            .reclamp_offscreen_windows(&live_outputs, fallback)
+    }
+
     pub fn handle_output_removed(&mut self, id: OutputId) -> bool {
         let Some(removed) = self.output_registry.remove_by_id(id) else {
             return false;
@@ -919,28 +945,7 @@ impl MeridianState {
             removed.geometry.width,
             removed.geometry.height
         );
-        // Rescue windows stranded off every surviving output so unplugging a
-        // monitor cannot leave them unreachable off-screen (A4 hotplug). The
-        // reclamp logic is unit-tested in workspace.rs via a mock element.
-        let live_outputs: Vec<smithay::utils::Rectangle<i32, smithay::utils::Logical>> = self
-            .output_registry
-            .list()
-            .iter()
-            .map(|o| {
-                smithay::utils::Rectangle::new(
-                    (o.geometry.x, o.geometry.y).into(),
-                    (o.geometry.width, o.geometry.height).into(),
-                )
-            })
-            .collect();
-        let fallback: smithay::utils::Point<i32, smithay::utils::Logical> = self
-            .output_registry
-            .primary()
-            .map(|p| (p.geometry.x, p.geometry.y).into())
-            .unwrap_or_default();
-        let rescued = self
-            .workspaces
-            .reclamp_offscreen_windows(&live_outputs, fallback);
+        let rescued = self.reclamp_windows_to_live_outputs();
         if rescued > 0 {
             tracing::info!(
                 "output removed: reclamped {} off-screen window(s) onto a surviving output",
@@ -972,6 +977,15 @@ impl MeridianState {
                 info.scale,
                 info.transform,
                 info.refresh_millihz
+            );
+        }
+        // A resolution shrink can leave a window outside the new geometry; pull
+        // it back on-screen (same reclamp as output removal).
+        let rescued = self.reclamp_windows_to_live_outputs();
+        if rescued > 0 {
+            tracing::info!(
+                "output reconfigured: reclamped {} off-screen window(s) onto a surviving output",
+                rescued
             );
         }
         let output_name = self.output_registry.by_id(id).map(|info| info.name.clone());
