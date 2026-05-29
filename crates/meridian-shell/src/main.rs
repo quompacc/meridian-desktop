@@ -33,6 +33,7 @@ mod sysinfo;
 mod thumbnail_popup;
 mod ui;
 mod ui_preview;
+mod users;
 mod wayland;
 mod widget_action;
 mod widget_traversal;

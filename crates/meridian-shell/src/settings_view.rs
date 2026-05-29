@@ -2689,7 +2689,29 @@ pub(crate) fn build_settings_widget_tree(
                 )) as Box<dyn Widget>],
             ))
         }
-        SettingsCategory::Bluetooth | SettingsCategory::Users | SettingsCategory::Updates => {
+        SettingsCategory::Users => {
+            let row_w = content_w as i32;
+            let rows: Vec<Box<dyn Widget>> = crate::users::UserAccounts::gather()
+                .rows()
+                .into_iter()
+                .map(|(label, value)| {
+                    Box::new(SystemInfoRow {
+                        label: label.into(),
+                        value: value.into(),
+                        row_width: row_w,
+                    }) as Box<dyn Widget>
+                })
+                .collect();
+            Box::new(Container::top_viewport(
+                content_w,
+                content_h,
+                14,
+                16,
+                4,
+                vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
+            ))
+        }
+        SettingsCategory::Bluetooth | SettingsCategory::Updates => {
             Box::new(Container::top_viewport(
                 content_w,
                 content_h,
