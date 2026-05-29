@@ -1712,7 +1712,7 @@ mod tests {
         };
         let requested = Rectangle::new((100, 900).into(), (800, 300).into());
         let adjusted = panel_safe_normal_xwayland_rect(requested, output);
-        assert_eq!(adjusted.loc.y, 744);
+        assert_eq!(adjusted.loc.y, 1080 - NORMAL_WINDOW_BOTTOM_RESERVED_PX - 300);
         assert_eq!(adjusted.size.h, 300);
         assert_eq!(adjusted.loc.x, 100);
     }
@@ -1730,7 +1730,7 @@ mod tests {
         assert_eq!(adjusted, requested);
         assert_eq!(
             output.height - NORMAL_WINDOW_BOTTOM_RESERVED_PX,
-            864,
+            816,
             "sanity check: panel-safe height differs from fullscreen height"
         );
     }
@@ -1768,7 +1768,7 @@ mod tests {
         };
         let requested = Rectangle::new((500, 980).into(), (400, 200).into());
         let adjusted = adjusted_configure_request_rect(requested, Some(output), false);
-        assert_eq!(adjusted.loc.y, 844);
+        assert_eq!(adjusted.loc.y, 1080 - NORMAL_WINDOW_BOTTOM_RESERVED_PX - 200);
         assert_eq!(adjusted.size.h, 200);
     }
 

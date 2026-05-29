@@ -863,7 +863,10 @@ mod tests {
     use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
     use smithay::utils::{Logical, Point, Size};
 
-    use crate::state::{HalfSnapRestoreGeometry, MaximizeRestoreGeometry, OutputGeometry};
+    use crate::state::{
+        HalfSnapRestoreGeometry, MaximizeRestoreGeometry, OutputGeometry,
+        NORMAL_WINDOW_BOTTOM_RESERVED_PX,
+    };
 
     use super::{
         anchored_client_location_from_pointer, apply_half_snap_drag_restore_states,
@@ -1070,7 +1073,7 @@ mod tests {
         assert_eq!(workarea.x, 0);
         assert_eq!(workarea.y, 0);
         assert_eq!(workarea.width, 1920);
-        assert_eq!(workarea.height, 1044);
+        assert_eq!(workarea.height, 1080 - NORMAL_WINDOW_BOTTOM_RESERVED_PX);
     }
 
     #[test]

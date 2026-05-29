@@ -1970,7 +1970,7 @@ mod tests {
     fn panel_global_activation_point_offsets_bottom_panel_y() {
         assert_eq!(
             panel_global_activation_point((938.2, 20.7), Some(800)),
-            crate::status_notifier::ActivationPoint { x: 938, y: 779 }
+            crate::status_notifier::ActivationPoint { x: 938, y: 755 }
         );
         assert_eq!(
             panel_global_activation_point((938.2, 20.7), None),

@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use smithay_client_toolkit::reexports::calloop::channel as cchannel;
 use tokio::sync::oneshot;
 use tracing::{debug, error, info, warn};
-use zbus::{interface, proxy, zvariant::OwnedValue, zvariant::Value, Connection};
+use zbus::{interface, proxy, zvariant::OwnedValue, zvariant::Value};
 
 pub const AGENT_OBJECT_PATH: &str = "/org/freedesktop/PolicyKit1/AuthenticationAgent";
 
@@ -35,7 +35,10 @@ pub struct Identity {
 pub struct AuthRequest {
     pub action_id: String,
     pub message: String,
+    // polkit-Protokolldaten, noch nicht im Auth-Dialog gerendert.
+    #[allow(dead_code)]
     pub icon_name: String,
+    #[allow(dead_code)]
     pub details: HashMap<String, String>,
     pub cookie: String,
     pub identities: Vec<Identity>,
@@ -46,8 +49,9 @@ pub struct AuthRequest {
 
 /// Result of a single BeginAuthentication round.
 pub enum Outcome {
-    /// PAM succeeded for the given identity. The agent will call
-    /// AuthenticationAgentResponse2 with these values.
+    /// PAM succeeded. Response2 an polkitd macht der setuid-Helper, nicht
+    /// der Agent — die Felder sind hier nur informativ.
+    #[allow(dead_code)]
     Authenticated { uid: u32, username: String },
     /// User dismissed or PAM failed after retries. polkitd treats this
     /// as "not authorised".

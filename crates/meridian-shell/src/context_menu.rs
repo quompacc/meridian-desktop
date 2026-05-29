@@ -226,7 +226,7 @@ pub(crate) fn desktop_hit_item_local(px: f64, py: f64) -> Option<usize> {
 /// True when `px` falls inside the settings flyout column (surface-local coords).
 pub(crate) fn is_in_submenu_area(px: f64) -> bool {
     let lx = px as i32;
-    lx >= MENU_WIDTH + SUBMENU_GAP && lx < MENU_WIDTH + SUBMENU_GAP + SUBMENU_WIDTH
+    (MENU_WIDTH + SUBMENU_GAP..MENU_WIDTH + SUBMENU_GAP + SUBMENU_WIDTH).contains(&lx)
 }
 
 /// Returns the 0-based flyout item index under surface-local `(px, py)`, or `None`.
@@ -234,7 +234,7 @@ pub(crate) fn submenu_hit_item_local(px: f64, py: f64) -> Option<usize> {
     let lx = px as i32 - MENU_WIDTH - SUBMENU_GAP;
     let ly = py as i32;
     let n = submenu_items().len();
-    if lx < 0 || lx >= SUBMENU_WIDTH {
+    if !(0..SUBMENU_WIDTH).contains(&lx) {
         return None;
     }
     if ly < VPAD || ly >= VPAD + n as i32 * ITEM_H {
@@ -289,8 +289,10 @@ fn draw_menu_icon(
     color: meridian_ui::style::Color,
 ) {
     use tiny_skia::{FillRule, LineCap, LineJoin, Paint, PathBuilder, Stroke, Transform};
-    let mut paint = Paint::default();
-    paint.anti_alias = true;
+    let mut paint = Paint {
+        anti_alias: true,
+        ..Default::default()
+    };
     paint.set_color_rgba8(color.r, color.g, color.b, color.a);
     let sw = (sz / 16.0 * 1.5).max(1.0);
     let stroke = Stroke {
@@ -423,8 +425,10 @@ fn draw_submenu_arrow_indicator(
     color: meridian_ui::style::Color,
 ) {
     use tiny_skia::{FillRule, Paint, PathBuilder, Transform};
-    let mut paint = Paint::default();
-    paint.anti_alias = true;
+    let mut paint = Paint {
+        anti_alias: true,
+        ..Default::default()
+    };
     paint.set_color_rgba8(color.r, color.g, color.b, (color.a as u32 * 160 / 255) as u8);
     let cx = (menu_w - PADDING_X + 2) as f32;
     let cy = (item_top + ITEM_H / 2) as f32;
@@ -444,6 +448,7 @@ fn draw_submenu_arrow_indicator(
 /// `icons` is parallel to `items` (empty = no icon column).
 /// `submenu_arrows`: parallel to `items`; if `true` for index `i`, a right-pointing
 /// arrow is drawn at the right edge of that item to indicate a flyout.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_overlay(
     canvas: &mut [u8],
     canvas_w: u32,
@@ -738,7 +743,7 @@ mod tests {
     #[test]
     fn item_list_terminal_pinned_has_four_items() {
         let items = item_list(true, true, false);
-        assert_eq!(items.len(), 5);
+        assert_eq!(items.len(), 4);
         assert!(matches!(items[0].1, ContextMenuAction::Launch));
         assert!(matches!(items[1].1, ContextMenuAction::NewWindow));
         assert!(matches!(items[2].1, ContextMenuAction::UnpinFromPanel));

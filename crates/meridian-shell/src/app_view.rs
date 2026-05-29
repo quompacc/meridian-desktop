@@ -370,6 +370,7 @@ fn draw_bento_strip(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_app_grid(
     pm: &mut PixmapMut<'_>,
     width: u32,
@@ -426,6 +427,7 @@ fn draw_app_grid(
     pm.draw_pixmap(0, content_y, grid_pix.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_search_results(
     pm: &mut PixmapMut<'_>,
     width: u32,
@@ -516,6 +518,7 @@ fn draw_power_footer(
 
     let btn_y = footer_y + (CP_FOOTER_H - CP_PWR_BTN_SIZE) / 2;
 
+    #[allow(clippy::needless_range_loop)]
     for i in 0..5usize {
         let bx = CP_PWR_START_X + i as i32 * CP_PWR_BTN_STRIDE;
         let is_hov = hovered_idx == Some(i);
@@ -749,13 +752,15 @@ mod tests {
 
     #[test]
     fn hit_bento_tile_correct_columns() {
-        // 8 tiles: strip_x = (880−824)/2 = 28; stride=104
+        // 8 tiles centered in LAUNCHER_WIDTH; stride = tile width + gap.
         let n = 8;
         let tile_y = CP_BENTO_TOP + CP_SECTION_LABEL_H + CP_SECTION_PAD;
-        assert_eq!(hit_bento_tile(50, tile_y + 10, n), Some(0));
-        assert_eq!(hit_bento_tile(132, tile_y + 10, n), Some(1)); // 28+104=132
-        assert_eq!(hit_bento_tile(28, tile_y - 1, n), None);
-        assert_eq!(hit_bento_tile(10, tile_y + 10, n), None); // before strip
+        let strip_x = cp_bento_tile_x(n);
+        let stride = CP_BENTO_TILE_W + CP_BENTO_TILE_GAP;
+        assert_eq!(hit_bento_tile(strip_x + 10, tile_y + 10, n), Some(0));
+        assert_eq!(hit_bento_tile(strip_x + stride + 10, tile_y + 10, n), Some(1));
+        assert_eq!(hit_bento_tile(strip_x + 10, tile_y - 1, n), None); // wrong row
+        assert_eq!(hit_bento_tile(strip_x - 1, tile_y + 10, n), None); // before strip
     }
 
     #[test]

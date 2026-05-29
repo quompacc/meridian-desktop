@@ -18,7 +18,7 @@ pub enum NetworkPopupHit {
 }
 
 thread_local! {
-    static SETTINGS_LINK_RECT: std::cell::Cell<Rect> = std::cell::Cell::new(Rect { x: 0, y: 0, w: 0, h: 0 });
+    static SETTINGS_LINK_RECT: std::cell::Cell<Rect> = const { std::cell::Cell::new(Rect { x: 0, y: 0, w: 0, h: 0 }) };
 }
 
 pub fn draw_network_popup(

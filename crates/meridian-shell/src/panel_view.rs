@@ -1480,7 +1480,13 @@ mod tests {
             None,
             &Theme::TOKYO_NIGHT_METRO,
         );
-        assert_eq!(tree.children().len(), 3);
+        // Floating-Island-Struktur: Root umschliesst die bar, die bar haelt die 3 Cluster.
+        assert_eq!(tree.children().len(), 1, "root wraps the island bar");
+        assert_eq!(
+            tree.children()[0].children().len(),
+            3,
+            "bar holds left/center/right clusters"
+        );
     }
 
     #[test]

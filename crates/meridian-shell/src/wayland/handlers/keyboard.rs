@@ -90,7 +90,7 @@ impl KeyboardHandler for MeridianShell {
                 || event.keysym == Keysym::KP_Enter;
 
             if is_escape {
-                if self.desktop_context_menu.as_ref().map_or(false, |m| m.submenu_open) {
+                if self.desktop_context_menu.as_ref().is_some_and(|m| m.submenu_open) {
                     // First Esc: close submenu only
                     if let Some(ref mut menu) = self.desktop_context_menu {
                         menu.submenu_open = false;
@@ -110,7 +110,7 @@ impl KeyboardHandler for MeridianShell {
             let n_main = crate::context_menu::desktop_item_list().len();
             let n_sub  = crate::context_menu::submenu_items().len();
             let submenu_open = self.desktop_context_menu
-                .as_ref().map_or(false, |m| m.submenu_open);
+                .as_ref().is_some_and(|m| m.submenu_open);
 
             if is_down || is_up {
                 if submenu_open {
@@ -141,7 +141,7 @@ impl KeyboardHandler for MeridianShell {
                         }
                     }
                     let new_submenu = self.desktop_context_menu
-                        .as_ref().map_or(false, |m| m.submenu_open);
+                        .as_ref().is_some_and(|m| m.submenu_open);
                     if new_submenu != submenu_open {
                         self.resize_desktop_menu_surface(new_submenu);
                     }
@@ -152,7 +152,7 @@ impl KeyboardHandler for MeridianShell {
 
             if is_right && !submenu_open {
                 if self.desktop_context_menu.as_ref()
-                    .map_or(false, |m| m.hover_idx == Some(crate::context_menu::SETTINGS_ITEM_IDX))
+                    .is_some_and(|m| m.hover_idx == Some(crate::context_menu::SETTINGS_ITEM_IDX))
                 {
                     if let Some(ref mut menu) = self.desktop_context_menu {
                         menu.submenu_open = true;

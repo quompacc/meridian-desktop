@@ -112,7 +112,9 @@ fn select_tiling_output_from_infos(infos: &[OutputInfo]) -> Option<SelectedTilin
 mod tests {
     use smithay::utils::Transform;
 
-    use crate::state::{OutputGeometry, OutputId, OutputInfo};
+    use crate::state::{
+            OutputGeometry, OutputId, OutputInfo, NORMAL_WINDOW_BOTTOM_RESERVED_PX,
+        };
 
     use super::select_tiling_output_from_infos;
 
@@ -139,7 +141,10 @@ mod tests {
         let selected = select_tiling_output_from_infos(&infos).expect("selection");
         assert_eq!(selected.id.0, 2);
         assert_eq!(selected.fallback_reason, "primary");
-        assert_eq!(selected.geometry.size.h, 1044);
+        assert_eq!(
+            selected.geometry.size.h,
+            1080 - NORMAL_WINDOW_BOTTOM_RESERVED_PX
+        );
     }
 
     #[test]

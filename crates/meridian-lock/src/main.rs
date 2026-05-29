@@ -278,7 +278,7 @@ fn handle_key(state: &mut AppState, linux_key: u32) {
         }
         xkbcommon::xkb::keysyms::KEY_BackSpace => {
             // Remove last UTF-8 character
-            let mut s = std::mem::replace(&mut *state.password, String::new());
+            let mut s = std::mem::take(&mut *state.password);
             let new_len = s
                 .char_indices()
                 .next_back()
@@ -451,16 +451,6 @@ fn create_shm_buffer(
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
 
-fn argb_from_rgba(c: u32) -> u32 {
-    // tiny-skia hex: 0xAARRGGBB  memory: R G B A
-    // wl_shm ARGB8888 memory on LE: B G R A
-    let a = (c >> 24) & 0xff;
-    let r = (c >> 16) & 0xff;
-    let g = (c >> 8) & 0xff;
-    let b = c & 0xff;
-    (a << 24) | (r << 16) | (g << 8) | b
-}
-
 fn color(rgba_hex: u32) -> Color {
     let a = ((rgba_hex >> 24) & 0xff) as f32 / 255.0;
     let r = ((rgba_hex >> 16) & 0xff) as f32 / 255.0;
@@ -497,7 +487,7 @@ fn fill_rect(pm: &mut PixmapMut, x: f32, y: f32, w: f32, h: f32, r: f32, col: u3
 fn fill_circle(pm: &mut PixmapMut, cx: f32, cy: f32, radius: f32, col: u32) {
     let mut pb = PathBuilder::new();
     // Approximate circle with 4 cubic bezier arcs
-    let k = 0.5522847498;
+    let k = 0.552_284_8;
     let r = radius;
     pb.move_to(cx, cy - r);
     pb.cubic_to(cx + k * r, cy - r, cx + r, cy - k * r, cx + r, cy);
@@ -517,7 +507,7 @@ fn draw_lock_icon(pm: &mut PixmapMut, cx: f32, cy: f32, col: u32) {
     let sr = 12.0;
     let sy = cy - 18.0;
     let mut pb = PathBuilder::new();
-    let k = 0.5522847498;
+    let k = 0.552_284_8;
     // Top half of circle (the shackle)
     pb.move_to(cx - sr, sy);
     pb.cubic_to(cx - sr, sy - k * sr, cx - k * sr, sy - sr, cx, sy - sr);
@@ -529,9 +519,11 @@ fn draw_lock_icon(pm: &mut PixmapMut, cx: f32, cy: f32, col: u32) {
     pb.line_to(cx - sr, sy);
     // Draw as two separate paths with stroke
     let path_shackle = pb.finish().unwrap();
-    let mut stroke_paint = tiny_skia::Stroke::default();
-    stroke_paint.width = 3.5;
-    stroke_paint.line_cap = tiny_skia::LineCap::Round;
+    let stroke_paint = tiny_skia::Stroke {
+        width: 3.5,
+        line_cap: tiny_skia::LineCap::Round,
+        ..Default::default()
+    };
     let mut paint = Paint::default();
     paint.set_color(paint_col);
     pm.stroke_path(
@@ -556,9 +548,11 @@ fn draw_lock_icon(pm: &mut PixmapMut, cx: f32, cy: f32, col: u32) {
     pb2.move_to(cx, by + 12.0);
     pb2.line_to(cx, by + 17.0);
     let path_keyhole = pb2.finish().unwrap();
-    let mut sp2 = tiny_skia::Stroke::default();
-    sp2.width = 2.5;
-    sp2.line_cap = tiny_skia::LineCap::Round;
+    let sp2 = tiny_skia::Stroke {
+        width: 2.5,
+        line_cap: tiny_skia::LineCap::Round,
+        ..Default::default()
+    };
     let mut kp = Paint::default();
     kp.set_color(color(BG));
     pm.stroke_path(&path_keyhole, &kp, &sp2, Transform::identity(), None);

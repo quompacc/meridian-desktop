@@ -139,7 +139,7 @@ impl PointerHandler for MeridianShell {
                         let submenu_open = self
                             .desktop_context_menu
                             .as_ref()
-                            .map_or(false, |m| m.submenu_open);
+                            .is_some_and(|m| m.submenu_open);
                         self.resize_desktop_menu_surface(submenu_open);
                     }
                     if changed {
@@ -154,7 +154,7 @@ impl PointerHandler for MeridianShell {
                         && self
                             .desktop_context_menu
                             .as_ref()
-                            .map_or(false, |m| m.submenu_open);
+                            .is_some_and(|m| m.submenu_open);
                     let sub_action = if in_submenu {
                         context_menu::submenu_hit_item_local(px, py).and_then(|idx| {
                             context_menu::submenu_items().get(idx).map(|item| item.1)

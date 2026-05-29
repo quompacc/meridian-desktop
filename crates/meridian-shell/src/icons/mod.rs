@@ -6,8 +6,6 @@ mod theme_index;
 
 pub use cache::IconCache;
 
-#[cfg(test)]
-pub(crate) use loader::IconLoader;
 
 #[derive(Debug, Clone)]
 pub struct IconImage {

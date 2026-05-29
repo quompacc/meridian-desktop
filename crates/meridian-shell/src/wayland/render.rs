@@ -934,7 +934,6 @@ impl MeridianShell {
                 painter.text_centered(&self.font, &time_text, text_rect, self.theme.colors.text);
             }
 
-            drop(painter);
             round_buffer_corners(canvas, width as usize, height as usize, crate::popup_card::CARD_RADIUS);
             if let Err(err) = buf.attach_to(self.calendar_layer.wl_surface()) {
                 warn!(
@@ -1027,7 +1026,6 @@ impl MeridianShell {
                 },
                 &mut self.workspace_state,
             );
-            drop(painter);
             round_buffer_corners(canvas, width as usize, height as usize, crate::popup_card::CARD_RADIUS);
 
             if let Err(err) = buf.attach_to(self.workspace_layer.wl_surface()) {
@@ -1114,7 +1112,6 @@ impl MeridianShell {
                 &self.theme,
                 self.network_controller.state(),
             );
-            drop(painter);
             round_buffer_corners(canvas, width as usize, height as usize, crate::popup_card::CARD_RADIUS);
 
             if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {
@@ -1199,7 +1196,6 @@ impl MeridianShell {
                 &self.theme,
                 &self.audio_snapshot,
             );
-            drop(painter);
             round_buffer_corners(canvas, width as usize, height as usize, crate::popup_card::CARD_RADIUS);
 
             if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {

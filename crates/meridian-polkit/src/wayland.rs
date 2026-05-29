@@ -39,6 +39,8 @@ pub struct PamResult {
 }
 
 pub struct ActiveAuth {
+    // Nur fuers Logging/zukuenftige Anzeige gehalten.
+    #[allow(dead_code)]
     pub action_id: String,
     pub message: String,
     pub cookie: String,
@@ -291,7 +293,7 @@ impl AppState {
                 }
             }
             let fd = unsafe {
-                libc::memfd_create(b"meridian-polkit\0".as_ptr() as *const _, 0)
+                libc::memfd_create(c"meridian-polkit".as_ptr(), 0)
             };
             if fd < 0 {
                 warn!("memfd_create failed");
@@ -542,11 +544,10 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppState {
                 key,
                 state: WEnum::Value(wl_keyboard::KeyState::Pressed),
                 ..
-            } => {
-                if state.handle_key(key) {
+            }
+                if state.handle_key(key) => {
                     state.draw(qh);
                 }
-            }
             _ => {}
         }
     }
