@@ -10,6 +10,7 @@ members = [
     "crates/meridian-ui",
     "crates/meridian-login",
     "crates/meridian-lock",
+    "crates/meridian-polkit",
     "crates/meridian-compass-render",
     "crates/meridian-boot-common",
 ]

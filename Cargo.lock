@@ -1468,6 +1468,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "meridian-polkit"
+version = "0.1.0"
+dependencies = [
+ "ab_glyph",
+ "libc",
+ "meridian-config",
+ "nix",
+ "pam-sys",
+ "smithay-client-toolkit",
+ "tiny-skia",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-wlr",
+ "xkbcommon 0.8.0",
+ "zbus",
+ "zeroize",
+]
+
+[[package]]
 name = "meridian-portal"
 version = "0.1.0"
 dependencies = [

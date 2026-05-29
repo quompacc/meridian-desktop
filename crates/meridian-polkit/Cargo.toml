@@ -1,0 +1,26 @@
+[package]
+name = "meridian-polkit"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "meridian-polkit-agent"
+path = "src/main.rs"
+
+[dependencies]
+ab_glyph = { workspace = true }
+libc = "0.2"
+meridian-config = { path = "../meridian-config" }
+nix = { version = "0.29", features = ["user"] }
+pam-sys = "1.0.0-alpha5"
+smithay-client-toolkit = "0.19"
+tiny-skia = { workspace = true }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+xkbcommon = "0.8"
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+zeroize = "1"

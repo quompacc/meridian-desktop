@@ -135,8 +135,14 @@ impl CompositorHandler for MeridianState {
                 has_buffer,
             )) = focus_target
             {
-                let wants_focus = namespace == "meridian-launcher"
-                    && keyboard_interactivity != KeyboardInteractivity::None
+                // Per zwlr_layer_shell spec: KeyboardInteractivity::Exclusive
+                // means the surface must receive keyboard focus as soon as it
+                // is mapped (has_buffer). This logic was previously
+                // hard-scoped to the launcher namespace, which left other
+                // Exclusive-interactive layer surfaces (e.g. the polkit auth
+                // popup) typing into whichever window happened to be focused
+                // before they opened.
+                let wants_focus = keyboard_interactivity == KeyboardInteractivity::Exclusive
                     && has_buffer;
                 if namespace == "meridian-launcher" {
                     tracing::debug!(
@@ -183,7 +189,13 @@ impl CompositorHandler for MeridianState {
                             output_name
                         );
                     }
-                } else if namespace == "meridian-launcher" && !has_buffer {
+                } else if keyboard_interactivity == KeyboardInteractivity::Exclusive
+                    && !has_buffer
+                {
+                    // Exclusive layer just unmapped (attach(None) commit).
+                    // Release focus so the next focusable surface takes over;
+                    // without this the keyboard would point at a destroyed
+                    // surface and input would go nowhere.
                     let should_clear_focus = self
                         .seat
                         .get_keyboard()
