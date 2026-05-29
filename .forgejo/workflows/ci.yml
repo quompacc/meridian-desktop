@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Codeberg / Forgejo Actions. Same three gates as .githooks/pre-push.
+# Runs in the official rust image (Debian bookworm) on Codeberg's shared
+# `docker` runner, so apt is available and runs as root (no sudo).
+jobs:
+  check:
+    runs-on: docker
+    container:
+      image: rust:1-bookworm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            pkg-config libpam0g-dev libclang-dev \
+            libseat-dev libudev-dev libfontconfig-dev libfreetype-dev \
+            libpixman-1-dev libwayland-dev libxkbcommon-dev libinput-dev \
+            libegl-dev libgles-dev libgbm-dev libdrm-dev xkb-data
+
+      - name: Ensure rustfmt + clippy
+        run: rustup component add rustfmt clippy
+
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: test
+        run: cargo test --workspace

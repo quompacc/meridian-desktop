@@ -1,43 +1,45 @@
 name: CI
 
 on:
-  pull_request:
   push:
+    branches: [master]
+  pull_request:
 
+# Same three gates as .githooks/pre-push: fmt, clippy (--all-targets), test.
 jobs:
-  quality:
+  check:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install native dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libdrm-dev \
-            libegl1-mesa-dev \
-            libgbm-dev \
-            libgles2-mesa-dev \
-            libinput-dev \
-            libpam0g-dev \
-            libseat-dev \
-            libudev-dev \
-            libwayland-dev \
-            libxkbcommon-dev
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libpam0g-dev libclang-dev \
+            libseat-dev libudev-dev libfontconfig-dev libfreetype-dev \
+            libpixman-1-dev libwayland-dev libxkbcommon-dev libinput-dev \
+            libegl-dev libgles-dev libgbm-dev libdrm-dev xkb-data
 
-      - name: Install Rust
+      - name: Install Rust (stable + rustfmt + clippy)
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
-      - name: Format check
-        run: cargo fmt --check
+      - name: Cache cargo + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build check
-        run: cargo check --workspace
+      - name: rustfmt
+        run: cargo fmt --all -- --check
 
-      - name: Clippy
-        run: cargo clippy --workspace -- -D warnings
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Test workspace
+      - name: test
         run: cargo test --workspace
