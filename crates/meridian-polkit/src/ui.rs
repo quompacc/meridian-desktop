@@ -353,3 +353,78 @@ fn wrap_text(
     }
     lines
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_font() -> FontRef<'static> {
+        static FONT: &[u8] =
+            include_bytes!("../../meridian-ui/assets/fonts/AdwaitaSans-Regular.ttf");
+        FontRef::try_from_slice(FONT).expect("load test font")
+    }
+
+    #[test]
+    fn u32_from_color_packs_argb_with_explicit_alpha() {
+        let c = ThemeColor::rgb(0x12, 0x34, 0x56);
+        // Das alpha-Argument ueberschreibt das Alpha der Farbe selbst.
+        assert_eq!(u32_from_color(c, 0x78), 0x78_12_34_56);
+        assert_eq!(u32_from_color(c, 0xFF), 0xFF_12_34_56);
+    }
+
+    #[test]
+    fn rgba_to_color_unpacks_channels() {
+        assert_eq!(
+            rgba_to_color(0x78_12_34_56),
+            Color::from_rgba8(0x12, 0x34, 0x56, 0x78)
+        );
+    }
+
+    #[test]
+    fn color_helpers_roundtrip() {
+        let c = ThemeColor::rgb(10, 20, 30);
+        let packed = u32_from_color(c, 200);
+        assert_eq!(rgba_to_color(packed), Color::from_rgba8(10, 20, 30, 200));
+    }
+
+    #[test]
+    fn wrap_text_short_text_stays_one_line() {
+        let font = test_font();
+        let lines = wrap_text(&font, 16.0, "hallo", 1000.0, 3);
+        assert_eq!(lines, vec!["hallo".to_string()]);
+    }
+
+    #[test]
+    fn wrap_text_empty_yields_single_empty_line() {
+        let font = test_font();
+        let lines = wrap_text(&font, 16.0, "", 1000.0, 3);
+        assert_eq!(lines, vec![String::new()]);
+    }
+
+    #[test]
+    fn wrap_text_wraps_when_too_narrow() {
+        let font = test_font();
+        let lines = wrap_text(&font, 16.0, "the quick brown fox jumps", 40.0, 6);
+        assert!(lines.len() > 1, "expected wrapping, got {:?}", lines);
+        assert!(lines.iter().all(|l| !l.is_empty()));
+    }
+
+    #[test]
+    fn wrap_text_truncates_with_ellipsis_at_max_lines() {
+        let font = test_font();
+        let lines = wrap_text(
+            &font,
+            16.0,
+            "the quick brown fox jumps over the lazy dog",
+            40.0,
+            2,
+        );
+        assert_eq!(lines.len(), 2);
+        // Letzte Zeile endet mit U+2026 (ellipsis) = UTF-8 0xE2 0x80 0xA6.
+        assert!(
+            lines.last().unwrap().as_bytes().ends_with(&[0xe2, 0x80, 0xa6]),
+            "last line should end with ellipsis, got {:?}",
+            lines
+        );
+    }
+}

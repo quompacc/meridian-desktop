@@ -264,3 +264,49 @@ async fn run(
     std::future::pending::<()>().await;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn owned_u32(v: u32) -> OwnedValue {
+        OwnedValue::try_from(Value::U32(v)).expect("owned u32")
+    }
+
+    #[test]
+    fn unix_session_subject_carries_session_id() {
+        let (kind, details) = unix_session_subject("c2");
+        assert_eq!(kind, "unix-session");
+        assert_eq!(
+            details.get("session-id"),
+            Some(&Value::from("c2".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_identities_keeps_unix_user_and_resolves_name() {
+        // Eine uid, die es auf keinem System gibt, faellt auf "uid=N" zurueck.
+        let uid = 4_000_000_000u32;
+        let mut details = HashMap::new();
+        details.insert("uid".to_string(), owned_u32(uid));
+        let raw = vec![("unix-user".to_string(), details)];
+        let ids = parse_identities(&raw);
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids[0].uid, uid);
+        assert_eq!(ids[0].username, format!("uid={uid}"));
+    }
+
+    #[test]
+    fn parse_identities_skips_non_unix_user() {
+        let mut details = HashMap::new();
+        details.insert("uid".to_string(), owned_u32(1000));
+        let raw = vec![("unix-group".to_string(), details)];
+        assert!(parse_identities(&raw).is_empty());
+    }
+
+    #[test]
+    fn parse_identities_skips_entry_without_uid() {
+        let raw = vec![("unix-user".to_string(), HashMap::new())];
+        assert!(parse_identities(&raw).is_empty());
+    }
+}
