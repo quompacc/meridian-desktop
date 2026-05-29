@@ -2666,25 +2666,47 @@ pub(crate) fn build_settings_widget_tree(
                 vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
             ))
         }
-        SettingsCategory::Bluetooth
-        | SettingsCategory::Power
-        | SettingsCategory::Users
-        | SettingsCategory::Updates => Box::new(Container::top_viewport(
-            content_w,
-            content_h,
-            14,
-            16,
-            4,
-            vec![Box::new(Container::column(
+        SettingsCategory::Power => {
+            let row_w = content_w as i32;
+            let btn = |id: &'static str, label: &'static str, color| {
+                Box::new(Button::with_id(id, label, color, row_w, 44)) as Box<dyn Widget>
+            };
+            Box::new(Container::top_viewport(
+                content_w,
+                content_h,
+                14,
+                16,
                 4,
-                vec![Box::new(SettingsSkeletonCard {
-                    title: selected.label(),
-                    detail: selected.skeleton_detail(),
-                    row_width: content_w as i32,
-                    accent: pal.accent,
-                }) as Box<dyn Widget>],
-            )) as Box<dyn Widget>],
-        )),
+                vec![Box::new(Container::column(
+                    8,
+                    vec![
+                        btn("power-sleep", "Bereitschaft", pal.accent),
+                        btn("power-lock", "Sperren", pal.accent),
+                        btn("power-logout", "Abmelden", pal.accent),
+                        btn("power-restart", "Neu starten", pal.error),
+                        btn("power-off", "Ausschalten", pal.error),
+                    ],
+                )) as Box<dyn Widget>],
+            ))
+        }
+        SettingsCategory::Bluetooth | SettingsCategory::Users | SettingsCategory::Updates => {
+            Box::new(Container::top_viewport(
+                content_w,
+                content_h,
+                14,
+                16,
+                4,
+                vec![Box::new(Container::column(
+                    4,
+                    vec![Box::new(SettingsSkeletonCard {
+                        title: selected.label(),
+                        detail: selected.skeleton_detail(),
+                        row_width: content_w as i32,
+                        accent: pal.accent,
+                    }) as Box<dyn Widget>],
+                )) as Box<dyn Widget>],
+            ))
+        }
         SettingsCategory::Sound => {
             let row_w = content_w as i32;
             let mut rows: Vec<Box<dyn Widget>> = vec![Box::new(SoundSummaryCard {
