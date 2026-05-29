@@ -38,11 +38,65 @@ impl NetworkState {
             Self::Offline => "network-offline-symbolic",
         }
     }
+
+    /// Label/value rows for the Settings network page (read-only summary).
+    pub fn settings_rows(&self) -> Vec<(&'static str, String)> {
+        match self {
+            Self::Offline => vec![("Status", "Nicht verfügbar".to_string())],
+            Self::Disconnected => vec![("Status", "Getrennt".to_string())],
+            Self::Connected {
+                kind,
+                connection_name,
+            } => {
+                let mut rows = vec![
+                    ("Status", "Verbunden".to_string()),
+                    ("Verbindung", connection_name.clone()),
+                ];
+                let (type_label, signal) = match kind {
+                    ConnectionKind::Ethernet => ("Ethernet", None),
+                    ConnectionKind::Wifi { signal } => ("WLAN", *signal),
+                    ConnectionKind::Vpn => ("VPN", None),
+                    ConnectionKind::Other => ("Andere", None),
+                };
+                rows.push(("Typ", type_label.to_string()));
+                if let Some(sig) = signal {
+                    rows.push(("Signal", format!("{sig} %")));
+                }
+                rows
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{ConnectionKind, NetworkState};
+
+    #[test]
+    fn settings_rows_summarize_state() {
+        assert_eq!(
+            NetworkState::Offline.settings_rows(),
+            vec![("Status", "Nicht verfügbar".to_string())]
+        );
+        let wifi = NetworkState::Connected {
+            kind: ConnectionKind::Wifi { signal: Some(72) },
+            connection_name: "Home".to_string(),
+        };
+        assert_eq!(
+            wifi.settings_rows(),
+            vec![
+                ("Status", "Verbunden".to_string()),
+                ("Verbindung", "Home".to_string()),
+                ("Typ", "WLAN".to_string()),
+                ("Signal", "72 %".to_string()),
+            ]
+        );
+        let eth = NetworkState::Connected {
+            kind: ConnectionKind::Ethernet,
+            connection_name: "Wired".to_string(),
+        };
+        assert_eq!(eth.settings_rows().len(), 3);
+    }
 
     #[test]
     fn icon_name_for_each_variant() {

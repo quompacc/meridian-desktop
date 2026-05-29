@@ -15,6 +15,7 @@ use crate::icons::{icon_image_to_pixmap, IconCache};
 use crate::launcher::DesktopApp;
 use crate::panel::PinnedApp;
 
+use crate::network::NetworkState;
 use crate::printers::{PrinterInfo, PrinterServiceState, PrinterSnapshot};
 use crate::sysinfo::SystemInfo;
 use meridian_config::{ThemeConfig, WallpaperEntry, WallpaperMode};
@@ -2179,6 +2180,7 @@ pub(crate) fn build_settings_widget_tree(
     printer_snapshot: &PrinterSnapshot,
     audio_snapshot: &AudioSnapshot,
     system_info: &SystemInfo,
+    network_state: &NetworkState,
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
@@ -2642,8 +2644,29 @@ pub(crate) fn build_settings_widget_tree(
                 vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
             ))
         }
-        SettingsCategory::Network
-        | SettingsCategory::Bluetooth
+        SettingsCategory::Network => {
+            let row_w = content_w as i32;
+            let rows: Vec<Box<dyn Widget>> = network_state
+                .settings_rows()
+                .into_iter()
+                .map(|(label, value)| {
+                    Box::new(SystemInfoRow {
+                        label: label.into(),
+                        value: value.into(),
+                        row_width: row_w,
+                    }) as Box<dyn Widget>
+                })
+                .collect();
+            Box::new(Container::top_viewport(
+                content_w,
+                content_h,
+                14,
+                16,
+                4,
+                vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
+            ))
+        }
+        SettingsCategory::Bluetooth
         | SettingsCategory::Power
         | SettingsCategory::Users
         | SettingsCategory::Updates => Box::new(Container::top_viewport(
@@ -2789,6 +2812,7 @@ pub(crate) fn draw_settings_launcher(
     printer_snapshot: &PrinterSnapshot,
     audio_snapshot: &AudioSnapshot,
     system_info: &SystemInfo,
+    network_state: &NetworkState,
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
@@ -2829,6 +2853,7 @@ pub(crate) fn draw_settings_launcher(
         printer_snapshot,
         audio_snapshot,
         system_info,
+        network_state,
         pinned_adding,
         all_apps,
         icon_cache,

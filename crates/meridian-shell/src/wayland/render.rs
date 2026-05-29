@@ -628,6 +628,7 @@ impl MeridianShell {
                     &self.printer_snapshot,
                     &self.audio_snapshot,
                     &system_info,
+                    self.network_controller.state(),
                     self.settings_pinned_adding,
                     &self.launcher_state.apps,
                     &self.icon_cache,
