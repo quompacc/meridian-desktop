@@ -1145,6 +1145,11 @@ impl MeridianShell {
         self.network_layer.wl_surface().attach(None, 0, 0);
         self.network_layer.commit();
         self.network_dirty = false;
+        // network_layer is shared with audio and SNI popups. After unmap we
+        // must wait for a fresh configure before committing another buffer,
+        // otherwise the next popup re-attaches into a half-mapped surface and
+        // the compositor disconnects us with a layer-shell protocol error.
+        self.network_configured = false;
     }
 
     pub(crate) fn draw_audio_popup(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
@@ -1221,6 +1226,7 @@ impl MeridianShell {
         self.network_layer.wl_surface().attach(None, 0, 0);
         self.network_layer.commit();
         self.audio_dirty = false;
+        self.network_configured = false;
     }
 
     pub(crate) fn draw_status_notifier_menu(
@@ -1304,6 +1310,7 @@ impl MeridianShell {
         self.network_layer.wl_surface().attach(None, 0, 0);
         self.network_layer.commit();
         self.network_dirty = false;
+        self.network_configured = false;
     }
 
     /// Phase A1.3: paint the front notification onto the dedicated

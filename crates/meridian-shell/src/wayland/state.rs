@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use meridian_config::{MeridianConfig, ThemeConfig, ThemeManager};
 use meridian_ipc::{OutputWorkspaceState, ShellCommand, ShellEvent, WindowSnapshotEntry};
 use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity};
+use smithay_client_toolkit::shell::WaylandSurface;
 use tracing::{debug, info};
 use wayland_client::QueueHandle;
 
@@ -1095,6 +1096,13 @@ impl MeridianShell {
         self.network_width = crate::NETWORK_POPUP_WIDTH;
         self.network_height = crate::NETWORK_POPUP_HEIGHT;
         self.network_dirty = true;
+        // If we just unmapped (transitioning from another shared-layer popup),
+        // flush the pending state so the compositor sends a fresh configure
+        // before any buffer commit. draw_network_popup will skip until the
+        // configure handler flips network_configured back to true.
+        if !self.network_configured {
+            self.network_layer.commit();
+        }
         tracing::debug!(
             "toggle_network_popup: open_after={} configured={} size={}x{} keyboard_focus={:?}",
             self.network_popup_open,
@@ -1162,6 +1170,9 @@ impl MeridianShell {
         self.audio_width = crate::AUDIO_POPUP_WIDTH;
         self.audio_height = crate::AUDIO_POPUP_HEIGHT;
         self.audio_dirty = true;
+        if !self.network_configured {
+            self.network_layer.commit();
+        }
         tracing::debug!(
             "toggle_audio_popup: open_after={} configured={} size={}x{} keyboard_focus={:?}",
             self.audio_popup_open,
@@ -1236,6 +1247,9 @@ impl MeridianShell {
         self.network_layer
             .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
         self.network_dirty = true;
+        if !self.network_configured {
+            self.network_layer.commit();
+        }
         self.draw_status_notifier_menu(qh, RepaintReason::Ipc);
     }
 
