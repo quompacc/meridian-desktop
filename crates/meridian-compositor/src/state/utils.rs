@@ -14,13 +14,21 @@ pub(crate) fn window_id(surface: &WlSurface) -> String {
     surface.id().to_string()
 }
 
+/// Window-list / runtime-state key for an XWayland window. Shared between
+/// `window_list_entry` (the id handed to the shell) and the compositor's
+/// destroy/unmap cleanup so the two never diverge -- a mismatch would leave
+/// closed X11 windows lingering as taskbar ghosts.
+pub(crate) fn x11_window_id_key(window_id: u32) -> String {
+    format!("x11:{window_id}")
+}
+
 pub(crate) fn window_list_entry(window: &Window) -> Option<(String, String)> {
     if let Some(toplevel) = window.toplevel() {
         return Some((window_id(toplevel.wl_surface()), toplevel_title(toplevel)));
     }
 
     window.x11_surface().map(|x11| {
-        let id = format!("x11:{}", x11.window_id());
+        let id = x11_window_id_key(x11.window_id());
         let title = x11.title();
         let class = x11.class();
         let instance = x11.instance();
@@ -84,4 +92,20 @@ pub(crate) fn client_compositor_state(client: &Client) -> &CompositorClientState
         return &state.compositor_state;
     }
     &client.get_data::<ClientState>().unwrap().compositor_state
+}
+
+#[cfg(test)]
+mod tests {
+    use super::x11_window_id_key;
+
+    #[test]
+    fn x11_window_id_key_matches_window_list_scheme() {
+        // window_list_entry derives the X11 id via this helper, and the
+        // xwayland destroyed/unmapped cleanup keys runtime state by it
+        // (via x11_window_key). If the formats diverge, destroyed X11
+        // windows leak as taskbar ghosts (regression: XW-1).
+        assert_eq!(x11_window_id_key(42), "x11:42");
+        assert_eq!(x11_window_id_key(0), "x11:0");
+        assert_eq!(x11_window_id_key(u32::MAX), format!("x11:{}", u32::MAX));
+    }
 }

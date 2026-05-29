@@ -482,6 +482,7 @@ pub(crate) use client::ClientState;
 pub(crate) use ipc::IpcServer;
 pub(crate) use utils::{
     client_compositor_state, toplevel_title, window_app_id, window_id, window_list_entry,
+    x11_window_id_key,
 };
 
 #[cfg(test)]

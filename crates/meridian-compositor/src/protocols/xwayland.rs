@@ -293,7 +293,7 @@ fn x11_resize_edge_to_resize_edge(edges: X11ResizeEdge) -> ResizeEdge {
 }
 
 pub(crate) fn x11_window_key(window: &X11Surface) -> String {
-    format!("x11:{}", window.window_id())
+    crate::state::x11_window_id_key(window.window_id())
 }
 
 fn x11_fullscreen_restore_key(window: &X11Surface) -> String {
@@ -796,14 +796,9 @@ impl XwmHandler for MeridianState {
             geometry = ?window.geometry(),
             "handling xwayland unmap"
         );
-        let active = self.workspaces.active;
-        let maybe = self
-            .workspaces
-            .space_at(active)
-            .elements()
-            .find(|w| matches!(w.x11_surface(), Some(x) if x == &window))
-            .cloned();
-        if let Some(win) = maybe {
+        // Search every workspace: an X11 window can unmap while a different
+        // workspace is active, and active-only lookup would skip its cleanup.
+        if let Some((workspace, win)) = find_x11_window_with_workspace(self, &window) {
             if let Some((id, _)) = window_list_entry(&win) {
                 self.broadcast_window_closed(id.clone());
                 self.clear_window_runtime_state(&id);
@@ -814,7 +809,7 @@ impl XwmHandler for MeridianState {
                     "broadcasted window closed for xwayland unmap"
                 );
             }
-            self.workspaces.space_at_mut(active).unmap_elem(&win);
+            self.workspaces.space_at_mut(workspace).unmap_elem(&win);
             self.mark_all_outputs_dirty("xwayland-unmap-window");
         }
         if !is_override_redirect {
@@ -833,6 +828,17 @@ impl XwmHandler for MeridianState {
         let window_id = window.window_id();
         if let Some(wl_surface) = window.wl_surface() {
             self.decoration_manager.remove(&wl_surface);
+        }
+        // Mirror the XDG destroyed path: a window destroyed without a
+        // preceding unmap on the active workspace (closed while minimized,
+        // or while another workspace is active) must still leave the window
+        // list and clear its runtime state, or it lingers as a taskbar ghost.
+        let key = x11_window_key(&window);
+        self.broadcast_window_closed(key.clone());
+        self.clear_window_runtime_state(&key);
+        if let Some((workspace, win)) = find_x11_window_with_workspace(self, &window) {
+            self.workspaces.space_at_mut(workspace).unmap_elem(&win);
+            self.mark_all_outputs_dirty("xwayland-destroy-window");
         }
         if window.is_override_redirect() {
             let (elapsed_since_announce_ms, elapsed_since_map_ms, last_state) = self
