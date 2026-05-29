@@ -16,6 +16,7 @@ use crate::launcher::DesktopApp;
 use crate::panel::PinnedApp;
 
 use crate::printers::{PrinterInfo, PrinterServiceState, PrinterSnapshot};
+use crate::sysinfo::SystemInfo;
 use meridian_config::{ThemeConfig, WallpaperEntry, WallpaperMode};
 use meridian_ipc::{OutputModeState, OutputWorkspaceState};
 
@@ -1515,6 +1516,49 @@ impl Widget for PrinterSummaryCard {
     }
 }
 
+const SYSINFO_ROW_H: i32 = 36;
+
+struct SystemInfoRow {
+    label: Box<str>,
+    value: Box<str>,
+    row_width: i32,
+}
+
+impl Widget for SystemInfoRow {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.row_width as f32),
+                height: ui_length(SYSINFO_ROW_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, theme.palette.surface);
+        }
+        paint_text(
+            canvas,
+            &self.label,
+            area.x + 16,
+            area.y + 23,
+            12.5,
+            theme.palette.text_dim,
+        );
+        let value = fit_text(&self.value, 48);
+        paint_text(
+            canvas,
+            &value,
+            area.x + 150,
+            area.y + 23,
+            12.5,
+            theme.palette.text,
+        );
+    }
+}
+
 struct PrinterRow {
     printer: PrinterInfo,
     row_width: i32,
@@ -2134,6 +2178,7 @@ pub(crate) fn build_settings_widget_tree(
     display_mode_dropdown_open: Option<usize>,
     printer_snapshot: &PrinterSnapshot,
     audio_snapshot: &AudioSnapshot,
+    system_info: &SystemInfo,
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
@@ -2575,8 +2620,29 @@ pub(crate) fn build_settings_widget_tree(
                 }
             }
         }
-        SettingsCategory::SystemOverview
-        | SettingsCategory::Network
+        SettingsCategory::SystemOverview => {
+            let row_w = content_w as i32;
+            let rows: Vec<Box<dyn Widget>> = system_info
+                .rows()
+                .iter()
+                .map(|(label, value)| {
+                    Box::new(SystemInfoRow {
+                        label: (*label).into(),
+                        value: (*value).into(),
+                        row_width: row_w,
+                    }) as Box<dyn Widget>
+                })
+                .collect();
+            Box::new(Container::top_viewport(
+                content_w,
+                content_h,
+                14,
+                16,
+                4,
+                vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
+            ))
+        }
+        SettingsCategory::Network
         | SettingsCategory::Bluetooth
         | SettingsCategory::Power
         | SettingsCategory::Users
@@ -2722,6 +2788,7 @@ pub(crate) fn draw_settings_launcher(
     display_mode_dropdown_open: Option<usize>,
     printer_snapshot: &PrinterSnapshot,
     audio_snapshot: &AudioSnapshot,
+    system_info: &SystemInfo,
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
@@ -2761,6 +2828,7 @@ pub(crate) fn draw_settings_launcher(
         display_mode_dropdown_open,
         printer_snapshot,
         audio_snapshot,
+        system_info,
         pinned_adding,
         all_apps,
         icon_cache,

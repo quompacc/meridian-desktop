@@ -29,6 +29,7 @@ mod settings_view;
 mod soft_shadow;
 mod status_notifier;
 mod status_notifier_popup;
+mod sysinfo;
 mod thumbnail_popup;
 mod ui;
 mod ui_preview;
