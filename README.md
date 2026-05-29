@@ -131,11 +131,44 @@ PATH="$PWD/target/release:$PATH" target/release/meridian
 Before opening or updating a patch:
 
 ```bash
-cargo fmt --check
-cargo check --workspace
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo clippy --workspace -- -D warnings
-git diff --check
+```
+
+These three gates are enforced automatically by CI (GitHub Actions and
+Codeberg/Forgejo) and by a local pre-push hook. Enable the hook once per
+clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+## Versioning
+
+Meridian follows [Semantic Versioning](https://semver.org/) (pre-1.0:
+`0.MINOR.PATCH`). All workspace crates share one version, set once in the
+root `Cargo.toml` under `[workspace.package]`; notable changes are recorded
+in [CHANGELOG.md](CHANGELOG.md).
+
+The changelog is generated with [git-cliff](https://git-cliff.org/) from
+[Conventional Commits](https://www.conventionalcommits.org/) — use real
+types (`feat:`, `fix:`, `perf:`, `refactor:`, `docs:`, `test:`, `ci:`,
+`chore:`) so entries are picked up. Preview the pending entries any time:
+
+```bash
+git-cliff --unreleased
+```
+
+To cut a release `vX.Y.Z`: bump `version` under `[workspace.package]`, run
+`scripts/release-changelog.sh vX.Y.Z` to fold the unreleased commits into a
+dated section, then commit, tag, and push:
+
+```bash
+scripts/release-changelog.sh vX.Y.Z
+git commit -am "chore(release): vX.Y.Z"
+git tag -a vX.Y.Z -m "Meridian vX.Y.Z"
+git push && git push origin vX.Y.Z
 ```
 
 ## Roadmap
@@ -171,6 +204,7 @@ The goal is cohesion and reliability over endless surface-level tweakability.
 
 ## Documentation
 
+- [Changelog](CHANGELOG.md)
 - [Meridian Design Manifesto](docs/design-manifesto.md)
 - [Technical Design Guidelines](docs/technical-design-guidelines.md)
 - [Project status](docs/PROJECT_STATUS.md)

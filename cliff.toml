@@ -1,0 +1,56 @@
+# git-cliff — generates the changelog from Conventional Commits.
+# See README "Versioning" for the release workflow. The curated 0.1.0
+# baseline in CHANGELOG.md is kept static; cliff maintains entries from
+# v0.1.0 onward (commits since the project adopted conventional types).
+
+[changelog]
+header = """
+# Changelog
+
+All notable changes to Meridian are documented here.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+While pre-1.0, the scheme is `0.MINOR.PATCH`: `MINOR` for features and
+behavioural changes, `PATCH` for fixes. All crates in the workspace share a
+single version.
+"""
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }}\
+{% endfor %}
+{% endfor %}
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+commit_parsers = [
+    { message = "^chore\\(release\\)", skip = true },
+    { message = "^chore\\(changelog\\)", skip = true },
+    { message = "^feat", group = "<!-- 0 -->Added" },
+    { message = "^fix", group = "<!-- 2 -->Fixed" },
+    { message = "^perf", group = "<!-- 1 -->Changed" },
+    { message = "^refactor", group = "<!-- 1 -->Changed" },
+    { message = "^style", group = "<!-- 1 -->Changed" },
+    { message = "^docs?", group = "<!-- 3 -->Documentation" },
+    { message = "^test", group = "<!-- 4 -->Tests" },
+    { message = "^ci", group = "<!-- 5 -->Tooling" },
+    { message = "^build", group = "<!-- 5 -->Tooling" },
+    { message = "^chore", group = "<!-- 5 -->Tooling" },
+]
+protect_breaking_commits = false
+filter_commits = false
+tag_pattern = "v[0-9]*"
+topo_order = false
+sort_commits = "oldest"
