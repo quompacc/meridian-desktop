@@ -13,7 +13,7 @@ use std::os::raw::c_void;
 use std::os::unix::io::AsRawFd;
 
 use ab_glyph::FontRef;
-use meridian_config::ThemeConfig;
+use meridian_config::{MeridianConfig, ThemeConfig, ThemeManager};
 use smithay_client_toolkit::reexports::calloop::channel as cchannel;
 use tracing::{debug, info, warn};
 use wayland_client::{
@@ -120,6 +120,10 @@ impl AppState {
             let _ = req.reply.send(Outcome::Cancelled);
             return;
         }
+        // Refresh the theme from disk on every auth request so live
+        // theme switches in the shell (config rewrite) take effect on
+        // the next popup, not on next agent restart.
+        self.reload_theme();
         let identity = req.identities.first().cloned().unwrap_or(Identity {
             uid: 0,
             username: "root".to_string(),
@@ -142,6 +146,25 @@ impl AppState {
         });
         self.ensure_popup(qh);
         // First draw arrives via the layer_surface Configure event.
+    }
+
+    fn reload_theme(&mut self) {
+        let config = MeridianConfig::load();
+        let mut manager = ThemeManager::new();
+        if !config.general.theme.is_empty()
+            && config.general.theme != manager.current().name
+        {
+            if let Err(err) = manager.set_theme(&config.general.theme) {
+                warn!(
+                    "polkit: failed to reload theme {:?}: {} (keeping previous)",
+                    config.general.theme, err
+                );
+                return;
+            }
+        }
+        let new_name = manager.current().name.clone();
+        self.theme = manager.current().config.clone();
+        debug!(theme = %new_name, "polkit: theme reloaded");
     }
 
     pub fn on_cancel_from_polkit(&mut self, cookie: String) {
