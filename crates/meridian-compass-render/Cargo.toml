@@ -1,6 +1,6 @@
 [package]
 name = "meridian-compass-render"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "QuompaCC compass renderer shared between bootsplash and meridian-login"
 

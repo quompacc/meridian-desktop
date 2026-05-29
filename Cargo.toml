@@ -15,6 +15,9 @@ members = [
     "crates/meridian-boot-common",
 ]
 
+[workspace.package]
+version = "0.1.0"
+
 [workspace.dependencies]
 bitflags = "2"
 smithay = { git = "https://github.com/Smithay/smithay.git", rev = "060e9cd9c8ae2633947bdb72cffa1748ac53922d", default-features = false, features = [
@@ -38,7 +41,7 @@ ab_glyph = "0.2"
 
 [package]
 name = "meridian"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 
 [dependencies]
