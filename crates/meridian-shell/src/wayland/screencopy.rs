@@ -39,7 +39,6 @@ pub(crate) struct ScreenshotCapture {
 
 // SAFETY: the mmap pointer is only accessed from the single-threaded Wayland event loop.
 unsafe impl Send for ScreenshotCapture {}
-unsafe impl Sync for ScreenshotCapture {}
 
 impl Drop for ScreenshotCapture {
     fn drop(&mut self) {
