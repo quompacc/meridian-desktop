@@ -45,9 +45,14 @@ impl FromStr for Color {
         let byte = |i: usize| -> Result<u8, String> {
             u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| e.to_string())
         };
+        // `is_ascii()` guard: byte() slices `&s[i..i+2]` by byte index, which
+        // would panic on a non-char-boundary. Hex digits are ASCII, so for any
+        // ASCII string byte length == char count and the slices are always on
+        // boundaries; non-ASCII input falls through to the graceful Err arm
+        // (e.g. a config value like "#€€" is 6 bytes but not hex).
         match s.len() {
-            6 => Ok(Self::rgb(byte(0)?, byte(2)?, byte(4)?)),
-            8 => Ok(Self::rgba(byte(0)?, byte(2)?, byte(4)?, byte(6)?)),
+            6 if s.is_ascii() => Ok(Self::rgb(byte(0)?, byte(2)?, byte(4)?)),
+            8 if s.is_ascii() => Ok(Self::rgba(byte(0)?, byte(2)?, byte(4)?, byte(6)?)),
             _ => Err(format!(
                 "invalid color \"#{}\": expected 6 or 8 hex digits",
                 s
@@ -67,5 +72,39 @@ impl<'de> Deserialize<'de> for Color {
         String::deserialize(d)?
             .parse()
             .map_err(serde::de::Error::custom)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Color;
+
+    #[test]
+    fn from_str_parses_rgb_and_rgba() {
+        assert_eq!(
+            "#112233".parse::<Color>().unwrap(),
+            Color::rgb(0x11, 0x22, 0x33)
+        );
+        assert_eq!(
+            "#11223344".parse::<Color>().unwrap(),
+            Color::rgba(0x11, 0x22, 0x33, 0x44)
+        );
+    }
+
+    #[test]
+    fn from_str_rejects_multibyte_without_panicking() {
+        // Two euro signs are 6 bytes (3 each) but not a char-boundary-safe hex
+        // string; byte-slicing must not split a char. Regression for a config
+        // color value that would otherwise panic theme loading.
+        assert!("#\u{20ac}\u{20ac}".parse::<Color>().is_err());
+        assert!("\u{20ac}\u{20ac}".parse::<Color>().is_err());
+        // An 8-byte multibyte string must also fall through gracefully.
+        assert!("\u{20ac}\u{20ac}xx".parse::<Color>().is_err());
+    }
+
+    #[test]
+    fn from_str_rejects_wrong_length() {
+        assert!("#fff".parse::<Color>().is_err());
+        assert!("#xyzxyz".parse::<Color>().is_err());
     }
 }
