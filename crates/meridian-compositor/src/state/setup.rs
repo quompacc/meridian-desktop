@@ -955,6 +955,7 @@ impl MeridianState {
         // A maximized window rescued onto a surviving output keeps its old size
         // (reclamp only moves position); re-measure it to the new workarea.
         crate::state::handlers::xdg::requests::remeasure_maximized_windows(self);
+        crate::protocols::xwayland::remeasure_maximized_x11_windows(self);
         self.post_output_state_change("output-removed", Some(id), Some(&removed.name));
         true
     }
@@ -994,6 +995,7 @@ impl MeridianState {
         // Maximized windows keep their old size across a mode switch; re-measure
         // them to the new output geometry.
         crate::state::handlers::xdg::requests::remeasure_maximized_windows(self);
+        crate::protocols::xwayland::remeasure_maximized_x11_windows(self);
         let output_name = self.output_registry.by_id(id).map(|info| info.name.clone());
         self.post_output_state_change("output-reconfigured", Some(id), output_name.as_deref());
         true

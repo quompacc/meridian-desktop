@@ -5,7 +5,7 @@ use smithay::{
     input::pointer::Focus,
     reexports::wayland_server::{protocol::wl_surface::WlSurface, Resource},
     utils::SERIAL_COUNTER,
-    utils::{Logical, Rectangle, Size},
+    utils::{Logical, Point, Rectangle, Size},
     wayland::{
         seat::WaylandFocus,
         selection::{
@@ -436,6 +436,83 @@ pub(crate) fn apply_x11_maximize(state: &mut MeridianState, window: &X11Surface)
         .space_at_mut(state.workspaces.active)
         .map_element(mapped_window, content_loc, true);
     state.mark_all_outputs_dirty("xwayland-maximize-request");
+}
+
+struct X11Remeasure {
+    window: Window,
+    loc: Point<i32, Logical>,
+    size: Size<i32, Logical>,
+}
+
+/// Re-apply maximized geometry to X11 windows after an output's geometry
+/// changed (mode switch / removal), so a maximized X11 window keeps filling
+/// its output. Mirrors apply_x11_maximize's frame math but leaves the restore
+/// geometry untouched (the window is already maximized) and skips windows
+/// whose size is unchanged. Compile-verified; a real X11 mode switch needs
+/// hardware to feel out.
+pub(crate) fn remeasure_maximized_x11_windows(state: &mut MeridianState) {
+    let mut updates: Vec<X11Remeasure> = Vec::new();
+    for ws in 0..state.workspaces.count() {
+        let space = state.workspaces.space_at(ws);
+        for window in space.elements() {
+            let Some(x11) = window.x11_surface() else {
+                continue;
+            };
+            if x11.is_override_redirect() || !x11.is_maximized() {
+                continue;
+            }
+            let Some(loc) = space.element_location(window) else {
+                continue;
+            };
+            let Some(output) = state
+                .output_registry
+                .output_at_point(loc.x as f64, loc.y as f64)
+            else {
+                continue;
+            };
+            let workarea = normal_window_workarea_from_output_geometry(output.geometry);
+            let decoration_offset = x11
+                .wl_surface()
+                .map(|wl| {
+                    state
+                        .decoration_manager
+                        .decoration_offset(&wl, &state.theme_manager.current().config.decorations)
+                })
+                .unwrap_or((0, 0));
+            let content_loc = maximized_client_loc_from_output(
+                (workarea.x, workarea.y).into(),
+                decoration_offset,
+            );
+            let content_size = maximized_x11_content_size(
+                (workarea.width.max(1), workarea.height.max(1)).into(),
+                decoration_offset,
+            );
+            if content_size != window.geometry().size {
+                updates.push(X11Remeasure {
+                    window: window.clone(),
+                    loc: content_loc,
+                    size: content_size,
+                });
+            }
+        }
+    }
+    for update in updates {
+        if let Some(x11) = update.window.x11_surface() {
+            if let Err(err) = x11.configure(Rectangle::new(update.loc, update.size)) {
+                error!("xwayland re-measure configure failed: {}", err);
+                continue;
+            }
+        }
+        if let Some((ws, _)) = state
+            .workspaces
+            .find_element_workspace(|w| w == &update.window)
+        {
+            state
+                .workspaces
+                .space_at_mut(ws)
+                .map_element(update.window, update.loc, false);
+        }
+    }
 }
 
 pub(crate) fn apply_x11_unmaximize(state: &mut MeridianState, window: &X11Surface) {
