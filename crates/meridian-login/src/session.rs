@@ -118,7 +118,7 @@ pub fn launch_compositor_for(
     }
     cmd.current_dir(&home);
 
-    // Use pre_exec to do initgroups + setgid + setuid IN ORDER. Using just
+    // Drop privileges in the child via pre_exec: setgroups + setgid + setuid IN ORDER. Using just
     // Command::uid()/.gid() would skip supplementary groups, so the
     // compositor would not pick up `video`/`render`/`input` membership and
     // could not open /dev/dri/card0. The closure captures CString-converted
@@ -127,14 +127,25 @@ pub fn launch_compositor_for(
         CString::new(username.to_string()).map_err(|_| SessionError::UsernameNotCString)?;
     let uid_nix = nix::unistd::Uid::from_raw(uid);
     let gid_nix = nix::unistd::Gid::from_raw(gid);
-    // SAFETY: pre_exec runs between fork and exec in the child process. The
-    // calls we make (initgroups, setgid, setuid) are explicitly listed as
-    // async-signal-safe in signal-safety(7), and the captured CString is
-    // already allocated (we only read its pointer here).
+    // Resolve supplementary groups BEFORE the fork. getgrouplist() consults
+    // the group database via NSS and is NOT async-signal-safe; at this point
+    // login is multi-threaded (the PAM worker thread is alive, blocked on
+    // session teardown), so running it post-fork could deadlock the child on
+    // an NSS/malloc lock held by another thread at fork time. We pre-flatten
+    // to raw gid_t so pre_exec only touches already-allocated memory.
+    let groups: Vec<libc::gid_t> = nix::unistd::getgrouplist(&username_c, gid_nix)
+        .map_err(SessionError::Nix)?
+        .iter()
+        .map(|g| g.as_raw())
+        .collect();
+    // SAFETY: pre_exec runs between fork and exec in the child. setgroups,
+    // setgid and setuid are async-signal-safe (direct syscalls, no NSS/alloc),
+    // and `groups` is already allocated -- we only read its pointer here.
     unsafe {
         cmd.pre_exec(move || {
-            nix::unistd::initgroups(&username_c, gid_nix)
-                .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
+            if libc::setgroups(groups.len() as libc::size_t, groups.as_ptr()) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
             nix::unistd::setgid(gid_nix)
                 .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
             nix::unistd::setuid(uid_nix)

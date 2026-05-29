@@ -817,7 +817,7 @@ fn render_surface(state: &mut AppState, idx: usize, qh: &QueueHandle<AppState>) 
     let ls = &mut state.lock_surfaces[idx];
 
     // Allocate shm if needed
-    if ls.shm_ptr.is_null() || ls.shm_size < pixels.len() {
+    if ls.shm_ptr.is_null() || ls.shm_size != pixels.len() {
         if !ls.shm_ptr.is_null() {
             unsafe { libc::munmap(ls.shm_ptr as *mut _, ls.shm_size) };
         }
