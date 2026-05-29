@@ -136,9 +136,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
-These three gates are enforced automatically by CI (GitHub Actions and
-Codeberg/Forgejo) and by a local pre-push hook. Enable the hook once per
-clone:
+These three gates are enforced automatically by CI (GitHub Actions) and
+by a local pre-push hook. Enable the hook once per clone:
 
 ```bash
 git config core.hooksPath .githooks
