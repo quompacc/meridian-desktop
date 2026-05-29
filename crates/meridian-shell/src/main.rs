@@ -180,6 +180,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     insert_network_poll_timer(&mut event_loop, qh.clone())?;
     insert_notifications_source(&mut event_loop, qh.clone())?;
     shell.status_notifier_tx = insert_status_notifier_source(&mut event_loop, qh.clone())?;
+    insert_updates_refresh_ping(&mut event_loop, qh.clone())?;
     insert_notification_expiry_timer(&mut event_loop, qh)?;
 
     while !shell.exit {
@@ -285,6 +286,33 @@ fn insert_status_notifier_source(
             }
         })?;
     Ok(Some(tx))
+}
+
+/// Wire a calloop ping that the background `apt` update query signals once
+/// its result is cached, so the Settings "Updates" page refreshes from the
+/// "wird ermittelt …" placeholder to the real result without the user having
+/// to interact. Best-effort: a redraw only happens if Updates is on screen.
+fn insert_updates_refresh_ping(
+    event_loop: &mut EventLoop<'_, wayland::MeridianShell>,
+    qh: wayland_client::QueueHandle<wayland::MeridianShell>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use smithay_client_toolkit::reexports::calloop::ping::make_ping;
+    let (ping, source) = make_ping()?;
+    updates::set_refresh_ping(ping);
+    event_loop
+        .handle()
+        .insert_source(source, move |_, _, shell| {
+            if shell.launcher_settings_open
+                && matches!(
+                    shell.settings_category,
+                    crate::settings_view::SettingsCategory::Updates
+                )
+            {
+                shell.launcher_dirty = true;
+                shell.draw_launcher(&qh, RepaintReason::Ipc);
+            }
+        })?;
+    Ok(())
 }
 
 /// Periodic timer that prunes expired notifications from the queue and

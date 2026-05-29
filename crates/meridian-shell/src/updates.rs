@@ -10,12 +10,22 @@ use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
+use smithay_client_toolkit::reexports::calloop::ping::Ping;
+
 const MAX_LISTED: usize = 12;
 
 type UpdateRows = Vec<(String, String)>;
 
 static CACHE: OnceLock<Mutex<Option<UpdateRows>>> = OnceLock::new();
 static STARTED: AtomicBool = AtomicBool::new(false);
+static REFRESH_PING: OnceLock<Mutex<Ping>> = OnceLock::new();
+
+/// Register the calloop ping the background query signals once its result
+/// lands, so the event loop can redraw the Updates page without waiting for
+/// the next user interaction. Called once at shell startup.
+pub fn set_refresh_ping(ping: Ping) {
+    let _ = REFRESH_PING.set(Mutex::new(ping));
+}
 
 fn cache() -> &'static Mutex<Option<UpdateRows>> {
     CACHE.get_or_init(|| Mutex::new(None))
@@ -30,6 +40,11 @@ pub fn updates_rows() -> Vec<(String, String)> {
             let rows = query_blocking();
             if let Ok(mut guard) = cache().lock() {
                 *guard = Some(rows);
+            }
+            if let Some(ping) = REFRESH_PING.get() {
+                if let Ok(ping) = ping.lock() {
+                    ping.ping();
+                }
             }
         });
     }
