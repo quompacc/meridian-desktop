@@ -167,6 +167,25 @@ impl Drop for ConvData {
     }
 }
 
+/// Free a (possibly partial) pam_response array, wiping any strdup'd answer
+/// strings first -- one of them is the plaintext password, which libpam would
+/// otherwise free without zeroizing. `filled` is the number of leading entries
+/// that may carry a `.resp` pointer.
+unsafe fn free_responses(resp: *mut pam_response, filled: isize) {
+    for j in 0..filled {
+        let r = &mut *resp.offset(j);
+        if !r.resp.is_null() {
+            let len = libc::strlen(r.resp);
+            for k in 0..len {
+                std::ptr::write_volatile(r.resp.add(k) as *mut u8, 0);
+            }
+            free(r.resp as *mut c_void);
+            r.resp = ptr::null_mut();
+        }
+    }
+    free(resp as *mut c_void);
+}
+
 unsafe extern "C" fn conv_cb(
     num_msg: c_int,
     msg: *mut *const pam_message,
@@ -187,7 +206,7 @@ unsafe extern "C" fn conv_cb(
     for i in 0..num_msg as isize {
         let m_ptr = *msg.offset(i);
         if m_ptr.is_null() {
-            free(resp as *mut c_void);
+            free_responses(resp, i);
             return PAM_CONV_ERR;
         }
         let m = &*m_ptr;
@@ -203,7 +222,7 @@ unsafe extern "C" fn conv_cb(
                 // No textual response needed.
             }
             _ => {
-                free(resp as *mut c_void);
+                free_responses(resp, i);
                 return PAM_CONV_ERR;
             }
         }

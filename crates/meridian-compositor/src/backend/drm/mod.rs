@@ -566,7 +566,7 @@ pub enum DrmCursorIcon {
 
 pub struct DrmBackend {
     pub device_fd: DrmDeviceFd,
-    pub kms_node_path: String,
+    pub kms_node_path: std::sync::Arc<str>,
     pub kms_is_primary_node: bool,
     pub kms_master_lock_ok: bool,
     pub kms_first_commit_verified: bool,
