@@ -10,6 +10,16 @@ single version.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-29
+
+### Documentation
+
+- Document versioning and wire up git-cliff
+
+### Tooling
+
+- Auto-publish releases from tags via git-cliff
+
 ## [0.1.0] - 2026-05-29
 
 First tagged baseline. Meridian is a Wayland desktop: a Smithay-based
@@ -34,5 +44,6 @@ shared compass renderer.
   running fmt/clippy/test, and unit tests for `meridian-lock` and
   `meridian-polkit`.
 
-[Unreleased]: https://github.com/quompacc/meridian-desktop/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/quompacc/meridian-desktop/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/quompacc/meridian-desktop/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/quompacc/meridian-desktop/releases/tag/v0.1.0
