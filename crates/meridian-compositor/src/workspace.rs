@@ -1,7 +1,7 @@
 use smithay::{
     desktop::{space::SpaceElement, Space, Window},
     output::Output,
-    utils::{Logical, Point},
+    utils::{Logical, Point, Rectangle},
 };
 
 /// Per-workspace window spaces plus the active index.
@@ -66,6 +66,43 @@ impl<E: SpaceElement + PartialEq> WorkspaceManager<E> {
                 .find(|candidate| pred(&**candidate))
                 .map(|e| (ws, e))
         })
+    }
+
+    /// Rescue windows stranded off every live output (e.g. after a monitor
+    /// is unplugged) by moving them onto `fallback`. `outputs` are the
+    /// surviving output regions in global logical coords. Returns how many
+    /// windows were relocated. No-op without outputs (nothing to clamp onto).
+    /// Runs across every workspace, not just the active one.
+    pub fn reclamp_offscreen_windows(
+        &mut self,
+        outputs: &[Rectangle<i32, Logical>],
+        fallback: Point<i32, Logical>,
+    ) -> usize
+    where
+        E: Clone,
+    {
+        if outputs.is_empty() {
+            return 0;
+        }
+        let mut moved = 0;
+        for space in &mut self.spaces {
+            let strays: Vec<E> = space
+                .elements()
+                .filter(|w| match space.element_location(w) {
+                    Some(loc) => {
+                        let rect = Rectangle::new(loc, w.geometry().size);
+                        !outputs.iter().any(|o| o.overlaps(rect))
+                    }
+                    None => false,
+                })
+                .cloned()
+                .collect();
+            for w in strays {
+                space.map_element(w, fallback, false);
+                moved += 1;
+            }
+        }
+        moved
     }
 
     fn can_target_workspace(&self, idx: usize) -> bool {
@@ -225,6 +262,63 @@ mod tests {
         assert_eq!(
             m.find_element_workspace(|x| x.id == 5).map(|(ws, _)| ws),
             Some(0)
+        );
+    }
+
+    fn output(x: i32, w: i32) -> Rectangle<i32, Logical> {
+        Rectangle::new((x, 0).into(), (w, 1080).into())
+    }
+
+    #[test]
+    fn reclamp_moves_window_stranded_off_all_outputs() {
+        let mut m = manager();
+        // Window at x=2500 was on a now-removed second monitor; only the
+        // 0..1920 output survives.
+        m.space_at_mut(0)
+            .map_element(MockWindow { id: 1 }, (2500, 100), false);
+        let moved = m.reclamp_offscreen_windows(&[output(0, 1920)], (0, 0).into());
+        assert_eq!(moved, 1);
+        assert_eq!(
+            m.space_at(0).element_location(&MockWindow { id: 1 }),
+            Some((0, 0).into())
+        );
+    }
+
+    #[test]
+    fn reclamp_leaves_onscreen_windows_untouched() {
+        let mut m = manager();
+        m.space_at_mut(0)
+            .map_element(MockWindow { id: 2 }, (100, 100), false);
+        let moved = m.reclamp_offscreen_windows(&[output(0, 1920)], (0, 0).into());
+        assert_eq!(moved, 0);
+        assert_eq!(
+            m.space_at(0).element_location(&MockWindow { id: 2 }),
+            Some((100, 100).into())
+        );
+    }
+
+    #[test]
+    fn reclamp_runs_across_all_workspaces() {
+        let mut m = manager();
+        m.space_at_mut(0)
+            .map_element(MockWindow { id: 1 }, (3000, 0), false);
+        m.space_at_mut(4)
+            .map_element(MockWindow { id: 2 }, (3000, 0), false);
+        assert_eq!(
+            m.reclamp_offscreen_windows(&[output(0, 1920)], (10, 10).into()),
+            2
+        );
+    }
+
+    #[test]
+    fn reclamp_without_outputs_is_noop() {
+        let mut m = manager();
+        m.space_at_mut(0)
+            .map_element(MockWindow { id: 1 }, (3000, 0), false);
+        assert_eq!(m.reclamp_offscreen_windows(&[], (0, 0).into()), 0);
+        assert_eq!(
+            m.space_at(0).element_location(&MockWindow { id: 1 }),
+            Some((3000, 0).into())
         );
     }
 }

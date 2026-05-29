@@ -919,6 +919,34 @@ impl MeridianState {
             removed.geometry.width,
             removed.geometry.height
         );
+        // Rescue windows stranded off every surviving output so unplugging a
+        // monitor cannot leave them unreachable off-screen (A4 hotplug). The
+        // reclamp logic is unit-tested in workspace.rs via a mock element.
+        let live_outputs: Vec<smithay::utils::Rectangle<i32, smithay::utils::Logical>> = self
+            .output_registry
+            .list()
+            .iter()
+            .map(|o| {
+                smithay::utils::Rectangle::new(
+                    (o.geometry.x, o.geometry.y).into(),
+                    (o.geometry.width, o.geometry.height).into(),
+                )
+            })
+            .collect();
+        let fallback: smithay::utils::Point<i32, smithay::utils::Logical> = self
+            .output_registry
+            .primary()
+            .map(|p| (p.geometry.x, p.geometry.y).into())
+            .unwrap_or_default();
+        let rescued = self
+            .workspaces
+            .reclamp_offscreen_windows(&live_outputs, fallback);
+        if rescued > 0 {
+            tracing::info!(
+                "output removed: reclamped {} off-screen window(s) onto a surviving output",
+                rescued
+            );
+        }
         self.post_output_state_change("output-removed", Some(id), Some(&removed.name));
         true
     }
