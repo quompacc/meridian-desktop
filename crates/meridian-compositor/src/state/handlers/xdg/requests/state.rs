@@ -1,3 +1,4 @@
+use smithay::desktop::Window;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::{Logical, Point, Size, SERIAL_COUNTER};
 use smithay::wayland::seat::WaylandFocus;
@@ -69,6 +70,68 @@ fn normal_maximize_frame_for_output(
         (workarea.x, workarea.y).into(),
         (workarea.width, workarea.height).into(),
     )
+}
+
+/// New maximized frame when a window's output geometry changes, or None if the
+/// workarea size is unchanged (skip a redundant configure). Re-measuring keeps
+/// a maximized window filling its output after a mode switch.
+fn remeasured_maximized_frame(
+    current_size: Size<i32, Logical>,
+    new_output: OutputGeometry,
+) -> Option<(Point<i32, Logical>, Size<i32, Logical>)> {
+    let (loc, size) = normal_maximize_frame_for_output(new_output);
+    (size != current_size).then_some((loc, size))
+}
+
+/// Re-apply maximized geometry to XDG toplevels after an output's geometry
+/// changed (e.g. a mode switch), so a maximized window keeps filling its output
+/// instead of keeping its old size. Idempotent: windows already at the right
+/// size are skipped. The frame math is unit-tested; the toplevel configure
+/// apply is compile-verified (a real mode switch needs hardware to feel out).
+type MaximizedUpdate = (Window, Point<i32, Logical>, Size<i32, Logical>);
+
+pub(crate) fn remeasure_maximized_windows(state: &mut MeridianState) {
+    let mut updates: Vec<MaximizedUpdate> = Vec::new();
+    for ws in 0..state.workspaces.count() {
+        let space = state.workspaces.space_at(ws);
+        for window in space.elements() {
+            let Some(toplevel) = window.toplevel() else {
+                continue;
+            };
+            let maximized = toplevel.with_committed_state(|committed| {
+                committed.is_some_and(|s| s.states.contains(xdg_toplevel::State::Maximized))
+            });
+            if !maximized {
+                continue;
+            }
+            let Some(loc) = space.element_location(window) else {
+                continue;
+            };
+            let Some(output) = state
+                .output_registry
+                .output_at_point(loc.x as f64, loc.y as f64)
+            else {
+                continue;
+            };
+            if let Some((new_loc, new_size)) =
+                remeasured_maximized_frame(window.geometry().size, output.geometry)
+            {
+                updates.push((window.clone(), new_loc, new_size));
+            }
+        }
+    }
+    for (window, loc, size) in updates {
+        if let Some(toplevel) = window.toplevel() {
+            toplevel.with_pending_state(|pending| pending.size = Some(size));
+            toplevel.send_pending_configure();
+        }
+        if let Some((ws, _)) = state.workspaces.find_element_workspace(|w| w == &window) {
+            state
+                .workspaces
+                .space_at_mut(ws)
+                .map_element(window, loc, false);
+        }
+    }
 }
 
 pub(crate) fn handle_unmaximize_request(state: &mut MeridianState, surface: ToplevelSurface) {
@@ -284,7 +347,35 @@ mod tests {
 
     use crate::state::{OutputGeometry, OutputId, OutputInfo, NORMAL_WINDOW_BOTTOM_RESERVED_PX};
 
-    use super::{normal_maximize_frame_for_output, select_output_from_infos_for_point};
+    use super::{
+        normal_maximize_frame_for_output, remeasured_maximized_frame,
+        select_output_from_infos_for_point,
+    };
+
+    #[test]
+    fn remeasured_maximized_frame_tracks_output_and_skips_noop() {
+        let big = OutputGeometry {
+            x: 0,
+            y: 0,
+            width: 2560,
+            height: 1440,
+        };
+        let small = OutputGeometry {
+            x: 0,
+            y: 0,
+            width: 1280,
+            height: 720,
+        };
+        let (_, big_size) = normal_maximize_frame_for_output(big);
+        let (_, small_size) = normal_maximize_frame_for_output(small);
+        // Output shrank: the maximized frame must follow to the smaller workarea.
+        assert_eq!(
+            remeasured_maximized_frame(big_size, small),
+            Some(((0, 0).into(), small_size))
+        );
+        // Unchanged geometry: no re-measure (avoid a redundant configure).
+        assert_eq!(remeasured_maximized_frame(small_size, small), None);
+    }
 
     fn info(id: u32, name: &str, primary: bool, x: i32) -> OutputInfo {
         OutputInfo {

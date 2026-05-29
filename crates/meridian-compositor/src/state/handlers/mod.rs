@@ -7,4 +7,4 @@ mod screencopy;
 pub mod session_lock;
 pub mod syncobj;
 pub mod wayland_extra;
-mod xdg;
+pub(crate) mod xdg;

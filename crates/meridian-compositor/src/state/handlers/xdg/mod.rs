@@ -17,7 +17,7 @@ use smithay::{
 use crate::state::{normal_window_workarea_from_output_geometry, MeridianState};
 
 mod lifecycle;
-mod requests;
+pub(crate) mod requests;
 
 fn popup_parent_window_loc_and_size(
     state: &MeridianState,

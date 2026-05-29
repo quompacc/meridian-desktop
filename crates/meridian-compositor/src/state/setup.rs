@@ -988,6 +988,9 @@ impl MeridianState {
                 rescued
             );
         }
+        // Maximized windows keep their old size across a mode switch; re-measure
+        // them to the new output geometry.
+        crate::state::handlers::xdg::requests::remeasure_maximized_windows(self);
         let output_name = self.output_registry.by_id(id).map(|info| info.name.clone());
         self.post_output_state_change("output-reconfigured", Some(id), output_name.as_deref());
         true
