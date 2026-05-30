@@ -183,6 +183,12 @@ fn set_mute_args() -> Vec<String> {
     ]
 }
 
+/// Build the `wpctl set-default <id>` argv. wpctl makes the object the default
+/// of its kind (sink or source) from the numeric id reported by `status`.
+fn set_default_args(id: u32) -> Vec<String> {
+    vec!["set-default".to_string(), id.to_string()]
+}
+
 /// Set the default sink volume to `percent` (0..=100). Best-effort: logs and
 /// returns on failure so a missing/unhappy wpctl never breaks the caller.
 pub(crate) fn set_default_sink_volume(percent: u8) {
@@ -192,6 +198,12 @@ pub(crate) fn set_default_sink_volume(percent: u8) {
 /// Toggle mute on the default sink. Best-effort, same contract as above.
 pub(crate) fn toggle_default_sink_mute() {
     run_wpctl(&set_mute_args());
+}
+
+/// Make the device with the given wpctl id the default of its kind (sink or
+/// source). Best-effort, same contract as above.
+pub(crate) fn set_default_device(id: u32) {
+    run_wpctl(&set_default_args(id));
 }
 
 fn run_wpctl(args: &[String]) {
@@ -204,7 +216,9 @@ fn run_wpctl(args: &[String]) {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_wpctl_status, set_mute_args, set_volume_args, AudioSnapshot};
+    use super::{
+        parse_wpctl_status, set_default_args, set_mute_args, set_volume_args, AudioSnapshot,
+    };
 
     #[test]
     fn parse_wpctl_status_extracts_default_sink_and_source() {
@@ -252,5 +266,10 @@ mod tests {
             set_mute_args(),
             vec!["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]
         );
+    }
+
+    #[test]
+    fn set_default_args_passes_numeric_id() {
+        assert_eq!(set_default_args(55), vec!["set-default", "55"]);
     }
 }

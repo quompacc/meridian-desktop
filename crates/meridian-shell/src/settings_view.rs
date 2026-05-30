@@ -271,6 +271,34 @@ pub(crate) const VOLUME_PRESET_OPTIONS: &[(u8, &str, &str)] = &[
     (100, "vol-set-100", "100%"),
 ];
 
+/// Static widget ids for the output (sink) device rows, indexed by position in
+/// the snapshot. A click makes that device the default. Matched by
+/// `widget_action::action_for_id` (the `audio-default-out-` prefix); length
+/// matches SOUND_MAX so every shown row has an id.
+pub(crate) const AUDIO_OUTPUT_IDS: &[&str] = &[
+    "audio-default-out-0",
+    "audio-default-out-1",
+    "audio-default-out-2",
+    "audio-default-out-3",
+    "audio-default-out-4",
+    "audio-default-out-5",
+    "audio-default-out-6",
+    "audio-default-out-7",
+];
+
+/// Static widget ids for the input (source) device rows; see AUDIO_OUTPUT_IDS.
+/// Matched by the `audio-default-in-` prefix.
+pub(crate) const AUDIO_INPUT_IDS: &[&str] = &[
+    "audio-default-in-0",
+    "audio-default-in-1",
+    "audio-default-in-2",
+    "audio-default-in-3",
+    "audio-default-in-4",
+    "audio-default-in-5",
+    "audio-default-in-6",
+    "audio-default-in-7",
+];
+
 pub(crate) const THEME_WIDGET_IDS: &[&str] = &[
     "settings-theme-0",
     "settings-theme-1",
@@ -1361,11 +1389,25 @@ impl Widget for SoundSummaryCard {
 struct SoundDeviceRow {
     label: &'static str,
     device: AudioDevice,
+    /// Position in the snapshot's outputs/inputs list, used to pick the static
+    /// click id from `ids`.
+    index: usize,
+    /// Id array for this row's kind (AUDIO_OUTPUT_IDS / AUDIO_INPUT_IDS).
+    ids: &'static [&'static str],
     row_width: i32,
     accent: Color,
 }
 
 impl Widget for SoundDeviceRow {
+    fn id(&self) -> Option<&'static str> {
+        // The already-default device is not clickable (nothing to change).
+        if self.device.is_default {
+            None
+        } else {
+            self.ids.get(self.index).copied()
+        }
+    }
+
     fn style(&self) -> WidgetStyle {
         WidgetStyle {
             size: UiSize {
@@ -1376,9 +1418,23 @@ impl Widget for SoundDeviceRow {
         }
     }
 
-    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        // Non-default rows react to hover/press so the "click to make default"
+        // affordance is visible; the default row stays inert.
+        let bg = if self.device.is_default {
+            theme.palette.surface
+        } else {
+            match state {
+                WidgetState::Idle => theme.palette.surface,
+                WidgetState::Hovered => theme
+                    .palette
+                    .surface
+                    .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
+                WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.16),
+            }
+        };
         if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
-            paint_fill(canvas, &path, theme.palette.surface);
+            paint_fill(canvas, &path, bg);
         }
         if self.device.is_default {
             let strip = Rect {
@@ -1401,6 +1457,7 @@ impl Widget for SoundDeviceRow {
             13.5,
             theme.palette.text,
         );
+        // Right-aligned status: DEFAULT badge, or a click hint on hover.
         if self.device.is_default {
             paint_text(
                 canvas,
@@ -1409,6 +1466,15 @@ impl Widget for SoundDeviceRow {
                 area.y + 26,
                 10.5,
                 self.accent,
+            );
+        } else if state != WidgetState::Idle {
+            paint_text(
+                canvas,
+                "Auswählen",
+                area.x + area.width - 96,
+                area.y + 26,
+                10.5,
+                theme.palette.text_dim,
             );
         }
 
@@ -2831,18 +2897,22 @@ pub(crate) fn build_settings_widget_tree(
                     text: "No audio devices reported",
                 }));
             } else {
-                for device in audio_snapshot.outputs.iter().take(SOUND_MAX) {
+                for (i, device) in audio_snapshot.outputs.iter().take(SOUND_MAX).enumerate() {
                     rows.push(Box::new(SoundDeviceRow {
                         label: "Output",
                         device: device.clone(),
+                        index: i,
+                        ids: AUDIO_OUTPUT_IDS,
                         row_width: row_w,
                         accent: pal.accent,
                     }));
                 }
-                for device in audio_snapshot.inputs.iter().take(SOUND_MAX) {
+                for (i, device) in audio_snapshot.inputs.iter().take(SOUND_MAX).enumerate() {
                     rows.push(Box::new(SoundDeviceRow {
                         label: "Input",
                         device: device.clone(),
+                        index: i,
+                        ids: AUDIO_INPUT_IDS,
                         row_width: row_w,
                         accent: pal.accent,
                     }));

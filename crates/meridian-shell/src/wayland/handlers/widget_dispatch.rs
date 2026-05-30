@@ -47,6 +47,8 @@ impl MeridianShell {
             | WidgetAction::SetIdleTimeout(_)
             | WidgetAction::SetDefaultSinkVolume(_)
             | WidgetAction::ToggleDefaultSinkMute
+            | WidgetAction::SetDefaultAudioOutput(_)
+            | WidgetAction::SetDefaultAudioInput(_)
             | WidgetAction::BrowseWallpaper
             | WidgetAction::SetPrimaryOutput(_)
             | WidgetAction::ToggleOutputModeDropdown(_)
@@ -203,6 +205,22 @@ impl MeridianShell {
             WidgetAction::ToggleDefaultSinkMute => {
                 crate::audio::toggle_default_sink_mute();
                 self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::SetDefaultAudioOutput(idx) => {
+                // Look up the wpctl id by position in the current snapshot, make
+                // it the default sink, then re-poll so the page reflects it.
+                if let Some(device) = self.audio_snapshot.outputs.get(idx) {
+                    crate::audio::set_default_device(device.id);
+                    self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+                }
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::SetDefaultAudioInput(idx) => {
+                if let Some(device) = self.audio_snapshot.inputs.get(idx) {
+                    crate::audio::set_default_device(device.id);
+                    self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+                }
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
             WidgetAction::BrowseWallpaper => {

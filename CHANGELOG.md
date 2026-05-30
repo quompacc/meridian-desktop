@@ -12,6 +12,11 @@ single version.
 
 ### Added
 
+- **Settings ▸ Sound — selectable default device:** each output/input row on the
+  "Audio" page is now clickable to make that device the default (sink or
+  source); the already-default row shows a DEFAULT badge and is inert, others
+  get a hover affordance. Drives `wpctl set-default <id>` against the live id
+  from the snapshot and re-polls — system state, no config round-trip. (A4)
 - **Settings ▸ Cursor — selectable theme:** the "Mauszeiger" page now lists the
   installed cursor themes (scanned from `/usr/share/icons`, `~/.icons`,
   `~/.local/share/icons` — any dir with a `cursors/` subdir) and lets you pick

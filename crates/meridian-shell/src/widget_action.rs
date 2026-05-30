@@ -6,6 +6,8 @@ const CURSOR_SIZE_PREFIX: &str = "cursor-size-";
 const CURSOR_THEME_PREFIX: &str = "cursor-theme-";
 const IDLE_TIMEOUT_PREFIX: &str = "idle-timeout-";
 const VOLUME_SET_PREFIX: &str = "vol-set-";
+const AUDIO_DEFAULT_OUT_PREFIX: &str = "audio-default-out-";
+const AUDIO_DEFAULT_IN_PREFIX: &str = "audio-default-in-";
 const PINNED_MOVE_UP_PREFIX: &str = "pinned-move-up-";
 const PINNED_MOVE_DOWN_PREFIX: &str = "pinned-move-dn-";
 const PINNED_REMOVE_PREFIX: &str = "pinned-remove-";
@@ -58,6 +60,8 @@ pub(crate) enum WidgetAction {
     SetIdleTimeout(Option<u64>),
     SetDefaultSinkVolume(u8),
     ToggleDefaultSinkMute,
+    SetDefaultAudioOutput(usize),
+    SetDefaultAudioInput(usize),
     BrowseWallpaper,
     PinnedMoveUp(usize),
     PinnedMoveDown(usize),
@@ -107,6 +111,20 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
             parse_indexed_action(id, VOLUME_SET_PREFIX, |n| {
                 WidgetAction::SetDefaultSinkVolume(n.min(100) as u8)
             })
+        })
+        .or_else(|| {
+            parse_indexed_action(
+                id,
+                AUDIO_DEFAULT_OUT_PREFIX,
+                WidgetAction::SetDefaultAudioOutput,
+            )
+        })
+        .or_else(|| {
+            parse_indexed_action(
+                id,
+                AUDIO_DEFAULT_IN_PREFIX,
+                WidgetAction::SetDefaultAudioInput,
+            )
         })
         .or_else(|| parse_indexed_action(id, PINNED_MOVE_UP_PREFIX, WidgetAction::PinnedMoveUp))
         .or_else(|| parse_indexed_action(id, PINNED_MOVE_DOWN_PREFIX, WidgetAction::PinnedMoveDown))
@@ -290,6 +308,20 @@ mod tests {
         );
         assert_eq!(action_for_id("vol-set-"), None);
         assert_eq!(action_for_id("vol-set-x"), None);
+    }
+
+    #[test]
+    fn action_for_id_default_audio_device() {
+        assert_eq!(
+            action_for_id("audio-default-out-2"),
+            Some(WidgetAction::SetDefaultAudioOutput(2))
+        );
+        assert_eq!(
+            action_for_id("audio-default-in-0"),
+            Some(WidgetAction::SetDefaultAudioInput(0))
+        );
+        assert_eq!(action_for_id("audio-default-out-"), None);
+        assert_eq!(action_for_id("audio-default-in-x"), None);
     }
 
     #[test]
