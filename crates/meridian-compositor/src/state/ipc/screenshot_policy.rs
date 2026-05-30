@@ -19,8 +19,11 @@ pub(crate) struct ScreenshotPolicyContext {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ScreenshotPolicyDecision {
-    /// Capture is permitted; the render loop should fulfil it.
+    /// Capture is permitted immediately; the render loop should fulfil it.
     Allow,
+    /// The request must be confirmed by the user before capture; the caller
+    /// shows a consent modal and decides based on the answer.
+    NeedsConsent,
     Deny,
     Unsupported(String),
     Invalid(String),
@@ -84,6 +87,16 @@ impl ScreenshotPolicy {
             return ScreenshotPolicyDecision::Allow;
         }
 
+        // Portal-routed requests (a normal app asking via xdg-desktop-portal)
+        // are neither blindly allowed nor denied: they require explicit user
+        // consent. The compositor shows a modal and captures only if the user
+        // agrees. This is the trustworthy path — consent is mediated by the
+        // compositor/shell, not by any self-declared request field.
+        if request.metadata.origin == ScreenshotRequestOrigin::PortalDbus {
+            tracing::info!("screenshot policy decision: needs-consent (portal origin)");
+            return ScreenshotPolicyDecision::NeedsConsent;
+        }
+
         if !request.metadata.identity_trusted || request.metadata.requester.is_none() {
             tracing::info!("requester identity unknown/untrusted");
         }
@@ -135,10 +148,22 @@ mod tests {
     }
 
     #[test]
-    fn valid_full_output_is_denied_by_default() {
+    fn portal_request_needs_consent_not_auto_allowed() {
         let _guard = screenshot_policy_test_lock().lock().expect("test lock");
+        // valid_request() uses the PortalDbus origin: a normal app asking via
+        // the portal must be confirmed by the user, never auto-allowed.
         let decision =
             ScreenshotPolicy::evaluate(&valid_request(), ScreenshotPolicyContext { client_id: 7 });
+        assert_eq!(decision, ScreenshotPolicyDecision::NeedsConsent);
+    }
+
+    #[test]
+    fn unknown_origin_is_denied() {
+        let _guard = screenshot_policy_test_lock().lock().expect("test lock");
+        let mut request = valid_request();
+        request.metadata.origin = ScreenshotRequestOrigin::Unknown;
+        let decision =
+            ScreenshotPolicy::evaluate(&request, ScreenshotPolicyContext { client_id: 7 });
         assert_eq!(decision, ScreenshotPolicyDecision::Deny);
     }
 
@@ -217,13 +242,15 @@ mod tests {
     }
 
     #[test]
-    fn unknown_requester_is_denied_safely() {
+    fn unknown_requester_via_portal_still_needs_consent() {
         let _guard = screenshot_policy_test_lock().lock().expect("test lock");
+        // Even with no trusted requester identity, a portal request is gated by
+        // consent rather than blindly allowed — the user is the gate.
         let mut request = valid_request();
         request.metadata.requester = None;
         request.metadata.identity_trusted = false;
         let decision =
             ScreenshotPolicy::evaluate(&request, ScreenshotPolicyContext { client_id: 7 });
-        assert_eq!(decision, ScreenshotPolicyDecision::Deny);
+        assert_eq!(decision, ScreenshotPolicyDecision::NeedsConsent);
     }
 }

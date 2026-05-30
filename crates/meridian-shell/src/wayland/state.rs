@@ -713,6 +713,18 @@ impl MeridianShell {
                     tracing::warn!("thumbnail: read failed {}: {}", path, e);
                 }
             },
+            ShellEvent::ScreenshotConsentRequest { request_id, app_id } => {
+                // The consent modal UI lands in the next slice. For now the
+                // request is acknowledged in the log; until the modal can send a
+                // real answer, the compositor simply holds the request (it never
+                // captures without an explicit allow), so doing nothing here is
+                // safe — no screenshot is taken.
+                tracing::info!(
+                    "screenshot consent requested (modal not yet implemented): request_id={} app_id={:?}",
+                    request_id,
+                    app_id
+                );
+            }
         }
     }
 

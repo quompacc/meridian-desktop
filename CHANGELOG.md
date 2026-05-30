@@ -12,6 +12,16 @@ single version.
 
 ### Added
 
+- **Screenshot consent state machine (compositor):** portal-routed screenshot
+  requests (`origin=PortalDbus`) now resolve to a new `NeedsConsent` policy
+  decision instead of an outright deny — the compositor holds the request,
+  emits `ShellEvent::ScreenshotConsentRequest{request_id, app_id}` for the shell
+  to show a consent modal, and waits. The user's answer arrives as
+  `ShellCommand::ScreenshotConsentResponse{request_id, allowed}`: allow moves
+  the request to the capture queue, deny replies with permission-denied. The
+  consent modal UI itself lands in the next slice; no external caller can reach
+  this path yet (the portal interface is still pending). (A2)
+
 - **Screenshot capture engine (compositor):** the screenshot bridge can now
   fulfil a full-output capture — the render loop renders the output, encodes it
   as PNG (XRGB→RGBA, R/B swap) under `$XDG_RUNTIME_DIR`, and replies with the

@@ -411,6 +411,10 @@ pub struct MeridianState {
     pub pending_screencopy_frames: Vec<(CaptureFrame, Output)>,
     pub pending_thumbnail_requests: Vec<ThumbnailRequest>,
     pub pending_screenshot_requests: Vec<PendingScreenshotRequest>,
+    /// Screenshot requests awaiting the user's consent answer (keyed by the
+    /// request_id carried in each entry). Moved to `pending_screenshot_requests`
+    /// on allow, or answered with an error on deny.
+    pub pending_screenshot_consent: Vec<PendingScreenshotRequest>,
     pub last_activity: Instant,
     pub idle_blanked: bool,
     pub idle_timeout: Option<Duration>,

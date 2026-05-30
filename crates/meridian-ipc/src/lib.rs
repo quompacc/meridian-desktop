@@ -238,6 +238,14 @@ pub enum ShellEvent {
         width: u32,
         height: u32,
     },
+    /// A screenshot request (via the portal bridge) needs the user's consent.
+    /// The shell shows a modal; the user's answer comes back as
+    /// `ShellCommand::ScreenshotConsentResponse` with the same `request_id`.
+    ScreenshotConsentRequest {
+        request_id: String,
+        /// Best-effort requesting app identity for display ("" if unknown).
+        app_id: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -265,6 +273,11 @@ pub enum ShellCommand {
         max_width: u32,
         #[serde(default)]
         max_height: u32,
+    },
+    /// The user's answer to a `ShellEvent::ScreenshotConsentRequest`.
+    ScreenshotConsentResponse {
+        request_id: String,
+        allowed: bool,
     },
 }
 

@@ -47,6 +47,21 @@ impl MeridianState {
                     self.pending_screenshot_requests
                         .push(crate::state::PendingScreenshotRequest { client_id, request });
                 }
+                super::screenshot::ScreenshotBridgeOutcome::AwaitConsent(request) => {
+                    // Hold the request and ask the shell to show a consent
+                    // modal. The user's answer returns as a
+                    // ScreenshotConsentResponse shell command.
+                    let app_id = request.metadata.requester.clone().unwrap_or_default();
+                    tracing::info!(
+                        "screenshot bridge needs consent: request_id={} app_id={:?}",
+                        request_id,
+                        app_id
+                    );
+                    self.pending_screenshot_consent
+                        .push(crate::state::PendingScreenshotRequest { client_id, request });
+                    self.ipc
+                        .broadcast(&ShellEvent::ScreenshotConsentRequest { request_id, app_id });
+                }
                 super::screenshot::ScreenshotBridgeOutcome::Respond(result) => {
                     tracing::info!(
                         "screenshot bridge rejected: request_id={} result={:?}",
@@ -138,6 +153,46 @@ impl MeridianState {
                     }
                 }
             }
+            ShellCommand::ScreenshotConsentResponse {
+                request_id,
+                allowed,
+            } => {
+                self.resolve_screenshot_consent(&request_id, allowed);
+            }
+        }
+    }
+
+    /// Apply the user's consent answer to a held screenshot request: on allow,
+    /// move it to the capture queue and nudge the render loop; on deny (or an
+    /// unknown id) respond with permission-denied. Unknown ids are ignored.
+    fn resolve_screenshot_consent(&mut self, request_id: &str, allowed: bool) {
+        let Some(pos) = self
+            .pending_screenshot_consent
+            .iter()
+            .position(|p| p.request.request_id == request_id)
+        else {
+            tracing::warn!(
+                "screenshot consent response for unknown request_id={}",
+                request_id
+            );
+            return;
+        };
+        let pending = self.pending_screenshot_consent.remove(pos);
+        if allowed {
+            tracing::info!("screenshot consent granted: request_id={}", request_id);
+            self.pending_screenshot_requests.push(pending);
+            if let Some(ref mut drm) = self.drm_backend {
+                for out in drm.outputs.iter_mut() {
+                    out.needs_repaint = true;
+                }
+            }
+        } else {
+            tracing::info!("screenshot consent denied: request_id={}", request_id);
+            self.ipc.send_screenshot_bridge_response(
+                pending.client_id,
+                pending.request.request_id,
+                super::screenshot::permission_denied_result(),
+            );
         }
     }
 

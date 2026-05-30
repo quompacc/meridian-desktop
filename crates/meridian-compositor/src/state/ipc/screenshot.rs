@@ -11,6 +11,9 @@ pub(crate) enum ScreenshotBridgeOutcome {
     /// Permitted — capture must be fulfilled by the render loop; no response is
     /// sent yet (the render loop sends it once the PNG is written).
     Queue(ScreenshotBridgeRequest),
+    /// Needs user consent — hold the request, show a modal, and decide based on
+    /// the answer. No response is sent yet.
+    AwaitConsent(ScreenshotBridgeRequest),
     /// Rejected — send this error result back to the requester immediately.
     Respond(ScreenshotBridgeResult),
 }
@@ -22,6 +25,7 @@ pub(crate) fn handle_screenshot_bridge_request(
     let decision = ScreenshotPolicy::evaluate(&request, ScreenshotPolicyContext { client_id });
     match decision {
         ScreenshotPolicyDecision::Allow => ScreenshotBridgeOutcome::Queue(request),
+        ScreenshotPolicyDecision::NeedsConsent => ScreenshotBridgeOutcome::AwaitConsent(request),
         ScreenshotPolicyDecision::Deny => {
             ScreenshotBridgeOutcome::Respond(ScreenshotBridgeResult::Error {
                 error: ScreenshotBridgeError::PermissionDenied(
@@ -42,6 +46,16 @@ pub(crate) fn handle_screenshot_bridge_request(
     }
 }
 
+/// Build the standard "permission denied" result for a request the user
+/// declined (or that policy refused). Shared by the consent-response path.
+pub(crate) fn permission_denied_result() -> ScreenshotBridgeResult {
+    ScreenshotBridgeResult::Error {
+        error: ScreenshotBridgeError::PermissionDenied(
+            SCREENSHOT_PERMISSION_DENIED_MSG.to_string(),
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use meridian_ipc::{
@@ -59,7 +73,14 @@ mod tests {
         match outcome {
             ScreenshotBridgeOutcome::Respond(result) => result,
             ScreenshotBridgeOutcome::Queue(_) => panic!("expected Respond, got Queue"),
+            ScreenshotBridgeOutcome::AwaitConsent(_) => {
+                panic!("expected Respond, got AwaitConsent")
+            }
         }
+    }
+
+    fn is_await_consent(outcome: &ScreenshotBridgeOutcome) -> bool {
+        matches!(outcome, ScreenshotBridgeOutcome::AwaitConsent(_))
     }
 
     #[test]
@@ -90,7 +111,7 @@ mod tests {
     }
 
     #[test]
-    fn deny_only_response_is_stable_for_valid_request() {
+    fn portal_request_awaits_consent() {
         let _guard = screenshot_policy_test_lock().lock().expect("test lock");
         let request = ScreenshotBridgeRequest {
             request_id: "req-bridge-1".to_string(),
@@ -106,14 +127,11 @@ mod tests {
             },
         };
 
-        assert_eq!(
-            expect_respond(handle_screenshot_bridge_request(request, 7)),
-            ScreenshotBridgeResult::Error {
-                error: ScreenshotBridgeError::PermissionDenied(
-                    "screenshot denied by compositor policy".to_string(),
-                ),
-            }
-        );
+        // A portal request is neither captured nor denied outright — it waits
+        // for the user's consent.
+        assert!(is_await_consent(&handle_screenshot_bridge_request(
+            request, 7
+        )));
     }
 
     #[test]
