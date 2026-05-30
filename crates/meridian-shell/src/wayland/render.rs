@@ -634,6 +634,7 @@ impl MeridianShell {
                     &system_info,
                     self.network_controller.state(),
                     self.network_profiles.as_slice(),
+                    &self.bluetooth_snapshot,
                     self.wifi_networks.as_slice(),
                     self.wifi_password_prompt.as_deref(),
                     self.wifi_password_input.chars().count(),

@@ -495,6 +495,7 @@ pub(crate) fn initialize(
         wifi_networks: Vec::new(),
         wifi_password_prompt: None,
         wifi_password_input: String::new(),
+        bluetooth_snapshot: crate::bluetooth::BluetoothSnapshot::default(),
         ipc: IpcClient::connect(),
         panel_state: panel::PanelState::new(),
         pinned_apps,

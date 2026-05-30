@@ -12,6 +12,16 @@ single version.
 
 ### Added
 
+- **Settings ▸ Bluetooth — power, scan & pair:** the "Bluetooth" page now shows
+  the adapter power state with a toggle, a "Suchen" button that runs a timed
+  discovery, and the device list (paired/connected badges; click to pair an
+  unknown device or connect a paired one). All `bluetoothctl` mutations run off
+  the event loop on a background thread; the read-only snapshot (`show` +
+  `devices`) re-polls on entering the page. Power toggle + timed scan verified
+  live against a virtual `btvirt` adapter; the pair/connect path is unit-tested
+  at the argv/parser level but not exercised against a real peer (no BT
+  hardware on the dev VM). (A4)
+
 - **Settings ▸ Network — activate saved connections:** the "Netzwerk" page lists
   saved NetworkManager profiles below the status summary; the active one shows a
   "VERBUNDEN" badge and is inert, the rest are clickable to activate via

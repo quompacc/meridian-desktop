@@ -51,6 +51,9 @@ impl MeridianShell {
             | WidgetAction::SetDefaultAudioInput(_)
             | WidgetAction::ActivateConnection(_)
             | WidgetAction::WifiConnect(_)
+            | WidgetAction::ToggleBluetoothPower
+            | WidgetAction::ToggleBluetoothScan
+            | WidgetAction::BluetoothDevice(_)
             | WidgetAction::BrowseWallpaper
             | WidgetAction::SetPrimaryOutput(_)
             | WidgetAction::ToggleOutputModeDropdown(_)
@@ -150,6 +153,10 @@ impl MeridianShell {
                     self.wifi_networks = crate::network::scan_wifi_networks();
                     self.wifi_password_prompt = None;
                     self.wifi_password_input.clear();
+                }
+                if cat == crate::settings_view::SettingsCategory::Bluetooth {
+                    // Read-only bluetoothctl snapshot; cheap, safe on the loop.
+                    self.bluetooth_snapshot = crate::bluetooth::BluetoothSnapshot::poll();
                 }
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
@@ -260,6 +267,38 @@ impl MeridianShell {
                         self.wifi_password_input.clear();
                     } else {
                         crate::network::connect_wifi(&ssid, None);
+                    }
+                }
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::ToggleBluetoothPower => {
+                // Drive bluetoothctl off-thread, then optimistically flip the
+                // cached flag so the toggle gives feedback; re-entering the page
+                // re-polls the real state.
+                let turn_on = !self.bluetooth_snapshot.powered;
+                crate::bluetooth::set_power(turn_on);
+                self.bluetooth_snapshot.powered = turn_on;
+                if !turn_on {
+                    self.bluetooth_snapshot.scanning = false;
+                }
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::ToggleBluetoothScan => {
+                // One-shot timed discovery (off-thread). Optimistically show the
+                // scanning state; re-entering the page re-polls real discovery.
+                crate::bluetooth::start_scan();
+                self.bluetooth_snapshot.scanning = true;
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::BluetoothDevice(idx) => {
+                // Already-paired device connects; an unknown device pairs (which
+                // also trusts + connects). Both block on a remote handshake, so
+                // they run off-thread inside the bluetooth helpers.
+                if let Some(dev) = self.bluetooth_snapshot.devices.get(idx) {
+                    if dev.paired {
+                        crate::bluetooth::connect_device(&dev.address);
+                    } else {
+                        crate::bluetooth::pair_device(&dev.address);
                     }
                 }
                 self.draw_launcher(qh, RepaintReason::Pointer);

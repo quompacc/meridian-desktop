@@ -15,6 +15,7 @@ use crate::icons::{icon_image_to_pixmap, IconCache};
 use crate::launcher::DesktopApp;
 use crate::panel::PinnedApp;
 
+use crate::bluetooth::BluetoothSnapshot;
 use crate::network::{ConnectionProfile, NetworkState, WifiNetwork};
 use crate::printers::{PrinterInfo, PrinterServiceState, PrinterSnapshot};
 use crate::sysinfo::SystemInfo;
@@ -328,6 +329,21 @@ pub(crate) const WIFI_NETWORK_IDS: &[&str] = &[
     "wifi-connect-7",
     "wifi-connect-8",
     "wifi-connect-9",
+];
+
+/// Static widget ids for Bluetooth device rows, indexed by position. A click
+/// pairs (or connects, if already paired) that device. Matched by
+/// `widget_action::action_for_id` (the `bt-device-` prefix). Length bounds how
+/// many devices are shown.
+pub(crate) const BT_DEVICE_IDS: &[&str] = &[
+    "bt-device-0",
+    "bt-device-1",
+    "bt-device-2",
+    "bt-device-3",
+    "bt-device-4",
+    "bt-device-5",
+    "bt-device-6",
+    "bt-device-7",
 ];
 
 pub(crate) const THEME_WIDGET_IDS: &[&str] = &[
@@ -1850,6 +1866,110 @@ impl Widget for WifiRow {
     }
 }
 
+/// A clickable Bluetooth device row. A connected device shows a "VERBUNDEN"
+/// badge and is inert; a paired-but-disconnected device shows "Gekoppelt" and
+/// connects on click; an unknown device shows its address and pairs on click.
+struct BluetoothDeviceRow {
+    index: usize,
+    name: Box<str>,
+    address: Box<str>,
+    paired: bool,
+    connected: bool,
+    accent: Color,
+    row_width: i32,
+}
+
+impl Widget for BluetoothDeviceRow {
+    fn id(&self) -> Option<&'static str> {
+        if self.connected {
+            None
+        } else {
+            BT_DEVICE_IDS.get(self.index).copied()
+        }
+    }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.row_width as f32),
+                height: ui_length(NETWORK_PROFILE_ROW_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let bg = if self.connected {
+            theme.palette.surface
+        } else {
+            match state {
+                WidgetState::Idle => theme.palette.surface,
+                WidgetState::Hovered => theme
+                    .palette
+                    .surface
+                    .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
+                WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.16),
+            }
+        };
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, bg);
+        }
+        if self.connected {
+            let strip = Rect {
+                x: area.x,
+                y: area.y + 8,
+                width: 3,
+                height: area.height - 16,
+            };
+            if let Some(path) = rounded_rect_path(strip, 1) {
+                paint_fill(canvas, &path, self.accent);
+            }
+        }
+        let title = if self.name.is_empty() {
+            self.address.clone()
+        } else {
+            self.name.clone()
+        };
+        paint_text(
+            canvas,
+            &fit_text(&title, 32),
+            area.x + 18,
+            area.y + 24,
+            13.5,
+            theme.palette.text,
+        );
+        let sub = if self.paired { "gekoppelt" } else { "neu" };
+        paint_text(
+            canvas,
+            &format!("{} · {}", sub, self.address),
+            area.x + 18,
+            area.y + 44,
+            11.5,
+            theme.palette.text_dim,
+        );
+        if self.connected {
+            paint_text(
+                canvas,
+                "VERBUNDEN",
+                area.x + area.width - 104,
+                area.y + 24,
+                10.5,
+                self.accent,
+            );
+        } else if state != WidgetState::Idle {
+            let hint = if self.paired { "Verbinden" } else { "Koppeln" };
+            paint_text(
+                canvas,
+                hint,
+                area.x + area.width - 96,
+                area.y + 24,
+                10.5,
+                theme.palette.text_dim,
+            );
+        }
+    }
+}
+
 struct PrinterRow {
     printer: PrinterInfo,
     row_width: i32,
@@ -2476,6 +2596,7 @@ pub(crate) fn build_settings_widget_tree(
     system_info: &SystemInfo,
     network_state: &NetworkState,
     network_profiles: &[ConnectionProfile],
+    bluetooth_snapshot: &BluetoothSnapshot,
     wifi_networks: &[WifiNetwork],
     wifi_password_prompt: Option<&str>,
     wifi_password_len: usize,
@@ -3105,16 +3226,95 @@ pub(crate) fn build_settings_widget_tree(
         }
         SettingsCategory::Bluetooth => {
             let row_w = content_w as i32;
-            let rows: Vec<Box<dyn Widget>> = crate::bluetooth::bluetooth_rows()
-                .into_iter()
-                .map(|(label, value)| {
-                    Box::new(SystemInfoRow {
-                        label: label.into(),
-                        value: value.into(),
-                        row_width: row_w,
-                    }) as Box<dyn Widget>
-                })
-                .collect();
+            let mut rows: Vec<Box<dyn Widget>> = Vec::new();
+
+            if !bluetooth_snapshot.adapter_present {
+                rows.push(Box::new(SettingsPlaceholder {
+                    width: row_w,
+                    text: "Kein Bluetooth-Adapter gefunden",
+                }));
+            } else {
+                // Power toggle + scan toggle, accented to current state.
+                rows.push(Box::new(SidebarSectionLabel {
+                    text: "ADAPTER",
+                    width: row_w,
+                    pad_top: 0,
+                }));
+                let power_accent = if bluetooth_snapshot.powered {
+                    pal.accent
+                } else {
+                    pal.surface
+                };
+                let power_label = if bluetooth_snapshot.powered {
+                    "Bluetooth: an"
+                } else {
+                    "Bluetooth: aus"
+                };
+                let scan_accent = if bluetooth_snapshot.scanning {
+                    pal.accent
+                } else {
+                    pal.surface
+                };
+                let scan_label = if bluetooth_snapshot.scanning {
+                    "Suche läuft"
+                } else {
+                    "Suchen"
+                };
+                rows.push(Box::new(Container::row(
+                    8,
+                    vec![
+                        Box::new(Button::with_id(
+                            "bt-power-toggle",
+                            power_label,
+                            power_accent,
+                            128,
+                            32,
+                        )) as Box<dyn Widget>,
+                        Box::new(Button::with_id(
+                            "bt-scan-toggle",
+                            scan_label,
+                            scan_accent,
+                            112,
+                            32,
+                        )) as Box<dyn Widget>,
+                    ],
+                )));
+
+                // Device list (only meaningful while powered).
+                rows.push(Box::new(SidebarSectionLabel {
+                    text: "GERÄTE",
+                    width: row_w,
+                    pad_top: 12,
+                }));
+                if !bluetooth_snapshot.powered {
+                    rows.push(Box::new(SettingsPlaceholder {
+                        width: row_w,
+                        text: "Bluetooth ist ausgeschaltet",
+                    }));
+                } else if bluetooth_snapshot.devices.is_empty() {
+                    rows.push(Box::new(SettingsPlaceholder {
+                        width: row_w,
+                        text: "Keine Geräte — auf Suchen tippen",
+                    }));
+                } else {
+                    for (i, dev) in bluetooth_snapshot
+                        .devices
+                        .iter()
+                        .take(BT_DEVICE_IDS.len())
+                        .enumerate()
+                    {
+                        rows.push(Box::new(BluetoothDeviceRow {
+                            index: i,
+                            name: dev.name.as_str().into(),
+                            address: dev.address.as_str().into(),
+                            paired: dev.paired,
+                            connected: dev.connected,
+                            accent: pal.accent,
+                            row_width: row_w,
+                        }));
+                    }
+                }
+            }
             Box::new(Container::top_viewport(
                 content_w,
                 content_h,
@@ -3367,6 +3567,7 @@ pub(crate) fn draw_settings_launcher(
     system_info: &SystemInfo,
     network_state: &NetworkState,
     network_profiles: &[ConnectionProfile],
+    bluetooth_snapshot: &BluetoothSnapshot,
     wifi_networks: &[WifiNetwork],
     wifi_password_prompt: Option<&str>,
     wifi_password_len: usize,
@@ -3416,6 +3617,7 @@ pub(crate) fn draw_settings_launcher(
         system_info,
         network_state,
         network_profiles,
+        bluetooth_snapshot,
         wifi_networks,
         wifi_password_prompt,
         wifi_password_len,

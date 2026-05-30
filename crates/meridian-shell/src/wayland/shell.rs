@@ -334,6 +334,7 @@ pub(crate) struct MeridianShell {
     pub(crate) wifi_password_prompt: Option<String>,
     /// Accumulated password characters for the open prompt.
     pub(crate) wifi_password_input: String,
+    pub(crate) bluetooth_snapshot: crate::bluetooth::BluetoothSnapshot,
     pub(crate) ipc: IpcClient,
     pub(crate) panel_state: panel::PanelState,
     pub(crate) pinned_apps: Vec<PinnedApp>,
