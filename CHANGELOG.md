@@ -10,6 +10,14 @@ single version.
 
 ## [Unreleased]
 
+### Added
+
+- **Settings ▸ Cursor — writable size:** the "Mauszeiger" page can now change
+  the cursor size (16/24/32/48 px chips); the choice persists to the `[cursor]`
+  config section and live-applies via `ReloadConfig`. First writable system
+  setting, proving the full write path (widget id → action → config write →
+  compositor reload). The cursor theme stays read-only for now. (A4)
+
 ## [0.3.0] - 2026-05-29
 
 ### Fixed
