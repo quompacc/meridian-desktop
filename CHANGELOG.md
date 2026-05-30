@@ -12,6 +12,11 @@ single version.
 
 ### Added
 
+- **Settings ▸ Cursor — selectable theme:** the "Mauszeiger" page now lists the
+  installed cursor themes (scanned from `/usr/share/icons`, `~/.icons`,
+  `~/.local/share/icons` — any dir with a `cursors/` subdir) and lets you pick
+  one; the choice persists to `[cursor]` and live-applies via `ReloadConfig`.
+  Completes the Cursor page (size was already writable). (A4)
 - **Settings ▸ Sound — writable volume & mute:** the "Audio" page gains volume
   preset chips (0/25/50/75/100 %) and a mute toggle for the default output;
   these drive `wpctl` against `@DEFAULT_AUDIO_SINK@` and re-poll, so they edit

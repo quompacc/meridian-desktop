@@ -484,6 +484,8 @@ pub(crate) fn initialize(
             .as_ref()
             .map(|c| c.size)
             .unwrap_or_else(|| meridian_config::CursorConfig::default().size),
+        available_cursor_themes: crate::cursor::scan_cursor_themes(),
+        cursor_theme: crate::cursor::current_cursor_theme(),
         idle_timeout_secs: meridian_config.general.idle_timeout_secs,
         theme,
         font: RefCell::new(font),

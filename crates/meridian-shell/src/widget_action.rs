@@ -3,6 +3,7 @@ use crate::settings_view::SettingsCategory;
 const SETTINGS_THEME_PREFIX: &str = "settings-theme-";
 const SETTINGS_WALLPAPER_PREFIX: &str = "settings-wallpaper-";
 const CURSOR_SIZE_PREFIX: &str = "cursor-size-";
+const CURSOR_THEME_PREFIX: &str = "cursor-theme-";
 const IDLE_TIMEOUT_PREFIX: &str = "idle-timeout-";
 const VOLUME_SET_PREFIX: &str = "vol-set-";
 const PINNED_MOVE_UP_PREFIX: &str = "pinned-move-up-";
@@ -53,6 +54,7 @@ pub(crate) enum WidgetAction {
     ApplyWallpaperByIndex(usize),
     SetWallpaperMode(meridian_config::WallpaperMode),
     SetCursorSize(u32),
+    ApplyCursorThemeByIndex(usize),
     SetIdleTimeout(Option<u64>),
     SetDefaultSinkVolume(u8),
     ToggleDefaultSinkMute,
@@ -88,6 +90,13 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
             parse_indexed_action(id, CURSOR_SIZE_PREFIX, |n| {
                 WidgetAction::SetCursorSize(n as u32)
             })
+        })
+        .or_else(|| {
+            parse_indexed_action(
+                id,
+                CURSOR_THEME_PREFIX,
+                WidgetAction::ApplyCursorThemeByIndex,
+            )
         })
         .or_else(|| {
             parse_indexed_action(id, IDLE_TIMEOUT_PREFIX, |n| {
@@ -233,6 +242,21 @@ mod tests {
         );
         assert_eq!(action_for_id("cursor-size-"), None);
         assert_eq!(action_for_id("cursor-size-big"), None);
+    }
+
+    #[test]
+    fn action_for_id_cursor_theme() {
+        assert_eq!(
+            action_for_id("cursor-theme-3"),
+            Some(WidgetAction::ApplyCursorThemeByIndex(3))
+        );
+        // cursor-size and cursor-theme share the "cursor-" stem but route apart.
+        assert_eq!(
+            action_for_id("cursor-size-24"),
+            Some(WidgetAction::SetCursorSize(24))
+        );
+        assert_eq!(action_for_id("cursor-theme-"), None);
+        assert_eq!(action_for_id("cursor-theme-x"), None);
     }
 
     #[test]

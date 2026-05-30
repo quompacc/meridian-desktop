@@ -320,6 +320,8 @@ pub(crate) struct MeridianShell {
     pub(crate) wallpaper_path: Option<String>,
     pub(crate) wallpaper_mode: meridian_config::WallpaperMode,
     pub(crate) cursor_size: u32,
+    pub(crate) available_cursor_themes: Vec<String>,
+    pub(crate) cursor_theme: String,
     pub(crate) idle_timeout_secs: Option<u64>,
     pub(crate) theme: ThemeConfig,
     pub(crate) font: RefCell<Option<TextRenderer>>,

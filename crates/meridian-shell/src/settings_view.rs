@@ -951,6 +951,82 @@ impl Widget for ThemeRow {
     }
 }
 
+/// A selectable cursor-theme row. Visually identical to `ThemeRow`; differs
+/// only in which static id array it indexes, so clicks route to the cursor
+/// theme action rather than the colour-theme one.
+struct CursorThemeRow {
+    index: usize,
+    name: Box<str>,
+    is_selected: bool,
+    accent: Color,
+    row_width: i32,
+}
+
+impl Widget for CursorThemeRow {
+    fn id(&self) -> Option<&'static str> {
+        crate::cursor::CURSOR_THEME_WIDGET_IDS
+            .get(self.index)
+            .copied()
+    }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.row_width as f32),
+                height: ui_length(THEME_ROW_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let bg = match state {
+            WidgetState::Idle => {
+                if self.is_selected {
+                    theme
+                        .palette
+                        .surface
+                        .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.08)
+                } else {
+                    theme.palette.surface
+                }
+            }
+            WidgetState::Hovered => theme
+                .palette
+                .surface
+                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.14),
+            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
+        };
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, bg);
+        }
+        if self.is_selected {
+            let strip = Rect {
+                x: area.x + 4,
+                y: area.y + 8,
+                width: 3,
+                height: area.height - 16,
+            };
+            if let Some(path) = rounded_rect_path(strip, 1) {
+                paint_fill(canvas, &path, self.accent);
+            }
+        }
+        let text_color = if self.is_selected {
+            self.accent
+        } else {
+            theme.palette.text
+        };
+        paint_text(
+            canvas,
+            &self.name,
+            area.x + 16,
+            area.y + area.height - 14,
+            13.0,
+            text_color,
+        );
+    }
+}
+
 const WALLPAPER_MODE_BAR_H: u32 = 52;
 const WALLPAPER_ROW_H: i32 = 64;
 const WALLPAPER_THUMB_W: u32 = 96;
@@ -2093,6 +2169,8 @@ pub(crate) fn build_settings_widget_tree(
     current_wallpaper: Option<&str>,
     wallpaper_mode: WallpaperMode,
     cursor_size: u32,
+    available_cursor_themes: &[String],
+    current_cursor_theme: &str,
     idle_timeout_secs: Option<u64>,
     pinned_apps: &[PinnedApp],
     output_workspaces: &[OutputWorkspaceState],
@@ -2820,19 +2898,13 @@ pub(crate) fn build_settings_widget_tree(
         SettingsCategory::Cursor => {
             let row_w = content_w as i32;
             let mut rows: Vec<Box<dyn Widget>> = Vec::new();
-            // Theme stays read-only for now — enumerating installed cursor
-            // themes is a separate task.
-            rows.push(Box::new(SystemInfoRow {
-                label: "Theme".into(),
-                value: crate::cursor::cursor_theme_label().into(),
-                row_width: row_w,
-            }));
-            rows.push(Box::new(SystemInfoRow {
-                label: "Größe".into(),
-                value: format!("{} px", cursor_size).into(),
-                row_width: row_w,
-            }));
+
             // Size is adjustable: one chip per option, the active size accented.
+            rows.push(Box::new(SidebarSectionLabel {
+                text: "GRÖSSE",
+                width: row_w,
+                pad_top: 0,
+            }));
             let size_chips: Vec<Box<dyn Widget>> = crate::cursor::CURSOR_SIZE_OPTIONS
                 .iter()
                 .map(|(px, id, label)| {
@@ -2845,6 +2917,34 @@ pub(crate) fn build_settings_widget_tree(
                 })
                 .collect();
             rows.push(Box::new(Container::row(8, size_chips)));
+
+            // Theme is selectable: one row per installed cursor theme, the
+            // active one accented. The list is bounded to the id-array length.
+            rows.push(Box::new(SidebarSectionLabel {
+                text: "THEME",
+                width: row_w,
+                pad_top: 12,
+            }));
+            if available_cursor_themes.is_empty() {
+                rows.push(Box::new(SettingsPlaceholder {
+                    width: row_w,
+                    text: "No cursor themes found under /usr/share/icons or ~/.icons",
+                }));
+            } else {
+                for (i, name) in available_cursor_themes
+                    .iter()
+                    .take(crate::cursor::CURSOR_THEME_WIDGET_IDS.len())
+                    .enumerate()
+                {
+                    rows.push(Box::new(CursorThemeRow {
+                        index: i,
+                        name: name.as_str().into(),
+                        is_selected: name == current_cursor_theme,
+                        accent: pal.accent,
+                        row_width: row_w,
+                    }));
+                }
+            }
             Box::new(Container::top_viewport(
                 content_w,
                 content_h,
@@ -2882,6 +2982,8 @@ pub(crate) fn draw_settings_launcher(
     current_wallpaper: Option<&str>,
     wallpaper_mode: WallpaperMode,
     cursor_size: u32,
+    available_cursor_themes: &[String],
+    current_cursor_theme: &str,
     idle_timeout_secs: Option<u64>,
     pinned_apps: &[PinnedApp],
     output_workspaces: &[OutputWorkspaceState],
@@ -2925,6 +3027,8 @@ pub(crate) fn draw_settings_launcher(
         current_wallpaper,
         wallpaper_mode,
         cursor_size,
+        available_cursor_themes,
+        current_cursor_theme,
         idle_timeout_secs,
         pinned_apps,
         output_workspaces,

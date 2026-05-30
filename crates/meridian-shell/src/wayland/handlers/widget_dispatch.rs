@@ -43,6 +43,7 @@ impl MeridianShell {
             | WidgetAction::ApplyWallpaperByIndex(_)
             | WidgetAction::SetWallpaperMode(_)
             | WidgetAction::SetCursorSize(_)
+            | WidgetAction::ApplyCursorThemeByIndex(_)
             | WidgetAction::SetIdleTimeout(_)
             | WidgetAction::SetDefaultSinkVolume(_)
             | WidgetAction::ToggleDefaultSinkMute
@@ -163,12 +164,22 @@ impl MeridianShell {
             WidgetAction::SetCursorSize(size) => {
                 if self.cursor_size != size {
                     self.cursor_size = size;
-                    // Persist alongside the existing theme, then ask the
+                    // Persist alongside the current theme, then ask the
                     // compositor to reload so the live cursor updates at once.
-                    let theme = crate::cursor::cursor_theme_label();
-                    let theme = if theme == "—" { String::new() } else { theme };
-                    meridian_config::MeridianConfig::save_cursor(&theme, size);
+                    meridian_config::MeridianConfig::save_cursor(&self.cursor_theme, size);
                     self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
+                }
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::ApplyCursorThemeByIndex(idx) => {
+                if let Some(name) = self.available_cursor_themes.get(idx).cloned() {
+                    if self.cursor_theme != name {
+                        self.cursor_theme = name.clone();
+                        // Persist alongside the current size, then reload so the
+                        // compositor swaps the live cursor theme at once.
+                        meridian_config::MeridianConfig::save_cursor(&name, self.cursor_size);
+                        self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
+                    }
                 }
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
