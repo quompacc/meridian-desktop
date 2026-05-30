@@ -12,6 +12,14 @@ single version.
 
 ### Added
 
+- **Screenshot consent modal (shell):** when a portal screenshot request needs
+  consent, the shell now shows a centered modal ("Bildschirmfoto erlauben? —
+  Erlauben/Ablehnen") on an overlay layer that grabs the keyboard. Clicking a
+  button (or Enter=allow / Esc=deny) sends `ScreenshotConsentResponse` back to
+  the compositor; allow triggers the real capture, deny returns permission
+  denied. Completes the interactive-consent path (A2). Verified live end-to-end
+  (request → modal → allow → PNG of the desktop written).
+
 - **Screenshot consent state machine (compositor):** portal-routed screenshot
   requests (`origin=PortalDbus`) now resolve to a new `NeedsConsent` policy
   decision instead of an outright deny — the compositor holds the request,

@@ -246,6 +246,14 @@ pub(crate) struct MeridianShell {
     pub(crate) thumbnail_configured: bool,
     pub(crate) thumbnail_popup_open: bool,
     pub(crate) desktop_menu_open: bool,
+    // Screenshot consent modal (SHOT-2b).
+    pub(crate) consent_layer: LayerSurface,
+    pub(crate) consent_configured: bool,
+    pub(crate) consent_buffer: Option<Buffer>,
+    pub(crate) consent_open: bool,
+    pub(crate) consent_request_id: Option<String>,
+    pub(crate) consent_app_id: String,
+    pub(crate) consent_hover: Option<crate::screenshot_consent::ConsentButton>,
     pub(crate) panel_buffer: Option<Buffer>,
     #[allow(dead_code)]
     pub(crate) desktop_buffer: Option<Buffer>,

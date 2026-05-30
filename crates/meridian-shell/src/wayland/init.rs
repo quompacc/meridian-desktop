@@ -182,6 +182,24 @@ pub(crate) fn initialize(
     desktop_menu_layer.set_keyboard_interactivity(KeyboardInteractivity::None);
     info!("Desktop menu surface created");
 
+    // Screenshot consent modal: centered overlay, grabs keyboard while shown so
+    // Esc/Enter work. Mapped only when a consent request arrives.
+    let consent_surface = compositor.create_surface(&qh);
+    let consent_layer = layer_shell.create_layer_surface(
+        &qh,
+        consent_surface,
+        Layer::Overlay,
+        Some("meridian-screenshot-consent"),
+        None,
+    );
+    consent_layer.set_size(
+        crate::screenshot_consent::MODAL_WIDTH as u32,
+        crate::screenshot_consent::MODAL_HEIGHT as u32,
+    );
+    consent_layer.set_exclusive_zone(0);
+    consent_layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+    info!("Screenshot consent surface created");
+
     let panel_surface = compositor.create_surface(&qh);
     let panel = layer_shell.create_layer_surface(
         &qh,

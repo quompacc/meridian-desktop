@@ -73,6 +73,19 @@ impl KeyboardHandler for MeridianShell {
     ) {
         let is_escape = event.keysym == Keysym::Escape;
 
+        // ── Screenshot consent modal: it grabs the keyboard, so answer here
+        // first. Enter = allow, Esc = deny. Any other key is swallowed so it
+        // can't leak to the surface behind the modal.
+        if self.consent_open {
+            let is_enter = event.keysym == Keysym::Return || event.keysym == Keysym::KP_Enter;
+            if is_enter {
+                self.respond_consent(true);
+            } else if is_escape {
+                self.respond_consent(false);
+            }
+            return;
+        }
+
         // ── Popup / context-menu dismissals ──────────────────────────────────
         if is_escape && self.context_menu.is_some() {
             self.context_menu = None;

@@ -524,6 +524,65 @@ impl MeridianShell {
         self.desktop_menu_layer.commit();
     }
 
+    pub(crate) fn draw_consent_modal(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
+        if !self.consent_open || !self.consent_configured {
+            return;
+        }
+        let width = crate::screenshot_consent::MODAL_WIDTH as u32;
+        let height = crate::screenshot_consent::MODAL_HEIGHT as u32;
+        let stride = buffer::shm_buffer_stride(width);
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.consent_buffer,
+                width,
+                height,
+                stride,
+            );
+            let Some(buf) = buf else {
+                warn!("consent buffer unavailable: reason={:?}", reason);
+                return;
+            };
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.consent_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
+                warn!("consent canvas unavailable after retry");
+                return;
+            };
+            canvas.fill(0);
+            crate::screenshot_consent::draw_consent_overlay(
+                canvas,
+                width,
+                height,
+                &self.consent_app_id,
+                self.consent_hover,
+                &self.theme,
+            );
+            if let Err(err) = buf.attach_to(self.consent_layer.wl_surface()) {
+                warn!("consent buffer attach failed: {}", err);
+                return;
+            }
+            self.consent_layer
+                .wl_surface()
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.consent_layer.commit();
+            return;
+        }
+    }
+
+    pub(crate) fn unmap_consent(&mut self, _reason: CommitReason) {
+        // Keep a valid anchored size on the unmap commit (same protocol-safety
+        // reasoning as unmap_desktop_menu).
+        self.consent_layer.set_size(
+            crate::screenshot_consent::MODAL_WIDTH as u32,
+            crate::screenshot_consent::MODAL_HEIGHT as u32,
+        );
+        self.consent_layer.wl_surface().attach(None, 0, 0);
+        self.consent_layer.commit();
+    }
+
     pub(crate) fn draw_launcher(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
         debug!(
             "draw_launcher: reason={:?} open={} configured={} launcher_dirty={} commit_expected={}",

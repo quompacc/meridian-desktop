@@ -237,3 +237,30 @@ mod tests {
         assert_eq!(result, None);
     }
 }
+
+impl MeridianShell {
+    /// Handle pointer events on the screenshot consent modal: hover highlights
+    /// a button; a left-press inside Allow/Deny answers and closes the modal.
+    pub(super) fn handle_consent_pointer(&mut self, qh: &QueueHandle<Self>, event: &PointerEvent) {
+        let (px, py) = event.position;
+        match event.kind {
+            PointerEventKind::Motion { .. } => {
+                let hover = crate::screenshot_consent::hit_button(px, py);
+                if hover != self.consent_hover {
+                    self.consent_hover = hover;
+                    self.draw_consent_modal(qh, RepaintReason::Pointer);
+                }
+            }
+            PointerEventKind::Press { .. } => match crate::screenshot_consent::hit_button(px, py) {
+                Some(crate::screenshot_consent::ConsentButton::Allow) => {
+                    self.respond_consent(true);
+                }
+                Some(crate::screenshot_consent::ConsentButton::Deny) => {
+                    self.respond_consent(false);
+                }
+                None => {}
+            },
+            _ => {}
+        }
+    }
+}

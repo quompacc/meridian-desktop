@@ -27,6 +27,7 @@ mod panel;
 mod panel_view;
 mod popup_card;
 mod printers;
+mod screenshot_consent;
 mod settings_view;
 mod soft_shadow;
 mod status_notifier;
