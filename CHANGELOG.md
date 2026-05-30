@@ -12,6 +12,11 @@ single version.
 
 ### Added
 
+- **Settings ▸ Power — writable idle timeout:** the "Energie" page gains a
+  chip bar to set the screen-blank idle timeout (Aus / 1 / 5 / 10 / 15 / 30
+  min); the choice persists to `[general] idle_timeout_secs` and live-applies
+  via `ReloadConfig` (the compositor reads the timeout fresh each render tick,
+  so "Aus" disables blanking immediately). (A4)
 - **Settings ▸ Cursor — writable size:** the "Mauszeiger" page can now change
   the cursor size (16/24/32/48 px chips); the choice persists to the `[cursor]`
   config section and live-applies via `ReloadConfig`. First writable system

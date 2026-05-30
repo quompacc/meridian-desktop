@@ -43,6 +43,7 @@ impl MeridianShell {
             | WidgetAction::ApplyWallpaperByIndex(_)
             | WidgetAction::SetWallpaperMode(_)
             | WidgetAction::SetCursorSize(_)
+            | WidgetAction::SetIdleTimeout(_)
             | WidgetAction::BrowseWallpaper
             | WidgetAction::SetPrimaryOutput(_)
             | WidgetAction::ToggleOutputModeDropdown(_)
@@ -165,6 +166,16 @@ impl MeridianShell {
                     let theme = crate::cursor::cursor_theme_label();
                     let theme = if theme == "—" { String::new() } else { theme };
                     meridian_config::MeridianConfig::save_cursor(&theme, size);
+                    self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
+                }
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::SetIdleTimeout(secs) => {
+                if self.idle_timeout_secs != secs {
+                    self.idle_timeout_secs = secs;
+                    // Persist to [general] and reload so the compositor picks up
+                    // the new idle blanking timeout (or disables it) at once.
+                    meridian_config::MeridianConfig::save_idle_timeout(secs);
                     self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
                 }
                 self.draw_launcher(qh, RepaintReason::Pointer);

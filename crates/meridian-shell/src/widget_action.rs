@@ -3,6 +3,7 @@ use crate::settings_view::SettingsCategory;
 const SETTINGS_THEME_PREFIX: &str = "settings-theme-";
 const SETTINGS_WALLPAPER_PREFIX: &str = "settings-wallpaper-";
 const CURSOR_SIZE_PREFIX: &str = "cursor-size-";
+const IDLE_TIMEOUT_PREFIX: &str = "idle-timeout-";
 const PINNED_MOVE_UP_PREFIX: &str = "pinned-move-up-";
 const PINNED_MOVE_DOWN_PREFIX: &str = "pinned-move-dn-";
 const PINNED_REMOVE_PREFIX: &str = "pinned-remove-";
@@ -51,6 +52,7 @@ pub(crate) enum WidgetAction {
     ApplyWallpaperByIndex(usize),
     SetWallpaperMode(meridian_config::WallpaperMode),
     SetCursorSize(u32),
+    SetIdleTimeout(Option<u64>),
     BrowseWallpaper,
     PinnedMoveUp(usize),
     PinnedMoveDown(usize),
@@ -82,6 +84,11 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
         .or_else(|| {
             parse_indexed_action(id, CURSOR_SIZE_PREFIX, |n| {
                 WidgetAction::SetCursorSize(n as u32)
+            })
+        })
+        .or_else(|| {
+            parse_indexed_action(id, IDLE_TIMEOUT_PREFIX, |n| {
+                WidgetAction::SetIdleTimeout(Some(n as u64))
             })
         })
         .or_else(|| parse_indexed_action(id, PINNED_MOVE_UP_PREFIX, WidgetAction::PinnedMoveUp))
@@ -128,6 +135,7 @@ fn exact_action_for_id(id: &str) -> Option<WidgetAction> {
         "wallpaper-browse" => Some(WidgetAction::BrowseWallpaper),
         "pinned-add-open" => Some(WidgetAction::PinnedOpenAdd),
         "pinned-add-close" => Some(WidgetAction::PinnedCloseAdd),
+        "idle-timeout-off" => Some(WidgetAction::SetIdleTimeout(None)),
         _ => None,
     }
 }
@@ -216,6 +224,20 @@ mod tests {
         );
         assert_eq!(action_for_id("cursor-size-"), None);
         assert_eq!(action_for_id("cursor-size-big"), None);
+    }
+
+    #[test]
+    fn action_for_id_idle_timeout() {
+        assert_eq!(
+            action_for_id("idle-timeout-300"),
+            Some(WidgetAction::SetIdleTimeout(Some(300)))
+        );
+        assert_eq!(
+            action_for_id("idle-timeout-off"),
+            Some(WidgetAction::SetIdleTimeout(None))
+        );
+        assert_eq!(action_for_id("idle-timeout-"), None);
+        assert_eq!(action_for_id("idle-timeout-nope"), None);
     }
 
     #[test]

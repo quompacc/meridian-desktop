@@ -502,6 +502,62 @@ mode = "fill"
     }
 
     #[test]
+    fn set_idle_timeout_replaces_existing_key_and_round_trips() {
+        let raw = "[general]\ntheme = \"default\"\nidle_timeout_secs = 60\n";
+        let updated = super::set_idle_timeout_in_toml(raw, Some(600));
+        assert!(!updated.contains("= 60\n"));
+        assert!(updated.contains("idle_timeout_secs = 600"));
+
+        let path = unique_test_path("idle-replace.toml");
+        write(&path, &updated);
+        let config = MeridianConfig::load_from(&path).expect("round-trips");
+        assert_eq!(config.general.idle_timeout_secs, Some(600));
+        assert_eq!(config.general.theme, "default");
+    }
+
+    #[test]
+    fn set_idle_timeout_inserts_into_existing_general_section() {
+        let updated = super::set_idle_timeout_in_toml("[general]\ntheme = \"x\"\n", Some(300));
+        assert!(updated.contains("idle_timeout_secs = 300"));
+
+        let path = unique_test_path("idle-insert.toml");
+        write(&path, &updated);
+        let config = MeridianConfig::load_from(&path).expect("round-trips");
+        assert_eq!(config.general.idle_timeout_secs, Some(300));
+    }
+
+    #[test]
+    fn set_idle_timeout_appends_general_when_absent() {
+        let updated = super::set_idle_timeout_in_toml("", Some(120));
+        assert!(updated.contains("[general]"));
+        assert!(updated.contains("idle_timeout_secs = 120"));
+
+        let path = unique_test_path("idle-append.toml");
+        write(&path, &updated);
+        let config = MeridianConfig::load_from(&path).expect("round-trips");
+        assert_eq!(config.general.idle_timeout_secs, Some(120));
+    }
+
+    #[test]
+    fn set_idle_timeout_none_removes_the_key() {
+        let raw = "[general]\ntheme = \"default\"\nidle_timeout_secs = 60\n";
+        let updated = super::set_idle_timeout_in_toml(raw, None);
+        assert!(!updated.contains("idle_timeout_secs"));
+        assert!(updated.contains("theme = \"default\""));
+
+        let path = unique_test_path("idle-remove.toml");
+        write(&path, &updated);
+        let config = MeridianConfig::load_from(&path).expect("round-trips");
+        assert_eq!(config.general.idle_timeout_secs, None);
+    }
+
+    #[test]
+    fn set_idle_timeout_none_on_missing_key_is_noop() {
+        let raw = "[general]\ntheme = \"default\"\n";
+        assert_eq!(super::set_idle_timeout_in_toml(raw, None), raw);
+    }
+
+    #[test]
     fn reload_from_path_with_missing_file_resets_to_defaults() {
         let path = unique_test_path("reload-missing.toml");
         let mut config = MeridianConfig::default();
@@ -1174,6 +1230,29 @@ impl MeridianConfig {
         }
     }
 
+    /// Write (or update) the `idle_timeout_secs` key in the [general] section.
+    /// Pass `None` to disable idle blanking (the key is removed). Live-applied
+    /// by the compositor on `ReloadConfig`.
+    pub fn save_idle_timeout(secs: Option<u64>) {
+        let config_path = config_directory().join("config.toml");
+        let raw = if config_path.exists() {
+            fs::read_to_string(&config_path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let out = set_idle_timeout_in_toml(&raw, secs);
+
+        if let Some(parent) = config_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Err(e) = fs::write(&config_path, out.as_bytes()) {
+            warn!("Failed to write idle timeout to config: {}", e);
+        } else {
+            info!("Saved idle_timeout_secs={:?} to {:?}", secs, config_path);
+        }
+    }
+
     /// Write (or update) the [panel] section in config.toml with the current pinned apps.
     pub fn save_pinned_apps(apps: &[PinnedAppConfig]) {
         let config_path = config_directory().join("config.toml");
@@ -1615,6 +1694,13 @@ fn has_general_section(raw: &str) -> bool {
 /// Returns the line index of the first `theme = ...` key that appears
 /// after a `[general]` section header.
 fn find_theme_line(raw: &str) -> Option<usize> {
+    find_general_key_line(raw, "theme")
+}
+
+/// Line index of `<key> = ...` inside the `[general]` section, if present.
+/// Matches the key exactly (not as a substring) so e.g. `theme` does not match
+/// a hypothetical `theme_variant`.
+fn find_general_key_line(raw: &str, key: &str) -> Option<usize> {
     let mut in_general = false;
     for (i, line) in raw.lines().enumerate() {
         let t = line.trim();
@@ -1622,9 +1708,74 @@ fn find_theme_line(raw: &str) -> Option<usize> {
             in_general = t == "[general]";
             continue;
         }
-        if in_general && t.starts_with("theme") && t.contains('=') {
-            return Some(i);
+        if in_general && t.starts_with(key) {
+            let after = t[key.len()..].trim_start();
+            if after.starts_with('=') {
+                return Some(i);
+            }
         }
     }
     None
+}
+
+/// Replace (or insert/remove) the `idle_timeout_secs` key in `[general]`,
+/// preserving the rest of the file. `None` removes the key (idle blanking off;
+/// the parsed value falls back to `None` when the key is absent). Pure string
+/// transform so it can be unit-tested without a real config directory.
+fn set_idle_timeout_in_toml(raw: &str, secs: Option<u64>) -> String {
+    const KEY: &str = "idle_timeout_secs";
+    let nl = '\n';
+
+    let Some(secs) = secs else {
+        // Drop the key if present; otherwise leave the file untouched.
+        let Some(pos) = find_general_key_line(raw, KEY) else {
+            return raw.to_string();
+        };
+        let mut out = String::new();
+        for (i, l) in raw.lines().enumerate() {
+            if i == pos {
+                continue;
+            }
+            out.push_str(l);
+            out.push(nl);
+        }
+        return out;
+    };
+
+    let new_line = format!("{} = {}", KEY, secs);
+
+    if let Some(pos) = find_general_key_line(raw, KEY) {
+        let mut out = String::new();
+        for (i, l) in raw.lines().enumerate() {
+            if i == pos {
+                out.push_str(&new_line);
+            } else {
+                out.push_str(l);
+            }
+            out.push(nl);
+        }
+        out
+    } else if has_general_section(raw) {
+        let mut out = String::new();
+        let mut inserted = false;
+        for line in raw.lines() {
+            out.push_str(line);
+            out.push(nl);
+            if !inserted && line.trim() == "[general]" {
+                out.push_str(&new_line);
+                out.push(nl);
+                inserted = true;
+            }
+        }
+        out
+    } else {
+        let mut out = raw.to_string();
+        if !out.ends_with(nl) && !out.is_empty() {
+            out.push(nl);
+        }
+        out.push_str("\n[general]\n");
+        out.push_str(&new_line);
+        out.push(nl);
+        out
+    }
 }

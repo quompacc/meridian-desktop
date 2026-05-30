@@ -245,6 +245,20 @@ const SOUND_SUMMARY_H: i32 = 92;
 const SOUND_ROW_H: i32 = 72;
 const SOUND_MAX: usize = 8;
 
+/// Selectable idle screen-blank timeouts for the Power page, each paired with
+/// its static widget id and chip label. `None` = off; the numeric ids carry
+/// the timeout in seconds. The ids are matched by
+/// `widget_action::action_for_id` (`idle-timeout-off` and the `idle-timeout-`
+/// prefix), so they must stay in sync with that parser.
+pub(crate) const IDLE_TIMEOUT_OPTIONS: &[(Option<u64>, &str, &str)] = &[
+    (None, "idle-timeout-off", "Aus"),
+    (Some(60), "idle-timeout-60", "1 min"),
+    (Some(300), "idle-timeout-300", "5 min"),
+    (Some(600), "idle-timeout-600", "10 min"),
+    (Some(900), "idle-timeout-900", "15 min"),
+    (Some(1800), "idle-timeout-1800", "30 min"),
+];
+
 pub(crate) const THEME_WIDGET_IDS: &[&str] = &[
     "settings-theme-0",
     "settings-theme-1",
@@ -2067,6 +2081,7 @@ pub(crate) fn build_settings_widget_tree(
     current_wallpaper: Option<&str>,
     wallpaper_mode: WallpaperMode,
     cursor_size: u32,
+    idle_timeout_secs: Option<u64>,
     pinned_apps: &[PinnedApp],
     output_workspaces: &[OutputWorkspaceState],
     display_mode_dropdown_open: Option<usize>,
@@ -2564,15 +2579,39 @@ pub(crate) fn build_settings_widget_tree(
             let btn = |id: &'static str, label: &'static str, color| {
                 Box::new(Button::with_id(id, label, color, row_w, 44)) as Box<dyn Widget>
             };
+            // Idle screen-blank timeout — adjustable: one chip per option, the
+            // active timeout accented. Sits above the power-action buttons.
+            let idle_chips: Vec<Box<dyn Widget>> = IDLE_TIMEOUT_OPTIONS
+                .iter()
+                .map(|(secs, id, label)| {
+                    let accent = if *secs == idle_timeout_secs {
+                        pal.accent
+                    } else {
+                        pal.surface
+                    };
+                    Box::new(Button::with_id(id, label, accent, 80, 32)) as Box<dyn Widget>
+                })
+                .collect();
             Box::new(Container::top_viewport(
                 content_w,
                 content_h,
                 14,
                 16,
-                4,
+                8,
                 vec![Box::new(Container::column(
                     8,
                     vec![
+                        Box::new(SidebarSectionLabel {
+                            text: "BILDSCHIRM-LEERLAUF",
+                            width: row_w,
+                            pad_top: 0,
+                        }) as Box<dyn Widget>,
+                        Box::new(Container::row(8, idle_chips)) as Box<dyn Widget>,
+                        Box::new(SidebarSectionLabel {
+                            text: "SITZUNG",
+                            width: row_w,
+                            pad_top: 8,
+                        }) as Box<dyn Widget>,
                         btn("power-sleep", "Bereitschaft", pal.accent),
                         btn("power-lock", "Sperren", pal.accent),
                         btn("power-logout", "Abmelden", pal.accent),
@@ -2794,6 +2833,7 @@ pub(crate) fn draw_settings_launcher(
     current_wallpaper: Option<&str>,
     wallpaper_mode: WallpaperMode,
     cursor_size: u32,
+    idle_timeout_secs: Option<u64>,
     pinned_apps: &[PinnedApp],
     output_workspaces: &[OutputWorkspaceState],
     display_mode_dropdown_open: Option<usize>,
@@ -2836,6 +2876,7 @@ pub(crate) fn draw_settings_launcher(
         current_wallpaper,
         wallpaper_mode,
         cursor_size,
+        idle_timeout_secs,
         pinned_apps,
         output_workspaces,
         display_mode_dropdown_open,
