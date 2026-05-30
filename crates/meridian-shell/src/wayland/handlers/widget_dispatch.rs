@@ -44,6 +44,8 @@ impl MeridianShell {
             | WidgetAction::SetWallpaperMode(_)
             | WidgetAction::SetCursorSize(_)
             | WidgetAction::SetIdleTimeout(_)
+            | WidgetAction::SetDefaultSinkVolume(_)
+            | WidgetAction::ToggleDefaultSinkMute
             | WidgetAction::BrowseWallpaper
             | WidgetAction::SetPrimaryOutput(_)
             | WidgetAction::ToggleOutputModeDropdown(_)
@@ -178,6 +180,18 @@ impl MeridianShell {
                     meridian_config::MeridianConfig::save_idle_timeout(secs);
                     self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
                 }
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::SetDefaultSinkVolume(percent) => {
+                // System state, not Meridian config: drive wpctl directly, then
+                // re-poll so the page reflects the real new level.
+                crate::audio::set_default_sink_volume(percent);
+                self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::ToggleDefaultSinkMute => {
+                crate::audio::toggle_default_sink_mute();
+                self.audio_snapshot = crate::audio::AudioSnapshot::poll();
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
             WidgetAction::BrowseWallpaper => {

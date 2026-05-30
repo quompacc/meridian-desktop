@@ -4,6 +4,7 @@ const SETTINGS_THEME_PREFIX: &str = "settings-theme-";
 const SETTINGS_WALLPAPER_PREFIX: &str = "settings-wallpaper-";
 const CURSOR_SIZE_PREFIX: &str = "cursor-size-";
 const IDLE_TIMEOUT_PREFIX: &str = "idle-timeout-";
+const VOLUME_SET_PREFIX: &str = "vol-set-";
 const PINNED_MOVE_UP_PREFIX: &str = "pinned-move-up-";
 const PINNED_MOVE_DOWN_PREFIX: &str = "pinned-move-dn-";
 const PINNED_REMOVE_PREFIX: &str = "pinned-remove-";
@@ -53,6 +54,8 @@ pub(crate) enum WidgetAction {
     SetWallpaperMode(meridian_config::WallpaperMode),
     SetCursorSize(u32),
     SetIdleTimeout(Option<u64>),
+    SetDefaultSinkVolume(u8),
+    ToggleDefaultSinkMute,
     BrowseWallpaper,
     PinnedMoveUp(usize),
     PinnedMoveDown(usize),
@@ -89,6 +92,11 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
         .or_else(|| {
             parse_indexed_action(id, IDLE_TIMEOUT_PREFIX, |n| {
                 WidgetAction::SetIdleTimeout(Some(n as u64))
+            })
+        })
+        .or_else(|| {
+            parse_indexed_action(id, VOLUME_SET_PREFIX, |n| {
+                WidgetAction::SetDefaultSinkVolume(n.min(100) as u8)
             })
         })
         .or_else(|| parse_indexed_action(id, PINNED_MOVE_UP_PREFIX, WidgetAction::PinnedMoveUp))
@@ -136,6 +144,7 @@ fn exact_action_for_id(id: &str) -> Option<WidgetAction> {
         "pinned-add-open" => Some(WidgetAction::PinnedOpenAdd),
         "pinned-add-close" => Some(WidgetAction::PinnedCloseAdd),
         "idle-timeout-off" => Some(WidgetAction::SetIdleTimeout(None)),
+        "mute-toggle" => Some(WidgetAction::ToggleDefaultSinkMute),
         _ => None,
     }
 }
@@ -238,6 +247,25 @@ mod tests {
         );
         assert_eq!(action_for_id("idle-timeout-"), None);
         assert_eq!(action_for_id("idle-timeout-nope"), None);
+    }
+
+    #[test]
+    fn action_for_id_volume_and_mute() {
+        assert_eq!(
+            action_for_id("vol-set-50"),
+            Some(WidgetAction::SetDefaultSinkVolume(50))
+        );
+        // Clamped so an oversized id can never amplify past unity.
+        assert_eq!(
+            action_for_id("vol-set-250"),
+            Some(WidgetAction::SetDefaultSinkVolume(100))
+        );
+        assert_eq!(
+            action_for_id("mute-toggle"),
+            Some(WidgetAction::ToggleDefaultSinkMute)
+        );
+        assert_eq!(action_for_id("vol-set-"), None);
+        assert_eq!(action_for_id("vol-set-x"), None);
     }
 
     #[test]

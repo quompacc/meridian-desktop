@@ -12,6 +12,11 @@ single version.
 
 ### Added
 
+- **Settings ▸ Sound — writable volume & mute:** the "Audio" page gains volume
+  preset chips (0/25/50/75/100 %) and a mute toggle for the default output;
+  these drive `wpctl` against `@DEFAULT_AUDIO_SINK@` and re-poll, so they edit
+  live system state directly (no config round-trip). The volume preset is
+  clamped to 100 % so a stray id can never amplify past unity. (A4)
 - **Settings ▸ Power — writable idle timeout:** the "Energie" page gains a
   chip bar to set the screen-blank idle timeout (Aus / 1 / 5 / 10 / 15 / 30
   min); the choice persists to `[general] idle_timeout_secs` and live-applies

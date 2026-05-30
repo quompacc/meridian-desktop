@@ -156,9 +156,55 @@ fn run_wpctl_status() -> Option<String> {
     String::from_utf8(output.stdout).ok()
 }
 
+/// The default-sink target understood by wpctl. Targeting the symbolic default
+/// (rather than a numeric id baked into a widget id) keeps the write robust
+/// across device hotplug and re-poll.
+const DEFAULT_SINK: &str = "@DEFAULT_AUDIO_SINK@";
+
+/// Build the `wpctl set-volume` argv for the default sink at `percent`
+/// (clamped to 0..=100). Pure so the argument shape can be unit-tested without
+/// spawning a process. wpctl takes a fractional level, e.g. `0.75`.
+fn set_volume_args(percent: u8) -> Vec<String> {
+    let level = (percent.min(100) as f32) / 100.0;
+    vec![
+        "set-volume".to_string(),
+        DEFAULT_SINK.to_string(),
+        format!("{:.2}", level),
+    ]
+}
+
+/// Build the `wpctl set-mute` argv for the default sink. `toggle` flips the
+/// current state; this is the only mute operation the UI needs.
+fn set_mute_args() -> Vec<String> {
+    vec![
+        "set-mute".to_string(),
+        DEFAULT_SINK.to_string(),
+        "toggle".to_string(),
+    ]
+}
+
+/// Set the default sink volume to `percent` (0..=100). Best-effort: logs and
+/// returns on failure so a missing/unhappy wpctl never breaks the caller.
+pub(crate) fn set_default_sink_volume(percent: u8) {
+    run_wpctl(&set_volume_args(percent));
+}
+
+/// Toggle mute on the default sink. Best-effort, same contract as above.
+pub(crate) fn toggle_default_sink_mute() {
+    run_wpctl(&set_mute_args());
+}
+
+fn run_wpctl(args: &[String]) {
+    match Command::new("wpctl").env("LC_ALL", "C").args(args).status() {
+        Ok(status) if status.success() => {}
+        Ok(status) => tracing::warn!("wpctl {:?} exited with {}", args, status),
+        Err(err) => tracing::warn!("failed to run wpctl {:?}: {}", args, err),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{parse_wpctl_status, AudioSnapshot};
+    use super::{parse_wpctl_status, set_mute_args, set_volume_args, AudioSnapshot};
 
     #[test]
     fn parse_wpctl_status_extracts_default_sink_and_source() {
@@ -185,5 +231,26 @@ mod tests {
         let snapshot = AudioSnapshot::unavailable();
         assert_eq!(snapshot.panel_label(), "AUD");
         assert_eq!(snapshot.icon_name(), "audio-volume-muted-symbolic");
+    }
+
+    #[test]
+    fn set_volume_args_targets_default_sink_with_fractional_level() {
+        assert_eq!(
+            set_volume_args(75),
+            vec!["set-volume", "@DEFAULT_AUDIO_SINK@", "0.75"]
+        );
+        // 0% and 100% map to the fractional bounds.
+        assert_eq!(set_volume_args(0)[2], "0.00");
+        assert_eq!(set_volume_args(100)[2], "1.00");
+        // Out-of-range input is clamped to 100% (never amplifies past unity).
+        assert_eq!(set_volume_args(250)[2], "1.00");
+    }
+
+    #[test]
+    fn set_mute_args_toggles_default_sink() {
+        assert_eq!(
+            set_mute_args(),
+            vec!["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]
+        );
     }
 }

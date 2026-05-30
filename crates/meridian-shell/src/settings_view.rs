@@ -259,6 +259,18 @@ pub(crate) const IDLE_TIMEOUT_OPTIONS: &[(Option<u64>, &str, &str)] = &[
     (Some(1800), "idle-timeout-1800", "30 min"),
 ];
 
+/// Volume preset chips for the default output on the Sound page, paired with
+/// their static widget id and label. The ids are matched by
+/// `widget_action::action_for_id` (the `vol-set-` prefix), so they must stay
+/// in sync with that parser.
+pub(crate) const VOLUME_PRESET_OPTIONS: &[(u8, &str, &str)] = &[
+    (0, "vol-set-0", "0%"),
+    (25, "vol-set-25", "25%"),
+    (50, "vol-set-50", "50%"),
+    (75, "vol-set-75", "75%"),
+    (100, "vol-set-100", "100%"),
+];
+
 pub(crate) const THEME_WIDGET_IDS: &[&str] = &[
     "settings-theme-0",
     "settings-theme-1",
@@ -2692,6 +2704,43 @@ pub(crate) fn build_settings_widget_tree(
                 row_width: row_w,
                 accent: pal.accent,
             }) as Box<dyn Widget>];
+
+            // Default-output controls: volume preset chips + a mute toggle.
+            // Only meaningful when a default sink is present.
+            if let Some(default) = audio_snapshot.default_output.as_ref() {
+                let current = default.volume_percent;
+                let mut chips: Vec<Box<dyn Widget>> = VOLUME_PRESET_OPTIONS
+                    .iter()
+                    .map(|(pct, id, label)| {
+                        let accent = if current == Some(*pct) {
+                            pal.accent
+                        } else {
+                            pal.surface
+                        };
+                        Box::new(Button::with_id(id, label, accent, 64, 32)) as Box<dyn Widget>
+                    })
+                    .collect();
+                // Mute toggle accents when currently muted.
+                let mute_accent = if default.muted {
+                    pal.accent
+                } else {
+                    pal.surface
+                };
+                let mute_label = if default.muted { "Stumm: an" } else { "Stumm" };
+                chips.push(Box::new(Button::with_id(
+                    "mute-toggle",
+                    mute_label,
+                    mute_accent,
+                    96,
+                    32,
+                )) as Box<dyn Widget>);
+                rows.push(Box::new(SidebarSectionLabel {
+                    text: "STANDARD-AUSGABE",
+                    width: row_w,
+                    pad_top: 0,
+                }));
+                rows.push(Box::new(Container::row(8, chips)));
+            }
 
             if audio_snapshot.service != AudioServiceState::Running {
                 rows.push(Box::new(SettingsPlaceholder {
