@@ -12,6 +12,14 @@ single version.
 
 ### Added
 
+- **Settings ▸ Anzeige — scale & rotation:** each output row on the "Anzeige"
+  page gains a Skalierung button (cycles 1.0/1.25/1.5/2.0×) and a Drehung button
+  (cycles 0/90/180/270°), showing the current value. Both persist per-output to
+  `[outputs."<name>"]` (`scale` / `transform`) and live-apply via `ReloadConfig`
+  (the compositor reapplies scale + transform on every reload). Config write +
+  parse verified live on the dev VM; the same `ReloadConfig` path as the
+  existing primary/mode controls. (A4)
+
 - **Settings ▸ Bluetooth — power, scan & pair:** the "Bluetooth" page now shows
   the adapter power state with a toggle, a "Suchen" button that runs a timed
   discovery, and the device list (paired/connected badges; click to pair an

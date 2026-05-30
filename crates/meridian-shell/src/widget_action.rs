@@ -16,6 +16,8 @@ const PINNED_MOVE_DOWN_PREFIX: &str = "pinned-move-dn-";
 const PINNED_REMOVE_PREFIX: &str = "pinned-remove-";
 const PINNED_ADD_APP_PREFIX: &str = "pinned-add-app-";
 const DISPLAY_PRIMARY_PREFIX: &str = "display-primary-";
+const DISPLAY_SCALE_PREFIX: &str = "display-scale-";
+const DISPLAY_ROTATE_PREFIX: &str = "display-rotate-";
 const DISPLAY_MODE_TOGGLE_PREFIX: &str = "display-mode-toggle-";
 const DISPLAY_MODE_SELECT_PREFIX: &str = "display-mode-select-";
 
@@ -78,6 +80,8 @@ pub(crate) enum WidgetAction {
     PinnedCloseAdd,
     PinnedAddApp(usize),
     SetPrimaryOutput(usize),
+    CycleOutputScale(usize),
+    CycleOutputTransform(usize),
     ToggleOutputModeDropdown(usize),
     SetOutputMode {
         output_index: usize,
@@ -143,6 +147,14 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
         .or_else(|| parse_indexed_action(id, PINNED_ADD_APP_PREFIX, WidgetAction::PinnedAddApp))
         .or_else(|| {
             parse_indexed_action(id, DISPLAY_PRIMARY_PREFIX, WidgetAction::SetPrimaryOutput)
+        })
+        .or_else(|| parse_indexed_action(id, DISPLAY_SCALE_PREFIX, WidgetAction::CycleOutputScale))
+        .or_else(|| {
+            parse_indexed_action(
+                id,
+                DISPLAY_ROTATE_PREFIX,
+                WidgetAction::CycleOutputTransform,
+            )
         })
         .or_else(|| {
             parse_indexed_action(
@@ -262,6 +274,14 @@ mod tests {
                 output_index: 1,
                 mode_index: 3
             })
+        );
+        assert_eq!(
+            action_for_id("display-scale-2"),
+            Some(WidgetAction::CycleOutputScale(2))
+        );
+        assert_eq!(
+            action_for_id("display-rotate-0"),
+            Some(WidgetAction::CycleOutputTransform(0))
         );
     }
 

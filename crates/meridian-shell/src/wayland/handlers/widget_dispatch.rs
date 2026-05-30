@@ -56,6 +56,8 @@ impl MeridianShell {
             | WidgetAction::BluetoothDevice(_)
             | WidgetAction::BrowseWallpaper
             | WidgetAction::SetPrimaryOutput(_)
+            | WidgetAction::CycleOutputScale(_)
+            | WidgetAction::CycleOutputTransform(_)
             | WidgetAction::ToggleOutputModeDropdown(_)
             | WidgetAction::SetOutputMode { .. } => self.dispatch_settings_action(qh, action),
             WidgetAction::PowerOff
@@ -320,6 +322,52 @@ impl MeridianShell {
                     meridian_config::MeridianConfig::save_primary_output(&name);
                     for state in &mut self.output_workspaces {
                         state.primary = state.output_name.as_deref() == Some(name.as_str());
+                    }
+                    self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
+                    self.draw_launcher(qh, RepaintReason::Pointer);
+                }
+            }
+            WidgetAction::CycleOutputScale(idx) => {
+                if let Some(output) = self.output_workspaces.get(idx).cloned() {
+                    let Some(name) = output.output_name else {
+                        return;
+                    };
+                    // Advance to the next scale in the cycle (wrap around).
+                    let cur = output.scale_millis as f64 / 1000.0;
+                    let cycle = crate::settings_view::DISPLAY_SCALE_CYCLE;
+                    let pos = cycle
+                        .iter()
+                        .position(|s| (s - cur).abs() < 0.001)
+                        .unwrap_or(usize::MAX);
+                    let next = cycle[pos.wrapping_add(1) % cycle.len()];
+                    meridian_config::MeridianConfig::save_output_scale(&name, next);
+                    if let Some(state) = self.output_workspaces.get_mut(idx) {
+                        state.scale_millis = (next * 1000.0).round() as u32;
+                    }
+                    self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
+                    self.draw_launcher(qh, RepaintReason::Pointer);
+                }
+            }
+            WidgetAction::CycleOutputTransform(idx) => {
+                if let Some(output) = self.output_workspaces.get(idx).cloned() {
+                    let Some(name) = output.output_name else {
+                        return;
+                    };
+                    let cur = output.transform.as_deref().unwrap_or("");
+                    let cycle = crate::settings_view::DISPLAY_ROTATE_CYCLE;
+                    let pos = cycle
+                        .iter()
+                        .position(|(v, _)| *v == cur)
+                        .unwrap_or(usize::MAX);
+                    let (next_val, _) = cycle[pos.wrapping_add(1) % cycle.len()];
+                    let next = if next_val.is_empty() {
+                        None
+                    } else {
+                        Some(next_val)
+                    };
+                    meridian_config::MeridianConfig::save_output_transform(&name, next);
+                    if let Some(state) = self.output_workspaces.get_mut(idx) {
+                        state.transform = next.map(|s| s.to_string());
                     }
                     self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
                     self.draw_launcher(qh, RepaintReason::Pointer);

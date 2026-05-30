@@ -1074,6 +1074,53 @@ scale = 1.25
         assert!(updated.contains("mode = { width = 1920, height = 1080 }"));
     }
 
+    #[test]
+    fn set_output_key_replaces_existing_scale_in_section() {
+        let raw = "[outputs.\"DP-1\"]\nenabled = true\nscale = 1.0\nposition = \"auto\"\n";
+        let updated = super::set_output_key_in_toml(raw, "DP-1", "scale", "1.5");
+        assert!(updated.contains("scale = 1.5"));
+        assert!(!updated.contains("scale = 1.0"));
+        // unrelated keys preserved
+        assert!(updated.contains("position = \"auto\""));
+        let path = unique_test_path("out-scale.toml");
+        write(&path, &updated);
+        let config = MeridianConfig::load_from(&path).expect("round-trips");
+        assert_eq!(output_by_name(&config, "DP-1").scale, 1.5);
+    }
+
+    #[test]
+    fn set_output_key_inserts_transform_when_absent_and_round_trips() {
+        let raw = "[outputs.\"DP-1\"]\nenabled = true\n";
+        let updated = super::set_output_key_in_toml(raw, "DP-1", "transform", "\"90\"");
+        assert!(updated.contains("transform = \"90\""));
+        let path = unique_test_path("out-transform.toml");
+        write(&path, &updated);
+        let config = MeridianConfig::load_from(&path).expect("round-trips");
+        assert_eq!(
+            output_by_name(&config, "DP-1").transform.as_deref(),
+            Some("90")
+        );
+    }
+
+    #[test]
+    fn set_output_key_appends_section_when_output_absent() {
+        let updated =
+            super::set_output_key_in_toml("[general]\ntheme = \"x\"\n", "DP-9", "scale", "2");
+        assert!(updated.contains("[outputs.\"DP-9\"]"));
+        assert!(updated.contains("scale = 2"));
+    }
+
+    #[test]
+    fn remove_output_key_drops_transform_only_for_target() {
+        let raw = "[outputs.\"DP-1\"]\ntransform = \"90\"\nscale = 1.0\n[outputs.\"DP-2\"]\ntransform = \"180\"\n";
+        let updated = super::remove_output_key_in_toml(raw, "DP-1", "transform");
+        // DP-1 transform gone, its scale kept, DP-2 transform untouched.
+        let dp1 = updated.split("[outputs.\"DP-2\"]").next().unwrap();
+        assert!(!dp1.contains("transform"));
+        assert!(dp1.contains("scale = 1.0"));
+        assert!(updated.contains("[outputs.\"DP-2\"]\ntransform = \"180\""));
+    }
+
     fn output_by_name<'a>(config: &'a MeridianConfig, name: &str) -> &'a crate::OutputEntry {
         config
             .outputs
@@ -1357,6 +1404,38 @@ impl MeridianConfig {
         }
     }
 
+    /// Set the `scale` for one output, preserving the rest of the file.
+    pub fn save_output_scale(output_name: &str, scale: f64) {
+        let output_name = output_name.trim();
+        if output_name.is_empty() || !scale.is_finite() || scale <= 0.0 {
+            warn!(
+                "Refusing to save invalid output scale: output={:?} scale={}",
+                output_name, scale
+            );
+            return;
+        }
+        // Trim trailing zeros so 1.0 stays "1", 1.25 stays "1.25".
+        let literal = format!("{}", scale);
+        write_output_key(output_name, "scale", &literal, "scale");
+    }
+
+    /// Set the `transform` (rotation) for one output. `None` removes the key
+    /// (back to normal orientation). Accepts "90"/"180"/"270"/"normal"/flips.
+    pub fn save_output_transform(output_name: &str, transform: Option<&str>) {
+        let output_name = output_name.trim();
+        if output_name.is_empty() {
+            warn!("Refusing to save output transform for empty output name");
+            return;
+        }
+        match transform {
+            Some(t) => {
+                let literal = format!("{:?}", t); // quoted TOML string
+                write_output_key(output_name, "transform", &literal, "transform");
+            }
+            None => remove_output_key(output_name, "transform"),
+        }
+    }
+
     /// Scan standard wallpaper directories; group resolution variants into one entry per pack.
     pub fn scan_wallpaper_dirs() -> Vec<WallpaperEntry> {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
@@ -1611,6 +1690,139 @@ fn push_primary_line(out: &mut String, current_output: &str, primary_output: &st
         "false"
     });
     out.push('\n');
+}
+
+/// Read-modify-write a single `<key> = <literal>` inside `[outputs."<name>"]`,
+/// shared by save_output_scale/transform.
+fn write_output_key(output_name: &str, key: &str, value_literal: &str, log_what: &str) {
+    let config_path = config_directory().join("config.toml");
+    let raw = if config_path.exists() {
+        fs::read_to_string(&config_path).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let updated = set_output_key_in_toml(&raw, output_name, key, value_literal);
+    if let Some(parent) = config_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Err(e) = fs::write(&config_path, updated.as_bytes()) {
+        warn!("Failed to write output {} to config: {}", log_what, e);
+    } else {
+        info!(
+            "Saved output {} = {} for {:?} to {:?}",
+            key, value_literal, output_name, config_path
+        );
+    }
+}
+
+fn remove_output_key(output_name: &str, key: &str) {
+    let config_path = config_directory().join("config.toml");
+    let Ok(raw) = fs::read_to_string(&config_path) else {
+        return; // nothing to remove
+    };
+    let updated = remove_output_key_in_toml(&raw, output_name, key);
+    if let Err(e) = fs::write(&config_path, updated.as_bytes()) {
+        warn!("Failed to remove output {} from config: {}", key, e);
+    } else {
+        info!("Removed output {} for {:?}", key, output_name);
+    }
+}
+
+/// True if the trimmed line is `<key> = …` (exact key, not a prefix).
+fn is_output_key_line(line: &str, key: &str) -> bool {
+    let trimmed = line.trim_start();
+    let Some(rest) = trimmed.strip_prefix(key) else {
+        return false;
+    };
+    rest.trim_start().starts_with('=')
+}
+
+/// Replace (or insert) `<key> = <value_literal>` inside the target output's
+/// `[outputs."<name>"]` section, preserving everything else. Appends a new
+/// section if the output is absent. Mirrors set_output_mode_in_toml.
+fn set_output_key_in_toml(raw: &str, output_name: &str, key: &str, value_literal: &str) -> String {
+    let key_line = format!("{} = {}\n", key, value_literal);
+    let mut out = String::new();
+    let mut current_output: Option<String> = None;
+    let mut current_has_key = false;
+    let mut found_target = false;
+
+    for line in raw.lines() {
+        if let Some(next_output) = output_section_name(line) {
+            if current_output.as_deref() == Some(output_name) && !current_has_key {
+                out.push_str(&key_line);
+            }
+            found_target |= next_output == output_name;
+            current_output = Some(next_output);
+            current_has_key = false;
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+
+        let trimmed = line.trim();
+        if current_output.as_deref() == Some(output_name)
+            && trimmed.starts_with('[')
+            && !trimmed.starts_with("[[")
+        {
+            if !current_has_key {
+                out.push_str(&key_line);
+            }
+            current_output = None;
+            current_has_key = false;
+        }
+
+        if current_output.as_deref() == Some(output_name) && is_output_key_line(line, key) {
+            out.push_str(&key_line);
+            current_has_key = true;
+            continue;
+        }
+
+        out.push_str(line);
+        out.push('\n');
+    }
+
+    if current_output.as_deref() == Some(output_name) && !current_has_key {
+        out.push_str(&key_line);
+    }
+
+    if !found_target {
+        if !out.ends_with('\n') && !out.is_empty() {
+            out.push('\n');
+        }
+        out.push('\n');
+        out.push_str(&format!("[outputs.{:?}]\n", output_name));
+        out.push_str("enabled = true\n");
+        out.push_str("position = \"auto\"\n");
+        out.push_str(&key_line);
+    }
+
+    out
+}
+
+/// Drop a `<key> = …` line from the target output's section. No-op if absent.
+fn remove_output_key_in_toml(raw: &str, output_name: &str, key: &str) -> String {
+    let mut out = String::new();
+    let mut current_output: Option<String> = None;
+
+    for line in raw.lines() {
+        if let Some(next_output) = output_section_name(line) {
+            current_output = Some(next_output);
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && !trimmed.starts_with("[[") {
+            current_output = None;
+        }
+        if current_output.as_deref() == Some(output_name) && is_output_key_line(line, key) {
+            continue; // skip the key line
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
 
 const WALLPAPER_SKIP: &[&str] = &[

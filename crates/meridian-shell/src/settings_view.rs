@@ -520,6 +520,51 @@ const DISPLAY_MODE_TOGGLE_IDS: [&str; 16] = [
     "display-mode-toggle-14",
     "display-mode-toggle-15",
 ];
+const DISPLAY_SCALE_IDS: [&str; 16] = [
+    "display-scale-0",
+    "display-scale-1",
+    "display-scale-2",
+    "display-scale-3",
+    "display-scale-4",
+    "display-scale-5",
+    "display-scale-6",
+    "display-scale-7",
+    "display-scale-8",
+    "display-scale-9",
+    "display-scale-10",
+    "display-scale-11",
+    "display-scale-12",
+    "display-scale-13",
+    "display-scale-14",
+    "display-scale-15",
+];
+const DISPLAY_ROTATE_IDS: [&str; 16] = [
+    "display-rotate-0",
+    "display-rotate-1",
+    "display-rotate-2",
+    "display-rotate-3",
+    "display-rotate-4",
+    "display-rotate-5",
+    "display-rotate-6",
+    "display-rotate-7",
+    "display-rotate-8",
+    "display-rotate-9",
+    "display-rotate-10",
+    "display-rotate-11",
+    "display-rotate-12",
+    "display-rotate-13",
+    "display-rotate-14",
+    "display-rotate-15",
+];
+
+/// Selectable display scales, cycled by the scale button. Kept in sync with the
+/// dispatch handler that computes the next value.
+pub(crate) const DISPLAY_SCALE_CYCLE: &[f64] = &[1.0, 1.25, 1.5, 2.0];
+
+/// Selectable rotations as (config-value, short-label). `""` = normal (the
+/// transform key is removed). Cycled by the rotate button.
+pub(crate) const DISPLAY_ROTATE_CYCLE: &[(&str, &str)] =
+    &[("", "0°"), ("90", "90°"), ("180", "180°"), ("270", "270°")];
 const DISPLAY_MODE_OPTION_IDS: [[&str; DISPLAY_MODE_OPTION_MAX]; 16] = [
     [
         "display-mode-select-0-0",
@@ -2486,6 +2531,60 @@ impl Widget for DisplayPrimaryButton {
     }
 }
 
+/// A compact "cycle" button for a per-output setting (scale or rotation). Shows
+/// a caption line and the current value; clicking advances to the next value
+/// (handled in the dispatch). `id` selects which action fires.
+struct DisplayCycleButton {
+    id: &'static str,
+    caption: &'static str,
+    value: Box<str>,
+    accent: Color,
+}
+
+impl Widget for DisplayCycleButton {
+    fn id(&self) -> Option<&'static str> {
+        Some(self.id)
+    }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(DISPLAY_PRIMARY_BTN_W as f32),
+                height: ui_length(DISPLAY_CARD_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let base = theme.palette.surface_alt;
+        let bg = match state {
+            WidgetState::Idle => base,
+            WidgetState::Hovered => base.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
+            WidgetState::Pressed => base.lerp(Color::rgb(0, 0, 0), 0.16),
+        };
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, bg);
+        }
+        paint_text(
+            canvas,
+            self.caption,
+            area.x + 14,
+            area.y + 40,
+            11.0,
+            theme.palette.text_dim,
+        );
+        paint_text(
+            canvas,
+            &self.value,
+            area.x + 14,
+            area.y + 64,
+            14.0,
+            self.accent,
+        );
+    }
+}
+
 struct AddAppRow {
     index: usize,
     name: Box<str>,
@@ -2878,10 +2977,42 @@ pub(crate) fn build_settings_widget_tree(
                         active: output.primary,
                         accent: pal.accent,
                     }) as Box<dyn Widget>;
-                    rows.push(Box::new(Container::row(
-                        8,
-                        vec![row, mode_combo, primary_button],
-                    )));
+                    // Current scale label, e.g. "1.5×".
+                    let scale_label = {
+                        let s = output.scale_millis as f64 / 1000.0;
+                        if (s - s.round()).abs() < f64::EPSILON {
+                            format!("{}×", s.round() as i64)
+                        } else {
+                            format!("{}×", s)
+                        }
+                    };
+                    let scale_button = DISPLAY_SCALE_IDS.get(idx).map(|id| {
+                        Box::new(DisplayCycleButton {
+                            id,
+                            caption: "Skalierung",
+                            value: scale_label.into(),
+                            accent: pal.accent,
+                        }) as Box<dyn Widget>
+                    });
+                    // Current rotation label from the transform string.
+                    let rotate_label = match output.transform.as_deref() {
+                        Some("90") => "90°",
+                        Some("180") => "180°",
+                        Some("270") => "270°",
+                        _ => "0°",
+                    };
+                    let rotate_button = DISPLAY_ROTATE_IDS.get(idx).map(|id| {
+                        Box::new(DisplayCycleButton {
+                            id,
+                            caption: "Drehung",
+                            value: rotate_label.into(),
+                            accent: pal.accent,
+                        }) as Box<dyn Widget>
+                    });
+                    let mut row_items: Vec<Box<dyn Widget>> = vec![row, mode_combo, primary_button];
+                    row_items.extend(scale_button);
+                    row_items.extend(rotate_button);
+                    rows.push(Box::new(Container::row(8, row_items)));
 
                     if expanded {
                         for (mode_idx, mode) in output
