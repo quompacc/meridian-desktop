@@ -49,6 +49,8 @@ impl MeridianShell {
             | WidgetAction::ToggleDefaultSinkMute
             | WidgetAction::SetDefaultAudioOutput(_)
             | WidgetAction::SetDefaultAudioInput(_)
+            | WidgetAction::ActivateConnection(_)
+            | WidgetAction::WifiConnect(_)
             | WidgetAction::BrowseWallpaper
             | WidgetAction::SetPrimaryOutput(_)
             | WidgetAction::ToggleOutputModeDropdown(_)
@@ -141,6 +143,14 @@ impl MeridianShell {
                 if cat == crate::settings_view::SettingsCategory::Sound {
                     self.audio_snapshot = crate::audio::AudioSnapshot::poll();
                 }
+                if cat == crate::settings_view::SettingsCategory::Network {
+                    // Read-only listings; safe on the event loop (fast nmcli
+                    // queries: saved-connection list + cached wifi scan).
+                    self.network_profiles = crate::network::list_saved_connections();
+                    self.wifi_networks = crate::network::scan_wifi_networks();
+                    self.wifi_password_prompt = None;
+                    self.wifi_password_input.clear();
+                }
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
             WidgetAction::ApplyThemeByIndex(idx) => {
@@ -220,6 +230,37 @@ impl MeridianShell {
                 if let Some(device) = self.audio_snapshot.inputs.get(idx) {
                     crate::audio::set_default_device(device.id);
                     self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+                }
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::ActivateConnection(idx) => {
+                // Bringing a link up can block for seconds (DHCP/auth), so the
+                // activation runs on a background thread inside
+                // activate_connection — never on the event loop. Optimistically
+                // mark the chosen profile active so the click gives feedback;
+                // re-entering the Network page re-lists the real state. We only
+                // flip the clicked row (not the others), so a still-active VPN
+                // is never falsely hidden if activation is slow or fails.
+                if let Some(profile) = self.network_profiles.get_mut(idx) {
+                    let name = profile.name.clone();
+                    profile.active = true;
+                    crate::network::activate_connection(&name);
+                }
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::WifiConnect(idx) => {
+                if let Some(net) = self.wifi_networks.get(idx) {
+                    let ssid = net.ssid.clone();
+                    // A secured network with no matching saved profile needs a
+                    // password: open the prompt and capture keys there. Open or
+                    // already-known networks connect straight away (off-thread).
+                    let known = self.network_profiles.iter().any(|p| p.name == ssid);
+                    if net.secured && !known {
+                        self.wifi_password_prompt = Some(ssid);
+                        self.wifi_password_input.clear();
+                    } else {
+                        crate::network::connect_wifi(&ssid, None);
+                    }
                 }
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }

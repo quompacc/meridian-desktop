@@ -1,6 +1,9 @@
 mod nmcli;
 
-pub use self::nmcli::NetworkController;
+pub use self::nmcli::{
+    activate_connection, connect_wifi, list_saved_connections, scan_wifi_networks,
+    ConnectionProfile, NetworkController, WifiNetwork,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NetworkState {

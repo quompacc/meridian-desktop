@@ -271,6 +271,40 @@ impl KeyboardHandler for MeridianShell {
             return;
         }
 
+        // ── WLAN password prompt: captures keys while open ────────────────────
+        // Takes precedence over type-to-search so the password is not echoed
+        // into the search field. Escape always cancels (so the user can never
+        // get stuck), Enter connects, BackSpace edits.
+        if self.launcher_settings_open && self.wifi_password_prompt.is_some() {
+            if is_escape {
+                self.wifi_password_prompt = None;
+                self.wifi_password_input.clear();
+                self.draw_launcher(qh, RepaintReason::Keyboard);
+                return;
+            }
+            let is_enter = event.keysym == Keysym::Return || event.keysym == Keysym::KP_Enter;
+            if is_enter {
+                if let Some(ssid) = self.wifi_password_prompt.take() {
+                    if !self.wifi_password_input.is_empty() {
+                        crate::network::connect_wifi(&ssid, Some(&self.wifi_password_input));
+                    }
+                }
+                self.wifi_password_input.clear();
+                self.draw_launcher(qh, RepaintReason::Keyboard);
+                return;
+            }
+            if event.keysym == Keysym::BackSpace {
+                self.wifi_password_input.pop();
+                self.draw_launcher(qh, RepaintReason::Keyboard);
+                return;
+            }
+            if let Some(ch) = event.keysym.key_char().filter(|c| !c.is_control()) {
+                self.wifi_password_input.push(ch);
+                self.draw_launcher(qh, RepaintReason::Keyboard);
+            }
+            return;
+        }
+
         // ── Settings view: type-to-search; Escape clears then exits ───────────
         if self.launcher_settings_open {
             if is_escape {

@@ -12,6 +12,21 @@ single version.
 
 ### Added
 
+- **Settings ▸ Network — activate saved connections:** the "Netzwerk" page lists
+  saved NetworkManager profiles below the status summary; the active one shows a
+  "VERBUNDEN" badge and is inert, the rest are clickable to activate via
+  `nmcli connection up id <name>` on a background thread (bringing a link up can
+  block for seconds on DHCP/auth — never on the shell event loop). Verified live
+  with an Ethernet profile (rc=0). (A4)
+- **Settings ▸ Network — Wi-Fi scan & connect:** the "Netzwerk" page now lists
+  scanned Wi-Fi networks (SSID, security, signal; the in-use one badged and
+  inert). Clicking an open or already-known network connects via
+  `nmcli device wifi connect`; a secured unknown network opens an in-page
+  password prompt (type + Enter to connect, Esc to cancel — Esc always exits so
+  it can't trap input). All nmcli calls run off the event loop on a background
+  thread. NOTE: the scan/parse and argv builders are unit-tested and the scan
+  query is verified on the dev VM, but the actual connect + password path is
+  **not end-to-end tested** — the VM has no Wi-Fi access points. (A4)
 - **Settings ▸ Sound — selectable default device:** each output/input row on the
   "Audio" page is now clickable to make that device the default (sink or
   source); the already-default row shows a DEFAULT badge and is inert, others

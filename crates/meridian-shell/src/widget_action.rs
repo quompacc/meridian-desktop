@@ -8,6 +8,8 @@ const IDLE_TIMEOUT_PREFIX: &str = "idle-timeout-";
 const VOLUME_SET_PREFIX: &str = "vol-set-";
 const AUDIO_DEFAULT_OUT_PREFIX: &str = "audio-default-out-";
 const AUDIO_DEFAULT_IN_PREFIX: &str = "audio-default-in-";
+const NET_CONNECT_PREFIX: &str = "net-connect-";
+const WIFI_CONNECT_PREFIX: &str = "wifi-connect-";
 const PINNED_MOVE_UP_PREFIX: &str = "pinned-move-up-";
 const PINNED_MOVE_DOWN_PREFIX: &str = "pinned-move-dn-";
 const PINNED_REMOVE_PREFIX: &str = "pinned-remove-";
@@ -62,6 +64,8 @@ pub(crate) enum WidgetAction {
     ToggleDefaultSinkMute,
     SetDefaultAudioOutput(usize),
     SetDefaultAudioInput(usize),
+    ActivateConnection(usize),
+    WifiConnect(usize),
     BrowseWallpaper,
     PinnedMoveUp(usize),
     PinnedMoveDown(usize),
@@ -126,6 +130,8 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
                 WidgetAction::SetDefaultAudioInput,
             )
         })
+        .or_else(|| parse_indexed_action(id, NET_CONNECT_PREFIX, WidgetAction::ActivateConnection))
+        .or_else(|| parse_indexed_action(id, WIFI_CONNECT_PREFIX, WidgetAction::WifiConnect))
         .or_else(|| parse_indexed_action(id, PINNED_MOVE_UP_PREFIX, WidgetAction::PinnedMoveUp))
         .or_else(|| parse_indexed_action(id, PINNED_MOVE_DOWN_PREFIX, WidgetAction::PinnedMoveDown))
         .or_else(|| parse_indexed_action(id, PINNED_REMOVE_PREFIX, WidgetAction::PinnedRemove))
@@ -322,6 +328,26 @@ mod tests {
         );
         assert_eq!(action_for_id("audio-default-out-"), None);
         assert_eq!(action_for_id("audio-default-in-x"), None);
+    }
+
+    #[test]
+    fn action_for_id_activate_connection() {
+        assert_eq!(
+            action_for_id("net-connect-1"),
+            Some(WidgetAction::ActivateConnection(1))
+        );
+        assert_eq!(action_for_id("net-connect-"), None);
+        assert_eq!(action_for_id("net-connect-x"), None);
+    }
+
+    #[test]
+    fn action_for_id_wifi_connect() {
+        assert_eq!(
+            action_for_id("wifi-connect-3"),
+            Some(WidgetAction::WifiConnect(3))
+        );
+        assert_eq!(action_for_id("wifi-connect-"), None);
+        assert_eq!(action_for_id("wifi-connect-x"), None);
     }
 
     #[test]

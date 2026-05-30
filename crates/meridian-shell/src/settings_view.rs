@@ -15,7 +15,7 @@ use crate::icons::{icon_image_to_pixmap, IconCache};
 use crate::launcher::DesktopApp;
 use crate::panel::PinnedApp;
 
-use crate::network::NetworkState;
+use crate::network::{ConnectionProfile, NetworkState, WifiNetwork};
 use crate::printers::{PrinterInfo, PrinterServiceState, PrinterSnapshot};
 use crate::sysinfo::SystemInfo;
 use meridian_config::{ThemeConfig, WallpaperEntry, WallpaperMode};
@@ -297,6 +297,37 @@ pub(crate) const AUDIO_INPUT_IDS: &[&str] = &[
     "audio-default-in-5",
     "audio-default-in-6",
     "audio-default-in-7",
+];
+
+/// Static widget ids for saved network-profile rows, indexed by position. A
+/// click activates that profile. Matched by `widget_action::action_for_id`
+/// (the `net-connect-` prefix). Length bounds how many profiles are shown.
+pub(crate) const NETWORK_PROFILE_IDS: &[&str] = &[
+    "net-connect-0",
+    "net-connect-1",
+    "net-connect-2",
+    "net-connect-3",
+    "net-connect-4",
+    "net-connect-5",
+    "net-connect-6",
+    "net-connect-7",
+];
+
+/// Static widget ids for scanned Wi-Fi rows, indexed by position. A click
+/// connects (or opens the password prompt). Matched by
+/// `widget_action::action_for_id` (the `wifi-connect-` prefix). Length bounds
+/// how many networks are shown.
+pub(crate) const WIFI_NETWORK_IDS: &[&str] = &[
+    "wifi-connect-0",
+    "wifi-connect-1",
+    "wifi-connect-2",
+    "wifi-connect-3",
+    "wifi-connect-4",
+    "wifi-connect-5",
+    "wifi-connect-6",
+    "wifi-connect-7",
+    "wifi-connect-8",
+    "wifi-connect-9",
 ];
 
 pub(crate) const THEME_WIDGET_IDS: &[&str] = &[
@@ -1620,6 +1651,205 @@ impl Widget for SystemInfoRow {
     }
 }
 
+const NETWORK_PROFILE_ROW_H: i32 = 56;
+
+/// A clickable saved-network row. The active profile shows a "VERBUNDEN" badge
+/// and is inert (`id()` -> None); others are clickable to activate and react to
+/// hover/press, mirroring `SoundDeviceRow`.
+struct NetworkProfileRow {
+    index: usize,
+    name: Box<str>,
+    type_label: Box<str>,
+    active: bool,
+    accent: Color,
+    row_width: i32,
+}
+
+impl Widget for NetworkProfileRow {
+    fn id(&self) -> Option<&'static str> {
+        if self.active {
+            None
+        } else {
+            NETWORK_PROFILE_IDS.get(self.index).copied()
+        }
+    }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.row_width as f32),
+                height: ui_length(NETWORK_PROFILE_ROW_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let bg = if self.active {
+            theme.palette.surface
+        } else {
+            match state {
+                WidgetState::Idle => theme.palette.surface,
+                WidgetState::Hovered => theme
+                    .palette
+                    .surface
+                    .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
+                WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.16),
+            }
+        };
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, bg);
+        }
+        if self.active {
+            let strip = Rect {
+                x: area.x,
+                y: area.y + 8,
+                width: 3,
+                height: area.height - 16,
+            };
+            if let Some(path) = rounded_rect_path(strip, 1) {
+                paint_fill(canvas, &path, self.accent);
+            }
+        }
+        paint_text(
+            canvas,
+            &fit_text(&self.name, 36),
+            area.x + 18,
+            area.y + 24,
+            13.5,
+            theme.palette.text,
+        );
+        paint_text(
+            canvas,
+            &self.type_label,
+            area.x + 18,
+            area.y + 44,
+            11.5,
+            theme.palette.text_dim,
+        );
+        if self.active {
+            paint_text(
+                canvas,
+                "VERBUNDEN",
+                area.x + area.width - 104,
+                area.y + 24,
+                10.5,
+                self.accent,
+            );
+        } else if state != WidgetState::Idle {
+            paint_text(
+                canvas,
+                "Verbinden",
+                area.x + area.width - 96,
+                area.y + 24,
+                10.5,
+                theme.palette.text_dim,
+            );
+        }
+    }
+}
+
+/// A clickable scanned Wi-Fi row. The in-use network shows a "VERBUNDEN" badge
+/// and is inert; others are clickable to connect. Secured networks show a lock
+/// glyph and the signal strength; clicking a secured unknown network opens the
+/// password prompt (handled in the dispatch).
+struct WifiRow {
+    index: usize,
+    ssid: Box<str>,
+    signal: u8,
+    secured: bool,
+    in_use: bool,
+    accent: Color,
+    row_width: i32,
+}
+
+impl Widget for WifiRow {
+    fn id(&self) -> Option<&'static str> {
+        if self.in_use {
+            None
+        } else {
+            WIFI_NETWORK_IDS.get(self.index).copied()
+        }
+    }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.row_width as f32),
+                height: ui_length(NETWORK_PROFILE_ROW_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let bg = if self.in_use {
+            theme.palette.surface
+        } else {
+            match state {
+                WidgetState::Idle => theme.palette.surface,
+                WidgetState::Hovered => theme
+                    .palette
+                    .surface
+                    .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
+                WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.16),
+            }
+        };
+        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
+            paint_fill(canvas, &path, bg);
+        }
+        if self.in_use {
+            let strip = Rect {
+                x: area.x,
+                y: area.y + 8,
+                width: 3,
+                height: area.height - 16,
+            };
+            if let Some(path) = rounded_rect_path(strip, 1) {
+                paint_fill(canvas, &path, self.accent);
+            }
+        }
+        paint_text(
+            canvas,
+            &fit_text(&self.ssid, 32),
+            area.x + 18,
+            area.y + 24,
+            13.5,
+            theme.palette.text,
+        );
+        // Sub-line: security + signal strength (text marker, not emoji — the
+        // shell font has no emoji glyphs).
+        let lock = if self.secured { "gesichert" } else { "offen" };
+        paint_text(
+            canvas,
+            &format!("{} · Signal {}%", lock, self.signal),
+            area.x + 18,
+            area.y + 44,
+            11.5,
+            theme.palette.text_dim,
+        );
+        if self.in_use {
+            paint_text(
+                canvas,
+                "VERBUNDEN",
+                area.x + area.width - 104,
+                area.y + 24,
+                10.5,
+                self.accent,
+            );
+        } else if state != WidgetState::Idle {
+            paint_text(
+                canvas,
+                "Verbinden",
+                area.x + area.width - 96,
+                area.y + 24,
+                10.5,
+                theme.palette.text_dim,
+            );
+        }
+    }
+}
+
 struct PrinterRow {
     printer: PrinterInfo,
     row_width: i32,
@@ -2245,6 +2475,10 @@ pub(crate) fn build_settings_widget_tree(
     audio_snapshot: &AudioSnapshot,
     system_info: &SystemInfo,
     network_state: &NetworkState,
+    network_profiles: &[ConnectionProfile],
+    wifi_networks: &[WifiNetwork],
+    wifi_password_prompt: Option<&str>,
+    wifi_password_len: usize,
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
@@ -2710,7 +2944,7 @@ pub(crate) fn build_settings_widget_tree(
         }
         SettingsCategory::Network => {
             let row_w = content_w as i32;
-            let rows: Vec<Box<dyn Widget>> = network_state
+            let mut rows: Vec<Box<dyn Widget>> = network_state
                 .settings_rows()
                 .into_iter()
                 .map(|(label, value)| {
@@ -2721,6 +2955,76 @@ pub(crate) fn build_settings_widget_tree(
                     }) as Box<dyn Widget>
                 })
                 .collect();
+
+            // Saved profiles: the active one shows a badge and is inert; the
+            // rest are clickable to activate. Bounded to the id-array length.
+            rows.push(Box::new(SidebarSectionLabel {
+                text: "GESPEICHERTE VERBINDUNGEN",
+                width: row_w,
+                pad_top: 12,
+            }));
+            if network_profiles.is_empty() {
+                rows.push(Box::new(SettingsPlaceholder {
+                    width: row_w,
+                    text: "Keine gespeicherten Verbindungen (oder nmcli fehlt)",
+                }));
+            } else {
+                for (i, profile) in network_profiles
+                    .iter()
+                    .take(NETWORK_PROFILE_IDS.len())
+                    .enumerate()
+                {
+                    rows.push(Box::new(NetworkProfileRow {
+                        index: i,
+                        name: profile.name.as_str().into(),
+                        type_label: profile.type_label.as_str().into(),
+                        active: profile.active,
+                        accent: pal.accent,
+                        row_width: row_w,
+                    }));
+                }
+            }
+
+            // WLAN: scanned networks. The in-use one is inert; others connect
+            // on click (secured-unknown opens the password prompt in dispatch).
+            rows.push(Box::new(SidebarSectionLabel {
+                text: "WLAN-NETZWERKE",
+                width: row_w,
+                pad_top: 12,
+            }));
+            if let Some(ssid) = wifi_password_prompt {
+                // Active password entry for the chosen secured network.
+                rows.push(Box::new(SystemInfoRow {
+                    label: "Passwort".into(),
+                    value: format!("{}: {}", ssid, "*".repeat(wifi_password_len)).into(),
+                    row_width: row_w,
+                }));
+                rows.push(Box::new(SettingsPlaceholder {
+                    width: row_w,
+                    text: "Eingabe + Enter zum Verbinden, Esc zum Abbrechen",
+                }));
+            } else if wifi_networks.is_empty() {
+                rows.push(Box::new(SettingsPlaceholder {
+                    width: row_w,
+                    text: "Keine WLAN-Netzwerke gefunden",
+                }));
+            } else {
+                for (i, net) in wifi_networks
+                    .iter()
+                    .take(WIFI_NETWORK_IDS.len())
+                    .enumerate()
+                {
+                    rows.push(Box::new(WifiRow {
+                        index: i,
+                        ssid: net.ssid.as_str().into(),
+                        signal: net.signal,
+                        secured: net.secured,
+                        in_use: net.in_use,
+                        accent: pal.accent,
+                        row_width: row_w,
+                    }));
+                }
+            }
             Box::new(Container::top_viewport(
                 content_w,
                 content_h,
@@ -3062,6 +3366,10 @@ pub(crate) fn draw_settings_launcher(
     audio_snapshot: &AudioSnapshot,
     system_info: &SystemInfo,
     network_state: &NetworkState,
+    network_profiles: &[ConnectionProfile],
+    wifi_networks: &[WifiNetwork],
+    wifi_password_prompt: Option<&str>,
+    wifi_password_len: usize,
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
@@ -3107,6 +3415,10 @@ pub(crate) fn draw_settings_launcher(
         audio_snapshot,
         system_info,
         network_state,
+        network_profiles,
+        wifi_networks,
+        wifi_password_prompt,
+        wifi_password_len,
         pinned_adding,
         all_apps,
         icon_cache,

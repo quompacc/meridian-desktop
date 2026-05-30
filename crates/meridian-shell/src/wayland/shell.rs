@@ -327,6 +327,13 @@ pub(crate) struct MeridianShell {
     pub(crate) font: RefCell<Option<TextRenderer>>,
     pub(crate) icon_cache: IconCache,
     pub(crate) network_controller: NetworkController,
+    pub(crate) network_profiles: Vec<crate::network::ConnectionProfile>,
+    pub(crate) wifi_networks: Vec<crate::network::WifiNetwork>,
+    /// SSID currently awaiting a password entry, if the WLAN password prompt is
+    /// open; `None` otherwise.
+    pub(crate) wifi_password_prompt: Option<String>,
+    /// Accumulated password characters for the open prompt.
+    pub(crate) wifi_password_input: String,
     pub(crate) ipc: IpcClient,
     pub(crate) panel_state: panel::PanelState,
     pub(crate) pinned_apps: Vec<PinnedApp>,
