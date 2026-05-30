@@ -622,6 +622,7 @@ impl MeridianShell {
                     &self.wallpaper_thumbnails,
                     self.wallpaper_path.as_deref(),
                     self.wallpaper_mode,
+                    self.cursor_size,
                     &self.pinned_apps,
                     &self.output_workspaces,
                     self.display_mode_dropdown_open,

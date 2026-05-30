@@ -2,6 +2,7 @@ use crate::settings_view::SettingsCategory;
 
 const SETTINGS_THEME_PREFIX: &str = "settings-theme-";
 const SETTINGS_WALLPAPER_PREFIX: &str = "settings-wallpaper-";
+const CURSOR_SIZE_PREFIX: &str = "cursor-size-";
 const PINNED_MOVE_UP_PREFIX: &str = "pinned-move-up-";
 const PINNED_MOVE_DOWN_PREFIX: &str = "pinned-move-dn-";
 const PINNED_REMOVE_PREFIX: &str = "pinned-remove-";
@@ -49,6 +50,7 @@ pub(crate) enum WidgetAction {
     ApplyThemeByIndex(usize),
     ApplyWallpaperByIndex(usize),
     SetWallpaperMode(meridian_config::WallpaperMode),
+    SetCursorSize(u32),
     BrowseWallpaper,
     PinnedMoveUp(usize),
     PinnedMoveDown(usize),
@@ -76,6 +78,11 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
                 SETTINGS_WALLPAPER_PREFIX,
                 WidgetAction::ApplyWallpaperByIndex,
             )
+        })
+        .or_else(|| {
+            parse_indexed_action(id, CURSOR_SIZE_PREFIX, |n| {
+                WidgetAction::SetCursorSize(n as u32)
+            })
         })
         .or_else(|| parse_indexed_action(id, PINNED_MOVE_UP_PREFIX, WidgetAction::PinnedMoveUp))
         .or_else(|| parse_indexed_action(id, PINNED_MOVE_DOWN_PREFIX, WidgetAction::PinnedMoveDown))
@@ -199,6 +206,16 @@ mod tests {
                 mode_index: 3
             })
         );
+    }
+
+    #[test]
+    fn action_for_id_cursor_size() {
+        assert_eq!(
+            action_for_id("cursor-size-32"),
+            Some(WidgetAction::SetCursorSize(32))
+        );
+        assert_eq!(action_for_id("cursor-size-"), None);
+        assert_eq!(action_for_id("cursor-size-big"), None);
     }
 
     #[test]

@@ -459,6 +459,49 @@ mode = "tile"
     }
 
     #[test]
+    fn set_cursor_in_toml_replaces_existing_section_and_round_trips() {
+        let raw = r#"[general]
+theme = "default"
+
+[cursor]
+theme = "Old"
+size = 24
+
+[wallpaper]
+path = "/tmp/bg.png"
+mode = "fill"
+"#;
+        let updated = super::set_cursor_in_toml(raw, "Breeze_Light", 48);
+
+        // The old cursor values are gone, the new ones present, and unrelated
+        // sections survive.
+        assert!(!updated.contains("size = 24"));
+        assert!(updated.contains("theme = \"Breeze_Light\""));
+        assert!(updated.contains("size = 48"));
+        assert!(updated.contains("[wallpaper]"));
+
+        let path = unique_test_path("set-cursor.toml");
+        write(&path, &updated);
+        let config = MeridianConfig::load_from(&path).expect("round-trips");
+        let cursor = config.cursor.expect("cursor section");
+        assert_eq!(cursor.theme, "Breeze_Light");
+        assert_eq!(cursor.size, 48);
+        assert_eq!(config.general.theme, "default");
+    }
+
+    #[test]
+    fn set_cursor_in_toml_appends_when_absent() {
+        let updated = super::set_cursor_in_toml("[general]\ntheme = \"default\"\n", "X", 32);
+        assert!(updated.contains("[cursor]"));
+        assert!(updated.contains("size = 32"));
+
+        let path = unique_test_path("append-cursor.toml");
+        write(&path, &updated);
+        let config = MeridianConfig::load_from(&path).expect("round-trips");
+        assert_eq!(config.cursor.expect("cursor").size, 32);
+    }
+
+    #[test]
     fn reload_from_path_with_missing_file_resets_to_defaults() {
         let path = unique_test_path("reload-missing.toml");
         let mut config = MeridianConfig::default();
@@ -1105,6 +1148,32 @@ impl MeridianConfig {
         }
     }
 
+    /// Write (or update) the [cursor] section in config.toml. Both the theme
+    /// and the size are persisted together so the section round-trips cleanly;
+    /// the caller passes the full desired cursor state.
+    pub fn save_cursor(theme: &str, size: u32) {
+        let config_path = config_directory().join("config.toml");
+        let raw = if config_path.exists() {
+            fs::read_to_string(&config_path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let out = set_cursor_in_toml(&raw, theme, size);
+
+        if let Some(parent) = config_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Err(e) = fs::write(&config_path, out.as_bytes()) {
+            warn!("Failed to write cursor to config: {}", e);
+        } else {
+            info!(
+                "Saved cursor theme={:?} size={} to {:?}",
+                theme, size, config_path
+            );
+        }
+    }
+
     /// Write (or update) the [panel] section in config.toml with the current pinned apps.
     pub fn save_pinned_apps(apps: &[PinnedAppConfig]) {
         let config_path = config_directory().join("config.toml");
@@ -1268,6 +1337,20 @@ fn strip_toml_section(raw: &str, section: &str) -> String {
     } else {
         trimmed + "\n"
     }
+}
+
+/// Replace (or append) the [cursor] section with the given theme and size,
+/// preserving the rest of the file. Pure string transform so it can be tested
+/// without touching the real config directory.
+fn set_cursor_in_toml(raw: &str, theme: &str, size: u32) -> String {
+    let mut out = strip_toml_section(raw, "cursor");
+    if !out.ends_with('\n') && !out.is_empty() {
+        out.push('\n');
+    }
+    out.push_str("\n[cursor]\n");
+    out.push_str(&format!("theme = \"{}\"\n", theme));
+    out.push_str(&format!("size = {}\n", size));
+    out
 }
 
 fn set_output_mode_in_toml(

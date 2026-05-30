@@ -42,6 +42,7 @@ impl MeridianShell {
             | WidgetAction::ApplyThemeByIndex(_)
             | WidgetAction::ApplyWallpaperByIndex(_)
             | WidgetAction::SetWallpaperMode(_)
+            | WidgetAction::SetCursorSize(_)
             | WidgetAction::BrowseWallpaper
             | WidgetAction::SetPrimaryOutput(_)
             | WidgetAction::ToggleOutputModeDropdown(_)
@@ -155,6 +156,18 @@ impl MeridianShell {
                 } else {
                     self.draw_launcher(qh, RepaintReason::Pointer);
                 }
+            }
+            WidgetAction::SetCursorSize(size) => {
+                if self.cursor_size != size {
+                    self.cursor_size = size;
+                    // Persist alongside the existing theme, then ask the
+                    // compositor to reload so the live cursor updates at once.
+                    let theme = crate::cursor::cursor_theme_label();
+                    let theme = if theme == "—" { String::new() } else { theme };
+                    meridian_config::MeridianConfig::save_cursor(&theme, size);
+                    self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
+                }
+                self.draw_launcher(qh, RepaintReason::Pointer);
             }
             WidgetAction::BrowseWallpaper => {
                 // Close launcher so the file dialog opens in the foreground.

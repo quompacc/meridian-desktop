@@ -2066,6 +2066,7 @@ pub(crate) fn build_settings_widget_tree(
     wallpaper_thumbnails: &[Option<(u32, u32, Vec<u8>)>],
     current_wallpaper: Option<&str>,
     wallpaper_mode: WallpaperMode,
+    cursor_size: u32,
     pinned_apps: &[PinnedApp],
     output_workspaces: &[OutputWorkspaceState],
     display_mode_dropdown_open: Option<usize>,
@@ -2730,23 +2731,39 @@ pub(crate) fn build_settings_widget_tree(
         }
         SettingsCategory::Cursor => {
             let row_w = content_w as i32;
-            let rows: Vec<Box<dyn Widget>> = crate::cursor::cursor_rows()
-                .into_iter()
-                .map(|(label, value)| {
-                    Box::new(SystemInfoRow {
-                        label: label.into(),
-                        value: value.into(),
-                        row_width: row_w,
-                    }) as Box<dyn Widget>
+            let mut rows: Vec<Box<dyn Widget>> = Vec::new();
+            // Theme stays read-only for now — enumerating installed cursor
+            // themes is a separate task.
+            rows.push(Box::new(SystemInfoRow {
+                label: "Theme".into(),
+                value: crate::cursor::cursor_theme_label().into(),
+                row_width: row_w,
+            }));
+            rows.push(Box::new(SystemInfoRow {
+                label: "Größe".into(),
+                value: format!("{} px", cursor_size).into(),
+                row_width: row_w,
+            }));
+            // Size is adjustable: one chip per option, the active size accented.
+            let size_chips: Vec<Box<dyn Widget>> = crate::cursor::CURSOR_SIZE_OPTIONS
+                .iter()
+                .map(|(px, id, label)| {
+                    let accent = if *px == cursor_size {
+                        pal.accent
+                    } else {
+                        pal.surface
+                    };
+                    Box::new(Button::with_id(id, label, accent, 72, 32)) as Box<dyn Widget>
                 })
                 .collect();
+            rows.push(Box::new(Container::row(8, size_chips)));
             Box::new(Container::top_viewport(
                 content_w,
                 content_h,
                 14,
                 16,
-                4,
-                vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
+                8,
+                vec![Box::new(Container::column(8, rows)) as Box<dyn Widget>],
             ))
         }
     };
@@ -2776,6 +2793,7 @@ pub(crate) fn draw_settings_launcher(
     wallpaper_thumbnails: &[Option<(u32, u32, Vec<u8>)>],
     current_wallpaper: Option<&str>,
     wallpaper_mode: WallpaperMode,
+    cursor_size: u32,
     pinned_apps: &[PinnedApp],
     output_workspaces: &[OutputWorkspaceState],
     display_mode_dropdown_open: Option<usize>,
@@ -2817,6 +2835,7 @@ pub(crate) fn draw_settings_launcher(
         wallpaper_thumbnails,
         current_wallpaper,
         wallpaper_mode,
+        cursor_size,
         pinned_apps,
         output_workspaces,
         display_mode_dropdown_open,

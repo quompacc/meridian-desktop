@@ -479,6 +479,11 @@ pub(crate) fn initialize(
             .as_ref()
             .map(|w| w.mode)
             .unwrap_or_default(),
+        cursor_size: meridian_config
+            .cursor
+            .as_ref()
+            .map(|c| c.size)
+            .unwrap_or_else(|| meridian_config::CursorConfig::default().size),
         theme,
         font: RefCell::new(font),
         icon_cache,
