@@ -330,6 +330,14 @@ pub struct ThumbnailRequest {
     pub max_height: u32,
 }
 
+/// An allowed screenshot bridge request awaiting fulfilment by the render loop.
+/// The render loop captures the full output, writes a PNG, and sends the
+/// response back to `client_id`.
+pub struct PendingScreenshotRequest {
+    pub client_id: u64,
+    pub request: meridian_ipc::ScreenshotBridgeRequest,
+}
+
 pub struct MeridianState {
     pub start_time: Instant,
     pub display_handle: DisplayHandle,
@@ -402,6 +410,7 @@ pub struct MeridianState {
     pub screencopy_sessions: Vec<CaptureSession>,
     pub pending_screencopy_frames: Vec<(CaptureFrame, Output)>,
     pub pending_thumbnail_requests: Vec<ThumbnailRequest>,
+    pub pending_screenshot_requests: Vec<PendingScreenshotRequest>,
     pub last_activity: Instant,
     pub idle_blanked: bool,
     pub idle_timeout: Option<Duration>,

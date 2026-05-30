@@ -12,6 +12,16 @@ single version.
 
 ### Added
 
+- **Screenshot capture engine (compositor):** the screenshot bridge can now
+  fulfil a full-output capture — the render loop renders the output, encodes it
+  as PNG (XRGB→RGBA, R/B swap) under `$XDG_RUNTIME_DIR`, and replies with the
+  file path token. Groundwork for the `org.freedesktop.portal.Screenshot`
+  backend (A2). The policy stays **deny-by-default for every origin**; the
+  internal capture path is gated behind a dev-only env flag
+  (`MERIDIAN_SCREENSHOT_DEV=1`) and is never enabled in a normal session, so a
+  self-declared `origin` field can't bypass consent. The external portal route
+  and an interactive consent dialog are the next slices. (A2)
+
 - **Settings ▸ Anzeige — scale & rotation:** each output row on the "Anzeige"
   page gains a Skalierung button (cycles 1.0/1.25/1.5/2.0×) and a Drehung button
   (cycles 0/90/180/270°), showing the current value. Both persist per-output to

@@ -6,23 +6,39 @@ use super::screenshot_policy::{
     ScreenshotPolicy, ScreenshotPolicyContext, ScreenshotPolicyDecision,
 };
 
+/// What the caller should do with a bridge request after policy evaluation.
+pub(crate) enum ScreenshotBridgeOutcome {
+    /// Permitted — capture must be fulfilled by the render loop; no response is
+    /// sent yet (the render loop sends it once the PNG is written).
+    Queue(ScreenshotBridgeRequest),
+    /// Rejected — send this error result back to the requester immediately.
+    Respond(ScreenshotBridgeResult),
+}
+
 pub(crate) fn handle_screenshot_bridge_request(
     request: ScreenshotBridgeRequest,
     client_id: u64,
-) -> ScreenshotBridgeResult {
+) -> ScreenshotBridgeOutcome {
     let decision = ScreenshotPolicy::evaluate(&request, ScreenshotPolicyContext { client_id });
     match decision {
-        ScreenshotPolicyDecision::Deny => ScreenshotBridgeResult::Error {
-            error: ScreenshotBridgeError::PermissionDenied(
-                SCREENSHOT_PERMISSION_DENIED_MSG.to_string(),
-            ),
-        },
-        ScreenshotPolicyDecision::Unsupported(message) => ScreenshotBridgeResult::Error {
-            error: ScreenshotBridgeError::Unsupported(message),
-        },
-        ScreenshotPolicyDecision::Invalid(message) => ScreenshotBridgeResult::Error {
-            error: ScreenshotBridgeError::InvalidRequest(message),
-        },
+        ScreenshotPolicyDecision::Allow => ScreenshotBridgeOutcome::Queue(request),
+        ScreenshotPolicyDecision::Deny => {
+            ScreenshotBridgeOutcome::Respond(ScreenshotBridgeResult::Error {
+                error: ScreenshotBridgeError::PermissionDenied(
+                    SCREENSHOT_PERMISSION_DENIED_MSG.to_string(),
+                ),
+            })
+        }
+        ScreenshotPolicyDecision::Unsupported(message) => {
+            ScreenshotBridgeOutcome::Respond(ScreenshotBridgeResult::Error {
+                error: ScreenshotBridgeError::Unsupported(message),
+            })
+        }
+        ScreenshotPolicyDecision::Invalid(message) => {
+            ScreenshotBridgeOutcome::Respond(ScreenshotBridgeResult::Error {
+                error: ScreenshotBridgeError::InvalidRequest(message),
+            })
+        }
     }
 }
 
@@ -33,10 +49,18 @@ mod tests {
         ScreenshotRegion, ScreenshotRequestMetadata, ScreenshotRequestOrigin,
     };
 
-    use super::handle_screenshot_bridge_request;
+    use super::{handle_screenshot_bridge_request, ScreenshotBridgeOutcome};
     use crate::state::ipc::screenshot_policy::{
         last_evaluated_client_id_for_test, screenshot_policy_test_lock,
     };
+
+    /// Unwrap a rejection outcome to its error result for assertions.
+    fn expect_respond(outcome: ScreenshotBridgeOutcome) -> ScreenshotBridgeResult {
+        match outcome {
+            ScreenshotBridgeOutcome::Respond(result) => result,
+            ScreenshotBridgeOutcome::Queue(_) => panic!("expected Respond, got Queue"),
+        }
+    }
 
     #[test]
     fn invalid_request_is_rejected() {
@@ -56,7 +80,7 @@ mod tests {
         };
 
         assert_eq!(
-            handle_screenshot_bridge_request(request, 7),
+            expect_respond(handle_screenshot_bridge_request(request, 7)),
             ScreenshotBridgeResult::Error {
                 error: ScreenshotBridgeError::InvalidRequest(
                     "request_id must not be empty".to_string(),
@@ -83,7 +107,7 @@ mod tests {
         };
 
         assert_eq!(
-            handle_screenshot_bridge_request(request, 7),
+            expect_respond(handle_screenshot_bridge_request(request, 7)),
             ScreenshotBridgeResult::Error {
                 error: ScreenshotBridgeError::PermissionDenied(
                     "screenshot denied by compositor policy".to_string(),
@@ -115,7 +139,7 @@ mod tests {
         };
 
         assert_eq!(
-            handle_screenshot_bridge_request(request, 7),
+            expect_respond(handle_screenshot_bridge_request(request, 7)),
             ScreenshotBridgeResult::Error {
                 error: ScreenshotBridgeError::Unsupported(
                     "region capture is not implemented yet".to_string(),

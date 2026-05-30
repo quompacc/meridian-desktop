@@ -558,6 +558,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
         // bypasses the GLES import path and makes draw() silently skip them).
         serve_screencopy_frames(state, renderer, out, out_size);
         process_thumbnail_requests(state, renderer, out, out_size);
+        process_screenshot_requests(state, renderer, out, out_size);
 
         let elements: &[MeridianRenderElements] = if state.idle_blanked {
             &[]
@@ -968,6 +969,154 @@ fn process_thumbnail_requests(
     }
 }
 
+/// Fulfil queued (policy-allowed) screenshot bridge requests: render the full
+/// output once, encode it as a PNG under XDG_RUNTIME_DIR, and reply to each
+/// requester with the file path token. Mirrors `process_thumbnail_requests`'
+/// full-output render path. Runs in the render loop where the renderer is live.
+fn process_screenshot_requests(
+    state: &mut MeridianState,
+    renderer: &mut GlesRenderer,
+    out: &super::DrmOutput,
+    out_size: (u32, u32),
+) {
+    use meridian_ipc::{ScreenshotBridgeError, ScreenshotBridgeResponse, ScreenshotBridgeResult};
+    use smithay::{
+        backend::{
+            allocator::Fourcc,
+            renderer::{
+                element::{Element, RenderElement},
+                Bind, ExportMem, Frame as RendererFrame, Offscreen, Renderer,
+            },
+        },
+        utils::{Rectangle, Scale, Size, Transform},
+    };
+
+    if state.pending_screenshot_requests.is_empty() {
+        return;
+    }
+
+    let out_w = out_size.0 as i32;
+    let out_h = out_size.1 as i32;
+    let buf_size = Size::<i32, smithay::utils::Buffer>::from((out_w, out_h));
+    let phys_size = Size::<i32, smithay::utils::Physical>::from((out_w, out_h));
+    let phys_region = Rectangle::from_size(phys_size);
+    let buf_region = Rectangle::from_size(buf_size);
+
+    let full_pixels: Option<Vec<u8>> = (|| {
+        let mut tex = <GlesRenderer as Offscreen<smithay::backend::renderer::gles::GlesTexture>>::create_buffer(
+            renderer, Fourcc::Xrgb8888, buf_size,
+        ).ok()?;
+        let mut target = renderer.bind(&mut tex).ok()?;
+        let mut gles_frame = renderer
+            .render(&mut target, phys_size, Transform::Normal)
+            .ok()?;
+        let _ = gles_frame.clear([0.0f32, 0.0, 0.0, 1.0].into(), &[phys_region]);
+        for element in out.scratch_final.iter().rev() {
+            let src = element.src();
+            let dst = element.geometry(Scale::from(1.0f64));
+            let element_damage = [Rectangle::from_size(dst.size)];
+            if let Err(e) = element.draw(&mut gles_frame, src, dst, &element_damage, &[], None) {
+                tracing::warn!("screenshot: output draw error: {:?}", e);
+            }
+        }
+        drop(gles_frame);
+        let mapping = renderer
+            .copy_framebuffer(&target, buf_region, Fourcc::Xrgb8888)
+            .ok()?;
+        let raw = renderer.map_texture(&mapping).ok()?;
+        Some(raw.to_vec())
+    })();
+
+    let requests = std::mem::take(&mut state.pending_screenshot_requests);
+
+    let Some(full_pixels) = full_pixels else {
+        tracing::warn!(
+            "screenshot: full output render failed, failing {} request(s)",
+            requests.len()
+        );
+        for req in requests {
+            state.ipc.send_screenshot_bridge_response(
+                req.client_id,
+                req.request.request_id,
+                ScreenshotBridgeResult::Error {
+                    error: ScreenshotBridgeError::Internal("output render failed".to_string()),
+                },
+            );
+        }
+        return;
+    };
+
+    for req in requests {
+        let request_id = req.request.request_id.clone();
+        let result = match encode_screenshot_png(&full_pixels, out_size.0, out_size.1, &request_id)
+        {
+            Ok(path) => ScreenshotBridgeResult::Success {
+                response: ScreenshotBridgeResponse {
+                    request_id: request_id.clone(),
+                    file_descriptor_token: Some(path),
+                },
+            },
+            Err(e) => {
+                tracing::warn!("screenshot: encode/write failed for {}: {}", request_id, e);
+                ScreenshotBridgeResult::Error {
+                    error: ScreenshotBridgeError::Internal(e),
+                }
+            }
+        };
+        state
+            .ipc
+            .send_screenshot_bridge_response(req.client_id, request_id, result);
+    }
+}
+
+/// Encode XRGB8888 framebuffer pixels as PNG bytes. The framebuffer is
+/// little-endian Xrgb8888 (bytes B,G,R,X), so R and B are swapped for the RGB
+/// PNG; alpha is forced opaque. Pure — unit-tested without a GPU.
+fn screenshot_png_bytes(xrgb: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
+    use image::{codecs::png::PngEncoder, ExtendedColorType, ImageEncoder};
+
+    let mut rgba: Vec<u8> = Vec::with_capacity((width as usize) * (height as usize) * 4);
+    let stride = (width * 4) as usize;
+    for y in 0..height as usize {
+        for x in 0..width as usize {
+            let i = y * stride + x * 4;
+            if i + 3 >= xrgb.len() {
+                return Err("pixel buffer shorter than width*height*4".to_string());
+            }
+            // Xrgb8888 little-endian: [B, G, R, X] -> RGBA (R, G, B, 255).
+            rgba.push(xrgb[i + 2]);
+            rgba.push(xrgb[i + 1]);
+            rgba.push(xrgb[i]);
+            rgba.push(255);
+        }
+    }
+
+    let mut out = Vec::new();
+    PngEncoder::new(&mut out)
+        .write_image(&rgba, width, height, ExtendedColorType::Rgba8)
+        .map_err(|e| format!("png encode failed: {}", e))?;
+    Ok(out)
+}
+
+/// Encode the framebuffer to PNG and write it under XDG_RUNTIME_DIR, returning
+/// the file path used as the response token.
+fn encode_screenshot_png(
+    xrgb: &[u8],
+    width: u32,
+    height: u32,
+    request_id: &str,
+) -> Result<String, String> {
+    let png = screenshot_png_bytes(xrgb, width, height)?;
+    let dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".to_string());
+    let path = format!(
+        "{}/meridian-screenshot-{}.png",
+        dir,
+        sanitize_window_id(request_id)
+    );
+    std::fs::write(&path, &png).map_err(|e| format!("png write failed: {}", e))?;
+    Ok(path)
+}
+
 fn crop_xrgb(src: &[u8], src_w: u32, x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
     let mut out = vec![0u8; (w * h * 4) as usize];
     for row in 0..h {
@@ -1007,4 +1156,39 @@ fn scale_down_xrgb(src: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_h: u32) -
         }
     }
     out
+}
+
+#[cfg(test)]
+mod screenshot_tests {
+    use super::screenshot_png_bytes;
+
+    #[test]
+    fn encodes_xrgb_with_red_blue_swapped() {
+        // One pixel, Xrgb8888 little-endian bytes [B, G, R, X] = pure red.
+        let xrgb = [0u8, 0, 255, 0];
+        let png = screenshot_png_bytes(&xrgb, 1, 1).expect("encode");
+        // Decode it back and confirm the pixel is red (R=255,G=0,B=0).
+        let img = image::load_from_memory(&png).expect("decode").to_rgba8();
+        assert_eq!(img.dimensions(), (1, 1));
+        let px = img.get_pixel(0, 0).0;
+        assert_eq!(px, [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn dimensions_and_blue_channel_round_trip() {
+        // 2x1: pixel0 = blue (B=255), pixel1 = green (G=255).
+        let xrgb = [
+            255u8, 0, 0, 0, /* px0 blue */ 0, 255, 0, 0, /* px1 green */
+        ];
+        let png = screenshot_png_bytes(&xrgb, 2, 1).expect("encode");
+        let img = image::load_from_memory(&png).expect("decode").to_rgba8();
+        assert_eq!(img.dimensions(), (2, 1));
+        assert_eq!(img.get_pixel(0, 0).0, [0, 0, 255, 255]);
+        assert_eq!(img.get_pixel(1, 0).0, [0, 255, 0, 255]);
+    }
+
+    #[test]
+    fn short_buffer_is_an_error_not_a_panic() {
+        assert!(screenshot_png_bytes(&[0, 0, 0, 0], 4, 4).is_err());
+    }
 }

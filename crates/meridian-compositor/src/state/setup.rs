@@ -785,6 +785,7 @@ impl MeridianState {
             screencopy_sessions: Vec::new(),
             pending_screencopy_frames: Vec::new(),
             pending_thumbnail_requests: Vec::new(),
+            pending_screenshot_requests: Vec::new(),
             last_activity: Instant::now(),
             idle_blanked: false,
             idle_timeout,

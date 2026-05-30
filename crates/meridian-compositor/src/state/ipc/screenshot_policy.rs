@@ -1,4 +1,4 @@
-use meridian_ipc::{ScreenshotBridgeError, ScreenshotBridgeRequest};
+use meridian_ipc::{ScreenshotBridgeError, ScreenshotBridgeRequest, ScreenshotRequestOrigin};
 
 pub(crate) struct ScreenshotPolicy;
 
@@ -19,6 +19,8 @@ pub(crate) struct ScreenshotPolicyContext {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ScreenshotPolicyDecision {
+    /// Capture is permitted; the render loop should fulfil it.
+    Allow,
     Deny,
     Unsupported(String),
     Invalid(String),
@@ -65,6 +67,23 @@ impl ScreenshotPolicy {
             };
         }
 
+        // SECURITY: `origin` is a self-declared field in the request, so it
+        // cannot by itself prove trust — any local process with access to the
+        // bridge socket could assert `Internal`. The real internal screenshot
+        // path (the panel button) uses wlr-screencopy, not this bridge, and the
+        // external portal route (origin=PortalDbus) must go through interactive
+        // consent (a later slice). Production is therefore deny-by-default for
+        // every origin. The Internal allow-path exists ONLY to verify the
+        // capture engine in development and is gated behind an explicit env
+        // flag the compositor process must be started with — it is never on by
+        // default, so it is not a self-declared-field bypass in production.
+        if request.metadata.origin == ScreenshotRequestOrigin::Internal
+            && internal_capture_dev_enabled()
+        {
+            tracing::warn!("screenshot policy: allowing internal-origin request (DEV flag set)");
+            return ScreenshotPolicyDecision::Allow;
+        }
+
         if !request.metadata.identity_trusted || request.metadata.requester.is_none() {
             tracing::info!("requester identity unknown/untrusted");
         }
@@ -72,6 +91,15 @@ impl ScreenshotPolicy {
         tracing::info!("screenshot policy decision: deny");
         ScreenshotPolicyDecision::Deny
     }
+}
+
+/// Dev-only gate for the internal capture path (see the SECURITY note in
+/// `evaluate`). Off unless `MERIDIAN_SCREENSHOT_DEV=1` is in the compositor's
+/// environment; never enabled in a normal session.
+fn internal_capture_dev_enabled() -> bool {
+    std::env::var("MERIDIAN_SCREENSHOT_DEV")
+        .map(|v| v == "1")
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -112,6 +140,47 @@ mod tests {
         let decision =
             ScreenshotPolicy::evaluate(&valid_request(), ScreenshotPolicyContext { client_id: 7 });
         assert_eq!(decision, ScreenshotPolicyDecision::Deny);
+    }
+
+    #[test]
+    fn internal_origin_allowed_only_with_dev_flag() {
+        let _guard = screenshot_policy_test_lock().lock().expect("test lock");
+        let mut request = valid_request();
+        request.metadata.origin = ScreenshotRequestOrigin::Internal;
+
+        // Without the dev flag, even internal origin is denied (no
+        // self-declared-field bypass in production).
+        std::env::remove_var("MERIDIAN_SCREENSHOT_DEV");
+        assert_eq!(
+            ScreenshotPolicy::evaluate(&request, ScreenshotPolicyContext { client_id: 0 }),
+            ScreenshotPolicyDecision::Deny
+        );
+
+        // With the dev flag set, internal origin is allowed.
+        std::env::set_var("MERIDIAN_SCREENSHOT_DEV", "1");
+        assert_eq!(
+            ScreenshotPolicy::evaluate(&request, ScreenshotPolicyContext { client_id: 0 }),
+            ScreenshotPolicyDecision::Allow
+        );
+        std::env::remove_var("MERIDIAN_SCREENSHOT_DEV");
+    }
+
+    #[test]
+    fn internal_origin_with_invalid_request_still_rejected() {
+        // Validation runs before the origin allow-path, so a malformed internal
+        // request is still rejected even with the dev flag set.
+        let _guard = screenshot_policy_test_lock().lock().expect("test lock");
+        std::env::set_var("MERIDIAN_SCREENSHOT_DEV", "1");
+        let mut request = valid_request();
+        request.metadata.origin = ScreenshotRequestOrigin::Internal;
+        request.request_id = " ".to_string();
+        let decision =
+            ScreenshotPolicy::evaluate(&request, ScreenshotPolicyContext { client_id: 0 });
+        std::env::remove_var("MERIDIAN_SCREENSHOT_DEV");
+        assert_eq!(
+            decision,
+            ScreenshotPolicyDecision::Invalid("request_id must not be empty".to_string())
+        );
     }
 
     #[test]

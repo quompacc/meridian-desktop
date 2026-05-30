@@ -34,17 +34,29 @@ impl MeridianState {
                 bridge.request.include_cursor
             );
             let request_id = bridge.request.request_id.clone();
-            let result = super::screenshot::handle_screenshot_bridge_request(
-                bridge.request,
-                bridge.client_id,
-            );
-            tracing::info!(
-                "screenshot bridge denied/unsupported: request_id={} result={:?}",
-                request_id,
-                result
-            );
-            self.ipc
-                .send_screenshot_bridge_response(bridge.client_id, request_id, result);
+            let client_id = bridge.client_id;
+            match super::screenshot::handle_screenshot_bridge_request(bridge.request, client_id) {
+                super::screenshot::ScreenshotBridgeOutcome::Queue(request) => {
+                    // Allowed: the render loop captures and responds once the
+                    // PNG is written. Hold the client_id so the response can be
+                    // routed back to the right requester.
+                    tracing::info!(
+                        "screenshot bridge allowed, queued: request_id={}",
+                        request_id
+                    );
+                    self.pending_screenshot_requests
+                        .push(crate::state::PendingScreenshotRequest { client_id, request });
+                }
+                super::screenshot::ScreenshotBridgeOutcome::Respond(result) => {
+                    tracing::info!(
+                        "screenshot bridge rejected: request_id={} result={:?}",
+                        request_id,
+                        result
+                    );
+                    self.ipc
+                        .send_screenshot_bridge_response(client_id, request_id, result);
+                }
+            }
         }
     }
 
