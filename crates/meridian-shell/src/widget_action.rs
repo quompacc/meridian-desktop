@@ -27,6 +27,7 @@ const SETTINGS_CATEGORY_ACTIONS: &[(&str, SettingsCategory)] = &[
     ("settings-cat-display", SettingsCategory::Display),
     ("settings-cat-wallpaper", SettingsCategory::Wallpaper),
     ("settings-cat-pinned", SettingsCategory::PinnedApps),
+    ("settings-cat-default-apps", SettingsCategory::DefaultApps),
     (
         "settings-cat-system-overview",
         SettingsCategory::SystemOverview,
