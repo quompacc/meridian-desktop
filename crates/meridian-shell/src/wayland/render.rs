@@ -479,8 +479,57 @@ impl MeridianShell {
                 warn!("desktop menu canvas unavailable after retry");
                 return;
             };
-            crate::popup_card::paint_card_with_shadow(
-                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
+            // The desktop menu has TWO separate rounded boxes when the
+            // submenu is open (main menu + flyout). paint_card_with_shadow
+            // assumes a single rect of CARD_RADIUS=14 — that mismatch was
+            // visible as a corner stair-step around the menu's CORNER_R=10
+            // outline. Draw each box's shadow independently with the menu's
+            // own radius, then composite the card overlay.
+            canvas.fill(0);
+            let pad = crate::POPUP_SHADOW_PAD;
+            let main_h = crate::context_menu::menu_height(items.len());
+            crate::soft_shadow::draw_soft_shadow(
+                canvas,
+                surface_w as i32,
+                surface_h as i32,
+                pad,
+                pad,
+                crate::context_menu::MENU_WIDTH,
+                main_h,
+                crate::context_menu::CORNER_R as f32,
+                crate::popup_card::POPUP_SHADOW_BLUR,
+                crate::popup_card::POPUP_SHADOW_ALPHA,
+                crate::popup_card::POPUP_SHADOW_OFFSET_Y,
+                false,
+            );
+            if menu.submenu_open {
+                let sub_x =
+                    pad + crate::context_menu::MENU_WIDTH + crate::context_menu::SUBMENU_GAP;
+                let sub_h = crate::context_menu::submenu_height();
+                crate::soft_shadow::draw_soft_shadow(
+                    canvas,
+                    surface_w as i32,
+                    surface_h as i32,
+                    sub_x,
+                    pad,
+                    crate::context_menu::SUBMENU_WIDTH,
+                    sub_h,
+                    crate::context_menu::CORNER_R as f32,
+                    crate::popup_card::POPUP_SHADOW_BLUR,
+                    crate::popup_card::POPUP_SHADOW_ALPHA,
+                    crate::popup_card::POPUP_SHADOW_OFFSET_Y,
+                    false,
+                );
+            }
+            crate::soft_shadow::composite_card_onto_surface(
+                canvas,
+                surface_w as usize,
+                surface_h as usize,
+                &card_buf,
+                card_w as usize,
+                card_h as usize,
+                pad as usize,
+                pad as usize,
             );
             if let Err(err) = buf.attach_to(self.desktop_menu_layer.wl_surface()) {
                 warn!("desktop menu buffer attach failed: {}", err);

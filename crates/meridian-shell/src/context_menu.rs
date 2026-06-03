@@ -19,7 +19,7 @@ const ITEM_H: i32 = 36;
 const VPAD: i32 = 6;
 const PADDING_X: i32 = 14;
 const FONT_SIZE: f32 = 13.0;
-const CORNER_R: i32 = 10;
+pub(crate) const CORNER_R: i32 = 14;
 
 /// Total surface width depending on whether the settings flyout is open.
 pub(crate) fn total_menu_width(submenu_open: bool) -> i32 {
