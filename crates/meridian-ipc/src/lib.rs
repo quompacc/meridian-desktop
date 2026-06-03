@@ -107,6 +107,10 @@ pub struct ScreenshotRequestMetadata {
     pub request_marker: Option<u64>,
     #[serde(default)]
     pub identity_trusted: bool,
+    /// `interactive=true` (per the freedesktop Screenshot portal `options`)
+    /// requests an in-shell area/region selection UI before capture.
+    #[serde(default)]
+    pub interactive: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -146,10 +150,12 @@ impl ScreenshotBridgeRequest {
             ));
         }
 
-        if self.region.is_some() {
-            return Err(ScreenshotBridgeError::Unsupported(
-                "region capture is not implemented yet".to_string(),
-            ));
+        if let Some(region) = self.region {
+            if region.width == 0 || region.height == 0 {
+                return Err(ScreenshotBridgeError::InvalidRequest(
+                    "region width and height must be nonzero".to_string(),
+                ));
+            }
         }
 
         Ok(())
@@ -246,6 +252,15 @@ pub enum ShellEvent {
         /// Best-effort requesting app identity for display ("" if unknown).
         app_id: String,
     },
+    /// An interactive screenshot request (`interactive=true`) needs a region
+    /// to be picked by the user. The shell shows a fullscreen drag-rectangle
+    /// picker; the picked region comes back as
+    /// `ShellCommand::ScreenshotRegionResponse` with the same `request_id`.
+    ScreenshotRegionRequest {
+        request_id: String,
+        /// Best-effort requesting app identity for display ("" if unknown).
+        app_id: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -278,6 +293,12 @@ pub enum ShellCommand {
     ScreenshotConsentResponse {
         request_id: String,
         allowed: bool,
+    },
+    /// The user's answer to a `ShellEvent::ScreenshotRegionRequest`. `None`
+    /// means the user cancelled (Esc); `Some(region)` carries the selection.
+    ScreenshotRegionResponse {
+        request_id: String,
+        region: Option<ScreenshotRegion>,
     },
 }
 
@@ -576,6 +597,7 @@ mod tests {
                 origin: ScreenshotRequestOrigin::Unknown,
                 request_marker: None,
                 identity_trusted: false,
+                interactive: false,
             },
         };
 
@@ -602,7 +624,7 @@ mod tests {
     }
 
     #[test]
-    fn screenshot_bridge_request_rejects_region_until_supported() {
+    fn screenshot_bridge_request_accepts_region_with_nonzero_size() {
         let request = ScreenshotBridgeRequest {
             request_id: "req-2".to_string(),
             kind: ScreenshotKind::FullOutput,
@@ -617,10 +639,29 @@ mod tests {
             metadata: ScreenshotRequestMetadata::default(),
         };
 
+        assert_eq!(request.validate(), Ok(()));
+    }
+
+    #[test]
+    fn screenshot_bridge_request_rejects_region_with_zero_dimension() {
+        let request = ScreenshotBridgeRequest {
+            request_id: "req-2b".to_string(),
+            kind: ScreenshotKind::FullOutput,
+            output: None,
+            include_cursor: false,
+            region: Some(ScreenshotRegion {
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 100,
+            }),
+            metadata: ScreenshotRequestMetadata::default(),
+        };
+
         assert_eq!(
             request.validate(),
-            Err(ScreenshotBridgeError::Unsupported(
-                "region capture is not implemented yet".to_string()
+            Err(ScreenshotBridgeError::InvalidRequest(
+                "region width and height must be nonzero".to_string()
             ))
         );
     }
@@ -639,6 +680,7 @@ mod tests {
                     origin: ScreenshotRequestOrigin::PortalDbus,
                     request_marker: Some(42),
                     identity_trusted: false,
+                    interactive: false,
                 },
             },
         };
@@ -701,6 +743,7 @@ mod tests {
                 origin: ScreenshotRequestOrigin::PortalDbus,
                 request_marker: Some(777),
                 identity_trusted: false,
+                interactive: false,
             },
         };
         let message = ScreenshotBridgeMessage::ScreenshotRequest { request };

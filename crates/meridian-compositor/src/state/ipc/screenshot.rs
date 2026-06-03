@@ -97,6 +97,7 @@ mod tests {
                 origin: ScreenshotRequestOrigin::PortalDbus,
                 request_marker: Some(1),
                 identity_trusted: false,
+                interactive: false,
             },
         };
 
@@ -124,6 +125,7 @@ mod tests {
                 origin: ScreenshotRequestOrigin::PortalDbus,
                 request_marker: Some(2),
                 identity_trusted: false,
+                interactive: false,
             },
         };
 
@@ -135,7 +137,7 @@ mod tests {
     }
 
     #[test]
-    fn region_request_keeps_unsupported_semantics() {
+    fn region_request_with_nonzero_size_follows_consent_path() {
         let _guard = screenshot_policy_test_lock().lock().expect("test lock");
         let request = ScreenshotBridgeRequest {
             request_id: "req-bridge-2".to_string(),
@@ -153,17 +155,16 @@ mod tests {
                 origin: ScreenshotRequestOrigin::PortalDbus,
                 request_marker: Some(3),
                 identity_trusted: false,
+                interactive: false,
             },
         };
 
-        assert_eq!(
-            expect_respond(handle_screenshot_bridge_request(request, 7)),
-            ScreenshotBridgeResult::Error {
-                error: ScreenshotBridgeError::Unsupported(
-                    "region capture is not implemented yet".to_string(),
-                ),
-            }
-        );
+        // Region requests now pass validation; portal origin still requires
+        // user consent (no interactive flag yet — the region-pick path is
+        // wired in a follow-on slice).
+        assert!(is_await_consent(&handle_screenshot_bridge_request(
+            request, 7
+        )));
     }
 
     #[test]
@@ -180,6 +181,7 @@ mod tests {
                 origin: ScreenshotRequestOrigin::PortalDbus,
                 request_marker: Some(4),
                 identity_trusted: false,
+                interactive: false,
             },
         };
 

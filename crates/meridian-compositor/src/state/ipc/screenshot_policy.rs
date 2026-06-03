@@ -143,6 +143,7 @@ mod tests {
                 origin: ScreenshotRequestOrigin::PortalDbus,
                 request_marker: Some(1),
                 identity_trusted: false,
+                interactive: false,
             },
         }
     }
@@ -209,7 +210,7 @@ mod tests {
     }
 
     #[test]
-    fn region_request_is_unsupported() {
+    fn region_request_with_nonzero_size_needs_consent() {
         let _guard = screenshot_policy_test_lock().lock().expect("test lock");
         let mut request = valid_request();
         request.region = Some(meridian_ipc::ScreenshotRegion {
@@ -220,10 +221,27 @@ mod tests {
         });
         let decision =
             ScreenshotPolicy::evaluate(&request, ScreenshotPolicyContext { client_id: 7 });
+        // Portal-origin requests still need consent; the interactive
+        // region-pick decision arrives in a follow-on slice.
+        assert_eq!(decision, ScreenshotPolicyDecision::NeedsConsent);
+    }
+
+    #[test]
+    fn region_request_with_zero_dimension_is_invalid() {
+        let _guard = screenshot_policy_test_lock().lock().expect("test lock");
+        let mut request = valid_request();
+        request.region = Some(meridian_ipc::ScreenshotRegion {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 100,
+        });
+        let decision =
+            ScreenshotPolicy::evaluate(&request, ScreenshotPolicyContext { client_id: 7 });
         assert_eq!(
             decision,
-            ScreenshotPolicyDecision::Unsupported(
-                "region capture is not implemented yet".to_string()
+            ScreenshotPolicyDecision::Invalid(
+                "region width and height must be nonzero".to_string()
             )
         );
     }

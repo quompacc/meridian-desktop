@@ -159,6 +159,15 @@ impl MeridianState {
             } => {
                 self.resolve_screenshot_consent(&request_id, allowed);
             }
+            ShellCommand::ScreenshotRegionResponse { request_id, region } => {
+                // Region-pick path is wired in the next slice; until then this
+                // command is never produced by the shell.
+                tracing::warn!(
+                    "ScreenshotRegionResponse received before the region-pick path is wired: request_id={} region={:?}",
+                    request_id,
+                    region
+                );
+            }
         }
     }
 

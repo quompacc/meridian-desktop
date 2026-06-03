@@ -57,6 +57,7 @@ impl ScreenshotImpl {
                 origin: ScreenshotRequestOrigin::PortalDbus,
                 request_marker: None,
                 identity_trusted: false,
+                interactive: false,
             },
         };
 

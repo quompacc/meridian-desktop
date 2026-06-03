@@ -747,6 +747,16 @@ impl MeridianShell {
             ShellEvent::ScreenshotConsentRequest { request_id, app_id } => {
                 self.open_consent_modal(request_id, app_id);
             }
+            ShellEvent::ScreenshotRegionRequest { request_id, app_id } => {
+                // Region picker UI lands in the next slice; until then this
+                // event is never emitted (the compositor still routes portal
+                // requests to the consent path).
+                tracing::info!(
+                    "screenshot region requested (picker not yet implemented): request_id={} app_id={:?}",
+                    request_id,
+                    app_id
+                );
+            }
         }
     }
 
