@@ -271,37 +271,24 @@ impl LayerShellHandler for MeridianShell {
                 self.draw_calendar_popup(qh, RepaintReason::LayerConfigure);
             }
         } else if self.workspace_layer == *layer {
-            let requested_w = if configure.new_size.0 > 0 {
-                configure.new_size.0
-            } else {
-                WORKSPACE_POPUP_WIDTH
-            };
-            let requested_h = if configure.new_size.1 > 0 {
-                configure.new_size.1
-            } else {
-                WORKSPACE_POPUP_HEIGHT
-            };
-            let clamped_w = requested_w.min(WORKSPACE_POPUP_WIDTH);
-            let clamped_h = requested_h.min(WORKSPACE_POPUP_HEIGHT);
+            let surface_w = crate::popup_surface_w(WORKSPACE_POPUP_WIDTH);
+            let surface_h = crate::popup_surface_h(WORKSPACE_POPUP_HEIGHT);
             tracing::debug!(
-                "workspace popup configure: requested={}x{} clamped={}x{} desired={}x{}",
-                requested_w,
-                requested_h,
-                clamped_w,
-                clamped_h,
-                WORKSPACE_POPUP_WIDTH,
-                WORKSPACE_POPUP_HEIGHT
+                "workspace popup configure: requested={}x{} surface={}x{}",
+                configure.new_size.0,
+                configure.new_size.1,
+                surface_w,
+                surface_h
             );
             self.workspace_layer
                 .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
             self.workspace_layer
                 .set_margin(0, 160, crate::SHELL_POPUP_BOTTOM_MARGIN, 0);
             self.workspace_layer.set_exclusive_zone(0);
-            self.workspace_layer
-                .set_size(WORKSPACE_POPUP_WIDTH, WORKSPACE_POPUP_HEIGHT);
+            self.workspace_layer.set_size(surface_w, surface_h);
             self.workspace_configured = true;
-            self.workspace_width = WORKSPACE_POPUP_WIDTH;
-            self.workspace_height = WORKSPACE_POPUP_HEIGHT;
+            self.workspace_width = surface_w;
+            self.workspace_height = surface_h;
             if self.workspace_popup_open {
                 self.draw_workspace_popup(qh, RepaintReason::LayerConfigure);
             }
@@ -324,8 +311,8 @@ impl LayerShellHandler for MeridianShell {
                 );
                 self.network_layer.set_exclusive_zone(0);
                 self.network_layer.set_size(
-                    self.status_notifier_menu_width,
-                    self.status_notifier_menu_height,
+                    crate::popup_surface_w(self.status_notifier_menu_width),
+                    crate::popup_surface_h(self.status_notifier_menu_height),
                 );
                 self.network_configured = true;
                 self.draw_status_notifier_menu(qh, RepaintReason::LayerConfigure);
@@ -358,11 +345,13 @@ impl LayerShellHandler for MeridianShell {
                     0,
                 );
                 self.network_layer.set_exclusive_zone(0);
-                self.network_layer
-                    .set_size(AUDIO_POPUP_WIDTH, AUDIO_POPUP_HEIGHT);
+                self.network_layer.set_size(
+                    crate::popup_surface_w(AUDIO_POPUP_WIDTH),
+                    crate::popup_surface_h(AUDIO_POPUP_HEIGHT),
+                );
                 self.network_configured = true;
-                self.audio_width = AUDIO_POPUP_WIDTH;
-                self.audio_height = AUDIO_POPUP_HEIGHT;
+                self.audio_width = crate::popup_surface_w(AUDIO_POPUP_WIDTH);
+                self.audio_height = crate::popup_surface_h(AUDIO_POPUP_HEIGHT);
                 self.draw_audio_popup(qh, RepaintReason::LayerConfigure);
                 return;
             }
@@ -396,21 +385,25 @@ impl LayerShellHandler for MeridianShell {
                 0,
             );
             self.network_layer.set_exclusive_zone(0);
-            self.network_layer
-                .set_size(NETWORK_POPUP_WIDTH, NETWORK_POPUP_HEIGHT);
+            self.network_layer.set_size(
+                crate::popup_surface_w(NETWORK_POPUP_WIDTH),
+                crate::popup_surface_h(NETWORK_POPUP_HEIGHT),
+            );
             self.network_configured = true;
-            self.network_width = NETWORK_POPUP_WIDTH;
-            self.network_height = NETWORK_POPUP_HEIGHT;
+            self.network_width = crate::popup_surface_w(NETWORK_POPUP_WIDTH);
+            self.network_height = crate::popup_surface_h(NETWORK_POPUP_HEIGHT);
             if self.network_popup_open {
                 self.draw_network_popup(qh, RepaintReason::LayerConfigure);
             }
         } else if self.notification_layer == *layer {
+            let surface_w = crate::popup_surface_w(crate::NOTIFICATION_WIDTH);
+            let surface_h = crate::popup_surface_h(crate::NOTIFICATION_HEIGHT);
             tracing::debug!(
-                "notification configure: requested={}x{} desired={}x{}",
+                "notification configure: requested={}x{} surface={}x{}",
                 configure.new_size.0,
                 configure.new_size.1,
-                crate::NOTIFICATION_WIDTH,
-                crate::NOTIFICATION_HEIGHT
+                surface_w,
+                surface_h
             );
             self.notification_layer
                 .set_anchor(Anchor::TOP | Anchor::RIGHT);
@@ -421,22 +414,20 @@ impl LayerShellHandler for MeridianShell {
                 0,
             );
             self.notification_layer.set_exclusive_zone(0);
-            self.notification_layer
-                .set_size(crate::NOTIFICATION_WIDTH, crate::NOTIFICATION_HEIGHT);
+            self.notification_layer.set_size(surface_w, surface_h);
             self.notification_configured = true;
-            self.notification_width = crate::NOTIFICATION_WIDTH;
-            self.notification_height = crate::NOTIFICATION_HEIGHT;
+            self.notification_width = surface_w;
+            self.notification_height = surface_h;
             if !self.notifications.is_empty() {
                 self.draw_notification_popup(qh, RepaintReason::LayerConfigure);
             } else {
                 self.unmap_notification_popup(crate::wayland::CommitReason::UnknownOther);
             }
         } else if self.thumbnail_layer == *layer {
-            // Adopt the compositor's chosen size as our truth — drawing with a
-            // different (stale) width yields a clipped or stretched popup.
-            // Anchor/margin/set_size are still set by open_thumbnail_popup or
-            // refresh_thumbnail_popup; we only take the resulting configured
-            // dimensions here.
+            // Thumbnail popup has dynamic width (set by open_thumbnail_popup /
+            // refresh_thumbnail_popup); adopt whatever surface size the
+            // compositor sent back. self.thumbnail_width / _height already
+            // include the shadow pad.
             if configure.new_size.0 > 0 {
                 self.thumbnail_width = configure.new_size.0;
             }

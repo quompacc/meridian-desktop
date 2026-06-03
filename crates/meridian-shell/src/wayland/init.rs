@@ -293,7 +293,10 @@ pub(crate) fn initialize(
     );
     workspace_layer.set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
     workspace_layer.set_margin(0, 160, SHELL_POPUP_BOTTOM_MARGIN, 0);
-    workspace_layer.set_size(WORKSPACE_POPUP_WIDTH, WORKSPACE_POPUP_HEIGHT);
+    workspace_layer.set_size(
+        crate::popup_surface_w(WORKSPACE_POPUP_WIDTH),
+        crate::popup_surface_h(WORKSPACE_POPUP_HEIGHT),
+    );
     workspace_layer.set_exclusive_zone(0);
     workspace_layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
     debug!(
@@ -313,7 +316,10 @@ pub(crate) fn initialize(
     );
     network_layer.set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
     network_layer.set_margin(0, NETWORK_POPUP_RIGHT_MARGIN, SHELL_POPUP_BOTTOM_MARGIN, 0);
-    network_layer.set_size(NETWORK_POPUP_WIDTH, NETWORK_POPUP_HEIGHT);
+    network_layer.set_size(
+        crate::popup_surface_w(NETWORK_POPUP_WIDTH),
+        crate::popup_surface_h(NETWORK_POPUP_HEIGHT),
+    );
     network_layer.set_exclusive_zone(0);
     network_layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
     debug!(
@@ -342,7 +348,10 @@ pub(crate) fn initialize(
         0,
         0,
     );
-    notification_layer.set_size(crate::NOTIFICATION_WIDTH, crate::NOTIFICATION_HEIGHT);
+    notification_layer.set_size(
+        crate::popup_surface_w(crate::NOTIFICATION_WIDTH),
+        crate::popup_surface_h(crate::NOTIFICATION_HEIGHT),
+    );
     notification_layer.set_exclusive_zone(0);
     notification_layer.set_keyboard_interactivity(KeyboardInteractivity::None);
     debug!(
@@ -363,7 +372,10 @@ pub(crate) fn initialize(
     );
     thumbnail_layer.set_anchor(Anchor::BOTTOM | Anchor::LEFT);
     thumbnail_layer.set_margin(0, 0, crate::SHELL_POPUP_BOTTOM_MARGIN, 0);
-    thumbnail_layer.set_size(THUMBNAIL_POPUP_MAX_WIDTH, THUMBNAIL_POPUP_HEIGHT);
+    thumbnail_layer.set_size(
+        crate::popup_surface_w(THUMBNAIL_POPUP_MAX_WIDTH),
+        crate::popup_surface_h(THUMBNAIL_POPUP_HEIGHT),
+    );
     thumbnail_layer.set_exclusive_zone(0);
     thumbnail_layer.set_keyboard_interactivity(KeyboardInteractivity::None);
 
@@ -502,16 +514,16 @@ pub(crate) fn initialize(
         launcher_visual_y: 0,
         calendar_width: crate::popup_surface_w(CALENDAR_POPUP_WIDTH),
         calendar_height: crate::popup_surface_h(CALENDAR_POPUP_HEIGHT),
-        workspace_width: WORKSPACE_POPUP_WIDTH,
-        workspace_height: WORKSPACE_POPUP_HEIGHT,
-        network_width: NETWORK_POPUP_WIDTH,
-        network_height: NETWORK_POPUP_HEIGHT,
-        audio_width: AUDIO_POPUP_WIDTH,
-        audio_height: AUDIO_POPUP_HEIGHT,
+        workspace_width: crate::popup_surface_w(WORKSPACE_POPUP_WIDTH),
+        workspace_height: crate::popup_surface_h(WORKSPACE_POPUP_HEIGHT),
+        network_width: crate::popup_surface_w(NETWORK_POPUP_WIDTH),
+        network_height: crate::popup_surface_h(NETWORK_POPUP_HEIGHT),
+        audio_width: crate::popup_surface_w(AUDIO_POPUP_WIDTH),
+        audio_height: crate::popup_surface_h(AUDIO_POPUP_HEIGHT),
         status_notifier_menu_width: crate::status_notifier_popup::SNI_MENU_WIDTH,
         status_notifier_menu_height: 1,
-        notification_width: crate::NOTIFICATION_WIDTH,
-        notification_height: crate::NOTIFICATION_HEIGHT,
+        notification_width: crate::popup_surface_w(crate::NOTIFICATION_WIDTH),
+        notification_height: crate::popup_surface_h(crate::NOTIFICATION_HEIGHT),
         thumbnail_width: 0,
         thumbnail_height: 0,
         thumbnail_dirty: false,

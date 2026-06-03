@@ -1086,54 +1086,18 @@ impl MeridianShell {
     }
 
     pub(crate) fn draw_workspace_popup(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
-        debug!(
-            "draw_workspace_popup: reason={:?} open={} configured={} workspace_dirty={} commit_expected={}",
-            reason,
-            self.workspace_popup_open,
-            self.workspace_configured,
-            self.workspace_dirty,
-            self.workspace_popup_open && self.workspace_configured
-        );
         if !self.workspace_popup_open || !self.workspace_configured {
-            debug!(
-                "draw_workspace_popup skipped: reason={:?} open={} configured={}",
-                reason, self.workspace_popup_open, self.workspace_configured
-            );
             return;
         }
-
-        let width = self.workspace_width.min(WORKSPACE_POPUP_WIDTH);
-        let height = self.workspace_height.min(WORKSPACE_POPUP_HEIGHT);
+        let surface_w = self.workspace_width;
+        let surface_h = self.workspace_height;
+        let card_w = WORKSPACE_POPUP_WIDTH;
+        let card_h = WORKSPACE_POPUP_HEIGHT;
         let active_workspace = self.panel_active_workspace() as u32;
-        let stride = buffer::shm_buffer_stride(width);
-        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
-            let buf = buffer::buffer_for(
-                &mut self.pool,
-                &mut self.workspace_buffer,
-                width,
-                height,
-                stride,
-            );
-            let Some(buf) = buf else {
-                warn!(
-                    "workspace popup buffer unavailable: reason={:?} width={} height={}",
-                    reason, width, height
-                );
-                return;
-            };
-            let Some(canvas) = buf.canvas(&mut self.pool) else {
-                self.workspace_buffer = None;
-                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
-                    continue;
-                }
-                warn!(
-                    "workspace popup canvas unavailable after retry: reason={:?} width={} height={}",
-                    reason, width, height
-                );
-                return;
-            };
 
-            let mut painter = Painter::new(canvas, width as i32, height as i32);
+        let mut card_buf = vec![0u8; (card_w as usize) * (card_h as usize) * 4];
+        {
+            let mut painter = Painter::new(&mut card_buf, card_w as i32, card_h as i32);
             workspaces::draw_workspace_popup(
                 &mut painter,
                 &self.font,
@@ -1146,28 +1110,49 @@ impl MeridianShell {
                 },
                 &mut self.workspace_state,
             );
-            round_buffer_corners(
-                canvas,
-                width as usize,
-                height as usize,
-                crate::popup_card::CARD_RADIUS,
-            );
+        }
+        round_buffer_corners(
+            &mut card_buf,
+            card_w as usize,
+            card_h as usize,
+            crate::popup_card::CARD_RADIUS,
+        );
 
+        let stride = buffer::shm_buffer_stride(surface_w);
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.workspace_buffer,
+                surface_w,
+                surface_h,
+                stride,
+            );
+            let Some(buf) = buf else {
+                warn!("workspace popup buffer unavailable: reason={:?}", reason);
+                return;
+            };
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.workspace_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
+                warn!("workspace popup canvas unavailable after retry");
+                return;
+            };
+            crate::popup_card::paint_card_with_shadow(
+                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
+            );
             if let Err(err) = buf.attach_to(self.workspace_layer.wl_surface()) {
-                warn!(
-                    "workspace popup buffer attach failed: reason={:?} width={} height={} error={}",
-                    reason, width, height, err
-                );
+                warn!("workspace popup buffer attach failed: {}", err);
                 return;
             }
-            self.workspace_layer
-                .wl_surface()
-                .damage_buffer(0, 0, width as i32, height as i32);
-            self.workspace_layer.commit();
-            debug!(
-                "draw_workspace_popup committed: reason={:?} width={} height={}",
-                reason, width, height
+            self.workspace_layer.wl_surface().damage_buffer(
+                0,
+                0,
+                surface_w as i32,
+                surface_h as i32,
             );
+            self.workspace_layer.commit();
             self.workspace_dirty = false;
             return;
         }
@@ -1184,38 +1169,42 @@ impl MeridianShell {
     }
 
     pub(crate) fn draw_network_popup(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
-        debug!(
-            "draw_network_popup: reason={:?} open={} configured={} network_dirty={} commit_expected={}",
-            reason,
-            self.network_popup_open,
-            self.network_configured,
-            self.network_dirty,
-            self.network_popup_open && self.network_configured
-        );
         if !self.network_popup_open || !self.network_configured {
-            debug!(
-                "draw_network_popup skipped: reason={:?} open={} configured={}",
-                reason, self.network_popup_open, self.network_configured
-            );
             return;
         }
+        let surface_w = self.network_width;
+        let surface_h = self.network_height;
+        let card_w = NETWORK_POPUP_WIDTH;
+        let card_h = NETWORK_POPUP_HEIGHT;
 
-        let width = self.network_width.min(NETWORK_POPUP_WIDTH);
-        let height = self.network_height.min(NETWORK_POPUP_HEIGHT);
-        let stride = buffer::shm_buffer_stride(width);
+        let mut card_buf = vec![0u8; (card_w as usize) * (card_h as usize) * 4];
+        {
+            let mut painter = Painter::new(&mut card_buf, card_w as i32, card_h as i32);
+            network_popup::draw_network_popup(
+                &mut painter,
+                &self.font,
+                &self.theme,
+                self.network_controller.state(),
+            );
+        }
+        round_buffer_corners(
+            &mut card_buf,
+            card_w as usize,
+            card_h as usize,
+            crate::popup_card::CARD_RADIUS,
+        );
+
+        let stride = buffer::shm_buffer_stride(surface_w);
         for attempt in 0..CANVAS_RETRY_ATTEMPTS {
             let buf = buffer::buffer_for(
                 &mut self.pool,
                 &mut self.network_buffer,
-                width,
-                height,
+                surface_w,
+                surface_h,
                 stride,
             );
             let Some(buf) = buf else {
-                warn!(
-                    "network popup buffer unavailable: reason={:?} width={} height={}",
-                    reason, width, height
-                );
+                warn!("network popup buffer unavailable: reason={:?}", reason);
                 return;
             };
             let Some(canvas) = buf.canvas(&mut self.pool) else {
@@ -1223,42 +1212,20 @@ impl MeridianShell {
                 if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
                     continue;
                 }
-                warn!(
-                    "network popup canvas unavailable after retry: reason={:?} width={} height={}",
-                    reason, width, height
-                );
+                warn!("network popup canvas unavailable after retry");
                 return;
             };
-
-            let mut painter = Painter::new(canvas, width as i32, height as i32);
-            network_popup::draw_network_popup(
-                &mut painter,
-                &self.font,
-                &self.theme,
-                self.network_controller.state(),
+            crate::popup_card::paint_card_with_shadow(
+                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
             );
-            round_buffer_corners(
-                canvas,
-                width as usize,
-                height as usize,
-                crate::popup_card::CARD_RADIUS,
-            );
-
             if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {
-                warn!(
-                    "network popup buffer attach failed: reason={:?} width={} height={} error={}",
-                    reason, width, height, err
-                );
+                warn!("network popup buffer attach failed: {}", err);
                 return;
             }
             self.network_layer
                 .wl_surface()
-                .damage_buffer(0, 0, width as i32, height as i32);
+                .damage_buffer(0, 0, surface_w as i32, surface_h as i32);
             self.network_layer.commit();
-            debug!(
-                "draw_network_popup committed: reason={:?} width={} height={}",
-                reason, width, height
-            );
             self.network_dirty = false;
             return;
         }
@@ -1280,35 +1247,42 @@ impl MeridianShell {
     }
 
     pub(crate) fn draw_audio_popup(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
-        debug!(
-            "draw_audio_popup: reason={:?} open={} configured={} audio_dirty={} commit_expected={}",
-            reason,
-            self.audio_popup_open,
-            self.network_configured,
-            self.audio_dirty,
-            self.audio_popup_open && self.network_configured
-        );
         if !self.audio_popup_open || !self.network_configured {
             return;
         }
+        let surface_w = self.audio_width;
+        let surface_h = self.audio_height;
+        let card_w = AUDIO_POPUP_WIDTH;
+        let card_h = AUDIO_POPUP_HEIGHT;
 
-        self.audio_snapshot = crate::audio::AudioSnapshot::poll();
-        let width = self.audio_width.min(AUDIO_POPUP_WIDTH);
-        let height = self.audio_height.min(AUDIO_POPUP_HEIGHT);
-        let stride = buffer::shm_buffer_stride(width);
+        let mut card_buf = vec![0u8; (card_w as usize) * (card_h as usize) * 4];
+        {
+            let mut painter = Painter::new(&mut card_buf, card_w as i32, card_h as i32);
+            audio_popup::draw_audio_popup(
+                &mut painter,
+                &self.font,
+                &self.theme,
+                &self.audio_snapshot,
+            );
+        }
+        round_buffer_corners(
+            &mut card_buf,
+            card_w as usize,
+            card_h as usize,
+            crate::popup_card::CARD_RADIUS,
+        );
+
+        let stride = buffer::shm_buffer_stride(surface_w);
         for attempt in 0..CANVAS_RETRY_ATTEMPTS {
             let buf = buffer::buffer_for(
                 &mut self.pool,
                 &mut self.network_buffer,
-                width,
-                height,
+                surface_w,
+                surface_h,
                 stride,
             );
             let Some(buf) = buf else {
-                warn!(
-                    "audio popup buffer unavailable: reason={:?} width={} height={}",
-                    reason, width, height
-                );
+                warn!("audio popup buffer unavailable: reason={:?}", reason);
                 return;
             };
             let Some(canvas) = buf.canvas(&mut self.pool) else {
@@ -1316,33 +1290,19 @@ impl MeridianShell {
                 if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
                     continue;
                 }
+                warn!("audio popup canvas unavailable after retry");
                 return;
             };
-
-            let mut painter = Painter::new(canvas, width as i32, height as i32);
-            audio_popup::draw_audio_popup(
-                &mut painter,
-                &self.font,
-                &self.theme,
-                &self.audio_snapshot,
+            crate::popup_card::paint_card_with_shadow(
+                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
             );
-            round_buffer_corners(
-                canvas,
-                width as usize,
-                height as usize,
-                crate::popup_card::CARD_RADIUS,
-            );
-
             if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {
-                warn!(
-                    "audio popup buffer attach failed: reason={:?} width={} height={} error={}",
-                    reason, width, height, err
-                );
+                warn!("audio popup buffer attach failed: {}", err);
                 return;
             }
             self.network_layer
                 .wl_surface()
-                .damage_buffer(0, 0, width as i32, height as i32);
+                .damage_buffer(0, 0, surface_w as i32, surface_h as i32);
             self.network_layer.commit();
             self.audio_dirty = false;
             return;
@@ -1368,35 +1328,47 @@ impl MeridianShell {
         if !self.status_notifier_menu_open || !self.network_configured {
             return;
         }
-        let width = self
-            .status_notifier_menu_width
-            .min(status_notifier_popup::SNI_MENU_WIDTH);
-        let height = self
-            .status_notifier_menu_height
-            .min(status_notifier_popup::SNI_MENU_MAX_HEIGHT);
-        let Some(menu_state) = self.status_notifier_menu.as_ref() else {
-            self.close_status_notifier_menu(CommitReason::UnknownOther);
-            return;
-        };
-        let title = menu_state
-            .service
-            .rsplit('.')
-            .next()
-            .unwrap_or(menu_state.service.as_str());
-        let stride = buffer::shm_buffer_stride(width);
+        let surface_w = self.status_notifier_menu_width;
+        let surface_h = self.status_notifier_menu_height;
+        let pad2 = 2 * crate::POPUP_SHADOW_PAD as u32;
+        let card_w = surface_w.saturating_sub(pad2).max(1);
+        let card_h = surface_h.saturating_sub(pad2).max(1);
+
+        let mut card_buf = vec![0u8; (card_w as usize) * (card_h as usize) * 4];
+        {
+            let mut painter = Painter::new(&mut card_buf, card_w as i32, card_h as i32);
+            let title = self
+                .status_notifier_menu
+                .as_ref()
+                .map(|m| m.service.rsplit('.').next().unwrap_or(m.service.as_str()))
+                .unwrap_or("");
+            status_notifier_popup::draw_status_notifier_menu(
+                &mut painter,
+                &self.font,
+                &self.theme,
+                title,
+                &self.status_notifier_menu_entries,
+                card_h,
+            );
+        }
+        round_buffer_corners(
+            &mut card_buf,
+            card_w as usize,
+            card_h as usize,
+            crate::popup_card::CARD_RADIUS,
+        );
+
+        let stride = buffer::shm_buffer_stride(surface_w);
         for attempt in 0..CANVAS_RETRY_ATTEMPTS {
             let buf = buffer::buffer_for(
                 &mut self.pool,
                 &mut self.network_buffer,
-                width,
-                height,
+                surface_w,
+                surface_h,
                 stride,
             );
             let Some(buf) = buf else {
-                warn!(
-                    "status-notifier menu buffer unavailable: reason={:?} width={} height={}",
-                    reason, width, height
-                );
+                warn!("SNI menu buffer unavailable: reason={:?}", reason);
                 return;
             };
             let Some(canvas) = buf.canvas(&mut self.pool) else {
@@ -1404,29 +1376,19 @@ impl MeridianShell {
                 if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
                     continue;
                 }
+                warn!("SNI menu canvas unavailable after retry");
                 return;
             };
-
-            let mut painter = Painter::new(canvas, width as i32, height as i32);
-            status_notifier_popup::draw_status_notifier_menu(
-                &mut painter,
-                &self.font,
-                &self.theme,
-                title,
-                &self.status_notifier_menu_entries,
-                height,
+            crate::popup_card::paint_card_with_shadow(
+                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
             );
-
             if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {
-                warn!(
-                    "status-notifier menu buffer attach failed: reason={:?} width={} height={} error={}",
-                    reason, width, height, err
-                );
+                warn!("SNI menu buffer attach failed: {}", err);
                 return;
             }
             self.network_layer
                 .wl_surface()
-                .damage_buffer(0, 0, width as i32, height as i32);
+                .damage_buffer(0, 0, surface_w as i32, surface_h as i32);
             self.network_layer.commit();
             self.network_dirty = false;
             return;
@@ -1452,37 +1414,41 @@ impl MeridianShell {
         _qh: &QueueHandle<Self>,
         reason: RepaintReason,
     ) {
-        // Newest notification gets the spotlight; older ones stay queued
-        // and become visible again when newer entries expire or are
-        // closed. Stacking multiple at once is A1.3+ polish.
         let Some(notif) = self.notifications.back().cloned() else {
             self.unmap_notification_popup(CommitReason::UnknownOther);
             return;
         };
         if !self.notification_configured {
-            debug!(
-                "draw_notification_popup deferred: reason={:?} configured=false",
-                reason
-            );
             return;
         }
+        let surface_w = self.notification_width;
+        let surface_h = self.notification_height;
+        let card_w = NOTIFICATION_WIDTH;
+        let card_h = NOTIFICATION_HEIGHT;
 
-        let width = self.notification_width.min(NOTIFICATION_WIDTH);
-        let height = self.notification_height.min(NOTIFICATION_HEIGHT);
-        let stride = buffer::shm_buffer_stride(width);
+        let mut card_buf = vec![0u8; (card_w as usize) * (card_h as usize) * 4];
+        {
+            let mut painter = Painter::new(&mut card_buf, card_w as i32, card_h as i32);
+            notification_popup::draw_notification(&mut painter, &self.font, &self.theme, &notif);
+        }
+        round_buffer_corners(
+            &mut card_buf,
+            card_w as usize,
+            card_h as usize,
+            crate::popup_card::CARD_RADIUS,
+        );
+
+        let stride = buffer::shm_buffer_stride(surface_w);
         for attempt in 0..CANVAS_RETRY_ATTEMPTS {
             let buf = buffer::buffer_for(
                 &mut self.pool,
                 &mut self.notification_buffer,
-                width,
-                height,
+                surface_w,
+                surface_h,
                 stride,
             );
             let Some(buf) = buf else {
-                warn!(
-                    "notification buffer unavailable: reason={:?} width={} height={}",
-                    reason, width, height
-                );
+                warn!("notification buffer unavailable: reason={:?}", reason);
                 return;
             };
             let Some(canvas) = buf.canvas(&mut self.pool) else {
@@ -1490,31 +1456,23 @@ impl MeridianShell {
                 if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
                     continue;
                 }
-                warn!(
-                    "notification canvas unavailable after retry: reason={:?} width={} height={}",
-                    reason, width, height
-                );
+                warn!("notification canvas unavailable after retry");
                 return;
             };
-
-            let mut painter = Painter::new(canvas, width as i32, height as i32);
-            notification_popup::draw_notification(&mut painter, &self.font, &self.theme, &notif);
-
+            crate::popup_card::paint_card_with_shadow(
+                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
+            );
             if let Err(err) = buf.attach_to(self.notification_layer.wl_surface()) {
-                warn!(
-                    "notification buffer attach failed: reason={:?} width={} height={} error={}",
-                    reason, width, height, err
-                );
+                warn!("notification buffer attach failed: {}", err);
                 return;
             }
-            self.notification_layer
-                .wl_surface()
-                .damage_buffer(0, 0, width as i32, height as i32);
-            self.notification_layer.commit();
-            debug!(
-                "draw_notification_popup committed: reason={:?} id={} width={} height={}",
-                reason, notif.id, width, height
+            self.notification_layer.wl_surface().damage_buffer(
+                0,
+                0,
+                surface_w as i32,
+                surface_h as i32,
             );
+            self.notification_layer.commit();
             self.notification_dirty = false;
             return;
         }
@@ -1534,23 +1492,42 @@ impl MeridianShell {
         if !self.thumbnail_popup_open || !self.thumbnail_configured {
             return;
         }
+        let surface_w = self.thumbnail_width;
+        let surface_h = self.thumbnail_height;
+        let pad2 = 2 * crate::POPUP_SHADOW_PAD as u32;
+        let card_w = surface_w.saturating_sub(pad2).max(1);
+        let card_h = surface_h.saturating_sub(pad2).max(1);
 
-        let width = self.thumbnail_width.min(THUMBNAIL_POPUP_MAX_WIDTH);
-        let height = self.thumbnail_height.min(THUMBNAIL_POPUP_HEIGHT);
-        let stride = buffer::shm_buffer_stride(width);
+        let mut card_buf = vec![0u8; (card_w as usize) * (card_h as usize) * 4];
+        {
+            let mut painter = Painter::new(&mut card_buf, card_w as i32, card_h as i32);
+            crate::thumbnail_popup::draw_thumbnail_popup(
+                &mut painter,
+                &self.theme,
+                &self.thumbnail_cache,
+                &self.thumbnail_popup_window_ids,
+                card_w,
+                card_h,
+            );
+        }
+        round_buffer_corners(
+            &mut card_buf,
+            card_w as usize,
+            card_h as usize,
+            crate::popup_card::CARD_RADIUS,
+        );
+
+        let stride = buffer::shm_buffer_stride(surface_w);
         for attempt in 0..CANVAS_RETRY_ATTEMPTS {
             let buf = buffer::buffer_for(
                 &mut self.pool,
                 &mut self.thumbnail_buffer,
-                width,
-                height,
+                surface_w,
+                surface_h,
                 stride,
             );
             let Some(buf) = buf else {
-                warn!(
-                    "thumbnail: buffer unavailable reason={:?} width={} height={}",
-                    reason, width, height
-                );
+                warn!("thumbnail buffer unavailable: reason={:?}", reason);
                 return;
             };
             let Some(canvas) = buf.canvas(&mut self.pool) else {
@@ -1558,26 +1535,22 @@ impl MeridianShell {
                 if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
                     continue;
                 }
+                warn!("thumbnail canvas unavailable after retry");
                 return;
             };
-
-            let mut painter = Painter::new(canvas, width as i32, height as i32);
-            thumbnail_popup::draw_thumbnail_popup(
-                &mut painter,
-                &self.theme,
-                &self.thumbnail_cache,
-                &self.thumbnail_popup_window_ids,
-                width,
-                height,
+            crate::popup_card::paint_card_with_shadow(
+                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
             );
-
             if let Err(err) = buf.attach_to(self.thumbnail_layer.wl_surface()) {
-                warn!("thumbnail: buffer attach failed: {}", err);
+                warn!("thumbnail buffer attach failed: {}", err);
                 return;
             }
-            self.thumbnail_layer
-                .wl_surface()
-                .damage_buffer(0, 0, width as i32, height as i32);
+            self.thumbnail_layer.wl_surface().damage_buffer(
+                0,
+                0,
+                surface_w as i32,
+                surface_h as i32,
+            );
             self.thumbnail_layer.commit();
             self.thumbnail_dirty = false;
             return;

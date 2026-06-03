@@ -819,8 +819,11 @@ impl PointerHandler for MeridianShell {
                 && self.pointer_surface == SurfaceKind::WorkspacePopup
                 && matches!(event.kind, PointerEventKind::Motion { .. })
             {
-                let new_hover =
-                    workspaces::workspace_popup_hover_idx(event.position.0, event.position.1);
+                let pad = crate::POPUP_SHADOW_PAD as f64;
+                let new_hover = workspaces::workspace_popup_hover_idx(
+                    event.position.0 - pad,
+                    event.position.1 - pad,
+                );
                 if new_hover != self.workspace_hover_idx {
                     self.workspace_hover_idx = new_hover;
                     self.draw_workspace_popup(qh, RepaintReason::Pointer);
@@ -868,19 +871,28 @@ impl PointerHandler for MeridianShell {
                         .find(|zone| zone.rect.contains(event.position.0, event.position.1))
                         .map(|zone| zone.action.clone()),
                     SurfaceKind::Launcher => None,
-                    SurfaceKind::WorkspacePopup => self
-                        .workspace_state
-                        .clicks
-                        .iter()
-                        .find(|zone| zone.rect.contains(event.position.0, event.position.1))
-                        .map(|zone| zone.action.clone()),
+                    SurfaceKind::WorkspacePopup => {
+                        let pad = crate::POPUP_SHADOW_PAD as f64;
+                        let px = event.position.0 - pad;
+                        let py = event.position.1 - pad;
+                        self.workspace_state
+                            .clicks
+                            .iter()
+                            .find(|zone| zone.rect.contains(px, py))
+                            .map(|zone| zone.action.clone())
+                    }
                     SurfaceKind::NetworkPopup => {
+                        let pad = crate::POPUP_SHADOW_PAD as f64;
+                        let pad2 = 2 * crate::POPUP_SHADOW_PAD as u32;
+                        let px = event.position.0 - pad;
+                        let py = event.position.1 - pad;
                         if self.status_notifier_menu_open {
+                            let card_h = self.status_notifier_menu_height.saturating_sub(pad2);
                             let hit = status_notifier_popup::hit_item(
                                 &self.status_notifier_menu_entries,
-                                self.status_notifier_menu_height,
-                                event.position.0,
-                                event.position.1,
+                                card_h,
+                                px,
+                                py,
                             );
                             if let Some(item_id) = hit {
                                 if let Some(menu_state) = self.status_notifier_menu.as_ref() {
@@ -892,13 +904,8 @@ impl PointerHandler for MeridianShell {
                                 }
                                 Some(crate::wayland::ClickAction::CloseStatusNotifierMenu)
                             } else {
-                                let inside = popup_hit_test(
-                                    self.status_notifier_menu_width,
-                                    self.status_notifier_menu_height,
-                                    event.position.0,
-                                    event.position.1,
-                                )
-                                .is_some();
+                                let card_w = self.status_notifier_menu_width.saturating_sub(pad2);
+                                let inside = popup_hit_test(card_w, card_h, px, py).is_some();
                                 if inside {
                                     None
                                 } else {
@@ -906,12 +913,9 @@ impl PointerHandler for MeridianShell {
                                 }
                             }
                         } else if self.audio_popup_open {
-                            match audio_popup::popup_hit_test(
-                                self.audio_width,
-                                self.audio_height,
-                                event.position.0,
-                                event.position.1,
-                            ) {
+                            let card_w = self.audio_width.saturating_sub(pad2);
+                            let card_h = self.audio_height.saturating_sub(pad2);
+                            match audio_popup::popup_hit_test(card_w, card_h, px, py) {
                                 Some(audio_popup::AudioPopupHit::SettingsLink) => {
                                     Some(crate::wayland::ClickAction::OpenSoundSettings)
                                 }
@@ -919,12 +923,9 @@ impl PointerHandler for MeridianShell {
                                 None => Some(crate::wayland::ClickAction::ToggleAudioPopup),
                             }
                         } else {
-                            match crate::network_popup::popup_hit_test(
-                                self.network_width,
-                                self.network_height,
-                                event.position.0,
-                                event.position.1,
-                            ) {
+                            let card_w = self.network_width.saturating_sub(pad2);
+                            let card_h = self.network_height.saturating_sub(pad2);
+                            match crate::network_popup::popup_hit_test(card_w, card_h, px, py) {
                                 Some(crate::network_popup::NetworkPopupHit::SettingsLink) => {
                                     Some(crate::wayland::ClickAction::OpenNetworkSettings)
                                 }

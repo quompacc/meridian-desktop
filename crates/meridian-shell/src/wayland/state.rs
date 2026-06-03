@@ -1400,8 +1400,9 @@ impl MeridianShell {
 
         let entries = menu_state.menu.display_entries();
         let height = status_notifier_popup::menu_height(entries.len());
-        self.status_notifier_menu_width = status_notifier_popup::SNI_MENU_WIDTH;
-        self.status_notifier_menu_height = height;
+        self.status_notifier_menu_width =
+            crate::popup_surface_w(status_notifier_popup::SNI_MENU_WIDTH);
+        self.status_notifier_menu_height = crate::popup_surface_h(height);
         self.status_notifier_menu_entries = entries;
         self.status_notifier_menu = Some(menu_state);
         self.status_notifier_menu_open = true;
@@ -1481,13 +1482,15 @@ impl MeridianShell {
         self.thumbnail_layer
             .set_margin(0, 0, crate::SHELL_POPUP_BOTTOM_MARGIN, left_margin);
         self.thumbnail_layer.set_exclusive_zone(0);
-        self.thumbnail_layer
-            .set_size(popup_w, crate::THUMBNAIL_POPUP_HEIGHT);
+        self.thumbnail_layer.set_size(
+            crate::popup_surface_w(popup_w),
+            crate::popup_surface_h(crate::THUMBNAIL_POPUP_HEIGHT),
+        );
         self.thumbnail_layer.set_keyboard_interactivity(
             smithay_client_toolkit::shell::wlr_layer::KeyboardInteractivity::None,
         );
-        self.thumbnail_width = popup_w;
-        self.thumbnail_height = crate::THUMBNAIL_POPUP_HEIGHT;
+        self.thumbnail_width = crate::popup_surface_w(popup_w);
+        self.thumbnail_height = crate::popup_surface_h(crate::THUMBNAIL_POPUP_HEIGHT);
         self.thumbnail_dirty = true;
         self.draw_thumbnail_popup(qh, crate::wayland::RepaintReason::Pointer);
     }
@@ -1503,16 +1506,19 @@ impl MeridianShell {
             &self.thumbnail_cache,
             &self.thumbnail_popup_window_ids,
         );
-        if new_w != self.thumbnail_width {
+        let new_surface_w = crate::popup_surface_w(new_w);
+        if new_surface_w != self.thumbnail_width {
             let left_margin = self
                 .thumbnail_icon_center
                 .map(|c| (c - new_w as i32 / 2).max(0))
                 .unwrap_or(0);
             self.thumbnail_layer
                 .set_margin(0, 0, crate::SHELL_POPUP_BOTTOM_MARGIN, left_margin);
-            self.thumbnail_layer
-                .set_size(new_w, crate::THUMBNAIL_POPUP_HEIGHT);
-            self.thumbnail_width = new_w;
+            self.thumbnail_layer.set_size(
+                crate::popup_surface_w(new_w),
+                crate::popup_surface_h(crate::THUMBNAIL_POPUP_HEIGHT),
+            );
+            self.thumbnail_width = new_surface_w;
         }
         self.draw_thumbnail_popup(qh, crate::wayland::RepaintReason::Ipc);
     }
