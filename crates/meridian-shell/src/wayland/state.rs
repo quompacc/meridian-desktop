@@ -541,13 +541,19 @@ impl MeridianShell {
     }
 
     pub(crate) fn open_consent_modal(&mut self, request_id: String, app_id: String) {
-        // The layer surface was created and given an initial commit in init.rs,
-        // so consent_configured is set by the time we get here. The IPC redraw
-        // path in main::redraw_after_ipc picks up consent_open and draws.
         self.consent_request_id = Some(request_id);
         self.consent_app_id = app_id;
         self.consent_open = true;
         self.consent_hover = None;
+        // Re-assert the modal's geometry on every open: after the first close +
+        // re-open cycle sctk's pending set_size is gone, so without this the next
+        // commit attempts width=0 and wlr-layer-shell sends error 1, killing the
+        // surface for the rest of the session. The IPC redraw path picks up
+        // consent_open and draws on the next configure / tick.
+        self.consent_layer.set_size(
+            crate::screenshot_consent::MODAL_WIDTH as u32,
+            crate::screenshot_consent::MODAL_HEIGHT as u32,
+        );
     }
 
     pub(crate) fn respond_consent(&mut self, allowed: bool) {

@@ -448,11 +448,21 @@ impl LayerShellHandler for MeridianShell {
                 self.draw_thumbnail_popup(qh, RepaintReason::LayerConfigure);
             }
         } else if self.consent_layer == *layer {
+            let desired_w = crate::screenshot_consent::MODAL_WIDTH as u32;
+            let desired_h = crate::screenshot_consent::MODAL_HEIGHT as u32;
             tracing::debug!(
-                "consent configure: requested={}x{}",
+                "consent configure: requested={}x{} desired={}x{}",
                 configure.new_size.0,
-                configure.new_size.1
+                configure.new_size.1,
+                desired_w,
+                desired_h
             );
+            // Re-assert the modal's intended size: a layer surface with anchor=None
+            // is centered by the compositor, but it MUST have nonzero width AND
+            // height on every commit, otherwise wlr-layer-shell error 1 fires.
+            // sctk loses our init-time set_size after the first unmap, so we have
+            // to re-set it on every configure cycle (mirrors the desktop_menu path).
+            self.consent_layer.set_size(desired_w, desired_h);
             self.consent_configured = true;
             if self.consent_open {
                 self.draw_consent_modal(qh, RepaintReason::LayerConfigure);
