@@ -420,6 +420,9 @@ impl MeridianShell {
         self.desktop_menu_buffer = None;
         self.desktop_menu_layer
             .set_anchor(Anchor::TOP | Anchor::LEFT);
+        self.desktop_menu_layer.set_keyboard_interactivity(
+            smithay_client_toolkit::shell::wlr_layer::KeyboardInteractivity::Exclusive,
+        );
         self.desktop_menu_layer
             .set_size(self.desktop_menu_width, self.desktop_menu_height);
     }

@@ -530,6 +530,7 @@ impl MeridianShell {
             submenu_hover_idx: None,
         });
         self.desktop_menu_open = true;
+        self.desktop_menu_opened_at = Some(std::time::Instant::now());
         self.desktop_menu_width = crate::popup_surface_w(crate::context_menu::MENU_WIDTH as u32);
         self.desktop_menu_height = crate::popup_surface_h(menu_height.max(1));
         self.desktop_menu_buffer = None;
@@ -718,8 +719,15 @@ impl MeridianShell {
         if self.desktop_menu_open || self.desktop_context_menu.is_some() {
             self.desktop_context_menu = None;
             self.desktop_menu_open = false;
+            self.desktop_menu_opened_at = None;
             self.unmap_desktop_menu(CommitReason::UnknownOther);
         }
+    }
+
+    fn desktop_menu_in_open_debounce(&self) -> bool {
+        self.desktop_menu_opened_at
+            .map(|t| t.elapsed() < std::time::Duration::from_millis(150))
+            .unwrap_or(false)
     }
 
     fn apply_ipc_event(&mut self, event: ShellEvent) {
@@ -844,12 +852,16 @@ impl MeridianShell {
                 self.update_focused_title();
             }
             ShellEvent::WindowFocused { id } => {
-                self.close_desktop_context_menu_from_ipc();
+                if !self.desktop_menu_in_open_debounce() {
+                    self.close_desktop_context_menu_from_ipc();
+                }
                 self.focused_window_id = Some(id);
                 self.update_focused_title();
             }
             ShellEvent::WindowFocusCleared => {
-                self.close_desktop_context_menu_from_ipc();
+                if !self.desktop_menu_in_open_debounce() {
+                    self.close_desktop_context_menu_from_ipc();
+                }
                 self.focused_window_id = None;
                 self.update_focused_title();
             }

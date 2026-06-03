@@ -182,7 +182,7 @@ pub(crate) fn initialize(
         crate::popup_surface_h(1),
     );
     desktop_menu_layer.set_exclusive_zone(0);
-    desktop_menu_layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+    desktop_menu_layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
     info!("Desktop menu surface created");
 
     // Screenshot consent modal: centered overlay, grabs keyboard while shown so
@@ -471,6 +471,7 @@ pub(crate) fn initialize(
         thumbnail_configured: false,
         thumbnail_popup_open: false,
         desktop_menu_open: false,
+        desktop_menu_opened_at: None,
         consent_layer,
         consent_configured: false,
         consent_buffer: None,

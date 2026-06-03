@@ -650,9 +650,15 @@ impl MeridianShell {
                 }
             }
             DesktopContextMenuAction::FileManager => {
+                let (program, args) = crate::default_apps::pick_file_manager();
+                tracing::info!(
+                    "desktop menu: launching file manager {} {:?}",
+                    program,
+                    args
+                );
                 let command = meridian_ipc::ShellCommand::LaunchApp {
-                    program: "nautilus".to_string(),
-                    args: Vec::new(),
+                    program,
+                    args,
                     terminal: false,
                 };
                 if !self.ipc.send(&command) {

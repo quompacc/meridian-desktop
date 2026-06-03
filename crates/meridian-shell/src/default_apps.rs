@@ -320,6 +320,22 @@ pub fn snapshot_current_defaults() -> HashMap<DefaultAppCategory, String> {
     out
 }
 
+/// Pick a file-manager command line for `inode/directory`. Probes a
+/// curated list of known managers in `/usr/bin`; falls back to `gio open`
+/// (which honours mimeapps.list via GIO). Returns `(program, args)` ready
+/// for `ShellCommand::LaunchApp`; the path argument is the user's home
+/// directory.
+pub fn pick_file_manager() -> (String, Vec<String>) {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
+    for fm in ["dolphin", "nautilus", "thunar", "pcmanfm", "nemo", "caja"] {
+        let path = std::path::PathBuf::from("/usr/bin").join(fm);
+        if path.exists() {
+            return (fm.to_string(), vec![home]);
+        }
+    }
+    ("gio".to_string(), vec!["open".to_string(), home])
+}
+
 /// Run `xdg-mime query default <mime>` and return the desktop-id (e.g.
 /// `firefox.desktop`) or `None` if nothing is currently registered.
 pub fn query_default(mime: &str) -> Option<String> {

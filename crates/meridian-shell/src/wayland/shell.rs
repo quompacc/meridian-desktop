@@ -246,6 +246,7 @@ pub(crate) struct MeridianShell {
     pub(crate) thumbnail_configured: bool,
     pub(crate) thumbnail_popup_open: bool,
     pub(crate) desktop_menu_open: bool,
+    pub(crate) desktop_menu_opened_at: Option<std::time::Instant>,
     // Screenshot consent modal (SHOT-2b).
     pub(crate) consent_layer: LayerSurface,
     pub(crate) consent_configured: bool,

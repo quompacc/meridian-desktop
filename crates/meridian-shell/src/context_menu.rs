@@ -223,10 +223,21 @@ pub(crate) fn desktop_hit_item_local(px: f64, py: f64) -> Option<usize> {
     desktop_hit_item(&state, px, py)
 }
 
-/// True when `px` falls inside the settings flyout column (surface-local coords).
+/// True when `px` falls inside the settings flyout column (surface-local
+/// coords) — this is the click hit-test (gap excluded; clicks in the gap
+/// must not trigger flyout items).
 pub(crate) fn is_in_submenu_area(px: f64) -> bool {
     let lx = px as i32;
     (MENU_WIDTH + SUBMENU_GAP..MENU_WIDTH + SUBMENU_GAP + SUBMENU_WIDTH).contains(&lx)
+}
+
+/// True while the cursor is anywhere right of the main menu and not past
+/// the flyout — including the small visual gap between them. Used by the
+/// hover state so a cursor traversing main-menu → gap → flyout doesn't
+/// momentarily lose the submenu hover (closing it + shrinking the surface).
+pub(crate) fn is_in_submenu_hover_region(px: f64) -> bool {
+    let lx = px as i32;
+    (MENU_WIDTH..MENU_WIDTH + SUBMENU_GAP + SUBMENU_WIDTH).contains(&lx)
 }
 
 /// Returns the 0-based flyout item index under surface-local `(px, py)`, or `None`.

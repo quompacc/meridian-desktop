@@ -119,10 +119,12 @@ impl PointerHandler for MeridianShell {
                 if let PointerEventKind::Motion { .. } = event.kind {
                     let pad = crate::POPUP_SHADOW_PAD as f64;
                     let (px, py) = (event.position.0 - pad, event.position.1 - pad);
+                    // Wider hover region (main menu → gap → flyout) keeps
+                    // submenu_open sticky across the visual gap. Narrow
+                    // region is still used for the actual flyout click hit.
+                    let in_hover_region = context_menu::is_in_submenu_hover_region(px);
                     let in_submenu = context_menu::is_in_submenu_area(px);
-                    // When cursor is in the flyout column keep the Settings item
-                    // highlighted in the main menu; otherwise normal hit-test.
-                    let new_hover = if in_submenu {
+                    let new_hover = if in_hover_region {
                         Some(context_menu::SETTINGS_ITEM_IDX)
                     } else {
                         context_menu::desktop_hit_item_local(px, py)
