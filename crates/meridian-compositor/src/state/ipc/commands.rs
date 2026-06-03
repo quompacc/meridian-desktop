@@ -62,6 +62,21 @@ impl MeridianState {
                     self.ipc
                         .broadcast(&ShellEvent::ScreenshotConsentRequest { request_id, app_id });
                 }
+                super::screenshot::ScreenshotBridgeOutcome::AwaitRegionPick(request) => {
+                    // Hold the request and ask the shell to show the region
+                    // picker; the picked region (or cancel) returns as a
+                    // ScreenshotRegionResponse shell command.
+                    let app_id = request.metadata.requester.clone().unwrap_or_default();
+                    tracing::info!(
+                        "screenshot bridge needs region pick: request_id={} app_id={:?}",
+                        request_id,
+                        app_id
+                    );
+                    self.pending_screenshot_region
+                        .push(crate::state::PendingScreenshotRequest { client_id, request });
+                    self.ipc
+                        .broadcast(&ShellEvent::ScreenshotRegionRequest { request_id, app_id });
+                }
                 super::screenshot::ScreenshotBridgeOutcome::Respond(result) => {
                     tracing::info!(
                         "screenshot bridge rejected: request_id={} result={:?}",
@@ -160,12 +175,56 @@ impl MeridianState {
                 self.resolve_screenshot_consent(&request_id, allowed);
             }
             ShellCommand::ScreenshotRegionResponse { request_id, region } => {
-                // Region-pick path is wired in the next slice; until then this
-                // command is never produced by the shell.
-                tracing::warn!(
-                    "ScreenshotRegionResponse received before the region-pick path is wired: request_id={} region={:?}",
+                self.resolve_screenshot_region(&request_id, region);
+            }
+        }
+    }
+
+    /// Apply the user's region pick to a held screenshot request: `Some(region)`
+    /// stamps the region onto the request and moves it to the capture queue;
+    /// `None` means the user cancelled (Esc) and we reply permission-denied.
+    /// Unknown ids are logged but otherwise ignored.
+    fn resolve_screenshot_region(
+        &mut self,
+        request_id: &str,
+        region: Option<meridian_ipc::ScreenshotRegion>,
+    ) {
+        let Some(pos) = self
+            .pending_screenshot_region
+            .iter()
+            .position(|p| p.request.request_id == request_id)
+        else {
+            tracing::warn!(
+                "screenshot region response for unknown request_id={}",
+                request_id
+            );
+            return;
+        };
+        let mut pending = self.pending_screenshot_region.remove(pos);
+        match region {
+            Some(region) => {
+                tracing::info!(
+                    "screenshot region picked: request_id={} region={:?}",
                     request_id,
                     region
+                );
+                pending.request.region = Some(region);
+                self.pending_screenshot_requests.push(pending);
+                if let Some(ref mut drm) = self.drm_backend {
+                    for out in drm.outputs.iter_mut() {
+                        out.needs_repaint = true;
+                    }
+                }
+            }
+            None => {
+                tracing::info!(
+                    "screenshot region pick cancelled: request_id={}",
+                    request_id
+                );
+                self.ipc.send_screenshot_bridge_response(
+                    pending.client_id,
+                    pending.request.request_id,
+                    super::screenshot::permission_denied_result(),
                 );
             }
         }

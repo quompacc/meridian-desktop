@@ -415,6 +415,11 @@ pub struct MeridianState {
     /// request_id carried in each entry). Moved to `pending_screenshot_requests`
     /// on allow, or answered with an error on deny.
     pub pending_screenshot_consent: Vec<PendingScreenshotRequest>,
+    /// Pending portal requests waiting for the shell's interactive region
+    /// picker. Resolved by `ShellCommand::ScreenshotRegionResponse` — `None`
+    /// region replies permission-denied; `Some(region)` applies the region
+    /// to the request and moves it into `pending_screenshot_requests`.
+    pub pending_screenshot_region: Vec<PendingScreenshotRequest>,
     pub last_activity: Instant,
     pub idle_blanked: bool,
     pub idle_timeout: Option<Duration>,

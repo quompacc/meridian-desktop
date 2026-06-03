@@ -787,6 +787,7 @@ impl MeridianState {
             pending_thumbnail_requests: Vec::new(),
             pending_screenshot_requests: Vec::new(),
             pending_screenshot_consent: Vec::new(),
+            pending_screenshot_region: Vec::new(),
             last_activity: Instant::now(),
             idle_blanked: false,
             idle_timeout,

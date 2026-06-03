@@ -1048,7 +1048,46 @@ fn process_screenshot_requests(
 
     for req in requests {
         let request_id = req.request.request_id.clone();
-        let result = match encode_screenshot_png(&full_pixels, out_size.0, out_size.1, &request_id)
+        // Per-request region crop: if the request carries a region, crop the
+        // full-output framebuffer to it and encode at the cropped size. The
+        // region was validated upstream (width/height > 0); clamping below
+        // is a defence-in-depth against a bad geometry slipping through.
+        let (encoded_pixels, encoded_w, encoded_h);
+        let cropped_storage: Vec<u8>;
+        if let Some(region) = req.request.region {
+            let rx = region.x.max(0) as u32;
+            let ry = region.y.max(0) as u32;
+            let rw = region.width.min(out_size.0.saturating_sub(rx));
+            let rh = region.height.min(out_size.1.saturating_sub(ry));
+            if rw == 0 || rh == 0 {
+                tracing::warn!(
+                    "screenshot: region {:?} clamps to empty against output {}x{} for {}",
+                    region,
+                    out_size.0,
+                    out_size.1,
+                    request_id
+                );
+                state.ipc.send_screenshot_bridge_response(
+                    req.client_id,
+                    request_id,
+                    ScreenshotBridgeResult::Error {
+                        error: ScreenshotBridgeError::InvalidRequest(
+                            "region falls outside the output".to_string(),
+                        ),
+                    },
+                );
+                continue;
+            }
+            cropped_storage = crop_xrgb(&full_pixels, out_size.0, rx, ry, rw, rh);
+            encoded_pixels = cropped_storage.as_slice();
+            encoded_w = rw;
+            encoded_h = rh;
+        } else {
+            encoded_pixels = full_pixels.as_slice();
+            encoded_w = out_size.0;
+            encoded_h = out_size.1;
+        }
+        let result = match encode_screenshot_png(encoded_pixels, encoded_w, encoded_h, &request_id)
         {
             Ok(path) => ScreenshotBridgeResult::Success {
                 response: ScreenshotBridgeResponse {

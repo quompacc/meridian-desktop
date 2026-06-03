@@ -24,6 +24,11 @@ pub(crate) enum ScreenshotPolicyDecision {
     /// The request must be confirmed by the user before capture; the caller
     /// shows a consent modal and decides based on the answer.
     NeedsConsent,
+    /// The request asked for an interactive region pick (`interactive=true`).
+    /// The shell shows a fullscreen drag-rectangle picker and reports back
+    /// the selected region (or cancellation) via
+    /// `ShellCommand::ScreenshotRegionResponse`.
+    NeedsRegionPick,
     Deny,
     Unsupported(String),
     Invalid(String),
@@ -88,11 +93,18 @@ impl ScreenshotPolicy {
         }
 
         // Portal-routed requests (a normal app asking via xdg-desktop-portal)
-        // are neither blindly allowed nor denied: they require explicit user
-        // consent. The compositor shows a modal and captures only if the user
-        // agrees. This is the trustworthy path — consent is mediated by the
-        // compositor/shell, not by any self-declared request field.
+        // are neither blindly allowed nor denied: the shell mediates each one.
+        // `interactive=true` (from the portal `options` dict) asks for an
+        // in-shell area/region picker; everything else goes through the
+        // consent modal. Both paths are gated by the user — consent is
+        // mediated by the compositor/shell, not any self-declared field.
         if request.metadata.origin == ScreenshotRequestOrigin::PortalDbus {
+            if request.metadata.interactive {
+                tracing::info!(
+                    "screenshot policy decision: needs-region-pick (portal interactive)"
+                );
+                return ScreenshotPolicyDecision::NeedsRegionPick;
+            }
             tracing::info!("screenshot policy decision: needs-consent (portal origin)");
             return ScreenshotPolicyDecision::NeedsConsent;
         }
@@ -207,6 +219,16 @@ mod tests {
             decision,
             ScreenshotPolicyDecision::Invalid("request_id must not be empty".to_string())
         );
+    }
+
+    #[test]
+    fn portal_interactive_request_needs_region_pick() {
+        let _guard = screenshot_policy_test_lock().lock().expect("test lock");
+        let mut request = valid_request();
+        request.metadata.interactive = true;
+        let decision =
+            ScreenshotPolicy::evaluate(&request, ScreenshotPolicyContext { client_id: 7 });
+        assert_eq!(decision, ScreenshotPolicyDecision::NeedsRegionPick);
     }
 
     #[test]

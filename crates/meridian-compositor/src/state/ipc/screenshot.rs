@@ -14,6 +14,10 @@ pub(crate) enum ScreenshotBridgeOutcome {
     /// Needs user consent — hold the request, show a modal, and decide based on
     /// the answer. No response is sent yet.
     AwaitConsent(ScreenshotBridgeRequest),
+    /// Needs the user to pick a region — hold the request, show a fullscreen
+    /// drag-rectangle picker, and apply the picked region (or cancel) when the
+    /// `ScreenshotRegionResponse` comes back. No response is sent yet.
+    AwaitRegionPick(ScreenshotBridgeRequest),
     /// Rejected — send this error result back to the requester immediately.
     Respond(ScreenshotBridgeResult),
 }
@@ -26,6 +30,9 @@ pub(crate) fn handle_screenshot_bridge_request(
     match decision {
         ScreenshotPolicyDecision::Allow => ScreenshotBridgeOutcome::Queue(request),
         ScreenshotPolicyDecision::NeedsConsent => ScreenshotBridgeOutcome::AwaitConsent(request),
+        ScreenshotPolicyDecision::NeedsRegionPick => {
+            ScreenshotBridgeOutcome::AwaitRegionPick(request)
+        }
         ScreenshotPolicyDecision::Deny => {
             ScreenshotBridgeOutcome::Respond(ScreenshotBridgeResult::Error {
                 error: ScreenshotBridgeError::PermissionDenied(
@@ -76,11 +83,18 @@ mod tests {
             ScreenshotBridgeOutcome::AwaitConsent(_) => {
                 panic!("expected Respond, got AwaitConsent")
             }
+            ScreenshotBridgeOutcome::AwaitRegionPick(_) => {
+                panic!("expected Respond, got AwaitRegionPick")
+            }
         }
     }
 
     fn is_await_consent(outcome: &ScreenshotBridgeOutcome) -> bool {
         matches!(outcome, ScreenshotBridgeOutcome::AwaitConsent(_))
+    }
+
+    fn is_await_region_pick(outcome: &ScreenshotBridgeOutcome) -> bool {
+        matches!(outcome, ScreenshotBridgeOutcome::AwaitRegionPick(_))
     }
 
     #[test]
@@ -163,6 +177,29 @@ mod tests {
         // user consent (no interactive flag yet — the region-pick path is
         // wired in a follow-on slice).
         assert!(is_await_consent(&handle_screenshot_bridge_request(
+            request, 7
+        )));
+    }
+
+    #[test]
+    fn portal_interactive_request_awaits_region_pick() {
+        let _guard = screenshot_policy_test_lock().lock().expect("test lock");
+        let request = ScreenshotBridgeRequest {
+            request_id: "req-bridge-region".to_string(),
+            kind: ScreenshotKind::FullOutput,
+            output: Some("eDP-1".to_string()),
+            include_cursor: false,
+            region: None,
+            metadata: ScreenshotRequestMetadata {
+                requester: Some("org.example.App".to_string()),
+                origin: ScreenshotRequestOrigin::PortalDbus,
+                request_marker: Some(9),
+                identity_trusted: false,
+                interactive: true,
+            },
+        };
+
+        assert!(is_await_region_pick(&handle_screenshot_bridge_request(
             request, 7
         )));
     }
