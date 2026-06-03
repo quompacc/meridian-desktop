@@ -62,7 +62,8 @@ impl MeridianShell {
             | WidgetAction::SetOutputMode { .. }
             | WidgetAction::DefaultAppsAutoSet
             | WidgetAction::DefaultAppsTogglePicker(_)
-            | WidgetAction::DefaultAppsPick { .. } => self.dispatch_settings_action(qh, action),
+            | WidgetAction::DefaultAppsPick { .. }
+            | WidgetAction::DefaultAppsClosePicker => self.dispatch_settings_action(qh, action),
             WidgetAction::PowerOff
             | WidgetAction::PowerRestart
             | WidgetAction::PowerSleep
@@ -418,6 +419,10 @@ impl MeridianShell {
                 // re-renders; a follow-up tick refresh will catch any
                 // outstanding ones.
                 self.refresh_default_apps_snapshot();
+                self.default_apps_picker_open = None;
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::DefaultAppsClosePicker => {
                 self.default_apps_picker_open = None;
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }

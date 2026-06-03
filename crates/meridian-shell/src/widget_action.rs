@@ -98,6 +98,8 @@ pub(crate) enum WidgetAction {
         cat_idx: usize,
         app_idx: usize,
     },
+    /// Close the picker and return to the nine-category overview.
+    DefaultAppsClosePicker,
 }
 
 const DEFAULT_APPS_AUTO_ID: &str = "default-apps-auto";
