@@ -1745,8 +1745,8 @@ const NETWORK_PROFILE_ROW_H: i32 = 56;
 /// hover/press, mirroring `SoundDeviceRow`.
 // ─── DefaultApps page widgets ────────────────────────────────────────────────
 
-const DEFAULT_APP_ROW_H: i32 = 60;
-const DEFAULT_APP_CANDIDATE_ROW_H: i32 = 44;
+const DEFAULT_APP_ROW_H: i32 = 42;
+const DEFAULT_APP_CANDIDATE_ROW_H: i32 = 32;
 const DEFAULT_APP_ROW_CORNER: i32 = 10;
 const DEFAULT_APP_MAX_CATS: usize = 12;
 const DEFAULT_APP_MAX_APPS_PER_CAT: usize = 24;
@@ -1852,10 +1852,10 @@ impl Widget for DefaultAppCategoryRow {
         };
         paint_text(
             canvas,
-            &fit_text(current, 30),
+            &fit_text(current, 28),
             area.x + 18,
-            area.y + 44,
-            11.5,
+            area.y + 33,
+            10.5,
             current_color,
         );
         let arrow = if self.is_expanded { "▴" } else { "▾" };
@@ -1863,7 +1863,7 @@ impl Widget for DefaultAppCategoryRow {
             canvas,
             arrow,
             area.x + area.width - 26,
-            area.y + 36,
+            area.y + 26,
             14.0,
             theme.palette.text_dim,
         );
@@ -1909,8 +1909,8 @@ impl Widget for DefaultAppCandidateRow {
             canvas,
             &fit_text(&self.name, 44),
             area.x + 32,
-            area.y + 28,
-            12.5,
+            area.y + 21,
+            12.0,
             theme.palette.text,
         );
         if self.is_current {
@@ -1918,7 +1918,7 @@ impl Widget for DefaultAppCandidateRow {
                 canvas,
                 "AKTUELL",
                 area.x + area.width - 78,
-                area.y + 28,
+                area.y + 21,
                 10.5,
                 self.accent,
             );
