@@ -16,6 +16,7 @@ mod bluetooth;
 mod buffer;
 mod context_menu;
 mod cursor;
+mod default_apps;
 mod draw;
 mod icons;
 mod launcher;

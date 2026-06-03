@@ -34,6 +34,7 @@ pub enum SettingsCategory {
     Display,
     Wallpaper,
     PinnedApps,
+    DefaultApps,
     SystemOverview,
     Network,
     Bluetooth,
@@ -50,6 +51,7 @@ impl SettingsCategory {
         SettingsCategory::Cursor,
         SettingsCategory::Wallpaper,
         SettingsCategory::PinnedApps,
+        SettingsCategory::DefaultApps,
     ];
 
     pub const SYSTEM: &'static [SettingsCategory] = &[
@@ -71,6 +73,7 @@ impl SettingsCategory {
             SettingsCategory::Display => "Anzeige",
             SettingsCategory::Wallpaper => "Hintergrund",
             SettingsCategory::PinnedApps => "Angeheftet",
+            SettingsCategory::DefaultApps => "Standard-Apps",
             SettingsCategory::SystemOverview => "Übersicht",
             SettingsCategory::Network => "Netzwerk",
             SettingsCategory::Bluetooth => "Bluetooth",
@@ -89,6 +92,7 @@ impl SettingsCategory {
             SettingsCategory::Display => "settings-cat-display",
             SettingsCategory::Wallpaper => "settings-cat-wallpaper",
             SettingsCategory::PinnedApps => "settings-cat-pinned",
+            SettingsCategory::DefaultApps => "settings-cat-default-apps",
             SettingsCategory::SystemOverview => "settings-cat-system-overview",
             SettingsCategory::Network => "settings-cat-network",
             SettingsCategory::Bluetooth => "settings-cat-bluetooth",
@@ -134,6 +138,28 @@ impl SettingsCategory {
                 "dock",
                 "verknüpfung",
                 "apps",
+            ],
+            SettingsCategory::DefaultApps => &[
+                "standard",
+                "default",
+                "öffnen",
+                "öffnen mit",
+                "mime",
+                "dateityp",
+                "browser",
+                "webbrowser",
+                "e-mail",
+                "mail",
+                "texteditor",
+                "editor",
+                "bilder",
+                "video",
+                "audio",
+                "musik",
+                "pdf",
+                "archiv",
+                "dateimanager",
+                "explorer",
             ],
             SettingsCategory::SystemOverview => &[
                 "übersicht",
@@ -3171,6 +3197,15 @@ pub(crate) fn build_settings_widget_tree(
                     Box::new(Container::column(4, vec![add_btn, list]))
                 }
             }
+        }
+        SettingsCategory::DefaultApps => {
+            // Placeholder body. Slice 2 wires the actual category rows,
+            // dropdowns and the "Sinnvolle Defaults setzen" button.
+            Box::new(SystemInfoRow {
+                label: "Standard-Apps".into(),
+                value: "Wird im nächsten Slice gebaut".into(),
+                row_width: content_w as i32,
+            }) as Box<dyn Widget>
         }
         SettingsCategory::SystemOverview => {
             let row_w = content_w as i32;
