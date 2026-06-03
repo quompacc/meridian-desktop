@@ -1740,9 +1740,9 @@ impl Widget for SystemInfoRow {
 
 const NETWORK_PROFILE_ROW_H: i32 = 56;
 
-/// A clickable saved-network row. The active profile shows a "VERBUNDEN" badge
-/// and is inert (`id()` -> None); others are clickable to activate and react to
-/// hover/press, mirroring `SoundDeviceRow`.
+// A clickable saved-network row. The active profile shows a "VERBUNDEN" badge
+// and is inert (`id()` -> None); others are clickable to activate and react to
+// hover/press, mirroring `SoundDeviceRow`.
 // ─── DefaultApps page widgets ────────────────────────────────────────────────
 
 const DEFAULT_APP_ROW_H: i32 = 42;
@@ -3462,13 +3462,7 @@ pub(crate) fn build_settings_widget_tree(
                     width: row_w,
                     pad_top: 8,
                 }));
-                if default_apps_index.is_none() {
-                    rows.push(Box::new(SettingsPlaceholder {
-                        width: row_w,
-                        text: "Lade installierte Anwendungen ...",
-                    }));
-                } else {
-                    let index = default_apps_index.unwrap();
+                if let Some(index) = default_apps_index {
                     for (cat_idx, cat) in crate::default_apps::DefaultAppCategory::ALL
                         .iter()
                         .enumerate()
@@ -3488,6 +3482,11 @@ pub(crate) fn build_settings_widget_tree(
                             row_width: row_w,
                         }));
                     }
+                } else {
+                    rows.push(Box::new(SettingsPlaceholder {
+                        width: row_w,
+                        text: "Lade installierte Anwendungen ...",
+                    }));
                 }
             }
             Box::new(Container::top_viewport(

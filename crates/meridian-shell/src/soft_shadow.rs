@@ -16,6 +16,7 @@
 /// which scales corner-pixel RGB by coverage — that's the premultiplied form.
 /// Doing straight-alpha here would multiply by alpha again and darken the
 /// AA ring at every rounded corner.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn composite_card_onto_surface(
     dst: &mut [u8],
     dst_w: usize,

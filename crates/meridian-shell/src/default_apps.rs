@@ -284,10 +284,6 @@ impl MimeAppIndex {
         Self { apps, by_mime }
     }
 
-    pub fn apps(&self) -> &[MimeAppCandidate] {
-        &self.apps
-    }
-
     /// All candidate apps that advertise `mime` in their `MimeType=` line,
     /// sorted by display name (alphabetical, case-insensitive).
     pub fn apps_for_mime(&self, mime: &str) -> Vec<&MimeAppCandidate> {
@@ -296,7 +292,7 @@ impl MimeAppIndex {
             .get(mime)
             .map(|idxs| idxs.iter().filter_map(|i| self.apps.get(*i)).collect())
             .unwrap_or_default();
-        out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        out.sort_by_key(|a| a.name.to_lowercase());
         out
     }
 

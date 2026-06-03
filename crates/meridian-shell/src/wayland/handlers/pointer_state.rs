@@ -52,6 +52,70 @@ pub(super) fn detect_click(
     }
 }
 
+impl MeridianShell {
+    /// Drive the region-picker drag state machine. Press starts a new
+    /// selection (clears any pending one). Motion updates the live drag
+    /// end. Release freezes the drag into `pending` (or clears the drag
+    /// without a pending if the rectangle was degenerate).
+    pub(super) fn handle_region_picker_pointer(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        event: &PointerEvent,
+    ) {
+        let (px, py) = event.position;
+        let pi = (px.round() as i32, py.round() as i32);
+        let w = self.region_picker_width;
+        let h = self.region_picker_height;
+        match event.kind {
+            PointerEventKind::Press { .. } => {
+                self.region_picker_drag_start = Some(pi);
+                self.region_picker_drag_current = Some(pi);
+                self.region_picker_pending = None;
+                self.draw_region_picker(qh, RepaintReason::Pointer);
+            }
+            PointerEventKind::Motion { .. } if self.region_picker_drag_start.is_some() => {
+                self.region_picker_drag_current = Some(pi);
+                self.draw_region_picker(qh, RepaintReason::Pointer);
+            }
+            PointerEventKind::Release { .. } => {
+                if let Some(start) = self.region_picker_drag_start {
+                    let rect = crate::region_picker::rect_from_drag(start, pi, w, h);
+                    self.region_picker_pending = rect;
+                    self.region_picker_drag_start = None;
+                    self.region_picker_drag_current = None;
+                    self.draw_region_picker(qh, RepaintReason::Pointer);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Handle pointer events on the screenshot consent modal: hover highlights
+    /// a button; a left-press inside Allow/Deny answers and closes the modal.
+    pub(super) fn handle_consent_pointer(&mut self, qh: &QueueHandle<Self>, event: &PointerEvent) {
+        let (px, py) = event.position;
+        match event.kind {
+            PointerEventKind::Motion { .. } => {
+                let hover = crate::screenshot_consent::hit_button(px, py);
+                if hover != self.consent_hover {
+                    self.consent_hover = hover;
+                    self.draw_consent_modal(qh, RepaintReason::Pointer);
+                }
+            }
+            PointerEventKind::Press { .. } => match crate::screenshot_consent::hit_button(px, py) {
+                Some(crate::screenshot_consent::ConsentButton::Allow) => {
+                    self.respond_consent(true);
+                }
+                Some(crate::screenshot_consent::ConsentButton::Deny) => {
+                    self.respond_consent(false);
+                }
+                None => {}
+            },
+            _ => {}
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use meridian_ui::{Event, PointerButton, PointerPosition, WidgetPath, WidgetState};
@@ -239,71 +303,5 @@ mod tests {
         let hit = Some(path_a());
         let result = detect_click(prev.as_ref(), &move_ev, hit.as_ref());
         assert_eq!(result, None);
-    }
-}
-
-impl MeridianShell {
-    /// Drive the region-picker drag state machine. Press starts a new
-    /// selection (clears any pending one). Motion updates the live drag
-    /// end. Release freezes the drag into `pending` (or clears the drag
-    /// without a pending if the rectangle was degenerate).
-    pub(super) fn handle_region_picker_pointer(
-        &mut self,
-        qh: &QueueHandle<Self>,
-        event: &PointerEvent,
-    ) {
-        let (px, py) = event.position;
-        let pi = (px.round() as i32, py.round() as i32);
-        let w = self.region_picker_width;
-        let h = self.region_picker_height;
-        match event.kind {
-            PointerEventKind::Press { .. } => {
-                self.region_picker_drag_start = Some(pi);
-                self.region_picker_drag_current = Some(pi);
-                self.region_picker_pending = None;
-                self.draw_region_picker(qh, RepaintReason::Pointer);
-            }
-            PointerEventKind::Motion { .. } => {
-                if self.region_picker_drag_start.is_some() {
-                    self.region_picker_drag_current = Some(pi);
-                    self.draw_region_picker(qh, RepaintReason::Pointer);
-                }
-            }
-            PointerEventKind::Release { .. } => {
-                if let Some(start) = self.region_picker_drag_start {
-                    let rect = crate::region_picker::rect_from_drag(start, pi, w, h);
-                    self.region_picker_pending = rect;
-                    self.region_picker_drag_start = None;
-                    self.region_picker_drag_current = None;
-                    self.draw_region_picker(qh, RepaintReason::Pointer);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    /// Handle pointer events on the screenshot consent modal: hover highlights
-    /// a button; a left-press inside Allow/Deny answers and closes the modal.
-    pub(super) fn handle_consent_pointer(&mut self, qh: &QueueHandle<Self>, event: &PointerEvent) {
-        let (px, py) = event.position;
-        match event.kind {
-            PointerEventKind::Motion { .. } => {
-                let hover = crate::screenshot_consent::hit_button(px, py);
-                if hover != self.consent_hover {
-                    self.consent_hover = hover;
-                    self.draw_consent_modal(qh, RepaintReason::Pointer);
-                }
-            }
-            PointerEventKind::Press { .. } => match crate::screenshot_consent::hit_button(px, py) {
-                Some(crate::screenshot_consent::ConsentButton::Allow) => {
-                    self.respond_consent(true);
-                }
-                Some(crate::screenshot_consent::ConsentButton::Deny) => {
-                    self.respond_consent(false);
-                }
-                None => {}
-            },
-            _ => {}
-        }
     }
 }
