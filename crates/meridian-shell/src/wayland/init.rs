@@ -218,7 +218,10 @@ pub(crate) fn initialize(
             | smithay_client_toolkit::shell::wlr_layer::Anchor::LEFT
             | smithay_client_toolkit::shell::wlr_layer::Anchor::RIGHT,
     );
-    region_picker_layer.set_exclusive_zone(0);
+    // -1 = ignore every other layer's exclusive zone (panel etc.); the
+    // picker is a true full-output overlay so the user can drag-select
+    // across the panel area too.
+    region_picker_layer.set_exclusive_zone(-1);
     region_picker_layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
     info!("Screenshot region picker surface created");
 

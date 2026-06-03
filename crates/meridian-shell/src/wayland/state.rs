@@ -589,7 +589,7 @@ impl MeridianShell {
     /// picked region drives a shell-side `ext_image_copy_capture` and the
     /// cropped PNG is saved to ~/Pictures/Screenshots/. Used by the panel
     /// screenshot button.
-    pub(crate) fn open_region_picker_local(&mut self) {
+    pub(crate) fn open_region_picker_local(&mut self, qh: &QueueHandle<Self>) {
         self.region_picker_request_id = None;
         self.region_picker_app_id.clear();
         self.region_picker_local = true;
@@ -598,6 +598,10 @@ impl MeridianShell {
         self.region_picker_drag_current = None;
         self.region_picker_pending = None;
         self.reassert_region_picker_layer_state();
+        // Draw immediately so the panel-button click produces a visible
+        // overlay on the first attempt — without this the picker only
+        // appears after the next configure round (= second click).
+        self.draw_region_picker(qh, crate::wayland::RepaintReason::Pointer);
     }
 
     /// Re-set the picker layer surface's anchor + (zero) size so a commit
@@ -608,7 +612,7 @@ impl MeridianShell {
         use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity};
         self.region_picker_layer
             .set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
-        self.region_picker_layer.set_exclusive_zone(0);
+        self.region_picker_layer.set_exclusive_zone(-1);
         self.region_picker_layer
             .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
         self.region_picker_layer.set_size(0, 0);
@@ -1815,7 +1819,7 @@ impl MeridianShell {
                 if self.screenshot_capture.is_some() || self.region_picker_open {
                     return;
                 }
-                self.open_region_picker_local();
+                self.open_region_picker_local(qh);
             }
             ClickAction::ToggleSettings => {
                 self.launcher_settings_open = true;

@@ -489,6 +489,7 @@ impl LayerShellHandler for MeridianShell {
             use smithay_client_toolkit::shell::wlr_layer::Anchor;
             self.region_picker_layer
                 .set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+            self.region_picker_layer.set_exclusive_zone(-1);
             self.region_picker_layer.set_size(0, 0);
             let w = configure.new_size.0.max(1);
             let h = configure.new_size.1.max(1);
