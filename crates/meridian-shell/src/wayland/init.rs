@@ -177,7 +177,10 @@ pub(crate) fn initialize(
         None,
     );
     desktop_menu_layer.set_anchor(Anchor::TOP | Anchor::LEFT);
-    desktop_menu_layer.set_size(crate::context_menu::MENU_WIDTH as u32, 1);
+    desktop_menu_layer.set_size(
+        crate::popup_surface_w(crate::context_menu::MENU_WIDTH as u32),
+        crate::popup_surface_h(1),
+    );
     desktop_menu_layer.set_exclusive_zone(0);
     desktop_menu_layer.set_keyboard_interactivity(KeyboardInteractivity::None);
     info!("Desktop menu surface created");

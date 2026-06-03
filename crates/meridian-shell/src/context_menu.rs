@@ -734,7 +734,10 @@ fn blit_over(canvas: &mut [u8], cw: i32, ch: i32, pm: &Pixmap, dx: i32, dy: i32)
             if ci + 3 >= canvas.len() {
                 continue;
             }
-            // premultiplied src, straight dst (BGRA)
+            // premultiplied src over straight-ish dst (BGRA). Preserve
+            // alpha via SRC_OVER instead of forcing 255 — hardcoding 255
+            // blew out the AA ring on every rounded corner, making them
+            // look angular.
             let rp = px.red() as u32;
             let gp = px.green() as u32;
             let bp = px.blue() as u32;
@@ -742,10 +745,11 @@ fn blit_over(canvas: &mut [u8], cw: i32, ch: i32, pm: &Pixmap, dx: i32, dy: i32)
             let db = canvas[ci] as u32;
             let dg = canvas[ci + 1] as u32;
             let dr = canvas[ci + 2] as u32;
+            let da = canvas[ci + 3] as u32;
             canvas[ci] = (bp + db * inv / 255).min(255) as u8;
             canvas[ci + 1] = (gp + dg * inv / 255).min(255) as u8;
             canvas[ci + 2] = (rp + dr * inv / 255).min(255) as u8;
-            canvas[ci + 3] = 255;
+            canvas[ci + 3] = (a as u32 + da * inv / 255).min(255) as u8;
         }
     }
 }

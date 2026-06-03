@@ -413,48 +413,59 @@ impl MeridianShell {
     pub(crate) fn resize_desktop_menu_surface(&mut self, submenu_open: bool) {
         use smithay_client_toolkit::shell::wlr_layer::Anchor;
         let n = crate::context_menu::desktop_item_list().len();
-        let new_w = crate::context_menu::total_menu_width(submenu_open) as u32;
-        let new_h = crate::context_menu::surface_height(n, submenu_open).max(1) as u32;
-        self.desktop_menu_width = new_w;
-        self.desktop_menu_height = new_h;
+        let card_w = crate::context_menu::total_menu_width(submenu_open) as u32;
+        let card_h = crate::context_menu::surface_height(n, submenu_open).max(1) as u32;
+        self.desktop_menu_width = crate::popup_surface_w(card_w);
+        self.desktop_menu_height = crate::popup_surface_h(card_h);
         self.desktop_menu_buffer = None;
         self.desktop_menu_layer
             .set_anchor(Anchor::TOP | Anchor::LEFT);
-        self.desktop_menu_layer.set_size(new_w, new_h);
+        self.desktop_menu_layer
+            .set_size(self.desktop_menu_width, self.desktop_menu_height);
     }
 
     pub(crate) fn draw_desktop_menu(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
-        debug!(
-            "draw_desktop_menu: reason={:?} open={} configured={} size={}x{}",
-            reason,
-            self.desktop_menu_open,
-            self.desktop_menu_configured,
-            self.desktop_menu_width,
-            self.desktop_menu_height
-        );
         if !self.desktop_menu_open || !self.desktop_menu_configured {
             return;
         }
         let Some(menu) = self.desktop_context_menu.as_ref() else {
             return;
         };
+        let surface_w = self.desktop_menu_width.max(1);
+        let surface_h = self.desktop_menu_height.max(1);
+        let pad2 = 2 * crate::POPUP_SHADOW_PAD as u32;
+        let card_w = surface_w.saturating_sub(pad2).max(1);
+        let card_h = surface_h.saturating_sub(pad2).max(1);
 
-        let width = self.desktop_menu_width.max(1);
-        let height = self.desktop_menu_height.max(1);
-        let stride = buffer::shm_buffer_stride(width);
+        let mut card_buf = vec![0u8; (card_w as usize) * (card_h as usize) * 4];
+        let local = crate::context_menu::DesktopContextMenuState {
+            x: 0,
+            y: 0,
+            hover_idx: menu.hover_idx,
+            submenu_open: menu.submenu_open,
+            submenu_hover_idx: menu.submenu_hover_idx,
+        };
+        let items = crate::context_menu::desktop_item_list();
+        crate::context_menu::draw_desktop_overlay(
+            &mut card_buf,
+            card_w,
+            card_h,
+            &local,
+            &items,
+            &self.theme,
+        );
+
+        let stride = buffer::shm_buffer_stride(surface_w);
         for attempt in 0..CANVAS_RETRY_ATTEMPTS {
             let buf = buffer::buffer_for(
                 &mut self.pool,
                 &mut self.desktop_menu_buffer,
-                width,
-                height,
+                surface_w,
+                surface_h,
                 stride,
             );
             let Some(buf) = buf else {
-                warn!(
-                    "desktop menu buffer unavailable: reason={:?} width={} height={}",
-                    reason, width, height
-                );
+                warn!("desktop menu buffer unavailable: reason={:?}", reason);
                 return;
             };
             let Some(canvas) = buf.canvas(&mut self.pool) else {
@@ -462,40 +473,22 @@ impl MeridianShell {
                 if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
                     continue;
                 }
-                warn!(
-                    "desktop menu canvas unavailable after retry: reason={:?} width={} height={}",
-                    reason, width, height
-                );
+                warn!("desktop menu canvas unavailable after retry");
                 return;
             };
-
-            canvas.fill(0);
-            let local = crate::context_menu::DesktopContextMenuState {
-                x: 0,
-                y: 0,
-                hover_idx: menu.hover_idx,
-                submenu_open: menu.submenu_open,
-                submenu_hover_idx: menu.submenu_hover_idx,
-            };
-            let items = crate::context_menu::desktop_item_list();
-            crate::context_menu::draw_desktop_overlay(
-                canvas,
-                width,
-                height,
-                &local,
-                &items,
-                &self.theme,
+            crate::popup_card::paint_card_with_shadow(
+                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
             );
             if let Err(err) = buf.attach_to(self.desktop_menu_layer.wl_surface()) {
-                warn!(
-                    "desktop menu buffer attach failed: reason={:?} width={} height={} error={}",
-                    reason, width, height, err
-                );
+                warn!("desktop menu buffer attach failed: {}", err);
                 return;
             }
-            self.desktop_menu_layer
-                .wl_surface()
-                .damage_buffer(0, 0, width as i32, height as i32);
+            self.desktop_menu_layer.wl_surface().damage_buffer(
+                0,
+                0,
+                surface_w as i32,
+                surface_h as i32,
+            );
             self.desktop_menu_layer.commit();
             return;
         }
@@ -511,10 +504,12 @@ impl MeridianShell {
         // Also reset to base dimensions so any spurious configure that fires
         // after unmap does not re-assert an old expanded (submenu-open) width.
         use smithay_client_toolkit::shell::wlr_layer::Anchor;
-        let base_w = crate::context_menu::MENU_WIDTH as u32;
-        let base_h =
+        let base_card_w = crate::context_menu::MENU_WIDTH as u32;
+        let base_card_h =
             crate::context_menu::menu_height(crate::context_menu::desktop_item_list().len()).max(1)
                 as u32;
+        let base_w = crate::popup_surface_w(base_card_w);
+        let base_h = crate::popup_surface_h(base_card_h);
         self.desktop_menu_width = base_w;
         self.desktop_menu_height = base_h;
         self.desktop_menu_layer

@@ -117,7 +117,8 @@ impl PointerHandler for MeridianShell {
 
             if self.pointer_surface == SurfaceKind::DesktopMenu {
                 if let PointerEventKind::Motion { .. } = event.kind {
-                    let (px, py) = event.position;
+                    let pad = crate::POPUP_SHADOW_PAD as f64;
+                    let (px, py) = (event.position.0 - pad, event.position.1 - pad);
                     let in_submenu = context_menu::is_in_submenu_area(px);
                     // When cursor is in the flyout column keep the Settings item
                     // highlighted in the main menu; otherwise normal hit-test.
@@ -168,7 +169,8 @@ impl PointerHandler for MeridianShell {
                 }
 
                 if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
-                    let (px, py) = event.position;
+                    let pad = crate::POPUP_SHADOW_PAD as f64;
+                    let (px, py) = (event.position.0 - pad, event.position.1 - pad);
                     let in_submenu = context_menu::is_in_submenu_area(px)
                         && self
                             .desktop_context_menu

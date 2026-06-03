@@ -530,14 +530,19 @@ impl MeridianShell {
             submenu_hover_idx: None,
         });
         self.desktop_menu_open = true;
-        self.desktop_menu_width = crate::context_menu::MENU_WIDTH as u32;
-        self.desktop_menu_height = menu_height.max(1);
+        self.desktop_menu_width = crate::popup_surface_w(crate::context_menu::MENU_WIDTH as u32);
+        self.desktop_menu_height = crate::popup_surface_h(menu_height.max(1));
         self.desktop_menu_buffer = None;
         self.desktop_menu_layer
             .set_anchor(Anchor::TOP | Anchor::LEFT);
-        self.desktop_menu_layer.set_margin(y.max(0), 0, 0, x.max(0));
+        // Compensate the shadow pad so the menu still opens at the click
+        // position. Margins clamp to 0 if subtraction would go negative;
+        // that only happens within POPUP_SHADOW_PAD of the screen edge.
+        let mx = (x.max(0) - crate::POPUP_SHADOW_PAD).max(0);
+        let my = (y.max(0) - crate::POPUP_SHADOW_PAD).max(0);
+        self.desktop_menu_layer.set_margin(my, 0, 0, mx);
         self.desktop_menu_layer
-            .set_size(crate::context_menu::MENU_WIDTH as u32, menu_height.max(1));
+            .set_size(self.desktop_menu_width, self.desktop_menu_height);
     }
 
     /// Load (or reload) the Standard-Apps page snapshot: scans installed

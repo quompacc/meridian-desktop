@@ -158,8 +158,9 @@ impl LayerShellHandler for MeridianShell {
             self.desktop_menu_layer
                 .set_anchor(Anchor::TOP | Anchor::LEFT);
             if let Some(ref menu) = self.desktop_context_menu {
-                self.desktop_menu_layer
-                    .set_margin(menu.y.max(0), 0, 0, menu.x.max(0));
+                let mx = (menu.x.max(0) - crate::POPUP_SHADOW_PAD).max(0);
+                let my = (menu.y.max(0) - crate::POPUP_SHADOW_PAD).max(0);
+                self.desktop_menu_layer.set_margin(my, 0, 0, mx);
             }
             self.desktop_menu_layer.set_size(desired_w, desired_h);
             tracing::debug!(
