@@ -213,6 +213,7 @@ fn exact_action_for_id(id: &str) -> Option<WidgetAction> {
         "power-logout" => Some(WidgetAction::PowerLogout),
         "launcher-settings" | "show-tile-view" => Some(WidgetAction::ToggleSettings),
         DEFAULT_APPS_AUTO_ID => Some(WidgetAction::DefaultAppsAutoSet),
+        "default-apps-back" => Some(WidgetAction::DefaultAppsClosePicker),
         "wallpaper-mode-fill" => Some(WidgetAction::SetWallpaperMode(
             meridian_config::WallpaperMode::Fill,
         )),

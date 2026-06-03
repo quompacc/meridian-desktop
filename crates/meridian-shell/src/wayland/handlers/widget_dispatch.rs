@@ -423,10 +423,12 @@ impl MeridianShell {
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
             WidgetAction::DefaultAppsClosePicker => {
+                tracing::info!("default_apps: close picker (back)");
                 self.default_apps_picker_open = None;
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
             WidgetAction::DefaultAppsTogglePicker(idx) => {
+                tracing::info!("default_apps: toggle picker idx={}", idx);
                 let Some(cat) = crate::default_apps::DefaultAppCategory::ALL
                     .get(idx)
                     .copied()
@@ -440,6 +442,7 @@ impl MeridianShell {
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
             WidgetAction::DefaultAppsPick { cat_idx, app_idx } => {
+                tracing::info!("default_apps: pick cat_idx={} app_idx={}", cat_idx, app_idx);
                 let Some(cat) = crate::default_apps::DefaultAppCategory::ALL
                     .get(cat_idx)
                     .copied()
