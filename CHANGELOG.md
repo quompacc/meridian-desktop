@@ -12,6 +12,24 @@ single version.
 
 ### Added
 
+- **Access portal backend (auto-allow):** `meridian-portal` now also serves
+  `org.freedesktop.impl.portal.Access`. xdg-desktop-portal's Screenshot /
+  ScreenCast / Camera / Location front-ends require an Access impl to render
+  their own consent dialog before invoking the real backend; without any
+  Access impl on the session bus the front-end silently skips those portals
+  at startup (the actual failure mode that prevented Screenshot from being
+  routed through xdp on the dev VM until this slice landed). Meridian renders
+  its own consent UI further down the stack (compositor policy + shell modal
+  triggered from `ScreenshotRequestOrigin::PortalDbus`), so the Access impl
+  is intentionally a no-op: `AccessDialog` always responds `(0, {})` and lets
+  the compositor / shell be the source of truth for consent. With this in
+  place xdg-desktop-portal now exposes `org.freedesktop.portal.Screenshot`
+  (plus Camera, Location) on `/org/freedesktop/portal/desktop` and routes
+  external D-Bus calls through to the new Screenshot backend end-to-end.
+  Live verified on the dev VM: portal Screenshot → AccessDialog auto-allow →
+  Screenshot backend → bridge to compositor → NeedsConsent → shell modal →
+  user answer round-trips back as `(0, {uri})` or `(1, {})`. (A2)
+
 - **xdg-desktop-portal Screenshot backend (portal):** `meridian-portal` now
   serves `org.freedesktop.impl.portal.Screenshot` at the shared portal object
   path. Each `Screenshot()` call opens a short-lived connection to the
