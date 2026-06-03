@@ -211,6 +211,9 @@ fn redraw_after_ipc(
     if shell.thumbnail_dirty && shell.thumbnail_popup_open {
         shell.draw_thumbnail_popup(qh, RepaintReason::Ipc);
     }
+    if shell.consent_open {
+        shell.draw_consent_modal(qh, RepaintReason::Ipc);
+    }
 }
 
 fn insert_ipc_event_source(

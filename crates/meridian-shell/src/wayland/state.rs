@@ -540,6 +540,31 @@ impl MeridianShell {
             .set_size(crate::context_menu::MENU_WIDTH as u32, menu_height.max(1));
     }
 
+    pub(crate) fn open_consent_modal(&mut self, request_id: String, app_id: String) {
+        // The layer surface was created and given an initial commit in init.rs,
+        // so consent_configured is set by the time we get here. The IPC redraw
+        // path in main::redraw_after_ipc picks up consent_open and draws.
+        self.consent_request_id = Some(request_id);
+        self.consent_app_id = app_id;
+        self.consent_open = true;
+        self.consent_hover = None;
+    }
+
+    pub(crate) fn respond_consent(&mut self, allowed: bool) {
+        if let Some(request_id) = self.consent_request_id.take() {
+            let _ = self
+                .ipc
+                .send(&meridian_ipc::ShellCommand::ScreenshotConsentResponse {
+                    request_id,
+                    allowed,
+                });
+        }
+        self.consent_open = false;
+        self.consent_app_id.clear();
+        self.consent_hover = None;
+        self.unmap_consent(crate::wayland::CommitReason::Input);
+    }
+
     fn close_desktop_context_menu_from_ipc(&mut self) {
         if self.desktop_menu_open || self.desktop_context_menu.is_some() {
             self.desktop_context_menu = None;
@@ -714,16 +739,7 @@ impl MeridianShell {
                 }
             },
             ShellEvent::ScreenshotConsentRequest { request_id, app_id } => {
-                // The consent modal UI lands in the next slice. For now the
-                // request is acknowledged in the log; until the modal can send a
-                // real answer, the compositor simply holds the request (it never
-                // captures without an explicit allow), so doing nothing here is
-                // safe — no screenshot is taken.
-                tracing::info!(
-                    "screenshot consent requested (modal not yet implemented): request_id={} app_id={:?}",
-                    request_id,
-                    app_id
-                );
+                self.open_consent_modal(request_id, app_id);
             }
         }
     }

@@ -428,6 +428,13 @@ pub(crate) fn initialize(
         thumbnail_configured: false,
         thumbnail_popup_open: false,
         desktop_menu_open: false,
+        consent_layer,
+        consent_configured: false,
+        consent_buffer: None,
+        consent_open: false,
+        consent_request_id: None,
+        consent_app_id: String::new(),
+        consent_hover: None,
         audio_popup_open: false,
         panel_buffer: None,
         desktop_buffer: None,
@@ -610,5 +617,7 @@ pub(crate) fn initialize(
     shell.notification_layer.commit();
     info!("Notification surface created and committed");
     shell.thumbnail_layer.commit();
+    shell.consent_layer.commit();
+    info!("Screenshot consent surface initial commit");
     Ok((shell, qh))
 }

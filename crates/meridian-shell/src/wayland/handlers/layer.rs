@@ -93,6 +93,16 @@ impl LayerShellHandler for MeridianShell {
             return;
         }
 
+        if self.consent_layer == *layer {
+            warn!("Screenshot consent layer surface closed by compositor; clearing modal state");
+            self.consent_configured = false;
+            self.consent_open = false;
+            self.consent_request_id = None;
+            self.consent_app_id.clear();
+            self.consent_hover = None;
+            return;
+        }
+
         warn!("Unknown layer surface closed by compositor");
     }
 
@@ -436,6 +446,16 @@ impl LayerShellHandler for MeridianShell {
             self.thumbnail_configured = true;
             if self.thumbnail_popup_open {
                 self.draw_thumbnail_popup(qh, RepaintReason::LayerConfigure);
+            }
+        } else if self.consent_layer == *layer {
+            tracing::debug!(
+                "consent configure: requested={}x{}",
+                configure.new_size.0,
+                configure.new_size.1
+            );
+            self.consent_configured = true;
+            if self.consent_open {
+                self.draw_consent_modal(qh, RepaintReason::LayerConfigure);
             }
         }
     }

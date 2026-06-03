@@ -44,6 +44,16 @@ impl PointerHandler for MeridianShell {
             };
             self.pointer_position = event.position;
 
+            // Screenshot consent modal grabs the input focus while open;
+            // route its pointer events directly and skip the rest of the
+            // surface-kind cascade so popup hover state stays stable.
+            if &event.surface == self.consent_layer.wl_surface() {
+                if self.consent_open {
+                    self.handle_consent_pointer(qh, event);
+                }
+                continue;
+            }
+
             if let PointerEventKind::Leave { .. } = event.kind {
                 self.pointer_position = (-1.0, -1.0);
                 match self.pointer_surface {

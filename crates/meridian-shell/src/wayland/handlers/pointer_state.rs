@@ -1,4 +1,8 @@
 use meridian_ui::{Event, PointerButton, WidgetPath, WidgetState};
+use smithay_client_toolkit::seat::pointer::{PointerEvent, PointerEventKind};
+use wayland_client::QueueHandle;
+
+use crate::wayland::{MeridianShell, RepaintReason};
 
 pub(super) fn apply_pointer_event(
     current: Option<(WidgetPath, WidgetState)>,
