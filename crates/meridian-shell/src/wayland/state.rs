@@ -579,10 +579,10 @@ impl MeridianShell {
         self.region_picker_drag_start = None;
         self.region_picker_drag_current = None;
         self.region_picker_pending = None;
-        // The renderer + layer configure path picks up region_picker_open
-        // and maps the overlay on the next tick. We don't set_size here:
-        // the layer is anchored to all four output edges so its size is
-        // dictated by the compositor's configure event.
+        // sctk loses the layer surface's pending anchor + size after a
+        // close+reopen cycle; re-assert them here so the next commit can
+        // map the surface again.
+        self.reassert_region_picker_layer_state();
     }
 
     /// Open the region picker in local-screenshot mode: on confirm the
@@ -597,6 +597,21 @@ impl MeridianShell {
         self.region_picker_drag_start = None;
         self.region_picker_drag_current = None;
         self.region_picker_pending = None;
+        self.reassert_region_picker_layer_state();
+    }
+
+    /// Re-set the picker layer surface's anchor + (zero) size so a commit
+    /// after the first close+reopen cycle still has valid pending state.
+    /// Anchored on all four edges so the compositor stretches it to fill
+    /// the output; size 0x0 means "use my anchored bounding box".
+    fn reassert_region_picker_layer_state(&mut self) {
+        use smithay_client_toolkit::shell::wlr_layer::{Anchor, KeyboardInteractivity};
+        self.region_picker_layer
+            .set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+        self.region_picker_layer.set_exclusive_zone(0);
+        self.region_picker_layer
+            .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+        self.region_picker_layer.set_size(0, 0);
     }
 
     /// Kick off a shell-side ext_image_copy_capture for the picked region,

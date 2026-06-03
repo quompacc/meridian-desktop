@@ -482,6 +482,14 @@ impl LayerShellHandler for MeridianShell {
             }
         } else if self.region_picker_layer == *layer {
             // Anchored to all four edges; size is dictated by the compositor.
+            // Re-assert the anchor + (zero) size on every configure cycle:
+            // sctk drops the pending state after unmap, so without this the
+            // second open + commit fires wlr-layer-shell error 1 (width 0
+            // without left + right anchors).
+            use smithay_client_toolkit::shell::wlr_layer::Anchor;
+            self.region_picker_layer
+                .set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+            self.region_picker_layer.set_size(0, 0);
             let w = configure.new_size.0.max(1);
             let h = configure.new_size.1.max(1);
             tracing::debug!("region picker configure: {}x{}", w, h);

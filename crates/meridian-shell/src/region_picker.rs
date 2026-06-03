@@ -30,12 +30,14 @@ const STATUS_H: i32 = 36;
 const STATUS_Y: i32 = 28;
 
 /// Semi-transparent black used to dim the desktop outside the selection.
-/// 96/255 ≈ 38% opacity — dark enough to make the selection pop, light enough
-/// to keep the desktop legible while picking.
-const DIM_ALPHA: u8 = 96;
+/// 160/255 ≈ 63% opacity — strong enough that the picker is unmistakable
+/// as a modal overlay (the previous 96/255 was easy to miss on a
+/// uniformly dark desktop background).
+const DIM_ALPHA: u8 = 160;
 
-/// Border color + thickness for the selection rectangle.
-const BORDER_THICKNESS: i32 = 2;
+/// Border color + thickness for the selection rectangle. 3 px makes the
+/// selection rectangle obvious against any desktop background.
+const BORDER_THICKNESS: i32 = 3;
 
 /// Local axis-aligned rectangle in overlay (= output) coordinates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -179,16 +181,29 @@ fn draw_rect_border(canvas: &mut [u8], cw: u32, ch: u32, rect: RegionRect, thick
 }
 
 fn paint_status(canvas: &mut [u8], cw: u32, ch: u32, theme_config: &ThemeConfig) {
+    use meridian_ui::effect::{paint_fill, rounded_rect_path};
+    use meridian_ui::paint::Rect;
     let w = STATUS_W as u32;
     let h = STATUS_H as u32;
     let Some(mut pm) = Pixmap::new(w, h) else {
         return;
     };
     let pal = palette_from_config(theme_config);
+    // Filled rounded card so the helper text reads against the dim overlay
+    // regardless of what's behind it.
+    let card = Rect {
+        x: 0,
+        y: 0,
+        width: STATUS_W,
+        height: STATUS_H,
+    };
+    if let Some(path) = rounded_rect_path(card, 10) {
+        paint_fill(&mut pm.as_mut(), &path, pal.surface_alt);
+    }
     paint_text(
         &mut pm.as_mut(),
         "Bereich auswählen — Drag = ziehen — Enter = bestätigen — Esc = abbrechen",
-        0,
+        12,
         24,
         13.0,
         pal.text,
