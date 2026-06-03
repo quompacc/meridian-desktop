@@ -36,11 +36,12 @@ impl ScreenshotImpl {
         _handle: ObjectPath<'_>,
         app_id: &str,
         _parent_window: &str,
-        _options: Asv,
+        options: Asv,
     ) -> (u32, Asv) {
         let app_id = app_id.to_string();
         let request_id = next_request_id();
-        debug!("Screenshot request id={request_id} app_id={app_id:?}");
+        let interactive = bool_opt(&options, "interactive");
+        debug!("Screenshot request id={request_id} app_id={app_id:?} interactive={interactive}");
 
         let request = ScreenshotBridgeRequest {
             request_id: request_id.clone(),
@@ -57,7 +58,7 @@ impl ScreenshotImpl {
                 origin: ScreenshotRequestOrigin::PortalDbus,
                 request_marker: None,
                 identity_trusted: false,
-                interactive: false,
+                interactive,
             },
         };
 
@@ -207,6 +208,14 @@ fn percent_encode_path(path: &str) -> String {
         }
     }
     out
+}
+
+/// Read an `interactive: bool` (or any other bool key) out of the
+/// `a{sv}` options dict. Absent / non-bool values fall back to `false`.
+fn bool_opt(opts: &Asv, key: &str) -> bool {
+    opts.get(key)
+        .and_then(|v| bool::try_from(v).ok())
+        .unwrap_or(false)
 }
 
 fn next_request_id() -> String {

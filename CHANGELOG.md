@@ -12,6 +12,30 @@ single version.
 
 ### Added
 
+- **Interactive screenshot region picker (portal A2):** the freedesktop
+  Screenshot portal's `interactive=true` option now opens a fullscreen
+  drag-rectangle picker in the shell instead of capturing the whole
+  output. Spectacle-style two-step flow: drag to select, release to
+  freeze the rectangle, Enter to confirm, Esc to cancel. Overlay dims
+  the rest of the desktop (BGRA alpha 96/255), keeps the selection
+  fully transparent so the underlying pixels show through, and draws a
+  2-pixel solid white border. The compositor crops the captured
+  XRGB8888 framebuffer to the picked region before encoding the PNG —
+  the returned `uri` points at a PNG of exactly the selected area.
+  Built end-to-end across `meridian-ipc` (interactive flag +
+  RegionRequest event + RegionResponse command, with region validation
+  flipped from blanket Unsupported to a real nonzero-size check),
+  `meridian-compositor` (new `NeedsRegionPick` policy decision routed
+  by `metadata.interactive`, a `pending_screenshot_region` queue, and
+  per-request region cropping via the existing `crop_xrgb` helper),
+  `meridian-shell` (new `region_picker` module with the overlay
+  drawing helpers + 4 unit tests, an `Overlay` layer surface anchored
+  on all four edges, pointer drag state machine, keyboard
+  Enter/Esc handling, and the open/respond methods mirroring the
+  consent flow), and `meridian-portal` (reads `interactive` out of the
+  Screenshot `a{sv}` options dict and threads it through the bridge
+  request metadata). 913 / 913 workspace tests passing. (A2)
+
 - **Access portal backend (auto-allow):** `meridian-portal` now also serves
   `org.freedesktop.impl.portal.Access`. xdg-desktop-portal's Screenshot /
   ScreenCast / Camera / Location front-ends require an Access impl to render
