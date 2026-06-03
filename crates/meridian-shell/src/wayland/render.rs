@@ -572,6 +572,66 @@ impl MeridianShell {
         }
     }
 
+    pub(crate) fn draw_region_picker(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
+        if !self.region_picker_open || !self.region_picker_configured {
+            return;
+        }
+        let width = self.region_picker_width.max(1);
+        let height = self.region_picker_height.max(1);
+        let stride = buffer::shm_buffer_stride(width);
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.region_picker_buffer,
+                width,
+                height,
+                stride,
+            );
+            let Some(buf) = buf else {
+                warn!("region picker buffer unavailable: reason={:?}", reason);
+                return;
+            };
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.region_picker_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
+                warn!("region picker canvas unavailable after retry");
+                return;
+            };
+            canvas.fill(0);
+            let selection = if let (Some(start), Some(current)) = (
+                self.region_picker_drag_start,
+                self.region_picker_drag_current,
+            ) {
+                crate::region_picker::rect_from_drag(start, current, width, height)
+            } else {
+                self.region_picker_pending
+            };
+            crate::region_picker::draw_region_picker_overlay(
+                canvas,
+                width,
+                height,
+                selection,
+                &self.theme,
+            );
+            if let Err(err) = buf.attach_to(self.region_picker_layer.wl_surface()) {
+                warn!("region picker buffer attach failed: {}", err);
+                return;
+            }
+            self.region_picker_layer
+                .wl_surface()
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.region_picker_layer.commit();
+            return;
+        }
+    }
+
+    pub(crate) fn unmap_region_picker(&mut self, _reason: CommitReason) {
+        self.region_picker_layer.wl_surface().attach(None, 0, 0);
+        self.region_picker_layer.commit();
+    }
+
     pub(crate) fn unmap_consent(&mut self, _reason: CommitReason) {
         // Keep a valid anchored size on the unmap commit (same protocol-safety
         // reasoning as unmap_desktop_menu).

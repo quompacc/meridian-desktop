@@ -103,6 +103,18 @@ impl LayerShellHandler for MeridianShell {
             return;
         }
 
+        if self.region_picker_layer == *layer {
+            warn!("Screenshot region picker layer surface closed by compositor; clearing picker state");
+            self.region_picker_configured = false;
+            self.region_picker_open = false;
+            self.region_picker_request_id = None;
+            self.region_picker_app_id.clear();
+            self.region_picker_drag_start = None;
+            self.region_picker_drag_current = None;
+            self.region_picker_pending = None;
+            return;
+        }
+
         warn!("Unknown layer surface closed by compositor");
     }
 
@@ -466,6 +478,17 @@ impl LayerShellHandler for MeridianShell {
             self.consent_configured = true;
             if self.consent_open {
                 self.draw_consent_modal(qh, RepaintReason::LayerConfigure);
+            }
+        } else if self.region_picker_layer == *layer {
+            // Anchored to all four edges; size is dictated by the compositor.
+            let w = configure.new_size.0.max(1);
+            let h = configure.new_size.1.max(1);
+            tracing::debug!("region picker configure: {}x{}", w, h);
+            self.region_picker_width = w;
+            self.region_picker_height = h;
+            self.region_picker_configured = true;
+            if self.region_picker_open {
+                self.draw_region_picker(qh, RepaintReason::LayerConfigure);
             }
         }
     }

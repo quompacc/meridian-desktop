@@ -571,6 +571,33 @@ impl MeridianShell {
         self.unmap_consent(crate::wayland::CommitReason::Input);
     }
 
+    pub(crate) fn open_region_picker(&mut self, request_id: String, app_id: String) {
+        self.region_picker_request_id = Some(request_id);
+        self.region_picker_app_id = app_id;
+        self.region_picker_open = true;
+        self.region_picker_drag_start = None;
+        self.region_picker_drag_current = None;
+        self.region_picker_pending = None;
+        // The renderer + layer configure path picks up region_picker_open
+        // and maps the overlay on the next tick. We don't set_size here:
+        // the layer is anchored to all four output edges so its size is
+        // dictated by the compositor's configure event.
+    }
+
+    pub(crate) fn respond_region(&mut self, region: Option<meridian_ipc::ScreenshotRegion>) {
+        if let Some(request_id) = self.region_picker_request_id.take() {
+            let _ = self
+                .ipc
+                .send(&meridian_ipc::ShellCommand::ScreenshotRegionResponse { request_id, region });
+        }
+        self.region_picker_open = false;
+        self.region_picker_app_id.clear();
+        self.region_picker_drag_start = None;
+        self.region_picker_drag_current = None;
+        self.region_picker_pending = None;
+        self.unmap_region_picker(crate::wayland::CommitReason::Input);
+    }
+
     fn close_desktop_context_menu_from_ipc(&mut self) {
         if self.desktop_menu_open || self.desktop_context_menu.is_some() {
             self.desktop_context_menu = None;
@@ -748,14 +775,7 @@ impl MeridianShell {
                 self.open_consent_modal(request_id, app_id);
             }
             ShellEvent::ScreenshotRegionRequest { request_id, app_id } => {
-                // Region picker UI lands in the next slice; until then this
-                // event is never emitted (the compositor still routes portal
-                // requests to the consent path).
-                tracing::info!(
-                    "screenshot region requested (picker not yet implemented): request_id={} app_id={:?}",
-                    request_id,
-                    app_id
-                );
+                self.open_region_picker(request_id, app_id);
             }
         }
     }

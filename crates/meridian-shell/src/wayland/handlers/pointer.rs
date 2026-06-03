@@ -44,6 +44,15 @@ impl PointerHandler for MeridianShell {
             };
             self.pointer_position = event.position;
 
+            // Screenshot region picker is also a fullscreen exclusive
+            // overlay — same short-circuit pattern as the consent modal.
+            if &event.surface == self.region_picker_layer.wl_surface() {
+                if self.region_picker_open {
+                    self.handle_region_picker_pointer(qh, event);
+                }
+                continue;
+            }
+
             // Screenshot consent modal grabs the input focus while open;
             // route its pointer events directly and skip the rest of the
             // surface-kind cascade so popup hover state stays stable.

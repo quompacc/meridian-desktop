@@ -200,6 +200,28 @@ pub(crate) fn initialize(
     consent_layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
     info!("Screenshot consent surface created");
 
+    // Screenshot region picker: fullscreen overlay anchored on all four
+    // sides so the compositor sizes it to the output. Keyboard-exclusive
+    // while mapped (Enter confirms, Esc cancels). Stays unmapped (no buffer)
+    // until the first ScreenshotRegionRequest arrives.
+    let region_picker_surface = compositor.create_surface(&qh);
+    let region_picker_layer = layer_shell.create_layer_surface(
+        &qh,
+        region_picker_surface,
+        Layer::Overlay,
+        Some("meridian-screenshot-region-picker"),
+        None,
+    );
+    region_picker_layer.set_anchor(
+        smithay_client_toolkit::shell::wlr_layer::Anchor::TOP
+            | smithay_client_toolkit::shell::wlr_layer::Anchor::BOTTOM
+            | smithay_client_toolkit::shell::wlr_layer::Anchor::LEFT
+            | smithay_client_toolkit::shell::wlr_layer::Anchor::RIGHT,
+    );
+    region_picker_layer.set_exclusive_zone(0);
+    region_picker_layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+    info!("Screenshot region picker surface created");
+
     let panel_surface = compositor.create_surface(&qh);
     let panel = layer_shell.create_layer_surface(
         &qh,
@@ -435,6 +457,17 @@ pub(crate) fn initialize(
         consent_request_id: None,
         consent_app_id: String::new(),
         consent_hover: None,
+        region_picker_layer,
+        region_picker_configured: false,
+        region_picker_buffer: None,
+        region_picker_open: false,
+        region_picker_request_id: None,
+        region_picker_app_id: String::new(),
+        region_picker_width: 0,
+        region_picker_height: 0,
+        region_picker_drag_start: None,
+        region_picker_drag_current: None,
+        region_picker_pending: None,
         audio_popup_open: false,
         panel_buffer: None,
         desktop_buffer: None,
@@ -619,5 +652,7 @@ pub(crate) fn initialize(
     shell.thumbnail_layer.commit();
     shell.consent_layer.commit();
     info!("Screenshot consent surface initial commit");
+    shell.region_picker_layer.commit();
+    info!("Screenshot region picker surface initial commit");
     Ok((shell, qh))
 }

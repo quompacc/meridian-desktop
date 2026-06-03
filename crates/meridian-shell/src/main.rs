@@ -27,6 +27,7 @@ mod panel;
 mod panel_view;
 mod popup_card;
 mod printers;
+mod region_picker;
 mod screenshot_consent;
 mod settings_view;
 mod soft_shadow;
@@ -213,6 +214,9 @@ fn redraw_after_ipc(
     }
     if shell.consent_open {
         shell.draw_consent_modal(qh, RepaintReason::Ipc);
+    }
+    if shell.region_picker_open {
+        shell.draw_region_picker(qh, RepaintReason::Ipc);
     }
 }
 

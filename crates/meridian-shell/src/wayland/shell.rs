@@ -254,6 +254,18 @@ pub(crate) struct MeridianShell {
     pub(crate) consent_request_id: Option<String>,
     pub(crate) consent_app_id: String,
     pub(crate) consent_hover: Option<crate::screenshot_consent::ConsentButton>,
+    // Screenshot region picker (interactive=true path).
+    pub(crate) region_picker_layer: LayerSurface,
+    pub(crate) region_picker_configured: bool,
+    pub(crate) region_picker_buffer: Option<Buffer>,
+    pub(crate) region_picker_open: bool,
+    pub(crate) region_picker_request_id: Option<String>,
+    pub(crate) region_picker_app_id: String,
+    pub(crate) region_picker_width: u32,
+    pub(crate) region_picker_height: u32,
+    pub(crate) region_picker_drag_start: Option<(i32, i32)>,
+    pub(crate) region_picker_drag_current: Option<(i32, i32)>,
+    pub(crate) region_picker_pending: Option<crate::region_picker::RegionRect>,
     pub(crate) panel_buffer: Option<Buffer>,
     #[allow(dead_code)]
     pub(crate) desktop_buffer: Option<Buffer>,

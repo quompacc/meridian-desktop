@@ -73,6 +73,22 @@ impl KeyboardHandler for MeridianShell {
     ) {
         let is_escape = event.keysym == Keysym::Escape;
 
+        // ── Screenshot region picker also grabs the keyboard while mapped:
+        // Enter confirms the pending rectangle (no-op if nothing picked
+        // yet — the user has to drag first), Esc cancels. All other keys
+        // are swallowed so they can't leak underneath the overlay.
+        if self.region_picker_open {
+            let is_enter = event.keysym == Keysym::Return || event.keysym == Keysym::KP_Enter;
+            if is_enter {
+                if let Some(rect) = self.region_picker_pending {
+                    self.respond_region(Some(rect.to_screenshot_region()));
+                }
+            } else if is_escape {
+                self.respond_region(None);
+            }
+            return;
+        }
+
         // ── Screenshot consent modal: it grabs the keyboard, so answer here
         // first. Enter = allow, Esc = deny. Any other key is swallowed so it
         // can't leak to the surface behind the modal.
