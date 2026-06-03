@@ -1,10 +1,63 @@
-//! Software rounded-box drop shadow for client-drawn surfaces (panel, launcher).
+//! Software rounded-box drop shadow for client-drawn surfaces (panel, launcher, popups).
+//!
+//! Popups draw their card into a temp buffer of the card's size, then call
+//! [`composite_card_onto_surface`] to alpha-blend it onto the surrounding
+//! shadow at the offset (PAD, PAD).
 //!
 //! Matches the look of the compositor's SDF shadow shader but runs on the CPU
 //! into a packed 8-bit buffer. The shadow is premultiplied black, so the RGB
 //! byte order (RGBA vs ARGB) does not matter — only the alpha byte (index 3)
 //! plus a uniform darkening of the existing RGB. Drawn *outside* the casting
 //! rect only, so it never bleeds under a translucent surface.
+
+/// Premultiplied SRC_OVER composite of an RGBA card buffer onto a larger
+/// surface buffer at `(dst_x, dst_y)`. Both buffers are BGRA-ordered, alpha
+/// at byte 3. The source card has already had `round_buffer_corners` applied,
+/// which scales corner-pixel RGB by coverage — that's the premultiplied form.
+/// Doing straight-alpha here would multiply by alpha again and darken the
+/// AA ring at every rounded corner.
+pub(crate) fn composite_card_onto_surface(
+    dst: &mut [u8],
+    dst_w: usize,
+    dst_h: usize,
+    src: &[u8],
+    src_w: usize,
+    src_h: usize,
+    dst_x: usize,
+    dst_y: usize,
+) {
+    for y in 0..src_h {
+        let dy = dst_y + y;
+        if dy >= dst_h {
+            break;
+        }
+        for x in 0..src_w {
+            let dx = dst_x + x;
+            if dx >= dst_w {
+                continue;
+            }
+            let si = (y * src_w + x) * 4;
+            let di = (dy * dst_w + dx) * 4;
+            if si + 4 > src.len() || di + 4 > dst.len() {
+                continue;
+            }
+            let sa = src[si + 3] as u32;
+            if sa == 0 {
+                continue;
+            }
+            if sa == 255 {
+                dst[di..di + 4].copy_from_slice(&src[si..si + 4]);
+                continue;
+            }
+            let inv = 255 - sa;
+            // Premultiplied: src.rgb already carries the cov factor.
+            dst[di] = (src[si] as u32 + dst[di] as u32 * inv / 255) as u8;
+            dst[di + 1] = (src[si + 1] as u32 + dst[di + 1] as u32 * inv / 255) as u8;
+            dst[di + 2] = (src[si + 2] as u32 + dst[di + 2] as u32 * inv / 255) as u8;
+            dst[di + 3] = (sa + dst[di + 3] as u32 * inv / 255) as u8;
+        }
+    }
+}
 
 fn rounded_box_sdf(px: f32, py: f32, cx: f32, cy: f32, hx: f32, hy: f32, r: f32) -> f32 {
     let qx = (px - cx).abs() - hx + r;

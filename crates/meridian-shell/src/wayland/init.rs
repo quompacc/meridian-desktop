@@ -270,7 +270,10 @@ pub(crate) fn initialize(
     );
     calendar_layer.set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
     calendar_layer.set_margin(0, 12, SHELL_POPUP_BOTTOM_MARGIN, 0);
-    calendar_layer.set_size(CALENDAR_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT);
+    calendar_layer.set_size(
+        crate::popup_surface_w(CALENDAR_POPUP_WIDTH),
+        crate::popup_surface_h(CALENDAR_POPUP_HEIGHT),
+    );
     calendar_layer.set_exclusive_zone(0);
     calendar_layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
     debug!(
@@ -497,8 +500,8 @@ pub(crate) fn initialize(
         launcher_is_fullscreen: false,
         launcher_visual_x: 8,
         launcher_visual_y: 0,
-        calendar_width: CALENDAR_POPUP_WIDTH,
-        calendar_height: CALENDAR_POPUP_HEIGHT,
+        calendar_width: crate::popup_surface_w(CALENDAR_POPUP_WIDTH),
+        calendar_height: crate::popup_surface_h(CALENDAR_POPUP_HEIGHT),
         workspace_width: WORKSPACE_POPUP_WIDTH,
         workspace_height: WORKSPACE_POPUP_HEIGHT,
         network_width: NETWORK_POPUP_WIDTH,

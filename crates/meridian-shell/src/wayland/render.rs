@@ -902,50 +902,24 @@ impl MeridianShell {
             self.calendar_popup_open && self.calendar_configured
         );
         if !self.calendar_popup_open || !self.calendar_configured {
-            debug!(
-                "draw_calendar_popup skipped: reason={:?} open={} configured={}",
-                reason, self.calendar_popup_open, self.calendar_configured
-            );
             return;
         }
 
-        let width = self.calendar_width.min(CALENDAR_POPUP_WIDTH);
-        let height = self.calendar_height.min(CALENDAR_POPUP_HEIGHT);
-        let stride = buffer::shm_buffer_stride(width);
-        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
-            let buf = buffer::buffer_for(
-                &mut self.pool,
-                &mut self.calendar_buffer,
-                width,
-                height,
-                stride,
-            );
-            let Some(buf) = buf else {
-                warn!(
-                    "calendar popup buffer unavailable: reason={:?} width={} height={}",
-                    reason, width, height
-                );
-                return;
-            };
-            let Some(canvas) = buf.canvas(&mut self.pool) else {
-                self.calendar_buffer = None;
-                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
-                    continue;
-                }
-                warn!(
-                    "calendar popup canvas unavailable after retry: reason={:?} width={} height={}",
-                    reason, width, height
-                );
-                return;
-            };
+        let surface_w = self.calendar_width;
+        let surface_h = self.calendar_height;
+        let card_w = CALENDAR_POPUP_WIDTH;
+        let card_h = CALENDAR_POPUP_HEIGHT;
 
-            let mut painter = Painter::new(canvas, width as i32, height as i32);
+        // Render the card into its own temp buffer at card-natural size.
+        let mut card_buf = vec![0u8; (card_w as usize) * (card_h as usize) * 4];
+        {
+            let mut painter = Painter::new(&mut card_buf, card_w as i32, card_h as i32);
             crate::popup_card::draw_card_body(&mut painter, &self.theme);
             let card = Rect {
                 x: 0,
                 y: 0,
-                w: width as i32,
-                h: height as i32,
+                w: card_w as i32,
+                h: card_h as i32,
             };
 
             let maybe_model = time::local_date().and_then(|date| {
@@ -959,15 +933,6 @@ impl MeridianShell {
 
             if let Some(model) = maybe_model {
                 let labels = weekday_labels(self.calendar_display_policy.week_start);
-                debug_assert_eq!(
-                    model
-                        .cells
-                        .iter()
-                        .position(|cell| cell.is_some())
-                        .unwrap_or(0),
-                    usize::from(model.first_weekday_col0)
-                );
-
                 let header_text = format!("{} {}", german_month_name(model.month), model.year);
                 crate::popup_card::draw_card_title(
                     &mut painter,
@@ -975,7 +940,6 @@ impl MeridianShell {
                     &self.theme,
                     &header_text,
                 );
-
                 let content = Rect {
                     x: card.x + crate::popup_card::PAD_X,
                     y: crate::popup_card::BODY_TOP,
@@ -983,7 +947,6 @@ impl MeridianShell {
                     h: (card.h - crate::popup_card::BODY_TOP - crate::popup_card::PAD_BOTTOM)
                         .max(1),
                 };
-
                 let weekday_y = content.y;
                 let weekday_h = 18;
                 for (col, label) in labels.iter().enumerate() {
@@ -1001,7 +964,6 @@ impl MeridianShell {
                         self.theme.colors.text_dim,
                     );
                 }
-
                 let grid_y = weekday_y + weekday_h + 6;
                 let grid_h = (content.y + content.h) - grid_y;
                 for row in 0_usize..6 {
@@ -1013,7 +975,6 @@ impl MeridianShell {
                         let Some(day) = model.cells[idx] else {
                             continue;
                         };
-
                         let col_i32 = col as i32;
                         let x0 = content.x + (col_i32 * content.w) / 7;
                         let x1 = content.x + (((col_i32 + 1) * content.w) / 7);
@@ -1065,28 +1026,50 @@ impl MeridianShell {
                 };
                 painter.text_centered(&self.font, &time_text, text_rect, self.theme.colors.text);
             }
+        }
+        round_buffer_corners(
+            &mut card_buf,
+            card_w as usize,
+            card_h as usize,
+            crate::popup_card::CARD_RADIUS,
+        );
 
-            round_buffer_corners(
-                canvas,
-                width as usize,
-                height as usize,
-                crate::popup_card::CARD_RADIUS,
+        // Now obtain the SHM surface buffer and composite card + shadow into it.
+        let stride = buffer::shm_buffer_stride(surface_w);
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.calendar_buffer,
+                surface_w,
+                surface_h,
+                stride,
+            );
+            let Some(buf) = buf else {
+                warn!("calendar popup buffer unavailable: reason={:?}", reason);
+                return;
+            };
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.calendar_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
+                warn!("calendar popup canvas unavailable after retry");
+                return;
+            };
+            crate::popup_card::paint_card_with_shadow(
+                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
             );
             if let Err(err) = buf.attach_to(self.calendar_layer.wl_surface()) {
-                warn!(
-                    "calendar popup buffer attach failed: reason={:?} width={} height={} error={}",
-                    reason, width, height, err
-                );
+                warn!("calendar popup buffer attach failed: {}", err);
                 return;
             }
-            self.calendar_layer
-                .wl_surface()
-                .damage_buffer(0, 0, width as i32, height as i32);
-            self.calendar_layer.commit();
-            debug!(
-                "draw_calendar_popup committed: reason={:?} width={} height={}",
-                reason, width, height
+            self.calendar_layer.wl_surface().damage_buffer(
+                0,
+                0,
+                surface_w as i32,
+                surface_h as i32,
             );
+            self.calendar_layer.commit();
             self.calendar_dirty = false;
             return;
         }

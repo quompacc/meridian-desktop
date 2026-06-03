@@ -249,37 +249,24 @@ impl LayerShellHandler for MeridianShell {
                 self.draw_launcher(qh, RepaintReason::LayerConfigure);
             }
         } else if self.calendar_layer == *layer {
-            let requested_w = if configure.new_size.0 > 0 {
-                configure.new_size.0
-            } else {
-                CALENDAR_POPUP_WIDTH
-            };
-            let requested_h = if configure.new_size.1 > 0 {
-                configure.new_size.1
-            } else {
-                CALENDAR_POPUP_HEIGHT
-            };
-            let clamped_w = requested_w.min(CALENDAR_POPUP_WIDTH);
-            let clamped_h = requested_h.min(CALENDAR_POPUP_HEIGHT);
+            let surface_w = crate::popup_surface_w(CALENDAR_POPUP_WIDTH);
+            let surface_h = crate::popup_surface_h(CALENDAR_POPUP_HEIGHT);
             tracing::debug!(
-                "calendar popup configure: requested={}x{} clamped={}x{} desired={}x{}",
-                requested_w,
-                requested_h,
-                clamped_w,
-                clamped_h,
-                CALENDAR_POPUP_WIDTH,
-                CALENDAR_POPUP_HEIGHT
+                "calendar popup configure: requested={}x{} surface={}x{}",
+                configure.new_size.0,
+                configure.new_size.1,
+                surface_w,
+                surface_h
             );
             self.calendar_layer
                 .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
             self.calendar_layer
                 .set_margin(0, 12, crate::SHELL_POPUP_BOTTOM_MARGIN, 0);
             self.calendar_layer.set_exclusive_zone(0);
-            self.calendar_layer
-                .set_size(CALENDAR_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT);
+            self.calendar_layer.set_size(surface_w, surface_h);
             self.calendar_configured = true;
-            self.calendar_width = CALENDAR_POPUP_WIDTH;
-            self.calendar_height = CALENDAR_POPUP_HEIGHT;
+            self.calendar_width = surface_w;
+            self.calendar_height = surface_h;
             if self.calendar_popup_open {
                 self.draw_calendar_popup(qh, RepaintReason::LayerConfigure);
             }

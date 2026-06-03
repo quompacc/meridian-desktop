@@ -78,6 +78,20 @@ pub const AUDIO_POPUP_HEIGHT: u32 = 200;
 pub const AUDIO_POPUP_RIGHT_MARGIN: i32 = 126;
 pub const SNI_MENU_RIGHT_MARGIN: i32 = 8;
 pub const SHELL_POPUP_BOTTOM_MARGIN: i32 = 2;
+/// Padding around every tray popup that holds room for the soft drop
+/// shadow. Layer surfaces are sized `card + 2*PAD` and the card is drawn
+/// at `(PAD, PAD)` inside; the popup's anchor-margin is reduced by PAD so
+/// the visible card stays exactly where it was before shadows landed.
+pub const POPUP_SHADOW_PAD: i32 = 16;
+
+/// Layer-shell surface width that fits a card of `card_w` plus the shadow pad.
+pub const fn popup_surface_w(card_w: u32) -> u32 {
+    card_w + 2 * POPUP_SHADOW_PAD as u32
+}
+/// Layer-shell surface height that fits a card of `card_h` plus the shadow pad.
+pub const fn popup_surface_h(card_h: u32) -> u32 {
+    card_h + 2 * POPUP_SHADOW_PAD as u32
+}
 pub const NETWORK_POPUP_RIGHT_MARGIN: i32 = 220;
 pub const NOTIFICATION_WIDTH: u32 = 360;
 pub const NOTIFICATION_HEIGHT: u32 = 90;

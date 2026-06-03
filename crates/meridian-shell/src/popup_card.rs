@@ -37,6 +37,56 @@ pub fn draw_card_body(painter: &mut Painter<'_>, theme: &ThemeConfig) {
     painter.clear(theme.colors.surface_alt);
 }
 
+/// Soft drop shadow params shared by every tray popup. Same look as the
+/// panel island (`panel_view.rs`) so the visual language stays uniform.
+pub const POPUP_SHADOW_BLUR: f32 = 13.0;
+pub const POPUP_SHADOW_ALPHA: f32 = 0.18;
+pub const POPUP_SHADOW_OFFSET_Y: i32 = 3;
+
+/// Composite an already-rendered `card_buf` (card_w * card_h * 4 BGRA bytes)
+/// onto a layer-shell `surface` buffer plus a soft drop shadow. The surface
+/// buffer is sized `card + 2*POPUP_SHADOW_PAD`; the card lands at
+/// `(PAD, PAD)` with the shadow filling the surrounding margin.
+///
+/// Caller renders the card normally (Painter, round_buffer_corners) into a
+/// temp Vec and passes it here. Performance: one O(N) composite per draw,
+/// no per-pixel work on idle ticks.
+pub fn paint_card_with_shadow(
+    surface: &mut [u8],
+    surface_w: u32,
+    surface_h: u32,
+    card_w: u32,
+    card_h: u32,
+    card_buf: &[u8],
+) {
+    surface.fill(0);
+    let pad = crate::POPUP_SHADOW_PAD;
+    crate::soft_shadow::draw_soft_shadow(
+        surface,
+        surface_w as i32,
+        surface_h as i32,
+        pad,
+        pad,
+        card_w as i32,
+        card_h as i32,
+        CARD_RADIUS as f32,
+        POPUP_SHADOW_BLUR,
+        POPUP_SHADOW_ALPHA,
+        POPUP_SHADOW_OFFSET_Y,
+        false,
+    );
+    crate::soft_shadow::composite_card_onto_surface(
+        surface,
+        surface_w as usize,
+        surface_h as usize,
+        card_buf,
+        card_w as usize,
+        card_h as usize,
+        pad as usize,
+        pad as usize,
+    );
+}
+
 /// Draw the title text and the short cyan accent rule beneath it. The rule
 /// sits under the title word (not full-width) for a calmer look.
 pub fn draw_card_title(
