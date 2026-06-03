@@ -1,3 +1,4 @@
+mod access;
 mod file_chooser;
 mod screenshot;
 
@@ -12,6 +13,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .name(DBUS_NAME)?
         .serve_at(OBJECT_PATH, file_chooser::FileChooserImpl)?
         .serve_at(OBJECT_PATH, screenshot::ScreenshotImpl)?
+        .serve_at(OBJECT_PATH, access::AccessImpl)?
         .build()
         .await?;
 
