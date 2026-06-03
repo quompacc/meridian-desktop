@@ -12,6 +12,23 @@ single version.
 
 ### Added
 
+- **xdg-desktop-portal Screenshot backend (portal):** `meridian-portal` now
+  serves `org.freedesktop.impl.portal.Screenshot` at the shared portal object
+  path. Each `Screenshot()` call opens a short-lived connection to the
+  compositor's IPC socket, sends a `ScreenshotBridgeMessage::ScreenshotRequest`
+  with `origin=PortalDbus`, demultiplexes broadcast shell events out of the
+  reply stream, and returns the compositor's PNG path as a `file://` URI in
+  the standard `(response, results{uri})` reply. Maps `PermissionDenied` to
+  response code 1 (cancelled) and every other bridge / I/O failure to 2
+  (other). `PickColor` is a no-op stub returning 2 to avoid `UnknownMethod`.
+  Closes the previously open external route of A2 — capture engine, consent
+  state machine, and consent modal are now reachable from real D-Bus callers
+  (Flatpak apps, `grim`, GNOME's screenshot tool, etc.). Verified by D-Bus
+  introspection of the live service (Screenshot + PickColor methods present,
+  Version = 2); end-to-end call goes portal → compositor on the running VM,
+  the modal itself lands once the shell-fix from the previous commit is
+  installed. (A2)
+
 - **Screenshot consent modal (shell):** when a portal screenshot request needs
   consent, the shell now shows a centered modal ("Bildschirmfoto erlauben? —
   Erlauben/Ablehnen") on an overlay layer that grabs the keyboard. Clicking a

@@ -1,4 +1,5 @@
 mod file_chooser;
+mod screenshot;
 
 use tracing::info;
 use zbus::connection::Builder;
@@ -10,6 +11,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let _conn = Builder::session()?
         .name(DBUS_NAME)?
         .serve_at(OBJECT_PATH, file_chooser::FileChooserImpl)?
+        .serve_at(OBJECT_PATH, screenshot::ScreenshotImpl)?
         .build()
         .await?;
 
