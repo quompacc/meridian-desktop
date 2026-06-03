@@ -109,6 +109,7 @@ impl LayerShellHandler for MeridianShell {
             self.region_picker_open = false;
             self.region_picker_request_id = None;
             self.region_picker_app_id.clear();
+            self.region_picker_local = false;
             self.region_picker_drag_start = None;
             self.region_picker_drag_current = None;
             self.region_picker_pending = None;

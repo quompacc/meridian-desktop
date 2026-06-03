@@ -261,6 +261,11 @@ pub(crate) struct MeridianShell {
     pub(crate) region_picker_open: bool,
     pub(crate) region_picker_request_id: Option<String>,
     pub(crate) region_picker_app_id: String,
+    /// True when the picker was opened by a local trigger (panel button /
+    /// PrintScreen) rather than a portal request. Set when request_id is
+    /// `None`; on confirm the picked region drives a shell-side screencopy
+    /// that saves to ~/Pictures/Screenshots/.
+    pub(crate) region_picker_local: bool,
     pub(crate) region_picker_width: u32,
     pub(crate) region_picker_height: u32,
     pub(crate) region_picker_drag_start: Option<(i32, i32)>,

@@ -81,10 +81,10 @@ impl KeyboardHandler for MeridianShell {
             let is_enter = event.keysym == Keysym::Return || event.keysym == Keysym::KP_Enter;
             if is_enter {
                 if let Some(rect) = self.region_picker_pending {
-                    self.respond_region(Some(rect.to_screenshot_region()));
+                    self.respond_region(qh, Some(rect.to_screenshot_region()));
                 }
             } else if is_escape {
-                self.respond_region(None);
+                self.respond_region(qh, None);
             }
             return;
         }

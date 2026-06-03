@@ -574,6 +574,7 @@ impl MeridianShell {
     pub(crate) fn open_region_picker(&mut self, request_id: String, app_id: String) {
         self.region_picker_request_id = Some(request_id);
         self.region_picker_app_id = app_id;
+        self.region_picker_local = false;
         self.region_picker_open = true;
         self.region_picker_drag_start = None;
         self.region_picker_drag_current = None;
@@ -584,12 +585,93 @@ impl MeridianShell {
         // dictated by the compositor's configure event.
     }
 
-    pub(crate) fn respond_region(&mut self, region: Option<meridian_ipc::ScreenshotRegion>) {
+    /// Open the region picker in local-screenshot mode: on confirm the
+    /// picked region drives a shell-side `ext_image_copy_capture` and the
+    /// cropped PNG is saved to ~/Pictures/Screenshots/. Used by the panel
+    /// screenshot button.
+    pub(crate) fn open_region_picker_local(&mut self) {
+        self.region_picker_request_id = None;
+        self.region_picker_app_id.clear();
+        self.region_picker_local = true;
+        self.region_picker_open = true;
+        self.region_picker_drag_start = None;
+        self.region_picker_drag_current = None;
+        self.region_picker_pending = None;
+    }
+
+    /// Kick off a shell-side ext_image_copy_capture for the picked region,
+    /// targeted at ~/Pictures/Screenshots/meridian-<unix>.png. The crop is
+    /// applied inside the screencopy Ready handler before PNG encoding.
+    pub(crate) fn start_local_screenshot(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        region: meridian_ipc::ScreenshotRegion,
+    ) {
+        if self.screenshot_capture.is_some() {
+            return;
+        }
+        let (Some(mgr), Some(src_mgr)) = (
+            self.screencopy_manager.as_ref(),
+            self.capture_source_manager.as_ref(),
+        ) else {
+            tracing::warn!("screenshot: ext_image_copy_capture not available");
+            return;
+        };
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
+        let dir = std::path::PathBuf::from(&home)
+            .join("Pictures")
+            .join("Screenshots");
+        let _ = std::fs::create_dir_all(&dir);
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let path = dir.join(format!("meridian-{}.png", secs));
+        let Some(wl_output) = self.output_state.outputs().next() else {
+            tracing::warn!("screenshot: no output available");
+            return;
+        };
+        use wayland_protocols::ext::{
+            image_capture_source::v1::client::ext_image_capture_source_v1::ExtImageCaptureSourceV1,
+            image_copy_capture::v1::client::ext_image_copy_capture_manager_v1::Options,
+        };
+        let capture_source: ExtImageCaptureSourceV1 = src_mgr.create_source(&wl_output, qh, ());
+        let session = mgr.create_session(&capture_source, Options::empty(), qh, ());
+        capture_source.destroy();
+        self.screenshot_capture = Some(crate::wayland::screencopy::ScreenshotCapture {
+            session,
+            path,
+            width: 0,
+            height: 0,
+            format: None,
+            constraints_done: false,
+            pool: None,
+            buffer: None,
+            frame: None,
+            fd: None,
+            mapped_ptr: std::ptr::null_mut(),
+            mapped_len: 0,
+            region: Some(region),
+        });
+    }
+
+    pub(crate) fn respond_region(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        region: Option<meridian_ipc::ScreenshotRegion>,
+    ) {
         if let Some(request_id) = self.region_picker_request_id.take() {
             let _ = self
                 .ipc
                 .send(&meridian_ipc::ShellCommand::ScreenshotRegionResponse { request_id, region });
+        } else if self.region_picker_local {
+            // Local panel-button path: confirmed region drives a shell-side
+            // screencopy; Esc / no-selection drops silently.
+            if let Some(region) = region {
+                self.start_local_screenshot(qh, region);
+            }
         }
+        self.region_picker_local = false;
         self.region_picker_open = false;
         self.region_picker_app_id.clear();
         self.region_picker_drag_start = None;
@@ -1712,56 +1794,13 @@ impl MeridianShell {
                 }
             }
             ClickAction::TakeScreenshot => {
-                if self.screenshot_capture.is_some() {
+                // Don't capture immediately: let the user pick a region.
+                // The actual screencopy starts in respond_region once the
+                // user confirms (Enter); Esc cancels silently.
+                if self.screenshot_capture.is_some() || self.region_picker_open {
                     return;
                 }
-                let (Some(mgr), Some(src_mgr)) = (
-                    self.screencopy_manager.as_ref(),
-                    self.capture_source_manager.as_ref(),
-                ) else {
-                    tracing::warn!("screenshot: ext_image_copy_capture not available");
-                    return;
-                };
-
-                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
-                let dir = std::path::PathBuf::from(&home)
-                    .join("Pictures")
-                    .join("Screenshots");
-                let _ = std::fs::create_dir_all(&dir);
-                let secs = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0);
-                let path = dir.join(format!("meridian-{}.png", secs));
-
-                let Some(wl_output) = self.output_state.outputs().next() else {
-                    tracing::warn!("screenshot: no output available");
-                    return;
-                };
-
-                use wayland_protocols::ext::{
-                    image_capture_source::v1::client::ext_image_capture_source_v1::ExtImageCaptureSourceV1,
-                    image_copy_capture::v1::client::ext_image_copy_capture_manager_v1::Options,
-                };
-                let capture_source: ExtImageCaptureSourceV1 =
-                    src_mgr.create_source(&wl_output, qh, ());
-                let session = mgr.create_session(&capture_source, Options::empty(), qh, ());
-                capture_source.destroy();
-
-                self.screenshot_capture = Some(crate::wayland::screencopy::ScreenshotCapture {
-                    session,
-                    path,
-                    width: 0,
-                    height: 0,
-                    format: None,
-                    constraints_done: false,
-                    pool: None,
-                    buffer: None,
-                    frame: None,
-                    fd: None,
-                    mapped_ptr: std::ptr::null_mut(),
-                    mapped_len: 0,
-                });
+                self.open_region_picker_local();
             }
             ClickAction::ToggleSettings => {
                 self.launcher_settings_open = true;

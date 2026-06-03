@@ -463,6 +463,7 @@ pub(crate) fn initialize(
         region_picker_open: false,
         region_picker_request_id: None,
         region_picker_app_id: String::new(),
+        region_picker_local: false,
         region_picker_width: 0,
         region_picker_height: 0,
         region_picker_drag_start: None,

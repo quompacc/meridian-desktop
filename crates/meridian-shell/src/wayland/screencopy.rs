@@ -35,6 +35,10 @@ pub(crate) struct ScreenshotCapture {
     pub fd: Option<OwnedFd>,
     pub mapped_ptr: *mut libc::c_void,
     pub mapped_len: usize,
+    /// When set, the encoded PNG is cropped to this region before being
+    /// written to disk. The screencopy itself still captures the full
+    /// output; the crop is a memcpy-rectangle of the raw buffer.
+    pub region: Option<meridian_ipc::ScreenshotRegion>,
 }
 
 // SAFETY: the mmap pointer is only accessed from the single-threaded Wayland event loop.
@@ -229,6 +233,36 @@ fn issue_frame_capture(state: &mut MeridianShell, qh: &QueueHandle<MeridianShell
     cap.frame = Some(frame);
 }
 
+/// Rectangle-copy crop of a 4-byte-per-pixel raw screencopy buffer. The
+/// pixel format (Xrgb8888 / Argb8888) is preserved — only the geometry
+/// changes. Returns `None` when the region clamps to an empty rectangle
+/// against the source dimensions.
+fn crop_screenshot_region(
+    raw: &[u8],
+    src_w: u32,
+    src_h: u32,
+    region: meridian_ipc::ScreenshotRegion,
+) -> Option<(Vec<u8>, u32, u32)> {
+    let rx = region.x.max(0) as u32;
+    let ry = region.y.max(0) as u32;
+    let rw = region.width.min(src_w.saturating_sub(rx));
+    let rh = region.height.min(src_h.saturating_sub(ry));
+    if rw == 0 || rh == 0 {
+        return None;
+    }
+    let src_stride = (src_w as usize) * 4;
+    let dst_stride = (rw as usize) * 4;
+    let mut out = vec![0u8; dst_stride * (rh as usize)];
+    for row in 0..rh as usize {
+        let si = ((ry as usize + row) * src_stride) + (rx as usize) * 4;
+        let di = row * dst_stride;
+        if si + dst_stride <= raw.len() {
+            out[di..di + dst_stride].copy_from_slice(&raw[si..si + dst_stride]);
+        }
+    }
+    Some((out, rw, rh))
+}
+
 fn is_supported_screenshot_format(format: wl_shm::Format) -> bool {
     matches!(format, wl_shm::Format::Xrgb8888 | wl_shm::Format::Argb8888)
 }
@@ -268,7 +302,24 @@ impl Dispatch<ExtImageCopyCaptureFrameV1, ()> for MeridianShell {
 
                     if !ptr.is_null() && len > 0 {
                         let raw = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
-                        match encode_screenshot_png(raw, width, height) {
+                        let (encoded_buf, encoded_w, encoded_h) = match cap.region {
+                            Some(region) => {
+                                match crop_screenshot_region(raw, width, height, region) {
+                                    Some((b, w, h)) => (std::borrow::Cow::Owned(b), w, h),
+                                    None => {
+                                        tracing::warn!(
+                                            "screenshot: region {:?} clamps to empty against {}x{}",
+                                            region,
+                                            width,
+                                            height
+                                        );
+                                        return;
+                                    }
+                                }
+                            }
+                            None => (std::borrow::Cow::Borrowed(raw), width, height),
+                        };
+                        match encode_screenshot_png(&encoded_buf, encoded_w, encoded_h) {
                             Ok(png_data) => match std::fs::write(&path, &png_data) {
                                 Ok(()) => tracing::info!("screenshot saved: {}", path.display()),
                                 Err(e) => tracing::warn!("screenshot: write failed: {}", e),
