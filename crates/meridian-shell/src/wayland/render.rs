@@ -761,6 +761,9 @@ impl MeridianShell {
                     &self.launcher_state.apps,
                     &self.icon_cache,
                     armed_power,
+                    self.default_apps_index.as_ref(),
+                    &self.default_apps_current,
+                    self.default_apps_picker_open,
                     &self.theme,
                     &state_fn,
                 );

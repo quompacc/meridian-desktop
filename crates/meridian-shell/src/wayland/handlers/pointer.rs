@@ -422,6 +422,9 @@ impl PointerHandler for MeridianShell {
                             &self.launcher_state.apps,
                             &self.icon_cache,
                             None,
+                            self.default_apps_index.as_ref(),
+                            &self.default_apps_current,
+                            self.default_apps_picker_open,
                             &crate::ui::tokens::theme_from_config(&self.theme),
                         )
                     } else {
@@ -626,6 +629,9 @@ impl PointerHandler for MeridianShell {
                                 &self.launcher_state.apps,
                                 &self.icon_cache,
                                 None,
+                                self.default_apps_index.as_ref(),
+                                &self.default_apps_current,
+                                self.default_apps_picker_open,
                                 &crate::ui::tokens::theme_from_config(&self.theme),
                             )
                         };

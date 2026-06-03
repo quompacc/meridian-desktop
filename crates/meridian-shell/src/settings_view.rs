@@ -1743,6 +1743,189 @@ const NETWORK_PROFILE_ROW_H: i32 = 56;
 /// A clickable saved-network row. The active profile shows a "VERBUNDEN" badge
 /// and is inert (`id()` -> None); others are clickable to activate and react to
 /// hover/press, mirroring `SoundDeviceRow`.
+// ─── DefaultApps page widgets ────────────────────────────────────────────────
+
+const DEFAULT_APP_ROW_H: i32 = 60;
+const DEFAULT_APP_CANDIDATE_ROW_H: i32 = 44;
+const DEFAULT_APP_ROW_CORNER: i32 = 10;
+const DEFAULT_APP_MAX_CATS: usize = 12;
+const DEFAULT_APP_MAX_APPS_PER_CAT: usize = 24;
+
+/// Stable widget ids for the category rows (the row click toggles the
+/// candidate-list expander). Lazily leaked once so the `'static` lifetime
+/// the Widget trait wants is satisfied without const-string gymnastics.
+fn default_apps_pick_id(idx: usize) -> Option<&'static str> {
+    use std::sync::OnceLock;
+    static IDS: OnceLock<Vec<&'static str>> = OnceLock::new();
+    let ids = IDS.get_or_init(|| {
+        (0..DEFAULT_APP_MAX_CATS)
+            .map(|i| Box::leak(format!("default-apps-pick-{}", i).into_boxed_str()) as &'static str)
+            .collect()
+    });
+    ids.get(idx).copied()
+}
+
+/// Stable widget ids for the candidate rows within each category's picker.
+fn default_apps_set_id(cat_idx: usize, app_idx: usize) -> Option<&'static str> {
+    use std::sync::OnceLock;
+    static IDS: OnceLock<Vec<Vec<&'static str>>> = OnceLock::new();
+    let ids = IDS.get_or_init(|| {
+        (0..DEFAULT_APP_MAX_CATS)
+            .map(|c| {
+                (0..DEFAULT_APP_MAX_APPS_PER_CAT)
+                    .map(|a| {
+                        Box::leak(format!("default-apps-set-{}-{}", c, a).into_boxed_str())
+                            as &'static str
+                    })
+                    .collect()
+            })
+            .collect()
+    });
+    ids.get(cat_idx).and_then(|row| row.get(app_idx)).copied()
+}
+
+/// A row in the Standard-Apps page: category label on the left, current
+/// default's display name on the right, with an inline arrow hinting at
+/// the click-to-expand behaviour. Clicking the row toggles the candidate
+/// list below.
+struct DefaultAppCategoryRow {
+    index: usize,
+    label: &'static str,
+    current_app_name: Option<Box<str>>,
+    is_expanded: bool,
+    accent: Color,
+    row_width: i32,
+}
+
+impl Widget for DefaultAppCategoryRow {
+    fn id(&self) -> Option<&'static str> {
+        default_apps_pick_id(self.index)
+    }
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.row_width as f32),
+                height: ui_length(DEFAULT_APP_ROW_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let bg = match state {
+            WidgetState::Idle => theme.palette.surface,
+            WidgetState::Hovered => theme
+                .palette
+                .surface
+                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.08),
+            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.14),
+        };
+        if let Some(path) = rounded_rect_path(area, DEFAULT_APP_ROW_CORNER) {
+            paint_fill(canvas, &path, bg);
+        }
+        if self.is_expanded {
+            let strip = Rect {
+                x: area.x,
+                y: area.y + 10,
+                width: 3,
+                height: area.height - 20,
+            };
+            if let Some(path) = rounded_rect_path(strip, 1) {
+                paint_fill(canvas, &path, self.accent);
+            }
+        }
+        paint_text(
+            canvas,
+            self.label,
+            area.x + 18,
+            area.y + 24,
+            13.5,
+            theme.palette.text,
+        );
+        let current = self.current_app_name.as_deref().unwrap_or("Nicht gesetzt");
+        let current_color = if self.current_app_name.is_some() {
+            theme.palette.text_dim
+        } else {
+            theme
+                .palette
+                .text_dim
+                .lerp(Color::rgb(0xFF, 0x00, 0x00), 0.15)
+        };
+        paint_text(
+            canvas,
+            &fit_text(current, 30),
+            area.x + 18,
+            area.y + 44,
+            11.5,
+            current_color,
+        );
+        let arrow = if self.is_expanded { "▴" } else { "▾" };
+        paint_text(
+            canvas,
+            arrow,
+            area.x + area.width - 26,
+            area.y + 36,
+            14.0,
+            theme.palette.text_dim,
+        );
+    }
+}
+
+/// A single candidate app inside an expanded category picker.
+struct DefaultAppCandidateRow {
+    cat_idx: usize,
+    app_idx: usize,
+    name: Box<str>,
+    is_current: bool,
+    accent: Color,
+    row_width: i32,
+}
+
+impl Widget for DefaultAppCandidateRow {
+    fn id(&self) -> Option<&'static str> {
+        default_apps_set_id(self.cat_idx, self.app_idx)
+    }
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.row_width as f32),
+                height: ui_length(DEFAULT_APP_CANDIDATE_ROW_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let bg = match state {
+            WidgetState::Idle => theme.palette.surface_alt,
+            WidgetState::Hovered => theme
+                .palette
+                .surface_alt
+                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
+            WidgetState::Pressed => theme.palette.surface_alt.lerp(Color::rgb(0, 0, 0), 0.16),
+        };
+        if let Some(path) = rounded_rect_path(area, 6) {
+            paint_fill(canvas, &path, bg);
+        }
+        paint_text(
+            canvas,
+            &fit_text(&self.name, 44),
+            area.x + 32,
+            area.y + 28,
+            12.5,
+            theme.palette.text,
+        );
+        if self.is_current {
+            paint_text(
+                canvas,
+                "AKTUELL",
+                area.x + area.width - 78,
+                area.y + 28,
+                10.5,
+                self.accent,
+            );
+        }
+    }
+}
+
 struct NetworkProfileRow {
     index: usize,
     name: Box<str>,
@@ -2729,6 +2912,12 @@ pub(crate) fn build_settings_widget_tree(
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
     _armed_power: Option<(&str, f32)>,
+    default_apps_index: Option<&crate::default_apps::MimeAppIndex>,
+    default_apps_current: &std::collections::HashMap<
+        crate::default_apps::DefaultAppCategory,
+        String,
+    >,
+    default_apps_picker_open: Option<crate::default_apps::DefaultAppCategory>,
     theme: &Theme,
 ) -> Box<dyn Widget> {
     let pal = theme.palette;
@@ -3199,13 +3388,83 @@ pub(crate) fn build_settings_widget_tree(
             }
         }
         SettingsCategory::DefaultApps => {
-            // Placeholder body. Slice 2 wires the actual category rows,
-            // dropdowns and the "Sinnvolle Defaults setzen" button.
-            Box::new(SystemInfoRow {
-                label: "Standard-Apps".into(),
-                value: "Wird im nächsten Slice gebaut".into(),
-                row_width: content_w as i32,
-            }) as Box<dyn Widget>
+            let row_w = content_w as i32;
+            let mut rows: Vec<Box<dyn Widget>> = Vec::new();
+            // Auto-defaults button at the top.
+            rows.push(Box::new(Button::with_id(
+                "default-apps-auto",
+                "Sinnvolle Defaults für leere Kategorien setzen",
+                pal.accent,
+                row_w,
+                36,
+            )));
+            rows.push(Box::new(SidebarSectionLabel {
+                text: "STANDARD-APPS",
+                width: row_w,
+                pad_top: 8,
+            }));
+            if default_apps_index.is_none() {
+                rows.push(Box::new(SettingsPlaceholder {
+                    width: row_w,
+                    text: "Lade installierte Anwendungen ...",
+                }));
+            } else {
+                let index = default_apps_index.unwrap();
+                for (cat_idx, cat) in crate::default_apps::DefaultAppCategory::ALL
+                    .iter()
+                    .enumerate()
+                {
+                    let current_id = default_apps_current.get(cat).cloned();
+                    let current_name = current_id
+                        .as_deref()
+                        .and_then(|id| index.lookup(id))
+                        .map(|app| app.name.clone().into_boxed_str())
+                        .or_else(|| current_id.clone().map(String::into_boxed_str));
+                    let is_expanded = default_apps_picker_open == Some(*cat);
+                    rows.push(Box::new(DefaultAppCategoryRow {
+                        index: cat_idx,
+                        label: cat.label(),
+                        current_app_name: current_name,
+                        is_expanded,
+                        accent: pal.accent,
+                        row_width: row_w,
+                    }));
+                    if is_expanded {
+                        let candidates = index.apps_for_mime(cat.representative_mime());
+                        if candidates.is_empty() {
+                            rows.push(Box::new(SettingsPlaceholder {
+                                width: row_w,
+                                text: "Keine installierte Anwendung kann diesen Dateityp öffnen",
+                            }));
+                        } else {
+                            for (app_idx, app) in candidates
+                                .iter()
+                                .enumerate()
+                                .take(crate::settings_view::DEFAULT_APP_MAX_APPS_PER_CAT)
+                            {
+                                let is_current =
+                                    current_id.as_deref() == Some(app.desktop_id.as_str());
+                                rows.push(Box::new(DefaultAppCandidateRow {
+                                    cat_idx,
+                                    app_idx,
+                                    name: app.name.clone().into_boxed_str(),
+                                    is_current,
+                                    accent: pal.accent,
+                                    row_width: row_w,
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+            Box::new(Container::top_viewport(
+                content_w,
+                content_h,
+                14,
+                16,
+                4,
+                vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
+            )) as Box<dyn Widget>
         }
         SettingsCategory::SystemOverview => {
             let row_w = content_w as i32;
@@ -3741,6 +4000,12 @@ pub(crate) fn draw_settings_launcher(
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
     _armed_power: Option<(&str, f32)>,
+    default_apps_index: Option<&crate::default_apps::MimeAppIndex>,
+    default_apps_current: &std::collections::HashMap<
+        crate::default_apps::DefaultAppCategory,
+        String,
+    >,
+    default_apps_picker_open: Option<crate::default_apps::DefaultAppCategory>,
     theme_config: &ThemeConfig,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
 ) {
@@ -3791,6 +4056,9 @@ pub(crate) fn draw_settings_launcher(
         all_apps,
         icon_cache,
         None,
+        default_apps_index,
+        default_apps_current,
+        default_apps_picker_open,
         &theme,
     );
     if let Ok(layout) =

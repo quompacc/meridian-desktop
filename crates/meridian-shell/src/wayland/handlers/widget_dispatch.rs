@@ -59,7 +59,10 @@ impl MeridianShell {
             | WidgetAction::CycleOutputScale(_)
             | WidgetAction::CycleOutputTransform(_)
             | WidgetAction::ToggleOutputModeDropdown(_)
-            | WidgetAction::SetOutputMode { .. } => self.dispatch_settings_action(qh, action),
+            | WidgetAction::SetOutputMode { .. }
+            | WidgetAction::DefaultAppsAutoSet
+            | WidgetAction::DefaultAppsTogglePicker(_)
+            | WidgetAction::DefaultAppsPick { .. } => self.dispatch_settings_action(qh, action),
             WidgetAction::PowerOff
             | WidgetAction::PowerRestart
             | WidgetAction::PowerSleep
@@ -155,6 +158,13 @@ impl MeridianShell {
                     self.wifi_networks = crate::network::scan_wifi_networks();
                     self.wifi_password_prompt = None;
                     self.wifi_password_input.clear();
+                }
+                if cat == crate::settings_view::SettingsCategory::DefaultApps {
+                    self.default_apps_picker_open = None;
+                    // Reload every visit so a default set outside the
+                    // shell (terminal xdg-mime, package post-inst) shows
+                    // up immediately.
+                    self.refresh_default_apps_snapshot();
                 }
                 if cat == crate::settings_view::SettingsCategory::Bluetooth {
                     // Read-only bluetoothctl snapshot; cheap, safe on the loop.
@@ -386,6 +396,72 @@ impl MeridianShell {
                 mode_index,
             } => {
                 self.apply_output_mode_selection(qh, output_index, mode_index);
+            }
+            WidgetAction::DefaultAppsAutoSet => {
+                // xdg-mime is a subprocess per write; run off the event
+                // loop. Use the cached MimeAppIndex if available, fall
+                // back to a fresh load — the index is otherwise built
+                // on page entry.
+                let index = match self.default_apps_index.as_ref() {
+                    Some(idx) => idx.clone(),
+                    None => crate::default_apps::MimeAppIndex::load_system(),
+                };
+                std::thread::spawn(move || {
+                    let applied = crate::default_apps::apply_sensible_defaults_for_empty(&index);
+                    for (cat, app) in applied {
+                        tracing::info!("default apps auto-set: category={:?} app={}", cat, app);
+                    }
+                });
+                // Refresh immediately on the event loop so the page
+                // reflects everything we just changed. The background
+                // thread's writes hit disk by the time the page
+                // re-renders; a follow-up tick refresh will catch any
+                // outstanding ones.
+                self.refresh_default_apps_snapshot();
+                self.default_apps_picker_open = None;
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::DefaultAppsTogglePicker(idx) => {
+                let Some(cat) = crate::default_apps::DefaultAppCategory::ALL
+                    .get(idx)
+                    .copied()
+                else {
+                    return;
+                };
+                self.default_apps_picker_open = match self.default_apps_picker_open {
+                    Some(open) if open == cat => None,
+                    _ => Some(cat),
+                };
+                self.draw_launcher(qh, RepaintReason::Pointer);
+            }
+            WidgetAction::DefaultAppsPick { cat_idx, app_idx } => {
+                let Some(cat) = crate::default_apps::DefaultAppCategory::ALL
+                    .get(cat_idx)
+                    .copied()
+                else {
+                    return;
+                };
+                let Some(index) = self.default_apps_index.as_ref() else {
+                    return;
+                };
+                let apps = index.apps_for_mime(cat.representative_mime());
+                let Some(app) = apps.get(app_idx) else {
+                    return;
+                };
+                let desktop_id = app.desktop_id.clone();
+                let mimes: Vec<String> = cat.all_mimes().iter().map(|m| (*m).to_string()).collect();
+                std::thread::spawn(move || {
+                    let mime_refs: Vec<&str> = mimes.iter().map(String::as_str).collect();
+                    if !crate::default_apps::set_default_for_mimes(&desktop_id, &mime_refs) {
+                        tracing::warn!("xdg-mime default {} {:?} failed", desktop_id, mime_refs);
+                    }
+                });
+                // Optimistic local update: reflect the pick right away so
+                // the user doesn't have to wait for the subprocess to land.
+                self.default_apps_current
+                    .insert(cat, app.desktop_id.clone());
+                self.default_apps_picker_open = None;
+                self.draw_launcher(qh, RepaintReason::Pointer);
             }
             _ => unreachable!("non settings action routed to settings dispatcher"),
         }

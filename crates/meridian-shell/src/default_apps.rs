@@ -306,6 +306,20 @@ impl MimeAppIndex {
     }
 }
 
+/// Snapshot the current default `.desktop` id for every category in one
+/// pass. Categories with no default are absent from the map. Each lookup
+/// spawns an `xdg-mime` subprocess so this isn't free; call it on page
+/// transitions / after a write, not on every render.
+pub fn snapshot_current_defaults() -> HashMap<DefaultAppCategory, String> {
+    let mut out = HashMap::with_capacity(DefaultAppCategory::ALL.len());
+    for cat in DefaultAppCategory::ALL {
+        if let Some(id) = query_default(cat.representative_mime()) {
+            out.insert(*cat, id);
+        }
+    }
+    out
+}
+
 /// Run `xdg-mime query default <mime>` and return the desktop-id (e.g.
 /// `firefox.desktop`) or `None` if nothing is currently registered.
 pub fn query_default(mime: &str) -> Option<String> {

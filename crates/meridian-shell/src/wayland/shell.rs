@@ -271,6 +271,12 @@ pub(crate) struct MeridianShell {
     pub(crate) region_picker_drag_start: Option<(i32, i32)>,
     pub(crate) region_picker_drag_current: Option<(i32, i32)>,
     pub(crate) region_picker_pending: Option<crate::region_picker::RegionRect>,
+    // Settings -> Standard-Apps page state.
+    pub(crate) default_apps_index: Option<crate::default_apps::MimeAppIndex>,
+    pub(crate) default_apps_current:
+        std::collections::HashMap<crate::default_apps::DefaultAppCategory, String>,
+    pub(crate) default_apps_picker_open: Option<crate::default_apps::DefaultAppCategory>,
+    pub(crate) default_apps_loaded: bool,
     pub(crate) panel_buffer: Option<Buffer>,
     #[allow(dead_code)]
     pub(crate) desktop_buffer: Option<Buffer>,

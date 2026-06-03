@@ -87,7 +87,21 @@ pub(crate) enum WidgetAction {
         output_index: usize,
         mode_index: usize,
     },
+    /// Apply sensible defaults to every category that doesn't currently
+    /// have one set. Triggered by the page-top button.
+    DefaultAppsAutoSet,
+    /// Toggle the candidate-list expander for category index `idx`.
+    DefaultAppsTogglePicker(usize),
+    /// Pick an app at `app_idx` in the candidate list for category `cat_idx`.
+    DefaultAppsPick {
+        cat_idx: usize,
+        app_idx: usize,
+    },
 }
+
+const DEFAULT_APPS_AUTO_ID: &str = "default-apps-auto";
+const DEFAULT_APPS_PICK_PREFIX: &str = "default-apps-pick-";
+const DEFAULT_APPS_SET_PREFIX: &str = "default-apps-set-";
 
 pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
     exact_action_for_id(id)
@@ -164,6 +178,23 @@ pub(crate) fn action_for_id(id: &str) -> Option<WidgetAction> {
             )
         })
         .or_else(|| parse_display_mode_select_action(id))
+        .or_else(|| {
+            parse_indexed_action(
+                id,
+                DEFAULT_APPS_PICK_PREFIX,
+                WidgetAction::DefaultAppsTogglePicker,
+            )
+        })
+        .or_else(|| parse_default_apps_set_action(id))
+}
+
+fn parse_default_apps_set_action(id: &str) -> Option<WidgetAction> {
+    let tail = id.strip_prefix(DEFAULT_APPS_SET_PREFIX)?;
+    // "<cat_idx>-<app_idx>"
+    let mut parts = tail.splitn(2, '-');
+    let cat_idx = parts.next()?.parse::<usize>().ok()?;
+    let app_idx = parts.next()?.parse::<usize>().ok()?;
+    Some(WidgetAction::DefaultAppsPick { cat_idx, app_idx })
 }
 
 fn exact_action_for_id(id: &str) -> Option<WidgetAction> {
@@ -178,6 +209,7 @@ fn exact_action_for_id(id: &str) -> Option<WidgetAction> {
         "power-lock" => Some(WidgetAction::PowerLock),
         "power-logout" => Some(WidgetAction::PowerLogout),
         "launcher-settings" | "show-tile-view" => Some(WidgetAction::ToggleSettings),
+        DEFAULT_APPS_AUTO_ID => Some(WidgetAction::DefaultAppsAutoSet),
         "wallpaper-mode-fill" => Some(WidgetAction::SetWallpaperMode(
             meridian_config::WallpaperMode::Fill,
         )),

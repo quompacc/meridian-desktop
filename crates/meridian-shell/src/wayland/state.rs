@@ -540,6 +540,16 @@ impl MeridianShell {
             .set_size(crate::context_menu::MENU_WIDTH as u32, menu_height.max(1));
     }
 
+    /// Load (or reload) the Standard-Apps page snapshot: scans installed
+    /// .desktop files for MIME handlers and queries xdg-mime for the
+    /// current default per category. Synchronous — kept off the render
+    /// path; called from SetSettingsCategory and after any write.
+    pub(crate) fn refresh_default_apps_snapshot(&mut self) {
+        self.default_apps_index = Some(crate::default_apps::MimeAppIndex::load_system());
+        self.default_apps_current = crate::default_apps::snapshot_current_defaults();
+        self.default_apps_loaded = true;
+    }
+
     pub(crate) fn open_consent_modal(&mut self, request_id: String, app_id: String) {
         self.consent_request_id = Some(request_id);
         self.consent_app_id = app_id;
