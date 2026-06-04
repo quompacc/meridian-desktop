@@ -95,6 +95,7 @@ fn render_scene_for_blur(
                     | MeridianRenderElements::Shadow(_)
                     | MeridianRenderElements::Glass(_)
                     | MeridianRenderElements::Cursor(_)
+                    | MeridianRenderElements::Layer(_)
             ) {
                 continue;
             }
@@ -645,6 +646,46 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                 scale,
                 &mut out.scratch_upper_layer_elements,
             );
+
+            // Liquid-glass panel: a blurred-scene backdrop behind the
+            // translucent panel island (the shell already draws the panel
+            // semi-transparent). Pushed last in the upper-layer block so it
+            // sits behind the panel surface but in front of windows. The
+            // island insets/radius mirror the shell panel constants
+            // (PANEL_SIDE_MARGIN=12, PANEL_TOP_SHADOW=16, PANEL_HEIGHT=42,
+            // ISLAND_RADIUS=12).
+            if let Some((_, pg)) = out
+                .scratch_upper_layer_data
+                .iter()
+                .find(|(ls, _)| ls.namespace() == "meridian-panel")
+            {
+                let island = smithay::utils::Rectangle::<i32, smithay::utils::Logical>::new(
+                    (pg.loc.x + 12, pg.loc.y + 16).into(),
+                    ((pg.size.w - 24).max(1), 42).into(),
+                );
+                let surface = state.theme_manager.current().config.colors.surface;
+                let blur = state
+                    .theme_manager
+                    .current()
+                    .config
+                    .decorations
+                    .glass_blur_radius;
+                let info = super::glass::GlassTitlebarInfo {
+                    rect: island,
+                    radius: [12.0; 4],
+                    tint: [
+                        surface.r as f32 / 255.0,
+                        surface.g as f32 / 255.0,
+                        surface.b as f32 / 255.0,
+                    ],
+                    tint_amount: 0.0,
+                    blur,
+                };
+                out.scratch_upper_layer_elements
+                    .push(MeridianRenderElements::Glass(GlassElement::pending(
+                        info, scale,
+                    )));
+            }
 
             let wallpaper_elem = out
                 .wallpaper
