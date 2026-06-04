@@ -12,7 +12,6 @@ use std::os::fd::AsFd;
 use std::os::raw::c_void;
 use std::os::unix::io::AsRawFd;
 
-use ab_glyph::FontRef;
 use meridian_config::{MeridianConfig, ThemeConfig, ThemeManager};
 use smithay_client_toolkit::reexports::calloop::channel as cchannel;
 use tracing::{debug, info, warn};
@@ -51,7 +50,6 @@ pub struct ActiveAuth {
 
 pub struct AppState {
     pub running: bool,
-    pub font: FontRef<'static>,
     pub theme: ThemeConfig,
 
     // Wayland globals (set in registry dispatch)
@@ -90,14 +88,9 @@ const POPUP_W: u32 = 520;
 const POPUP_H: u32 = 340;
 
 impl AppState {
-    pub fn new(
-        font: FontRef<'static>,
-        theme: ThemeConfig,
-        pam_tx: cchannel::Sender<PamResult>,
-    ) -> Self {
+    pub fn new(theme: ThemeConfig, pam_tx: cchannel::Sender<PamResult>) -> Self {
         Self {
             running: true,
-            font,
             theme,
             compositor: None,
             shm: None,
@@ -351,7 +344,7 @@ impl AppState {
             status: active.status,
             hint: "Enter zum Bestätigen · Esc zum Abbrechen",
         };
-        ui::render(pixels, w, h, &self.font, &self.theme, &view);
+        ui::render(pixels, w, h, &self.theme, &view);
 
         if let Some(buf) = &popup.buffer {
             popup.surface.attach(Some(buf), 0, 0);

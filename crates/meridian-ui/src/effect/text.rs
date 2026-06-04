@@ -159,6 +159,16 @@ pub fn measure_text(text: &str, size_px: f32) -> (i32, i32) {
     (width.round() as i32, max_above + max_below)
 }
 
+/// (ascent, descent) of the active UI font at `size_px`, in pixels. Descent is
+/// negative (below the baseline), per the usual font-metrics convention. Used
+/// by client-drawn surfaces (lock screen, polkit) that lay text out by hand.
+pub fn ui_line_metrics(size_px: f32) -> (f32, f32) {
+    match ui_font().horizontal_line_metrics(size_px) {
+        Some(m) => (m.ascent, m.descent),
+        None => (size_px * 0.8, -size_px * 0.2),
+    }
+}
+
 pub fn paint_text(
     canvas: &mut PixmapMut<'_>,
     text: &str,

@@ -1438,9 +1438,9 @@ dependencies = [
 name = "meridian-lock"
 version = "0.4.0"
 dependencies = [
- "ab_glyph",
  "libc",
  "meridian-tokens",
+ "meridian-ui",
  "pam-sys",
  "tiny-skia",
  "tracing",
@@ -1473,10 +1473,10 @@ dependencies = [
 name = "meridian-polkit"
 version = "0.4.0"
 dependencies = [
- "ab_glyph",
  "libc",
  "meridian-config",
  "meridian-tokens",
+ "meridian-ui",
  "nix",
  "pam-sys",
  "smithay-client-toolkit",

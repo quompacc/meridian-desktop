@@ -1,4 +1,4 @@
-// Tiny-skia / ab_glyph rendering of the polkit auth popup. Pure, no
+// Tiny-skia + fontdue rendering of the polkit auth popup. Pure, no
 // Wayland here. Output is RGBA which the wayland layer expects to be
 // converted to BGRA (ARGB8888 little-endian) by the caller.
 //
@@ -6,7 +6,6 @@
 // popup matches whatever the rest of the desktop is wearing — light,
 // dark, custom — instead of a hardcoded Tokyo Night palette.
 
-use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
 use meridian_config::{Color as ThemeColor, ThemeConfig};
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, PixmapMut, Transform};
 
@@ -33,14 +32,7 @@ pub struct View<'a> {
 }
 
 /// Render the popup into `pixels` (RGBA, width*height*4 bytes).
-pub fn render(
-    pixels: &mut [u8],
-    width: u32,
-    height: u32,
-    font: &FontRef<'_>,
-    theme: &ThemeConfig,
-    view: &View<'_>,
-) {
+pub fn render(pixels: &mut [u8], width: u32, height: u32, theme: &ThemeConfig, view: &View<'_>) {
     let colors = &theme.colors;
     let radius = (theme.decorations.corner_radius.max(8) as f32).min(20.0);
 
@@ -86,7 +78,7 @@ pub fn render(
 
         // Title (calligraphic ambition, plain Adwaita Sans for now — font
         // upgrade later once meridian-ui hands us an Italianno reference).
-        draw_text_centered(&mut pm_mut, font, 22.0, cx, card_y + 36.0, view.title, text);
+        draw_text_centered(&mut pm_mut, 22.0, cx, card_y + 36.0, view.title, text);
 
         // Short cyan accent rule below the title.
         let rule_w: f32 = 60.0;
@@ -103,18 +95,18 @@ pub fn render(
         // Polkit message — 2-line max with ellipsis.
         let mut msg_y = card_y + 86.0;
         let max_w = CARD_W as f32 - 56.0;
-        let msg_lines = wrap_text(font, 14.0, view.message, max_w, 2);
+        let msg_lines = wrap_text(14.0, view.message, max_w, 2);
         for line in &msg_lines {
-            draw_text_centered(&mut pm_mut, font, 14.0, cx, msg_y, line, dim);
+            draw_text_centered(&mut pm_mut, 14.0, cx, msg_y, line, dim);
             msg_y += 22.0;
         }
 
         // Identity — prominent. Username in full text color, label in dim.
         let id_label = "Anmelden als";
         let id_label_y = card_y + 148.0;
-        draw_text_centered(&mut pm_mut, font, 12.0, cx, id_label_y, id_label, dim);
+        draw_text_centered(&mut pm_mut, 12.0, cx, id_label_y, id_label, dim);
         let id_name_y = card_y + 166.0;
-        draw_text_centered(&mut pm_mut, font, 18.0, cx, id_name_y, view.username, text);
+        draw_text_centered(&mut pm_mut, 18.0, cx, id_name_y, view.username, text);
 
         // Password field.
         let field_x = cx - FIELD_W / 2.0;
@@ -156,10 +148,9 @@ pub fn render(
             fill_circle(&mut pm_mut, dx, dots_y, dot_r, accent);
         }
         if view.password_len == 0 && view.status != Status::Checking {
-            let m = measure_text(font, 14.0, "Passwort");
+            let m = measure_text(14.0, "Passwort");
             draw_text(
                 &mut pm_mut,
-                font,
                 14.0,
                 field_x + (FIELD_W - m.total_advance) / 2.0,
                 field_y + FIELD_H / 2.0 + 5.0,
@@ -176,7 +167,6 @@ pub fn render(
         };
         draw_text_centered(
             &mut pm_mut,
-            font,
             12.0,
             cx,
             card_y + CARD_H as f32 - 28.0,
@@ -264,81 +254,45 @@ pub struct TextMetrics {
     pub ascent: f32,
 }
 
-pub fn measure_text(font: &FontRef<'_>, size: f32, text: &str) -> TextMetrics {
-    let scaled = font.as_scaled(PxScale::from(size));
-    let mut advance = 0.0;
-    for ch in text.chars() {
-        advance += scaled.h_advance(scaled.glyph_id(ch));
-    }
+pub fn measure_text(size: f32, text: &str) -> TextMetrics {
+    let (width, _) = meridian_ui::measure_text(text, size);
+    let (ascent, _descent) = meridian_ui::ui_line_metrics(size);
     TextMetrics {
-        total_advance: advance,
-        ascent: scaled.ascent(),
+        total_advance: width as f32,
+        ascent,
     }
 }
 
-pub fn draw_text(
-    pm: &mut PixmapMut,
-    font: &FontRef<'_>,
-    size: f32,
-    pen_x: f32,
-    baseline_y: f32,
-    text: &str,
-    col: u32,
-) {
-    let scaled = font.as_scaled(PxScale::from(size));
-    let pw = pm.width() as i32;
-    let ph = pm.height() as i32;
-    let a_f = ((col >> 24) & 0xff) as f32 / 255.0;
-    let cr = ((col >> 16) & 0xff) as u8;
-    let cg = ((col >> 8) & 0xff) as u8;
-    let cb = (col & 0xff) as u8;
-    let mut x = pen_x;
-    for ch in text.chars() {
-        let id = scaled.glyph_id(ch);
-        let glyph = id.with_scale_and_position(PxScale::from(size), ab_glyph::point(x, baseline_y));
-        if let Some(outline) = font.outline_glyph(glyph) {
-            let b = outline.px_bounds();
-            outline.draw(|gx, gy, alpha| {
-                let px = b.min.x as i32 + gx as i32;
-                let py = b.min.y as i32 + gy as i32;
-                if px < 0 || py < 0 || px >= pw || py >= ph {
-                    return;
-                }
-                let idx = (py as usize * pw as usize + px as usize) * 4;
-                let data = pm.data_mut();
-                let a = (alpha * a_f * 255.0).clamp(0.0, 255.0) as u32;
-                for (i, &c) in [cr, cg, cb].iter().enumerate() {
-                    let dst = data[idx + i] as u32;
-                    data[idx + i] = ((c as u32 * a + dst * (255 - a)) / 255) as u8;
-                }
-            });
-        }
-        x += scaled.h_advance(id);
-    }
+pub fn draw_text(pm: &mut PixmapMut, size: f32, pen_x: f32, baseline_y: f32, text: &str, col: u32) {
+    let a = ((col >> 24) & 0xff) as u8;
+    let r = ((col >> 16) & 0xff) as u8;
+    let g = ((col >> 8) & 0xff) as u8;
+    let b = (col & 0xff) as u8;
+    meridian_ui::paint_text(
+        pm,
+        text,
+        pen_x.round() as i32,
+        baseline_y.round() as i32,
+        size,
+        meridian_tokens::Color::rgba(r, g, b, a),
+    );
 }
 
 pub fn draw_text_centered(
     pm: &mut PixmapMut,
-    font: &FontRef<'_>,
     size: f32,
     cx: f32,
     top_y: f32,
     text: &str,
     col: u32,
 ) {
-    let m = measure_text(font, size, text);
+    let m = measure_text(size, text);
     let pen_x = cx - m.total_advance / 2.0;
     let baseline_y = top_y + m.ascent;
-    draw_text(pm, font, size, pen_x, baseline_y, text, col);
+    draw_text(pm, size, pen_x, baseline_y, text, col);
 }
 
-fn wrap_text(
-    font: &FontRef<'_>,
-    size: f32,
-    text: &str,
-    max_w: f32,
-    max_lines: usize,
-) -> Vec<String> {
+fn wrap_text(size: f32, text: &str, max_w: f32, max_lines: usize) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
     let mut current = String::new();
     for word in text.split_whitespace() {
@@ -347,7 +301,7 @@ fn wrap_text(
         } else {
             format!("{} {}", current, word)
         };
-        if measure_text(font, size, &candidate).total_advance > max_w && !current.is_empty() {
+        if measure_text(size, &candidate).total_advance > max_w && !current.is_empty() {
             lines.push(current.clone());
             if lines.len() == max_lines {
                 let mut last = lines.pop().unwrap();
@@ -372,11 +326,6 @@ fn wrap_text(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn test_font() -> FontRef<'static> {
-        static FONT: &[u8] = meridian_tokens::font::ADWAITA_SANS_REGULAR;
-        FontRef::try_from_slice(FONT).expect("load test font")
-    }
 
     #[test]
     fn u32_from_color_packs_argb_with_explicit_alpha() {
@@ -403,36 +352,26 @@ mod tests {
 
     #[test]
     fn wrap_text_short_text_stays_one_line() {
-        let font = test_font();
-        let lines = wrap_text(&font, 16.0, "hallo", 1000.0, 3);
+        let lines = wrap_text(16.0, "hallo", 1000.0, 3);
         assert_eq!(lines, vec!["hallo".to_string()]);
     }
 
     #[test]
     fn wrap_text_empty_yields_single_empty_line() {
-        let font = test_font();
-        let lines = wrap_text(&font, 16.0, "", 1000.0, 3);
+        let lines = wrap_text(16.0, "", 1000.0, 3);
         assert_eq!(lines, vec![String::new()]);
     }
 
     #[test]
     fn wrap_text_wraps_when_too_narrow() {
-        let font = test_font();
-        let lines = wrap_text(&font, 16.0, "the quick brown fox jumps", 40.0, 6);
+        let lines = wrap_text(16.0, "the quick brown fox jumps", 40.0, 6);
         assert!(lines.len() > 1, "expected wrapping, got {:?}", lines);
         assert!(lines.iter().all(|l| !l.is_empty()));
     }
 
     #[test]
     fn wrap_text_truncates_with_ellipsis_at_max_lines() {
-        let font = test_font();
-        let lines = wrap_text(
-            &font,
-            16.0,
-            "the quick brown fox jumps over the lazy dog",
-            40.0,
-            2,
-        );
+        let lines = wrap_text(16.0, "the quick brown fox jumps over the lazy dog", 40.0, 2);
         assert_eq!(lines.len(), 2);
         // Letzte Zeile endet mit U+2026 (ellipsis) = UTF-8 0xE2 0x80 0xA6.
         assert!(

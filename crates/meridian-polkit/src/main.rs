@@ -10,7 +10,6 @@ mod wayland;
 
 use std::time::Duration;
 
-use ab_glyph::FontRef;
 use meridian_config::{MeridianConfig, ThemeManager};
 use smithay_client_toolkit::reexports::calloop::{
     channel::{channel as cchannel, Event as ChannelEvent},
@@ -21,8 +20,6 @@ use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 use crate::wayland::{AppState, PamResult};
-
-static FONT_DATA: &[u8] = meridian_tokens::font::ADWAITA_SANS_REGULAR;
 
 fn install_panic_logger() {
     let default_hook = std::panic::take_hook();
@@ -85,8 +82,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "meridian-polkit-agent starting"
     );
 
-    let font = FontRef::try_from_slice(FONT_DATA).expect("font load");
-
     // Pull the active theme from ~/.config/meridian/config.toml. If the
     // user switches themes at runtime, the agent keeps the old palette
     // until restart — fine for v1, the dbus thread can later observe
@@ -120,7 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // registry callback) plus all UI state.
     let (conn, event_queue) = wayland::connect()?;
     let qh = event_queue.handle();
-    let mut state = AppState::new(font, theme, pam_tx);
+    let mut state = AppState::new(theme, pam_tx);
 
     let mut event_loop: EventLoop<'static, AppState> = EventLoop::try_new()?;
     let loop_handle = event_loop.handle();

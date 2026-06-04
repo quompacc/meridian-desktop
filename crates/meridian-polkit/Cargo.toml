@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 meridian-tokens = { path = "../meridian-tokens" }
-ab_glyph = { workspace = true }
+meridian-ui = { path = "../meridian-ui" }
 libc = "0.2"
 meridian-config = { path = "../meridian-config" }
 nix = { version = "0.29", features = ["user"] }

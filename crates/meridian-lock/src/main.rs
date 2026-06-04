@@ -4,7 +4,6 @@ use std::os::fd::AsFd;
 use std::os::unix::io::{AsRawFd, BorrowedFd};
 use std::sync::mpsc;
 
-use ab_glyph::{Font, FontRef, PxScale, ScaleFont};
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, PixmapMut, Transform};
 use wayland_client::{
     delegate_noop,
@@ -19,8 +18,6 @@ use wayland_protocols::ext::session_lock::v1::client::{
 };
 use xkbcommon::xkb;
 use zeroize::Zeroizing;
-
-static FONT_DATA: &[u8] = meridian_tokens::font::ADWAITA_SANS_REGULAR;
 
 // ── colours (RGBA, tiny-skia order) ──────────────────────────────────────────
 const BG: u32 = 0xFF1A1B26;
@@ -580,79 +577,36 @@ struct TextMetrics {
     descent: f32,
 }
 
-fn measure_text(font: &FontRef<'_>, size: f32, text: &str) -> TextMetrics {
-    let scaled = font.as_scaled(PxScale::from(size));
-    let mut advance = 0.0_f32;
-    let mut prev_glyph_id = None;
-    for ch in text.chars() {
-        let id = scaled.glyph_id(ch);
-        if let Some(prev) = prev_glyph_id {
-            advance += scaled.kern(prev, id);
-        }
-        advance += scaled.h_advance(id);
-        prev_glyph_id = Some(id);
-    }
+fn measure_text(size: f32, text: &str) -> TextMetrics {
+    let (width, _) = meridian_ui::measure_text(text, size);
+    let (ascent, descent) = meridian_ui::ui_line_metrics(size);
     TextMetrics {
-        total_advance: advance,
-        ascent: scaled.ascent(),
-        descent: scaled.descent(),
+        total_advance: width as f32,
+        ascent,
+        descent,
     }
 }
 
-fn draw_text(
-    pm: &mut PixmapMut,
-    font: &FontRef<'_>,
-    size: f32,
-    pen_x: f32,
-    baseline_y: f32,
-    text: &str,
-    col: u32,
-) {
-    let scaled = font.as_scaled(PxScale::from(size));
-    let pw = pm.width() as i32;
-    let ph = pm.height() as i32;
-    let a_f = ((col >> 24) & 0xff) as f32 / 255.0;
-    let cr = ((col >> 16) & 0xff) as u8;
-    let cg = ((col >> 8) & 0xff) as u8;
-    let cb = (col & 0xff) as u8;
-    let mut x = pen_x;
-    for ch in text.chars() {
-        let id = scaled.glyph_id(ch);
-        let glyph = id.with_scale_and_position(PxScale::from(size), ab_glyph::point(x, baseline_y));
-        if let Some(outline) = font.outline_glyph(glyph) {
-            let b = outline.px_bounds();
-            outline.draw(|gx, gy, alpha| {
-                let px = b.min.x as i32 + gx as i32;
-                let py = b.min.y as i32 + gy as i32;
-                if px < 0 || py < 0 || px >= pw || py >= ph {
-                    return;
-                }
-                let idx = (py as usize * pw as usize + px as usize) * 4;
-                let data = pm.data_mut();
-                let a = (alpha * a_f * 255.0).clamp(0.0, 255.0) as u32;
-                for (i, &c) in [cr, cg, cb].iter().enumerate() {
-                    let dst = data[idx + i] as u32;
-                    data[idx + i] = ((c as u32 * a + dst * (255 - a)) / 255) as u8;
-                }
-            });
-        }
-        x += scaled.h_advance(id);
-    }
+fn draw_text(pm: &mut PixmapMut, size: f32, pen_x: f32, baseline_y: f32, text: &str, col: u32) {
+    let a = ((col >> 24) & 0xff) as u8;
+    let r = ((col >> 16) & 0xff) as u8;
+    let g = ((col >> 8) & 0xff) as u8;
+    let b = (col & 0xff) as u8;
+    meridian_ui::paint_text(
+        pm,
+        text,
+        pen_x.round() as i32,
+        baseline_y.round() as i32,
+        size,
+        meridian_tokens::Color::rgba(r, g, b, a),
+    );
 }
 
-fn draw_text_centered(
-    pm: &mut PixmapMut,
-    font: &FontRef<'_>,
-    size: f32,
-    cx: f32,
-    top_y: f32,
-    text: &str,
-    col: u32,
-) {
-    let m = measure_text(font, size, text);
+fn draw_text_centered(pm: &mut PixmapMut, size: f32, cx: f32, top_y: f32, text: &str, col: u32) {
+    let m = measure_text(size, text);
     let pen_x = cx - m.total_advance / 2.0;
     let baseline_y = top_y + m.ascent;
-    draw_text(pm, font, size, pen_x, baseline_y, text, col);
+    draw_text(pm, size, pen_x, baseline_y, text, col);
 }
 
 fn render_frame(
@@ -661,7 +615,6 @@ fn render_frame(
     password_len: usize,
     username: &str,
     status: &LockStatus,
-    font: &FontRef<'_>,
 ) -> Vec<u8> {
     let w = width;
     let h = height;
@@ -685,7 +638,6 @@ fn render_frame(
     // "Meridian Desktop" title
     draw_text_centered(
         &mut pm_mut,
-        font,
         20.0,
         cx,
         card_y + 82.0,
@@ -694,7 +646,7 @@ fn render_frame(
     );
 
     // Username
-    draw_text_centered(&mut pm_mut, font, 14.0, cx, card_y + 114.0, username, DIM);
+    draw_text_centered(&mut pm_mut, 14.0, cx, card_y + 114.0, username, DIM);
 
     // Password field
     let field_x = cx - FIELD_W / 2.0;
@@ -735,10 +687,9 @@ fn render_frame(
     }
     if password_len == 0 {
         // Placeholder text
-        let m = measure_text(font, 14.0, "Passwort eingeben");
+        let m = measure_text(14.0, "Passwort eingeben");
         draw_text(
             &mut pm_mut,
-            font,
             14.0,
             field_x + (FIELD_W - m.total_advance) / 2.0,
             field_y + (FIELD_H / 2.0) + (m.ascent - (m.ascent - m.descent) / 2.0),
@@ -754,15 +705,7 @@ fn render_frame(
         LockStatus::Pending => ("Authentifizierung …", TEXT),
         LockStatus::Failed => ("Falsches Passwort", ERR),
     };
-    draw_text_centered(
-        &mut pm_mut,
-        font,
-        13.0,
-        cx,
-        status_y,
-        status_text,
-        status_col,
-    );
+    draw_text_centered(&mut pm_mut, 13.0, cx, status_y, status_text, status_col);
 
     // Convert RGBA → BGRA (wl_shm ARGB8888 is BGRA in memory)
     let mut pixels = pm.take();
@@ -804,15 +747,7 @@ fn render_surface(state: &mut AppState, idx: usize, qh: &QueueHandle<AppState>) 
         return;
     }
 
-    let font = FontRef::try_from_slice(FONT_DATA).unwrap();
-    let pixels = render_frame(
-        w,
-        h,
-        state.password.len(),
-        &state.username,
-        &state.status,
-        &font,
-    );
+    let pixels = render_frame(w, h, state.password.len(), &state.username, &state.status);
 
     let ls = &mut state.lock_surfaces[idx];
 
