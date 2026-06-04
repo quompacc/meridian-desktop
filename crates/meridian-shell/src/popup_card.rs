@@ -120,7 +120,6 @@ fn rounded_rect_sample_inside(x: f32, y: f32, w: i32, h: i32, radius: i32) -> bo
 pub const POPUP_SHADOW_BLUR: f32 = meridian_tokens::Elevation::POPUP.blur;
 pub const POPUP_SHADOW_ALPHA: f32 = meridian_tokens::Elevation::POPUP.alpha;
 pub const POPUP_SHADOW_OFFSET_Y: i32 = meridian_tokens::Elevation::POPUP.offset_y;
-const POPUP_SHADOW_EDGE_COVER_ROWS: i32 = 1;
 
 /// Composite an already-rendered `card_buf` (card_w * card_h * 4 BGRA bytes)
 /// onto a layer-shell `surface` buffer plus a soft drop shadow. The surface
@@ -154,7 +153,6 @@ pub fn paint_card_with_shadow(
         POPUP_SHADOW_OFFSET_Y,
         true,
     );
-    draw_shadow_edge_cover(surface, surface_w, surface_h, card_w, card_h, pad, pad);
     crate::soft_shadow::composite_card_onto_surface(
         surface,
         surface_w as usize,
@@ -165,78 +163,6 @@ pub fn paint_card_with_shadow(
         pad as usize,
         pad as usize,
     );
-}
-
-fn draw_shadow_edge_cover(
-    surface: &mut [u8],
-    surface_w: u32,
-    surface_h: u32,
-    card_w: u32,
-    card_h: u32,
-    card_x: i32,
-    card_y: i32,
-) {
-    let surface_w = surface_w as i32;
-    let surface_h = surface_h as i32;
-    let card_w = card_w as i32;
-    let card_h = card_h as i32;
-    if surface_w <= 0 || surface_h <= 0 || card_w <= 0 || card_h <= 0 {
-        return;
-    }
-
-    let y0 = card_y + card_h;
-    for row in 0..POPUP_SHADOW_EDGE_COVER_ROWS {
-        let y = y0 + row;
-        if y < 0 || y >= surface_h {
-            continue;
-        }
-        for local_x in 0..card_w {
-            let x = card_x + local_x;
-            if x < 0 || x >= surface_w {
-                continue;
-            }
-            let coverage = rounded_rect_coverage(local_x, card_h - 1, card_w, card_h, CARD_RADIUS);
-            if coverage == 0 {
-                continue;
-            }
-            let alpha = ((u16::from(GLASS_BORDER.a) * u16::from(coverage)) / 255) as u8;
-            blend_premultiplied_color(
-                surface,
-                surface_w as usize,
-                x as usize,
-                y as usize,
-                GLASS_BORDER,
-                alpha,
-            );
-        }
-    }
-}
-
-fn blend_premultiplied_color(
-    surface: &mut [u8],
-    surface_w: usize,
-    x: usize,
-    y: usize,
-    color: Color,
-    alpha: u8,
-) {
-    if alpha == 0 {
-        return;
-    }
-    let idx = (y * surface_w + x) * 4;
-    if idx + 4 > surface.len() {
-        return;
-    }
-    let alpha = u16::from(alpha);
-    let inv = 255 - alpha;
-    let src_b = u16::from(color.b) * alpha / 255;
-    let src_g = u16::from(color.g) * alpha / 255;
-    let src_r = u16::from(color.r) * alpha / 255;
-
-    surface[idx] = (src_b + u16::from(surface[idx]) * inv / 255) as u8;
-    surface[idx + 1] = (src_g + u16::from(surface[idx + 1]) * inv / 255) as u8;
-    surface[idx + 2] = (src_r + u16::from(surface[idx + 2]) * inv / 255) as u8;
-    surface[idx + 3] = (alpha + u16::from(surface[idx + 3]) * inv / 255) as u8;
 }
 
 /// Draw the title text and the short cyan accent rule beneath it. The rule
@@ -447,39 +373,5 @@ pub fn draw_footer_link(
         y: y_top,
         w: measured + 20,
         h: FOOTER_LINK_HEIGHT,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn shadow_edge_cover_extends_the_bottom_glass_border() {
-        let surface_w = 52;
-        let surface_h = 36;
-        let card_w = 32;
-        let card_h = 18;
-        let card_x = 10;
-        let card_y = 8;
-        let mut surface = vec![0u8; surface_w as usize * surface_h as usize * 4];
-
-        draw_shadow_edge_cover(
-            &mut surface,
-            surface_w,
-            surface_h,
-            card_w,
-            card_h,
-            card_x,
-            card_y,
-        );
-
-        let center_x = card_x + card_w as i32 / 2;
-        let edge_y = card_y + card_h as i32;
-        let idx = ((edge_y * surface_w as i32 + center_x) * 4) as usize;
-        assert_eq!(surface[idx + 3], GLASS_BORDER.a);
-
-        let outside_idx = ((edge_y * surface_w as i32 + card_x - 1) * 4) as usize;
-        assert_eq!(surface[outside_idx + 3], 0);
     }
 }
