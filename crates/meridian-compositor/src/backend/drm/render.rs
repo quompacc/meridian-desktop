@@ -776,8 +776,8 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                     surface.g as f32 / 255.0,
                     surface.b as f32 / 255.0,
                 ];
-                let tint_amount = (theme_config.decorations.glass_tint * 0.38).clamp(0.0, 0.38);
-                let blur = (theme_config.decorations.glass_blur_radius * 0.45).max(2.0);
+                let tint_amount = (theme_config.decorations.glass_tint * 0.35).clamp(0.0, 0.35);
+                let blur = theme_config.decorations.glass_blur_radius;
                 let mut push_menu_glass = |x: i32, y: i32, w: i32, h: i32| {
                     let card = smithay::utils::Rectangle::<i32, smithay::utils::Logical>::new(
                         (x, y).into(),
