@@ -471,12 +471,17 @@ impl MeridianShell {
             &self.theme,
         );
         if self.theme.decorations.glass && self.theme.decorations.glass_blur {
+            let border = self.theme.colors.border;
+            let border_alpha =
+                (self.theme.decorations.glass_frame_alpha.clamp(0.0, 1.0) * 255.0) as u8;
+            let border = meridian_config::Color::rgba(border.r, border.g, border.b, border_alpha);
             for panel in &panels {
-                crate::popup_card::draw_glass_card_border_in_rect(
+                crate::popup_card::draw_glass_card_border_in_rect_with_color(
                     &mut card_buf,
                     card_w as i32,
                     card_h as i32,
                     *panel,
+                    border,
                 );
             }
         }

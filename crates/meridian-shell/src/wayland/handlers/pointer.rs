@@ -173,18 +173,8 @@ impl PointerHandler for MeridianShell {
                 if let PointerEventKind::Press { button: 0x110, .. } = event.kind {
                     let pad = crate::POPUP_SHADOW_PAD as f64;
                     let (px, py) = (event.position.0 - pad, event.position.1 - pad);
-                    let in_submenu = context_menu::is_in_submenu_area(px)
-                        && self
-                            .desktop_context_menu
-                            .as_ref()
-                            .is_some_and(|m| m.submenu_open);
-                    let sub_action = if in_submenu {
-                        context_menu::submenu_hit_item_local(px, py).and_then(|idx| {
-                            context_menu::submenu_items().get(idx).map(|item| item.1)
-                        })
-                    } else {
-                        None
-                    };
+                    let sub_action = context_menu::submenu_hit_item_local(px, py)
+                        .and_then(|idx| context_menu::submenu_items().get(idx).map(|item| item.1));
                     let main_action = if sub_action.is_none() {
                         context_menu::desktop_hit_item_local(px, py).and_then(|idx| {
                             context_menu::desktop_item_list()

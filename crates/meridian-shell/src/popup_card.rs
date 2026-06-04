@@ -121,12 +121,15 @@ pub const POPUP_SHADOW_BLUR: f32 = meridian_tokens::Elevation::POPUP.blur;
 pub const POPUP_SHADOW_ALPHA: f32 = meridian_tokens::Elevation::POPUP.alpha;
 pub const POPUP_SHADOW_OFFSET_Y: i32 = meridian_tokens::Elevation::POPUP.offset_y;
 
-/// Draw the shared glass popup border into a BGRA buffer at `rect`.
-///
-/// This is the same coverage code used by [`draw_card_body`], exposed for
-/// composite popup surfaces that contain more than one glass panel.
-pub fn draw_glass_card_border_in_rect(buf: &mut [u8], buf_w: i32, buf_h: i32, rect: Rect) {
-    draw_card_border_in_rect(buf, buf_w, buf_h, rect, GLASS_BORDER, CARD_RADIUS);
+/// Draw the shared glass popup border with a caller-provided theme color.
+pub fn draw_glass_card_border_in_rect_with_color(
+    buf: &mut [u8],
+    buf_w: i32,
+    buf_h: i32,
+    rect: Rect,
+    color: Color,
+) {
+    draw_card_border_in_rect(buf, buf_w, buf_h, rect, color, CARD_RADIUS);
 }
 
 fn draw_card_border_in_rect(

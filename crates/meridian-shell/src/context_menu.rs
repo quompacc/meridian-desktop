@@ -5,7 +5,7 @@ use meridian_ui::{
 };
 use tiny_skia::Pixmap;
 
-use crate::ui::tokens::{glass_palette_from_config, palette_from_config};
+use crate::ui::tokens::palette_from_config;
 
 pub(crate) const MENU_WIDTH: i32 = 236;
 pub(crate) const SUBMENU_GAP: i32 = 6;
@@ -26,15 +26,19 @@ fn is_glass_menu(theme_config: &ThemeConfig) -> bool {
 }
 
 fn menu_palette_from_config(theme_config: &ThemeConfig) -> meridian_ui::style::Palette {
-    if is_glass_menu(theme_config) {
-        glass_palette_from_config(theme_config)
-    } else {
-        palette_from_config(theme_config)
-    }
+    palette_from_config(theme_config)
 }
 
-fn with_alpha(color: meridian_ui::style::Color, alpha: u8) -> meridian_ui::style::Color {
-    meridian_ui::style::Color::rgba(color.r, color.g, color.b, alpha)
+fn ui_color(color: meridian_config::Color) -> meridian_ui::style::Color {
+    meridian_ui::style::Color::rgba(color.r, color.g, color.b, color.a)
+}
+
+fn theme_accent_idle(theme_config: &ThemeConfig) -> meridian_ui::style::Color {
+    ui_color(meridian_tokens::Interaction::DEFAULT.accent_idle(theme_config.colors.accent))
+}
+
+fn theme_accent_hover(theme_config: &ThemeConfig) -> meridian_ui::style::Color {
+    ui_color(meridian_tokens::Interaction::DEFAULT.accent_hover(theme_config.colors.accent))
 }
 
 fn paint_menu_background(
@@ -601,11 +605,14 @@ fn draw_overlay_with_background(
         };
 
         if state.hover_idx == Some(i) {
-            if let Some(p) = rounded_rect_path(item_rect, 6) {
+            if let Some(p) = rounded_rect_path(item_rect, meridian_tokens::Radius::DEFAULT.sm) {
                 let hover_fill = if is_glass_menu(theme_config) {
-                    with_alpha(pal.accent, 46)
+                    theme_accent_idle(theme_config)
                 } else {
-                    pal.surface_alt.lerp(pal.accent, 0.20)
+                    pal.surface_alt.lerp(
+                        pal.accent,
+                        meridian_tokens::Interaction::DEFAULT.hover_lighten,
+                    )
                 };
                 paint_fill(&mut pm.as_mut(), &p, hover_fill);
             }
@@ -617,7 +624,7 @@ fn draw_overlay_with_background(
             };
             if let Some(mp) = rounded_rect_path(marker, 1) {
                 let marker_fill = if is_glass_menu(theme_config) {
-                    with_alpha(pal.accent, 170)
+                    theme_accent_hover(theme_config)
                 } else {
                     pal.accent
                 };
@@ -759,11 +766,14 @@ fn draw_submenu_overlay(
         };
 
         if state.submenu_hover_idx == Some(i) {
-            if let Some(p) = rounded_rect_path(item_rect, 6) {
+            if let Some(p) = rounded_rect_path(item_rect, meridian_tokens::Radius::DEFAULT.sm) {
                 let hover_fill = if is_glass_menu(theme_config) {
-                    with_alpha(pal.accent, 46)
+                    theme_accent_idle(theme_config)
                 } else {
-                    pal.surface_alt.lerp(pal.accent, 0.20)
+                    pal.surface_alt.lerp(
+                        pal.accent,
+                        meridian_tokens::Interaction::DEFAULT.hover_lighten,
+                    )
                 };
                 paint_fill(&mut pm.as_mut(), &p, hover_fill);
             }
@@ -775,7 +785,7 @@ fn draw_submenu_overlay(
             };
             if let Some(mp) = rounded_rect_path(marker, 1) {
                 let marker_fill = if is_glass_menu(theme_config) {
-                    with_alpha(pal.accent, 170)
+                    theme_accent_hover(theme_config)
                 } else {
                     pal.accent
                 };
@@ -1030,6 +1040,47 @@ mod tests {
         let first_mid_y = (VPAD + ITEM_H / 2) as f64;
         assert_eq!(submenu_hit_item_local(sub_x, first_mid_y), Some(0));
         assert_eq!(submenu_hit_item_local(5.0, first_mid_y), None);
+    }
+
+    #[test]
+    fn glass_menu_palette_uses_theme_colors() {
+        let mut theme = ThemeConfig::default();
+        theme.decorations.glass = true;
+        theme.decorations.glass_blur = true;
+        theme.colors.text = meridian_config::Color::rgb(1, 2, 3);
+        theme.colors.border = meridian_config::Color::rgb(4, 5, 6);
+
+        let pal = menu_palette_from_config(&theme);
+
+        assert_eq!(
+            (pal.text.r, pal.text.g, pal.text.b, pal.text.a),
+            (1, 2, 3, 255)
+        );
+        assert_eq!(
+            (pal.border.r, pal.border.g, pal.border.b, pal.border.a),
+            (4, 5, 6, 255)
+        );
+    }
+
+    #[test]
+    fn submenu_hit_item_local_hits_every_row_and_rejects_gap() {
+        let x = (MENU_WIDTH + SUBMENU_GAP + 1) as f64;
+        for i in 0..submenu_items().len() {
+            let y = (VPAD + i as i32 * ITEM_H + ITEM_H / 2) as f64;
+            assert_eq!(submenu_hit_item_local(x, y), Some(i));
+        }
+
+        let first_mid_y = (VPAD + ITEM_H / 2) as f64;
+        assert_eq!(submenu_hit_item_local(MENU_WIDTH as f64, first_mid_y), None);
+        assert_eq!(
+            submenu_hit_item_local((MENU_WIDTH + SUBMENU_GAP - 1) as f64, first_mid_y),
+            None
+        );
+        assert_eq!(submenu_hit_item_local(x, (VPAD - 1) as f64), None);
+        assert_eq!(
+            submenu_hit_item_local(x, (VPAD + submenu_items().len() as i32 * ITEM_H) as f64),
+            None
+        );
     }
 
     #[test]
