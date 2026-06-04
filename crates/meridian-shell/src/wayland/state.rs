@@ -995,24 +995,20 @@ impl MeridianShell {
         self.launcher_state.toggle();
         let open_after = self.launcher_state.open;
         if self.launcher_state.open {
-            // Keep the launcher as a card-sized layer surface. The compositor
-            // can then place the live glass backdrop directly behind the card,
-            // same as the panel island.
+            // Fullscreen layer surface, transparent except for the launcher card.
+            // This gives the software shadow room to render around the card
+            // without moving the visible launcher away from the panel.
             self.launcher_layer
-                .set_anchor(Anchor::BOTTOM | Anchor::LEFT);
-            self.launcher_layer.set_margin(
-                0,
-                0,
-                crate::SHELL_POPUP_BOTTOM_MARGIN,
-                crate::PANEL_SIDE_MARGIN as i32,
-            );
+                .set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+            self.launcher_layer.set_margin(0, 0, 0, 0);
             self.launcher_layer.set_exclusive_zone(0);
-            self.launcher_layer
-                .set_size(crate::LAUNCHER_WIDTH, crate::LAUNCHER_HEIGHT);
+            self.launcher_layer.set_size(0, 0);
             self.launcher_layer
                 .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
-            tracing::debug!("launcher focus request: keyboard_interactivity=Exclusive (card)");
-            self.launcher_is_fullscreen = false;
+            tracing::debug!(
+                "launcher focus request: keyboard_interactivity=Exclusive (fullscreen)"
+            );
+            self.launcher_is_fullscreen = true;
             self.launcher_state.reshuffle();
         } else {
             self.launcher_is_fullscreen = false;

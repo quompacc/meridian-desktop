@@ -732,7 +732,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                 let blur = theme_config.decorations.glass_blur_radius;
                 let info = super::glass::GlassTitlebarInfo {
                     rect: card,
-                    radius: [12.0; 4],
+                    radius: [meridian_tokens::Radius::DEFAULT.lg as f32; 4],
                     tint: [
                         surface.r as f32 / 255.0,
                         surface.g as f32 / 255.0,

@@ -4051,12 +4051,7 @@ pub(crate) fn draw_settings_launcher(
         return;
     };
     let theme = theme_from_config(theme_config);
-    pixmap.fill(tiny_skia::Color::from_rgba8(
-        theme.palette.background.r,
-        theme.palette.background.g,
-        theme.palette.background.b,
-        theme.palette.background.a,
-    ));
+    pixmap.fill(tiny_skia::Color::TRANSPARENT);
     let root = build_settings_widget_tree(
         width,
         height,

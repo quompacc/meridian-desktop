@@ -216,7 +216,13 @@ impl LayerShellHandler for MeridianShell {
                 LAUNCHER_HEIGHT
             );
             if self.launcher_is_fullscreen {
-                // Full-screen mode: accept compositor-provided size as-is.
+                // Fullscreen mode: reassert all-edge anchors and zero size on
+                // each configure so reopen cycles keep a valid stretched layer.
+                self.launcher_layer
+                    .set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+                self.launcher_layer.set_margin(0, 0, 0, 0);
+                self.launcher_layer.set_exclusive_zone(0);
+                self.launcher_layer.set_size(0, 0);
                 let w = configure.new_size.0.max(1);
                 let h = configure.new_size.1.max(1);
                 self.launcher_configured = true;
