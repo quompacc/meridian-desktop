@@ -51,15 +51,27 @@ mod tests {
     fn levels_match_phase4_values() {
         // Guards the 1:1 mapping from the former scattered literals.
         assert_eq!(
-            (Elevation::PANEL.blur, Elevation::PANEL.alpha, Elevation::PANEL.offset_y),
+            (
+                Elevation::PANEL.blur,
+                Elevation::PANEL.alpha,
+                Elevation::PANEL.offset_y
+            ),
             (13.0, 0.16, 0)
         );
         assert_eq!(
-            (Elevation::POPUP.blur, Elevation::POPUP.alpha, Elevation::POPUP.offset_y),
+            (
+                Elevation::POPUP.blur,
+                Elevation::POPUP.alpha,
+                Elevation::POPUP.offset_y
+            ),
             (13.0, 0.12, 3)
         );
         assert_eq!(
-            (Elevation::LAUNCHER.blur, Elevation::LAUNCHER.alpha, Elevation::LAUNCHER.offset_y),
+            (
+                Elevation::LAUNCHER.blur,
+                Elevation::LAUNCHER.alpha,
+                Elevation::LAUNCHER.offset_y
+            ),
             (18.0, 0.16, 4)
         );
     }
