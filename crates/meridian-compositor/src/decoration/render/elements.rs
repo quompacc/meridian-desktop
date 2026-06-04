@@ -594,11 +594,11 @@ impl DecorationManager {
                 ));
             }
 
-            let titlebar_col = if deco.is_focused {
+            let titlebar_col = theme.glass_tint_color.unwrap_or(if deco.is_focused {
                 colors.surface
             } else {
                 colors.surface_alt
-            };
+            });
             let [r, g, b, _] = titlebar_col.as_f32_array();
             if theme.glass && theme.glass_blur {
                 // Textured liquid-glass: emit a placeholder; the backend

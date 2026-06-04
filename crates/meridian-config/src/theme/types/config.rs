@@ -73,6 +73,12 @@ pub struct Decorations {
     pub glass_frame_alpha: f32,
     /// Base opacity of the colour veil on the glass window buttons (0.0..1.0).
     pub glass_button_alpha: f32,
+    /// Optional explicit tint colour for the frosted glass — the "blur
+    /// accent". When `None` the glass tints toward the surface colour as
+    /// before; when set, this colour drives the tint on every glass surface
+    /// (titlebar, panel, launcher, popups), decoupling the blur accent from
+    /// `surface` so it can be themed independently.
+    pub glass_tint_color: Option<Color>,
 }
 
 impl Default for Decorations {
@@ -94,6 +100,7 @@ impl Default for Decorations {
             glass_tint: 0.5,
             glass_frame_alpha: 0.4,
             glass_button_alpha: 0.45,
+            glass_tint_color: None,
         }
     }
 }
@@ -214,6 +221,25 @@ mod tests {
         assert_eq!(decorations.shadow_alpha, 0.18);
         assert_eq!(decorations.shadow_offset_y, 0);
         assert_eq!(decorations.gap, 8);
+    }
+
+    #[test]
+    fn test_glass_tint_color_defaults_none_and_parses() {
+        // No-regress contract for the blur-accent decoupling: absent means
+        // None (tint follows surface as before); a hex value parses to Some.
+        assert_eq!(Decorations::default().glass_tint_color, None);
+
+        let config: ThemeConfig = toml::from_str(
+            r##"
+            [decorations]
+            glass_tint_color = "#5b9bd5"
+            "##,
+        )
+        .expect("decorations with glass_tint_color should deserialize");
+        assert_eq!(
+            config.decorations.glass_tint_color,
+            Some(Color::rgb(0x5b, 0x9b, 0xd5))
+        );
     }
 
     #[test]

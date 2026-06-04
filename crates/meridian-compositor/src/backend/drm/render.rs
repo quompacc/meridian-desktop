@@ -671,7 +671,10 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                     ((pg.size.w - 24).max(1), 42).into(),
                 );
                 let theme_config = &state.theme_manager.current().config;
-                let surface = theme_config.colors.surface_alt;
+                let surface = theme_config
+                    .decorations
+                    .glass_tint_color
+                    .unwrap_or(theme_config.colors.surface_alt);
                 let blur = theme_config.decorations.glass_blur_radius;
                 let info = super::glass::GlassTitlebarInfo {
                     rect: island,
@@ -722,7 +725,10 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                         .into(),
                 );
                 let theme_config = &state.theme_manager.current().config;
-                let surface = theme_config.colors.surface_alt;
+                let surface = theme_config
+                    .decorations
+                    .glass_tint_color
+                    .unwrap_or(theme_config.colors.surface_alt);
                 let blur = theme_config.decorations.glass_blur_radius;
                 let info = super::glass::GlassTitlebarInfo {
                     rect: card,
@@ -759,7 +765,10 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                     (card_w, card_h).into(),
                 );
                 let theme_config = &state.theme_manager.current().config;
-                let surface = theme_config.colors.surface_alt;
+                let surface = theme_config
+                    .decorations
+                    .glass_tint_color
+                    .unwrap_or(theme_config.colors.surface_alt);
                 let info = super::glass::GlassTitlebarInfo {
                     rect: card,
                     radius: [14.0; 4],
