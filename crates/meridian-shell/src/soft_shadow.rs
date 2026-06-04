@@ -96,6 +96,10 @@ pub(crate) fn draw_soft_shadow(
     let sy = y + offset_y;
     let cx = x as f32 + w as f32 / 2.0;
     let cy = sy as f32 + h as f32 / 2.0;
+    // Un-offset element centre. The translucent-safe clip below must test
+    // the ACTUAL element, not the drop-shifted shape, or offset_y leaves a
+    // transparent strip directly below it (the recurring "second bar").
+    let cy_win = y as f32 + h as f32 / 2.0;
     let hx = w as f32 / 2.0;
     let hy = h as f32 / 2.0;
     let pad = blur.ceil() as i32 + 1;
@@ -105,12 +109,17 @@ pub(crate) fn draw_soft_shadow(
     let y1 = (sy + h + pad).min(buf_h);
     for py in y0..y1 {
         for px in x0..x1 {
-            let d = rounded_box_sdf(px as f32, py as f32, cx, cy, hx, hy, radius);
-            if clip_inside && d <= 0.0 {
-                continue; // translucent surface owns its interior
+            if clip_inside {
+                // Discard inside the actual (un-offset) element; coverage
+                // still comes from the drop-shifted SDF below, so the shadow
+                // stays continuous directly under the element (no offset gap).
+                let d_win = rounded_box_sdf(px as f32, py as f32, cx, cy_win, hx, hy, radius);
+                if d_win <= 0.0 {
+                    continue; // translucent surface owns its interior
+                }
             }
-            // 1 - smoothstep(-blur, blur, d): soft, centred on the edge (0.5 at
-            // the boundary) so there is no hard outline.
+            let d = rounded_box_sdf(px as f32, py as f32, cx, cy, hx, hy, radius);
+            // 1 - smoothstep(-blur, blur, d): soft, centred on the edge.
             let t = ((d + blur) / (2.0 * blur)).clamp(0.0, 1.0);
             let cov = 1.0 - t * t * (3.0 - 2.0 * t);
             let sa = cov * alpha;

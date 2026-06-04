@@ -151,7 +151,7 @@ pub fn paint_card_with_shadow(
         POPUP_SHADOW_BLUR,
         POPUP_SHADOW_ALPHA,
         POPUP_SHADOW_OFFSET_Y,
-        false,
+        true,
     );
     crate::soft_shadow::composite_card_onto_surface(
         surface,
