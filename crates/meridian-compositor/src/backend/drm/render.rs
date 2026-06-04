@@ -53,11 +53,16 @@ render_elements! {
     Layer=WaylandSurfaceRenderElement<GlesRenderer>,
 }
 
-/// Render the scene *without decorations or cursor* into an offscreen
-/// texture, used as the blur source behind glass titlebars.
+/// Render the scene behind one glass placeholder into an offscreen texture.
+///
+/// `first_behind` is an index into the front-to-back render list. Rendering only
+/// elements after that index avoids sampling the glass surface itself or any UI
+/// in front of it. This matters for the panel: its layer surface sits in front
+/// of the compositor-owned backdrop, while windows/wallpaper sit behind it.
 fn render_scene_for_blur(
     renderer: &mut GlesRenderer,
     elements: &[MeridianRenderElements],
+    first_behind: usize,
     out_size: (u32, u32),
 ) -> Option<GlesTexture> {
     use smithay::backend::{
@@ -87,16 +92,8 @@ fn render_scene_for_blur(
             .render(&mut target, phys_size, Transform::Normal)
             .ok()?;
         let _ = frame.clear([0.0, 0.0, 0.0, 1.0].into(), &[phys_region]);
-        for element in elements.iter().rev() {
-            if matches!(
-                element,
-                MeridianRenderElements::Decoration(_)
-                    | MeridianRenderElements::DecorationIcon(_)
-                    | MeridianRenderElements::Shadow(_)
-                    | MeridianRenderElements::Glass(_)
-                    | MeridianRenderElements::Cursor(_)
-                    | MeridianRenderElements::Layer(_)
-            ) {
+        for element in elements.iter().skip(first_behind).rev() {
+            if is_glass_blur_source_excluded(element) {
                 continue;
             }
             let src = element.src();
@@ -112,6 +109,17 @@ fn render_scene_for_blur(
 
 /// One separable blur pass: render `input` through the blur shader with the
 /// given per-unit UV `step` into a fresh offscreen texture.
+fn is_glass_blur_source_excluded(element: &MeridianRenderElements) -> bool {
+    matches!(
+        element,
+        MeridianRenderElements::Decoration(_)
+            | MeridianRenderElements::DecorationIcon(_)
+            | MeridianRenderElements::Shadow(_)
+            | MeridianRenderElements::Glass(_)
+            | MeridianRenderElements::Cursor(_)
+    )
+}
+
 fn blur_pass(
     renderer: &mut GlesRenderer,
     prog: &smithay::backend::renderer::gles::GlesTexProgram,
@@ -648,9 +656,8 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
             );
 
             // Liquid-glass panel: a blurred-scene backdrop behind the
-            // translucent panel island (the shell already draws the panel
-            // semi-transparent). Pushed last in the upper-layer block so it
-            // sits behind the panel surface but in front of windows. The
+            // translucent panel island. Pushed last in the upper-layer block so
+            // it sits behind the panel surface but in front of windows. The
             // island insets/radius mirror the shell panel constants
             // (PANEL_SIDE_MARGIN=12, PANEL_TOP_SHADOW=16, PANEL_HEIGHT=42,
             // ISLAND_RADIUS=12).
@@ -663,13 +670,9 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                     (pg.loc.x + 12, pg.loc.y + 16).into(),
                     ((pg.size.w - 24).max(1), 42).into(),
                 );
-                let surface = state.theme_manager.current().config.colors.surface;
-                let blur = state
-                    .theme_manager
-                    .current()
-                    .config
-                    .decorations
-                    .glass_blur_radius;
+                let theme_config = &state.theme_manager.current().config;
+                let surface = theme_config.colors.surface_alt;
+                let blur = theme_config.decorations.glass_blur_radius;
                 let info = super::glass::GlassTitlebarInfo {
                     rect: island,
                     radius: [12.0; 4],
@@ -678,7 +681,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                         surface.g as f32 / 255.0,
                         surface.b as f32 / 255.0,
                     ],
-                    tint_amount: 0.0,
+                    tint_amount: (theme_config.decorations.glass_tint * 0.35).clamp(0.0, 0.35),
                     blur,
                 };
                 out.scratch_upper_layer_elements
@@ -760,25 +763,36 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
         process_thumbnail_requests(state, renderer, out, out_size);
         process_screenshot_requests(state, renderer, out, out_size);
 
-        // Liquid-glass: render the scene minus decorations to an offscreen
-        // texture, then swap each pending glass placeholder for a real
-        // element that samples (and blurs) it behind the titlebar.
+        // Liquid-glass: for each placeholder, render only the scene behind
+        // that placeholder, blur it, and swap in a real sampling element.
         if !state.idle_blanked
             && out
                 .scratch_final
                 .iter()
                 .any(|e| matches!(e, MeridianRenderElements::Glass(_)))
         {
-            if let Some(scene) = render_scene_for_blur(renderer, &out.scratch_final, out_size) {
-                let radius = out
+            if let Some(prog) = glass_shader(renderer) {
+                let pending: Vec<_> = out
                     .scratch_final
                     .iter()
-                    .find_map(|e| match e {
-                        MeridianRenderElements::Glass(g) => g.pending_info().map(|i| i.blur),
+                    .enumerate()
+                    .filter_map(|(idx, el)| match el {
+                        MeridianRenderElements::Glass(g) => {
+                            g.pending_info().map(|info| (idx, info))
+                        }
                         _ => None,
                     })
-                    .unwrap_or(8.0);
-                if let Some(blurred) = blur_scene(renderer, scene, out_size, radius) {
+                    .collect();
+                for (idx, info) in pending {
+                    let first_behind = idx.saturating_add(1);
+                    let Some(scene) =
+                        render_scene_for_blur(renderer, &out.scratch_final, first_behind, out_size)
+                    else {
+                        continue;
+                    };
+                    let Some(blurred) = blur_scene(renderer, scene, out_size, info.blur) else {
+                        continue;
+                    };
                     let buffer = TextureBuffer::from_texture(
                         renderer,
                         blurred,
@@ -786,21 +800,15 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                         smithay::utils::Transform::Normal,
                         None,
                     );
-                    if let Some(prog) = glass_shader(renderer) {
-                        for el in out.scratch_final.iter_mut() {
-                            if let MeridianRenderElements::Glass(g) = el {
-                                if let Some(info) = g.pending_info() {
-                                    let ready = GlassTitlebarElement::new(
-                                        prog.clone(),
-                                        &buffer,
-                                        info,
-                                        (out_size.0 as i32, out_size.1 as i32),
-                                        scale,
-                                    );
-                                    *g = GlassElement::Ready(ready);
-                                }
-                            }
-                        }
+                    let ready = GlassTitlebarElement::new(
+                        prog.clone(),
+                        &buffer,
+                        info,
+                        (out_size.0 as i32, out_size.1 as i32),
+                        scale,
+                    );
+                    if let Some(MeridianRenderElements::Glass(g)) = out.scratch_final.get_mut(idx) {
+                        *g = GlassElement::Ready(ready);
                     }
                 }
             }

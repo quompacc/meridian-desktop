@@ -2,9 +2,7 @@ use meridian_config::Decorations;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, Rectangle, Size};
 
-use super::super::{
-    DecorationManager, BUTTON_WIDTH, CONTROL_CLUSTER_RIGHT_MARGIN, TITLE_BAR_HEIGHT,
-};
+use super::super::{DecorationManager, BUTTON_WIDTH, TITLE_BAR_HEIGHT};
 
 pub(crate) const SSD_RESIZE_HANDLE_THICKNESS: i32 = 8;
 
@@ -131,16 +129,15 @@ impl SsdChromeMetrics {
             return None;
         }
 
-        // Three contiguous segments (minimize, maximize, close left→right)
-        // forming one pill, right-aligned in the titlebar and centred
-        // vertically. Both rendering and hit-testing read these rects, so the
-        // visual pill and the click targets always match.
+        // Three contiguous segments (minimize, maximize, close left-to-right)
+        // docked to the titlebar right edge. Both rendering and hit-testing
+        // read these rects, so the visual block and the click targets match.
         let seg_w = BUTTON_WIDTH;
         // Full titlebar height so the controls fill the bar (glass look).
         let seg_h = self.frame.titlebar_height + self.frame.border_width;
         let pill_w = seg_w * 3;
         let frame_right = self.frame.frame_origin.x + self.frame.frame_size.w;
-        let pill_x = frame_right - CONTROL_CLUSTER_RIGHT_MARGIN - pill_w;
+        let pill_x = frame_right - pill_w;
         // Top-aligned: the controls span the full titlebar height.
         let seg_y = self.frame.frame_origin.y;
 
@@ -340,15 +337,15 @@ mod tests {
         let buttons = chrome.button_metrics().expect("titlebar buttons");
 
         // Three contiguous 32x34 segments at full titlebar height (titlebar 32
-        // + border 2), top-aligned at y=0, right-aligned with a 10px margin in
-        // a 644px-wide frame: pill_x = 644 - 10 - 96 = 538.
-        assert_eq!(buttons.minimize_rect.loc, Point::from((538, 0)));
-        assert_eq!(buttons.maximize_rect.loc, Point::from((570, 0)));
-        assert_eq!(buttons.close_rect.loc, Point::from((602, 0)));
+        // + border 2), top-aligned and docked to a 644px-wide frame right edge:
+        // pill_x = 644 - 96 = 548.
+        assert_eq!(buttons.minimize_rect.loc, Point::from((548, 0)));
+        assert_eq!(buttons.maximize_rect.loc, Point::from((580, 0)));
+        assert_eq!(buttons.close_rect.loc, Point::from((612, 0)));
         assert_eq!(buttons.close_rect.size, Size::from((32, 34)));
         assert_eq!(buttons.maximize_rect.size, Size::from((32, 34)));
         assert_eq!(buttons.minimize_rect.size, Size::from((32, 34)));
-        assert_eq!(buttons.pill_rect.loc, Point::from((538, 0)));
+        assert_eq!(buttons.pill_rect.loc, Point::from((548, 0)));
         assert_eq!(buttons.pill_rect.size, Size::from((96, 34)));
     }
 

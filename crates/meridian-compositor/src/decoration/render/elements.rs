@@ -363,23 +363,6 @@ impl DecorationManager {
             SsdFrameMetrics::from_frame_origin(window_loc, content_size, bw, title_h);
         let chrome = SsdChromeMetrics::new(frame_metrics);
 
-        // Glass: a complete cool-white (slightly blue) 2px frame around
-        // the whole window, drawn topmost so it reads as one continuous
-        // outline over the translucent titlebar.
-        if theme.glass && rounded {
-            if let Some(ref prog) = rounded_quad_shader {
-                elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
-                    prog,
-                    frame_metrics.frame_rect,
-                    [0.82, 0.88, 1.0],
-                    (rphys, rphys, rphys, rphys),
-                    2.0 * ps as f32,
-                    theme.glass_frame_alpha,
-                    ps as f32,
-                )));
-            }
-        }
-
         if show_title {
             let buttons = chrome
                 .button_metrics()
@@ -448,6 +431,7 @@ impl DecorationManager {
                 let pill = buttons.pill_rect;
                 let psf = ps as f32;
                 let pr = (pill.size.h as f32 / 2.0) * psf;
+                let docked_right_radius = rphys;
                 if theme.glass {
                     // Full-height frosted colour zones: close=red,
                     // maximize=accent, minimize=lighter blue. The frosted
@@ -456,9 +440,17 @@ impl DecorationManager {
                     let base = theme.glass_button_alpha;
                     let hover_a = (theme.glass_button_alpha + 0.25).min(0.95);
                     let zones = [
-                        (buttons.minimize_rect, colors.accent_alt, (pr, 0.0, 0.0, pr)),
+                        (
+                            buttons.minimize_rect,
+                            colors.accent_alt,
+                            (0.0, 0.0, 0.0, 0.0),
+                        ),
                         (buttons.maximize_rect, colors.accent, (0.0, 0.0, 0.0, 0.0)),
-                        (buttons.close_rect, colors.error, (0.0, pr, pr, 0.0)),
+                        (
+                            buttons.close_rect,
+                            colors.error,
+                            (0.0, docked_right_radius, 0.0, 0.0),
+                        ),
                     ];
                     for (rect, col, radii) in zones {
                         let [zr, zg, zb, _] = col.as_f32_array();
@@ -474,15 +466,19 @@ impl DecorationManager {
                     }
                     if let Some(h) = hovered {
                         let (rect, col, radii) = match h {
-                            HoveredButton::Close => {
-                                (buttons.close_rect, colors.error, (0.0, pr, pr, 0.0))
-                            }
+                            HoveredButton::Close => (
+                                buttons.close_rect,
+                                colors.error,
+                                (0.0, docked_right_radius, 0.0, 0.0),
+                            ),
                             HoveredButton::Maximize => {
                                 (buttons.maximize_rect, colors.accent, (0.0, 0.0, 0.0, 0.0))
                             }
-                            HoveredButton::Minimize => {
-                                (buttons.minimize_rect, colors.accent_alt, (pr, 0.0, 0.0, pr))
-                            }
+                            HoveredButton::Minimize => (
+                                buttons.minimize_rect,
+                                colors.accent_alt,
+                                (0.0, 0.0, 0.0, 0.0),
+                            ),
                         };
                         let [zr, zg, zb, _] = col.as_f32_array();
                         elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
@@ -519,7 +515,7 @@ impl DecorationManager {
                                 buttons.close_rect,
                                 colors.error,
                                 0.55f32,
-                                (0.0, pr, pr, 0.0),
+                                (0.0, docked_right_radius, 0.0, 0.0),
                             ),
                             HoveredButton::Maximize => (
                                 buttons.maximize_rect,
@@ -531,7 +527,7 @@ impl DecorationManager {
                                 buttons.minimize_rect,
                                 colors.accent,
                                 0.28f32,
-                                (pr, 0.0, 0.0, pr),
+                                (0.0, 0.0, 0.0, 0.0),
                             ),
                         };
                         let [cr, cg, cb, _] = col.as_f32_array();

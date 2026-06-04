@@ -233,15 +233,11 @@ mod tests {
     }
 
     #[test]
-    fn border_corner_points_hit_top_and_bottom_corner_regions() {
+    fn border_corner_points_hit_available_resize_corners() {
         let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
         assert_eq!(
             classify_ssd_frame_hit((1.0, 1.0).into(), metrics),
             SsdFrameHitRegion::TopLeftCorner
-        );
-        assert_eq!(
-            classify_ssd_frame_hit((642.0, 1.0).into(), metrics),
-            SsdFrameHitRegion::TopRightCorner
         );
         assert_eq!(
             classify_ssd_frame_hit((1.0, 435.0).into(), metrics),
@@ -250,6 +246,15 @@ mod tests {
         assert_eq!(
             classify_ssd_frame_hit((642.0, 435.0).into(), metrics),
             SsdFrameHitRegion::BottomRightCorner
+        );
+    }
+
+    #[test]
+    fn docked_close_button_owns_top_right_corner() {
+        let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
+        assert_eq!(
+            classify_ssd_frame_hit((642.0, 1.0).into(), metrics),
+            SsdFrameHitRegion::CloseButton
         );
     }
 

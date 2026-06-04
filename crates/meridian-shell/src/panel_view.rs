@@ -55,11 +55,11 @@ const SURFACE_H: i32 = PANEL_SURFACE_HEIGHT as i32;
 const ISLAND_TOP: i32 = PANEL_TOP_SHADOW as i32;
 // Segment divider chrome
 const DIVIDER_W: i32 = 11;
-// Frosted-glass island: more transparent body, a milky veil, and a fine
-// deterministic grain that fakes the frosted texture (no live backdrop blur).
-const PANEL_ISLAND_ALPHA: u8 = 140;
-const PANEL_FROST_ALPHA: u8 = 22;
-const PANEL_NOISE_STRENGTH: i32 = 9;
+// Frosted-glass island: transparent shell tint over the compositor-owned
+// live backdrop blur. Noise stays off so the real blurred scene remains legible.
+const PANEL_ISLAND_ALPHA: u8 = 72;
+const PANEL_FROST_ALPHA: u8 = 10;
+const PANEL_NOISE_STRENGTH: i32 = 0;
 
 const FONT_SIZE: f32 = 14.0;
 const ACCENT_LINE_H: i32 = 2;
@@ -1167,7 +1167,7 @@ fn collect_click_zones(
 /// Add a fine, position-deterministic brightness grain to a rectangular
 /// region of a tiny-skia RGBA(premultiplied) buffer. Deterministic so it does
 /// not shimmer between redraws; only touches pixels that belong to the island
-/// (alpha > 0). Fakes the texture of frosted glass without a backdrop blur.
+/// (alpha > 0). Kept at zero strength while the compositor provides live blur.
 fn apply_frost_noise(data: &mut [u8], w: usize, _h: usize, x0: i32, y0: i32, x1: i32, y1: i32) {
     for y in y0.max(0)..y1 {
         for x in x0.max(0)..x1 {
@@ -1262,17 +1262,11 @@ pub(crate) fn draw_panel_ui(
     // wallpaper shows through the side margins and the bottom gap.
     pixmap.fill(tiny_skia::Color::TRANSPARENT);
 
-    // Frosted-glass island. Drawn in three passes so the grain lands on the
-    // glass body but UNDER the icons: (1) border + semi-transparent body +
-    // milky veil, (2) deterministic grain over the body, (3) top highlight +
-    // the widget tree on top.
+    // Frosted-glass island. The compositor owns the live blurred backdrop;
+    // the shell only adds translucent tint/chrome and then the widgets.
     let inner_w = (width as i32 - 2 * SIDE_MARGIN).max(0);
     let base = theme.palette.surface_alt;
     let body_col = Color::rgba(base.r, base.g, base.b, PANEL_ISLAND_ALPHA);
-    let border = {
-        let l = base.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.18);
-        Color::rgba(l.r, l.g, l.b, 235)
-    };
     let outline = Rect {
         x: SIDE_MARGIN,
         y: ISLAND_TOP,
@@ -1302,9 +1296,6 @@ pub(crate) fn draw_panel_ui(
     );
     {
         let mut pc = pixmap.as_mut();
-        if let Some(path) = rounded_rect_path(outline, ISLAND_RADIUS) {
-            paint_fill(&mut pc, &path, border);
-        }
         if let Some(path) = rounded_rect_path(body, ISLAND_RADIUS - 1) {
             paint_fill(&mut pc, &path, body_col);
         }

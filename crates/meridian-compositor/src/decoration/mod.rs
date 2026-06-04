@@ -24,8 +24,6 @@ pub const BUTTON_HEIGHT: i32 = 28;
 pub const BUTTON_ICON_PX: u32 = 14;
 pub const BUTTON_STROKE_WIDTH: f32 = 1.25;
 pub const BUTTON_MARGIN: i32 = 8;
-/// Gap between the control pill's right edge and the window's right edge.
-pub const CONTROL_CLUSTER_RIGHT_MARGIN: i32 = 10;
 
 // CLAUDE.md-Regel 4 verbietet Heap-Alloc im Render-Loop. `render_elements()`
 // baut pro Frame eine SmallVec<DecorationRenderElement; 32> auf - Box um die
