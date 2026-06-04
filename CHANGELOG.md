@@ -10,7 +10,28 @@ single version.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-04
+
 ### Added
+
+- **Liquid-glass window decorations:** server-side-decorated windows get a
+  frosted titlebar. The compositor renders the scene without decorations
+  into an offscreen texture, runs a two-pass separable Gaussian blur over
+  it, and each titlebar samples that blurred texture behind a tinted,
+  rounded pane with a cool-white frame. The window controls fill the
+  titlebar height as three colour-tinted glass zones (close/maximize/
+  minimize). Theme tokens: `glass`, `glass_blur`, `glass_blur_radius`,
+  `glass_tint`, `glass_frame_alpha`, `glass_button_alpha`. `ReloadConfig`
+  now forces a full repaint so theme changes apply immediately. A
+  blur-behind backdrop for the panel island is present but not yet working
+  visually (WIP, see the panel-island commit).
+
+### Fixed
+
+- The window drop shadow is now drawn behind the window content instead of
+  in front of it, so opaque clients are no longer dimmed ~40% by the
+  shadow overlay; only the soft outer halo remains.
+
 
 - **Interactive screenshot region picker (portal A2):** the freedesktop
   Screenshot portal's `interactive=true` option now opens a fullscreen
