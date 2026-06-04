@@ -229,10 +229,8 @@ impl LayerShellHandler for MeridianShell {
                 self.launcher_width = w;
                 self.launcher_height = h;
                 self.launcher_visual_x = crate::PANEL_SIDE_MARGIN as i32;
-                self.launcher_visual_y = h as i32
-                    - crate::LAUNCHER_HEIGHT as i32
-                    - crate::PANEL_SURFACE_HEIGHT as i32
-                    - crate::SHELL_POPUP_BOTTOM_MARGIN;
+                self.launcher_visual_y =
+                    h as i32 - crate::LAUNCHER_HEIGHT as i32 - crate::SHELL_POPUP_BOTTOM_MARGIN;
                 tracing::debug!(
                     "launcher fullscreen: {}x{} visual@({},{})",
                     w,

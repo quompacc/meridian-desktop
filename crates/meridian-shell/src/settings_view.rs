@@ -22,7 +22,7 @@ use crate::sysinfo::SystemInfo;
 use meridian_config::{ThemeConfig, WallpaperEntry, WallpaperMode};
 use meridian_ipc::{OutputModeState, OutputWorkspaceState};
 
-use crate::ui::tokens::theme_from_config;
+use crate::ui::tokens::glass_theme_from_config;
 
 // ─── SettingsCategory ────────────────────────────────────────────────────────
 
@@ -756,6 +756,19 @@ const DISPLAY_MODE_OPTION_IDS: [[&str; DISPLAY_MODE_OPTION_MAX]; 16] = [
 
 const SETTINGS_BACK_W: i32 = 52;
 
+fn with_alpha(color: Color, alpha: u8) -> Color {
+    Color::rgba(color.r, color.g, color.b, alpha)
+}
+
+fn settings_glass_theme_from_config(config: &ThemeConfig) -> Theme {
+    let mut theme = glass_theme_from_config(config);
+    theme.palette.background = with_alpha(theme.palette.background, 0);
+    theme.palette.surface = with_alpha(theme.palette.surface, 0);
+    theme.palette.surface_alt = with_alpha(theme.palette.surface_alt, 0);
+    theme.palette.text_dim = theme.palette.text;
+    theme
+}
+
 /// Header bar: paints the surface background and lays out the back button +
 /// search field as a centred row. Matches the command palette header height.
 struct SettingsHeaderBar {
@@ -850,14 +863,13 @@ impl Widget for SettingsSearchField {
         let baseline = area.y + (area.height + 13) / 2;
         let text_x = area.x + 4;
         if self.query.is_empty() {
-            let ph = Color::rgba(pal.text.r, pal.text.g, pal.text.b, 80);
             paint_text(
                 canvas,
                 "Einstellungen durchsuchen…",
                 text_x,
                 baseline,
                 13.0,
-                ph,
+                pal.text,
             );
         } else {
             paint_text(canvas, &self.query, text_x, baseline, 13.0, pal.text);
@@ -924,19 +936,13 @@ impl Widget for SidebarSectionLabel {
     }
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
-        let c = Color::rgba(
-            theme.palette.text.r,
-            theme.palette.text.g,
-            theme.palette.text.b,
-            105,
-        );
         paint_text(
             canvas,
             self.text,
             area.x + 16,
             area.y + area.height - 6,
             10.0,
-            c,
+            theme.palette.text,
         );
     }
 }
@@ -4050,7 +4056,7 @@ pub(crate) fn draw_settings_launcher(
     let Some(mut pixmap) = Pixmap::new(width, height) else {
         return;
     };
-    let theme = theme_from_config(theme_config);
+    let theme = settings_glass_theme_from_config(theme_config);
     pixmap.fill(tiny_skia::Color::TRANSPARENT);
     let root = build_settings_widget_tree(
         width,

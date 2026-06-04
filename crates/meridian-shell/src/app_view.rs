@@ -371,8 +371,7 @@ fn draw_header(
     let text_x = 20i32;
     let text_baseline = CP_HEADER_H - (CP_HEADER_H - 14) / 2 - 2;
     if search_query.is_empty() {
-        let ph = Color::rgba(pal.text.r, pal.text.g, pal.text.b, 80);
-        paint_text(pm, "Apps suchen...", text_x, text_baseline, 13.0, ph);
+        paint_text(pm, "Apps suchen...", text_x, text_baseline, 13.0, pal.text);
     } else {
         paint_text(pm, search_query, text_x, text_baseline, 13.0, pal.text);
     }
@@ -974,7 +973,7 @@ fn section_label(pm: &mut PixmapMut<'_>, label: &str, y: i32, pal: &meridian_ui:
         CP_GUTTER,
         y + CP_SECTION_LABEL_H - 6,
         10.0,
-        pal.text_dim,
+        pal.text,
     );
 }
 

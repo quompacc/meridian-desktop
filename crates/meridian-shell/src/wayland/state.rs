@@ -9,7 +9,10 @@ use wayland_client::QueueHandle;
 
 use crate::{launcher, status_notifier, status_notifier_popup};
 
-use super::{time, types::WindowInfo, ClickAction, CommitReason, MeridianShell, RepaintReason};
+use super::{
+    time, types::WindowInfo, ClickAction, CommitReason, CommitSurfaceKind, MeridianShell,
+    RepaintReason,
+};
 
 fn workspace_idx(workspace: u8) -> usize {
     workspace.saturating_sub(1).min(8) as usize
@@ -1009,6 +1012,8 @@ impl MeridianShell {
                 "launcher focus request: keyboard_interactivity=Exclusive (fullscreen)"
             );
             self.launcher_is_fullscreen = true;
+            self.launcher_configured = false;
+            self.commit_surface(CommitSurfaceKind::Launcher, CommitReason::Input);
             self.launcher_state.reshuffle();
         } else {
             self.launcher_is_fullscreen = false;

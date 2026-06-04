@@ -704,7 +704,6 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
             {
                 let launcher_w = 880;
                 let launcher_h = 620;
-                let panel_surface_h = 16 + 42 + 8;
                 let popup_bottom_margin = 2;
                 let visual_x = if lg.size.w > launcher_w {
                     lg.loc.x + 12
@@ -712,7 +711,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                     lg.loc.x
                 };
                 let visual_y = if lg.size.h > launcher_h {
-                    lg.loc.y + lg.size.h - launcher_h - panel_surface_h - popup_bottom_margin
+                    lg.loc.y + lg.size.h - launcher_h - popup_bottom_margin
                 } else {
                     lg.loc.y
                 };
