@@ -4,15 +4,17 @@
 //! deserialization layer (`meridian-config`) and the render layer
 //! (`meridian-ui`) build on, so a value is defined once and never hand-synced.
 //!
-//! Phase 1 hosts the colour primitive and the canonical palette; phase 2 adds
-//! the corner-radius scale; phase 3 adds interaction-state tokens. Later
-//! phases move elevation/shadow, glass and typography here too (design-tokens
-//! refactor plan).
+//! Phase 1 hosts the colour primitive and the canonical palette; phase 2 the
+//! corner-radius scale; phase 3 interaction-state tokens; phase 4 the
+//! per-surface elevation (drop-shadow) scale. Later phases move the blur
+//! accent and typography here too (design-tokens refactor plan).
 
 pub mod color;
+pub mod elevation;
 pub mod interaction;
 pub mod radius;
 
 pub use color::{Color, Palette};
+pub use elevation::Elevation;
 pub use interaction::Interaction;
 pub use radius::Radius;

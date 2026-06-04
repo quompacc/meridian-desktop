@@ -871,9 +871,9 @@ impl MeridianShell {
                     lw as i32,
                     lh as i32,
                     12.0,
-                    18.0,
-                    0.16,
-                    4,
+                    meridian_tokens::Elevation::LAUNCHER.blur,
+                    meridian_tokens::Elevation::LAUNCHER.alpha,
+                    meridian_tokens::Elevation::LAUNCHER.offset_y,
                     false,
                 );
                 // Composite the (premultiplied) content over the shadow so the

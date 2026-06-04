@@ -1,4 +1,4 @@
-use meridian_tokens::Interaction;
+use meridian_tokens::{Elevation, Interaction};
 use meridian_ui::{
     compute_layout,
     effect::{measure_text, paint_fill, paint_text, rounded_rect_path},
@@ -1285,9 +1285,9 @@ pub(crate) fn draw_panel_ui(
         outline.width,
         outline.height,
         ISLAND_RADIUS as f32,
-        13.0,
-        0.16,
-        0,
+        Elevation::PANEL.blur,
+        Elevation::PANEL.alpha,
+        Elevation::PANEL.offset_y,
         true,
     );
     {

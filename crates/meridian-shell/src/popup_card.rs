@@ -117,9 +117,9 @@ fn rounded_rect_sample_inside(x: f32, y: f32, w: i32, h: i32, radius: i32) -> bo
 
 /// Soft drop shadow params shared by every tray popup. Same look as the
 /// panel island (`panel_view.rs`) so the visual language stays uniform.
-pub const POPUP_SHADOW_BLUR: f32 = 13.0;
-pub const POPUP_SHADOW_ALPHA: f32 = 0.12;
-pub const POPUP_SHADOW_OFFSET_Y: i32 = 3;
+pub const POPUP_SHADOW_BLUR: f32 = meridian_tokens::Elevation::POPUP.blur;
+pub const POPUP_SHADOW_ALPHA: f32 = meridian_tokens::Elevation::POPUP.alpha;
+pub const POPUP_SHADOW_OFFSET_Y: i32 = meridian_tokens::Elevation::POPUP.offset_y;
 
 /// Composite an already-rendered `card_buf` (card_w * card_h * 4 BGRA bytes)
 /// onto a layer-shell `surface` buffer plus a soft drop shadow. The surface
