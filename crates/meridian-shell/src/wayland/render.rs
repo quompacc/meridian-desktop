@@ -456,6 +456,12 @@ impl MeridianShell {
             &items,
             &self.theme,
         );
+        round_buffer_corners(
+            &mut card_buf,
+            card_w as usize,
+            card_h as usize,
+            crate::context_menu::CORNER_R,
+        );
 
         let stride = buffer::shm_buffer_stride(surface_w);
         for attempt in 0..CANVAS_RETRY_ATTEMPTS {
