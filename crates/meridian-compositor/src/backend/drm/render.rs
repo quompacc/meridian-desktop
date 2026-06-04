@@ -120,6 +120,23 @@ fn is_glass_blur_source_excluded(element: &MeridianRenderElements) -> bool {
     )
 }
 
+fn first_rendered_blur_source(
+    elements: &[MeridianRenderElements],
+    mut first_behind: usize,
+) -> usize {
+    while matches!(elements.get(first_behind), Some(element) if is_glass_blur_source_excluded(element))
+    {
+        first_behind = first_behind.saturating_add(1);
+    }
+    first_behind
+}
+
+struct PendingGlassBatch {
+    first_behind: usize,
+    blur_bits: u32,
+    items: Vec<(usize, super::glass::GlassTitlebarInfo)>,
+}
+
 fn blur_pass(
     renderer: &mut GlesRenderer,
     prog: &smithay::backend::renderer::gles::GlesTexProgram,
@@ -655,198 +672,201 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                 &mut out.scratch_upper_layer_elements,
             );
 
-            // Liquid-glass panel: a blurred-scene backdrop behind the
-            // translucent panel island. Pushed last in the upper-layer block so
-            // it sits behind the panel surface but in front of windows. The
-            // island insets/radius mirror the shell panel constants
-            // (PANEL_SIDE_MARGIN=12, PANEL_TOP_SHADOW=16, PANEL_HEIGHT=42,
-            // ISLAND_RADIUS=12).
-            if let Some((_, pg)) = out
-                .scratch_upper_layer_data
-                .iter()
-                .find(|(ls, _)| ls.namespace() == "meridian-panel")
-            {
-                let island = smithay::utils::Rectangle::<i32, smithay::utils::Logical>::new(
-                    (pg.loc.x + 12, pg.loc.y + 16).into(),
-                    ((pg.size.w - 24).max(1), 42).into(),
-                );
-                let theme_config = &state.theme_manager.current().config;
-                let surface = theme_config
-                    .decorations
-                    .glass_tint_color
-                    .unwrap_or(theme_config.colors.surface_alt);
-                let blur = theme_config.decorations.glass_blur_radius;
-                let info = super::glass::GlassTitlebarInfo {
-                    rect: island,
-                    radius: [12.0; 4],
-                    tint: [
-                        surface.r as f32 / 255.0,
-                        surface.g as f32 / 255.0,
-                        surface.b as f32 / 255.0,
-                    ],
-                    tint_amount: (theme_config.decorations.glass_tint * 0.35).clamp(0.0, 0.35),
-                    blur,
-                };
-                out.scratch_upper_layer_elements
-                    .push(MeridianRenderElements::Glass(GlassElement::pending(
-                        info, scale,
-                    )));
-            }
-
-            // Liquid-glass launcher: the shell paints a translucent rounded
-            // command palette on a full-screen layer surface. Mirror the
-            // shell's visual card geometry here so the card samples a live
-            // blurred backdrop instead of darkening the wallpaper behind it.
-            if let Some((_, lg)) = out
-                .scratch_upper_layer_data
-                .iter()
-                .find(|(ls, _)| ls.namespace() == "meridian-launcher")
-            {
-                let launcher_w = 880;
-                let launcher_h = 620;
-                let popup_bottom_margin = 2;
-                let visual_x = if lg.size.w > launcher_w {
-                    lg.loc.x + 12
-                } else {
-                    lg.loc.x
-                };
-                let visual_y = if lg.size.h > launcher_h {
-                    lg.loc.y + lg.size.h - launcher_h - popup_bottom_margin
-                } else {
-                    lg.loc.y
-                };
-                let card = smithay::utils::Rectangle::<i32, smithay::utils::Logical>::new(
-                    (visual_x.max(lg.loc.x), visual_y.max(lg.loc.y)).into(),
-                    (
-                        launcher_w.min(lg.size.w).max(1),
-                        launcher_h.min(lg.size.h).max(1),
-                    )
-                        .into(),
-                );
-                let theme_config = &state.theme_manager.current().config;
-                let surface = theme_config
-                    .decorations
-                    .glass_tint_color
-                    .unwrap_or(theme_config.colors.surface_alt);
-                let blur = theme_config.decorations.glass_blur_radius;
-                let info = super::glass::GlassTitlebarInfo {
-                    rect: card,
-                    radius: [meridian_tokens::Radius::DEFAULT.lg as f32; 4],
-                    tint: [
-                        surface.r as f32 / 255.0,
-                        surface.g as f32 / 255.0,
-                        surface.b as f32 / 255.0,
-                    ],
-                    tint_amount: (theme_config.decorations.glass_tint * 0.45).clamp(0.0, 0.45),
-                    blur,
-                };
-                out.scratch_upper_layer_elements
-                    .push(MeridianRenderElements::Glass(GlassElement::pending(
-                        info, scale,
-                    )));
-            }
-
-            // Liquid-glass desktop context menu. The shell paints only the
-            // border/text/hover chrome for glass themes; mirror its card
-            // geometry here so the main menu and settings flyout each sample
-            // their own blurred backdrop instead of sharing one large box.
-            if let Some((_, menu_geo)) = out
-                .scratch_upper_layer_data
-                .iter()
-                .find(|(ls, _)| ls.namespace() == "meridian-desktop-menu")
-            {
-                const PAD: i32 = 16;
-                const MENU_W: i32 = 236;
-                const MENU_H: i32 = 193;
-                const SUBMENU_GAP: i32 = 6;
-                const SUBMENU_W: i32 = 188;
-                const SUBMENU_H: i32 = 228;
-                const RADIUS: f32 = meridian_tokens::Radius::DEFAULT.xl as f32;
-
-                let card_w = (menu_geo.size.w - 2 * PAD).max(1);
-                let card_h = (menu_geo.size.h - 2 * PAD).max(1);
-                let theme_config = &state.theme_manager.current().config;
-                let surface = theme_config
-                    .decorations
-                    .glass_tint_color
-                    .unwrap_or(theme_config.colors.surface_alt);
-                let tint = [
-                    surface.r as f32 / 255.0,
-                    surface.g as f32 / 255.0,
-                    surface.b as f32 / 255.0,
-                ];
-                let tint_amount = (theme_config.decorations.glass_tint * 0.35).clamp(0.0, 0.35);
-                let blur = theme_config.decorations.glass_blur_radius;
-                let mut push_menu_glass = |x: i32, y: i32, w: i32, h: i32| {
-                    let card = smithay::utils::Rectangle::<i32, smithay::utils::Logical>::new(
-                        (x, y).into(),
-                        (w.max(1), h.max(1)).into(),
+            let layer_glass_enabled = theme.decorations.glass && theme.decorations.glass_blur;
+            if layer_glass_enabled {
+                // Liquid-glass panel: a blurred-scene backdrop behind the
+                // translucent panel island. Pushed last in the upper-layer block so
+                // it sits behind the panel surface but in front of windows. The
+                // island insets/radius mirror the shell panel constants
+                // (PANEL_SIDE_MARGIN=12, PANEL_TOP_SHADOW=16, PANEL_HEIGHT=42,
+                // ISLAND_RADIUS=12).
+                if let Some((_, pg)) = out
+                    .scratch_upper_layer_data
+                    .iter()
+                    .find(|(ls, _)| ls.namespace() == "meridian-panel")
+                {
+                    let island = smithay::utils::Rectangle::<i32, smithay::utils::Logical>::new(
+                        (pg.loc.x + 12, pg.loc.y + 16).into(),
+                        ((pg.size.w - 24).max(1), 42).into(),
                     );
+                    let theme_config = &state.theme_manager.current().config;
+                    let surface = theme_config
+                        .decorations
+                        .glass_tint_color
+                        .unwrap_or(theme_config.colors.surface_alt);
+                    let blur = theme_config.decorations.glass_blur_radius;
                     let info = super::glass::GlassTitlebarInfo {
-                        rect: card,
-                        radius: [RADIUS; 4],
-                        tint,
-                        tint_amount,
+                        rect: island,
+                        radius: [12.0; 4],
+                        tint: [
+                            surface.r as f32 / 255.0,
+                            surface.g as f32 / 255.0,
+                            surface.b as f32 / 255.0,
+                        ],
+                        tint_amount: (theme_config.decorations.glass_tint * 0.35).clamp(0.0, 0.35),
                         blur,
                     };
                     out.scratch_upper_layer_elements
                         .push(MeridianRenderElements::Glass(GlassElement::pending(
                             info, scale,
                         )));
-                };
-
-                let main_x = menu_geo.loc.x + PAD;
-                let main_y = menu_geo.loc.y + PAD;
-                if card_w > MENU_W + SUBMENU_GAP {
-                    push_menu_glass(main_x, main_y, MENU_W, MENU_H.min(card_h));
-                    push_menu_glass(
-                        main_x + MENU_W + SUBMENU_GAP,
-                        main_y,
-                        SUBMENU_W.min(card_w - MENU_W - SUBMENU_GAP),
-                        SUBMENU_H.min(card_h),
-                    );
-                } else {
-                    push_menu_glass(main_x, main_y, card_w, card_h);
                 }
-            }
 
-            for (_, popup_geo) in out.scratch_upper_layer_data.iter().filter(|(ls, _)| {
-                matches!(
-                    ls.namespace(),
-                    "meridian-calendar-popup"
-                        | "meridian-workspace-popup"
-                        | "meridian-network-popup"
-                        | "meridian-notification"
-                        | "meridian-thumbnail-popup"
-                )
-            }) {
-                let pad = 16;
-                let card_w = (popup_geo.size.w - 2 * pad).max(1);
-                let card_h = (popup_geo.size.h - 2 * pad).max(1);
-                let card = smithay::utils::Rectangle::<i32, smithay::utils::Logical>::new(
-                    (popup_geo.loc.x + pad, popup_geo.loc.y + pad).into(),
-                    (card_w, card_h).into(),
-                );
-                let theme_config = &state.theme_manager.current().config;
-                let surface = theme_config
-                    .decorations
-                    .glass_tint_color
-                    .unwrap_or(theme_config.colors.surface_alt);
-                let info = super::glass::GlassTitlebarInfo {
-                    rect: card,
-                    radius: [14.0; 4],
-                    tint: [
+                // Liquid-glass launcher: the shell paints a translucent rounded
+                // command palette on a full-screen layer surface. Mirror the
+                // shell's visual card geometry here so the card samples a live
+                // blurred backdrop instead of darkening the wallpaper behind it.
+                if let Some((_, lg)) = out
+                    .scratch_upper_layer_data
+                    .iter()
+                    .find(|(ls, _)| ls.namespace() == "meridian-launcher")
+                {
+                    let launcher_w = 880;
+                    let launcher_h = 620;
+                    let popup_bottom_margin = 2;
+                    let visual_x = if lg.size.w > launcher_w {
+                        lg.loc.x + 12
+                    } else {
+                        lg.loc.x
+                    };
+                    let visual_y = if lg.size.h > launcher_h {
+                        lg.loc.y + lg.size.h - launcher_h - popup_bottom_margin
+                    } else {
+                        lg.loc.y
+                    };
+                    let card = smithay::utils::Rectangle::<i32, smithay::utils::Logical>::new(
+                        (visual_x.max(lg.loc.x), visual_y.max(lg.loc.y)).into(),
+                        (
+                            launcher_w.min(lg.size.w).max(1),
+                            launcher_h.min(lg.size.h).max(1),
+                        )
+                            .into(),
+                    );
+                    let theme_config = &state.theme_manager.current().config;
+                    let surface = theme_config
+                        .decorations
+                        .glass_tint_color
+                        .unwrap_or(theme_config.colors.surface_alt);
+                    let blur = theme_config.decorations.glass_blur_radius;
+                    let info = super::glass::GlassTitlebarInfo {
+                        rect: card,
+                        radius: [meridian_tokens::Radius::DEFAULT.lg as f32; 4],
+                        tint: [
+                            surface.r as f32 / 255.0,
+                            surface.g as f32 / 255.0,
+                            surface.b as f32 / 255.0,
+                        ],
+                        tint_amount: (theme_config.decorations.glass_tint * 0.45).clamp(0.0, 0.45),
+                        blur,
+                    };
+                    out.scratch_upper_layer_elements
+                        .push(MeridianRenderElements::Glass(GlassElement::pending(
+                            info, scale,
+                        )));
+                }
+
+                // Liquid-glass desktop context menu. The shell paints only the
+                // border/text/hover chrome for glass themes; mirror its card
+                // geometry here so the main menu and settings flyout each sample
+                // their own blurred backdrop instead of sharing one large box.
+                if let Some((_, menu_geo)) = out
+                    .scratch_upper_layer_data
+                    .iter()
+                    .find(|(ls, _)| ls.namespace() == "meridian-desktop-menu")
+                {
+                    const PAD: i32 = 16;
+                    const MENU_W: i32 = 236;
+                    const MENU_H: i32 = 193;
+                    const SUBMENU_GAP: i32 = 6;
+                    const SUBMENU_W: i32 = 188;
+                    const SUBMENU_H: i32 = 228;
+                    const RADIUS: f32 = meridian_tokens::Radius::DEFAULT.xl as f32;
+
+                    let card_w = (menu_geo.size.w - 2 * PAD).max(1);
+                    let card_h = (menu_geo.size.h - 2 * PAD).max(1);
+                    let theme_config = &state.theme_manager.current().config;
+                    let surface = theme_config
+                        .decorations
+                        .glass_tint_color
+                        .unwrap_or(theme_config.colors.surface_alt);
+                    let tint = [
                         surface.r as f32 / 255.0,
                         surface.g as f32 / 255.0,
                         surface.b as f32 / 255.0,
-                    ],
-                    tint_amount: (theme_config.decorations.glass_tint * 0.38).clamp(0.0, 0.38),
-                    blur: (theme_config.decorations.glass_blur_radius * 0.45).max(2.0),
-                };
-                out.scratch_upper_layer_elements
-                    .push(MeridianRenderElements::Glass(GlassElement::pending(
-                        info, scale,
-                    )));
+                    ];
+                    let tint_amount = (theme_config.decorations.glass_tint * 0.35).clamp(0.0, 0.35);
+                    let blur = theme_config.decorations.glass_blur_radius;
+                    let mut push_menu_glass = |x: i32, y: i32, w: i32, h: i32| {
+                        let card = smithay::utils::Rectangle::<i32, smithay::utils::Logical>::new(
+                            (x, y).into(),
+                            (w.max(1), h.max(1)).into(),
+                        );
+                        let info = super::glass::GlassTitlebarInfo {
+                            rect: card,
+                            radius: [RADIUS; 4],
+                            tint,
+                            tint_amount,
+                            blur,
+                        };
+                        out.scratch_upper_layer_elements
+                            .push(MeridianRenderElements::Glass(GlassElement::pending(
+                                info, scale,
+                            )));
+                    };
+
+                    let main_x = menu_geo.loc.x + PAD;
+                    let main_y = menu_geo.loc.y + PAD;
+                    if card_w > MENU_W + SUBMENU_GAP {
+                        push_menu_glass(main_x, main_y, MENU_W, MENU_H.min(card_h));
+                        push_menu_glass(
+                            main_x + MENU_W + SUBMENU_GAP,
+                            main_y,
+                            SUBMENU_W.min(card_w - MENU_W - SUBMENU_GAP),
+                            SUBMENU_H.min(card_h),
+                        );
+                    } else {
+                        push_menu_glass(main_x, main_y, card_w, card_h);
+                    }
+                }
+
+                for (_, popup_geo) in out.scratch_upper_layer_data.iter().filter(|(ls, _)| {
+                    matches!(
+                        ls.namespace(),
+                        "meridian-calendar-popup"
+                            | "meridian-workspace-popup"
+                            | "meridian-network-popup"
+                            | "meridian-notification"
+                            | "meridian-thumbnail-popup"
+                    )
+                }) {
+                    let pad = 16;
+                    let card_w = (popup_geo.size.w - 2 * pad).max(1);
+                    let card_h = (popup_geo.size.h - 2 * pad).max(1);
+                    let card = smithay::utils::Rectangle::<i32, smithay::utils::Logical>::new(
+                        (popup_geo.loc.x + pad, popup_geo.loc.y + pad).into(),
+                        (card_w, card_h).into(),
+                    );
+                    let theme_config = &state.theme_manager.current().config;
+                    let surface = theme_config
+                        .decorations
+                        .glass_tint_color
+                        .unwrap_or(theme_config.colors.surface_alt);
+                    let info = super::glass::GlassTitlebarInfo {
+                        rect: card,
+                        radius: [14.0; 4],
+                        tint: [
+                            surface.r as f32 / 255.0,
+                            surface.g as f32 / 255.0,
+                            surface.b as f32 / 255.0,
+                        ],
+                        tint_amount: (theme_config.decorations.glass_tint * 0.38).clamp(0.0, 0.38),
+                        blur: (theme_config.decorations.glass_blur_radius * 0.45).max(2.0),
+                    };
+                    out.scratch_upper_layer_elements
+                        .push(MeridianRenderElements::Glass(GlassElement::pending(
+                            info, scale,
+                        )));
+                }
             }
 
             let wallpaper_elem = out
@@ -942,14 +962,36 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                         _ => None,
                     })
                     .collect();
+                let mut batches: Vec<PendingGlassBatch> = Vec::new();
                 for (idx, info) in pending {
-                    let first_behind = idx.saturating_add(1);
-                    let Some(scene) =
-                        render_scene_for_blur(renderer, &out.scratch_final, first_behind, out_size)
-                    else {
+                    let first_behind =
+                        first_rendered_blur_source(&out.scratch_final, idx.saturating_add(1));
+                    let blur_bits = info.blur.to_bits();
+                    match batches.last_mut() {
+                        Some(batch)
+                            if batch.first_behind == first_behind
+                                && batch.blur_bits == blur_bits =>
+                        {
+                            batch.items.push((idx, info));
+                        }
+                        _ => batches.push(PendingGlassBatch {
+                            first_behind,
+                            blur_bits,
+                            items: vec![(idx, info)],
+                        }),
+                    }
+                }
+                for batch in batches {
+                    let blur = batch.items[0].1.blur;
+                    let Some(scene) = render_scene_for_blur(
+                        renderer,
+                        &out.scratch_final,
+                        batch.first_behind,
+                        out_size,
+                    ) else {
                         continue;
                     };
-                    let Some(blurred) = blur_scene(renderer, scene, out_size, info.blur) else {
+                    let Some(blurred) = blur_scene(renderer, scene, out_size, blur) else {
                         continue;
                     };
                     let buffer = TextureBuffer::from_texture(
@@ -959,15 +1001,19 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                         smithay::utils::Transform::Normal,
                         None,
                     );
-                    let ready = GlassTitlebarElement::new(
-                        prog.clone(),
-                        &buffer,
-                        info,
-                        (out_size.0 as i32, out_size.1 as i32),
-                        scale,
-                    );
-                    if let Some(MeridianRenderElements::Glass(g)) = out.scratch_final.get_mut(idx) {
-                        *g = GlassElement::Ready(ready);
+                    for (idx, info) in batch.items {
+                        let ready = GlassTitlebarElement::new(
+                            prog.clone(),
+                            &buffer,
+                            info,
+                            (out_size.0 as i32, out_size.1 as i32),
+                            scale,
+                        );
+                        if let Some(MeridianRenderElements::Glass(g)) =
+                            out.scratch_final.get_mut(idx)
+                        {
+                            *g = GlassElement::Ready(ready);
+                        }
                     }
                 }
             }
