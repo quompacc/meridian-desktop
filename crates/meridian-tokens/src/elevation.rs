@@ -78,7 +78,7 @@ mod tests {
 
     #[test]
     fn launcher_sits_above_popup() {
-        assert!(Elevation::LAUNCHER.blur >= Elevation::POPUP.blur);
-        assert!(Elevation::LAUNCHER.offset_y >= Elevation::POPUP.offset_y);
+        const { assert!(Elevation::LAUNCHER.blur >= Elevation::POPUP.blur) };
+        const { assert!(Elevation::LAUNCHER.offset_y >= Elevation::POPUP.offset_y) };
     }
 }
