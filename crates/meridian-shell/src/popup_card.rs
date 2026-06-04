@@ -18,7 +18,7 @@ pub const POPUP_WIDTH: u32 = 280;
 pub const PAD_X: i32 = 16;
 pub const PAD_TOP: i32 = 14;
 pub const PAD_BOTTOM: i32 = 14;
-pub const CARD_RADIUS: i32 = 14;
+pub const CARD_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.xl;
 
 pub const TITLE_BASELINE: i32 = PAD_TOP + 14;
 pub const TITLE_RULE_Y: i32 = PAD_TOP + 22;

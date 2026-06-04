@@ -1509,6 +1509,7 @@ dependencies = [
  "libc",
  "meridian-config",
  "meridian-ipc",
+ "meridian-tokens",
  "meridian-ui",
  "png 0.17.16",
  "resvg",

@@ -44,11 +44,11 @@ const PANEL_H: i32 = PANEL_HEIGHT as i32;
 const LEFT_PADDING: i32 = 8;
 const RIGHT_PADDING: i32 = 10;
 // Soft rounded highlight behind active/hovered chips (matches the island/launcher).
-const CHIP_HL_RADIUS: i32 = 8;
+const CHIP_HL_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.md;
 const GAP: i32 = 4;
 
 // Floating island
-const ISLAND_RADIUS: i32 = 12;
+const ISLAND_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.lg;
 const SIDE_MARGIN: i32 = PANEL_SIDE_MARGIN as i32;
 const BOTTOM_GAP: i32 = PANEL_BOTTOM_GAP as i32;
 const SURFACE_H: i32 = PANEL_SURFACE_HEIGHT as i32;

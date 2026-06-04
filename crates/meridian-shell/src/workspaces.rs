@@ -10,7 +10,7 @@ use crate::{
 };
 
 const GAP: i32 = 6;
-const TILE_RADIUS: i32 = 6;
+const TILE_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.sm;
 
 pub struct WorkspacePopupState {
     pub clicks: Vec<ClickZone>,

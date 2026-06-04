@@ -66,7 +66,7 @@ const LAUNCHER_BAND_ALPHA: u8 = 0;
 const LAUNCHER_CELL_ALPHA: u8 = 0;
 const LAUNCHER_HOVER_ALPHA: u8 = 42;
 const LAUNCHER_SELECTED_ALPHA: u8 = 56;
-const LAUNCHER_TILE_RADIUS: i32 = 8;
+const LAUNCHER_TILE_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.md;
 
 // ─── Hit testing ──────────────────────────────────────────────────────────────
 

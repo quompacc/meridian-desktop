@@ -12,6 +12,7 @@ libc = "0.2"
 meridian-config = { path = "../meridian-config" }
 meridian-ipc = { path = "../meridian-ipc" }
 meridian-ui = { path = "../meridian-ui" }
+meridian-tokens = { path = "../meridian-tokens" }
 png = { version = "0.17", default-features = false }
 resvg = { version = "0.45", default-features = false }
 ruzstd = "0.7"

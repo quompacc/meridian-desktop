@@ -6,7 +6,7 @@ use crate::{icons::IconImage, Rect};
 
 use super::{bitmap, text::TextRenderer};
 
-const DEFAULT_ROUNDISH_RADIUS: i32 = 6;
+const DEFAULT_ROUNDISH_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.sm;
 const CORNER_AA_SAMPLE_OFFSETS: [f32; 2] = [0.25, 0.75];
 
 pub struct Painter<'a> {
