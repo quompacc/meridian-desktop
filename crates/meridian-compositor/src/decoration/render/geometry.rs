@@ -3,8 +3,7 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, Rectangle, Size};
 
 use super::super::{
-    DecorationManager, BUTTON_WIDTH, CONTROL_CLUSTER_HEIGHT, CONTROL_CLUSTER_RIGHT_MARGIN,
-    TITLE_BAR_HEIGHT,
+    DecorationManager, BUTTON_WIDTH, CONTROL_CLUSTER_RIGHT_MARGIN, TITLE_BAR_HEIGHT,
 };
 
 pub(crate) const SSD_RESIZE_HANDLE_THICKNESS: i32 = 8;
@@ -137,16 +136,13 @@ impl SsdChromeMetrics {
         // vertically. Both rendering and hit-testing read these rects, so the
         // visual pill and the click targets always match.
         let seg_w = BUTTON_WIDTH;
-        let seg_h = CONTROL_CLUSTER_HEIGHT;
+        // Full titlebar height so the controls fill the bar (glass look).
+        let seg_h = self.frame.titlebar_height + self.frame.border_width;
         let pill_w = seg_w * 3;
         let frame_right = self.frame.frame_origin.x + self.frame.frame_size.w;
         let pill_x = frame_right - CONTROL_CLUSTER_RIGHT_MARGIN - pill_w;
-        // Centre the pill in the *visible* titlebar interior — from the window
-        // top down to the accent separator (which sits 2px above the content) —
-        // rather than the full fill, so the separator's visual weight at the
-        // bottom doesn't make the pill read as sitting low.
-        let interior_h = self.frame.titlebar_height + self.frame.border_width - 2;
-        let seg_y = self.frame.frame_origin.y + (interior_h - seg_h) / 2;
+        // Top-aligned: the controls span the full titlebar height.
+        let seg_y = self.frame.frame_origin.y;
 
         let seg = |x: i32| Rectangle::new((x, seg_y).into(), (seg_w, seg_h).into());
         let minimize_rect = seg(pill_x);
@@ -343,17 +339,17 @@ mod tests {
         let chrome = SsdChromeMetrics::new(frame);
         let buttons = chrome.button_metrics().expect("titlebar buttons");
 
-        // Three contiguous 32x22 segments, right-aligned with a 10px margin in
-        // a 644px-wide frame: pill_x = 644 - 10 - 96 = 538. seg_y centres the
-        // 22px pill in the interior above the separator: (32+2-2-22)/2 = 5.
-        assert_eq!(buttons.minimize_rect.loc, Point::from((538, 5)));
-        assert_eq!(buttons.maximize_rect.loc, Point::from((570, 5)));
-        assert_eq!(buttons.close_rect.loc, Point::from((602, 5)));
-        assert_eq!(buttons.close_rect.size, Size::from((32, 22)));
-        assert_eq!(buttons.maximize_rect.size, Size::from((32, 22)));
-        assert_eq!(buttons.minimize_rect.size, Size::from((32, 22)));
-        assert_eq!(buttons.pill_rect.loc, Point::from((538, 5)));
-        assert_eq!(buttons.pill_rect.size, Size::from((96, 22)));
+        // Three contiguous 32x34 segments at full titlebar height (titlebar 32
+        // + border 2), top-aligned at y=0, right-aligned with a 10px margin in
+        // a 644px-wide frame: pill_x = 644 - 10 - 96 = 538.
+        assert_eq!(buttons.minimize_rect.loc, Point::from((538, 0)));
+        assert_eq!(buttons.maximize_rect.loc, Point::from((570, 0)));
+        assert_eq!(buttons.close_rect.loc, Point::from((602, 0)));
+        assert_eq!(buttons.close_rect.size, Size::from((32, 34)));
+        assert_eq!(buttons.maximize_rect.size, Size::from((32, 34)));
+        assert_eq!(buttons.minimize_rect.size, Size::from((32, 34)));
+        assert_eq!(buttons.pill_rect.loc, Point::from((538, 0)));
+        assert_eq!(buttons.pill_rect.size, Size::from((96, 34)));
     }
 
     #[test]

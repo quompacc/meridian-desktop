@@ -24,9 +24,6 @@ pub const BUTTON_HEIGHT: i32 = 28;
 pub const BUTTON_ICON_PX: u32 = 14;
 pub const BUTTON_STROKE_WIDTH: f32 = 1.25;
 pub const BUTTON_MARGIN: i32 = 8;
-/// Height of the floating window-control "instrument" pill, centred in the
-/// titlebar. Each of the three control segments is `BUTTON_WIDTH` wide.
-pub const CONTROL_CLUSTER_HEIGHT: i32 = 22;
 /// Gap between the control pill's right edge and the window's right edge.
 pub const CONTROL_CLUSTER_RIGHT_MARGIN: i32 = 10;
 
@@ -39,8 +36,12 @@ pub const CONTROL_CLUSTER_RIGHT_MARGIN: i32 = 10;
 pub enum DecorationRenderElement {
     Solid(SolidColorRenderElement),
     Icon(MemoryRenderBufferRenderElement<GlesRenderer>),
-    /// Shader-driven soft drop shadow (rounded-box SDF).
+    /// Shader-driven rounded-quad chrome (titlebar fill, border, frame,
+    /// button veils). Drawn in front of the window content.
     PixelShader(PixelShaderElement),
+    /// Shader-driven soft drop shadow. Drawn *behind* the window content
+    /// so an opaque client is never dimmed by it.
+    DropShadow(PixelShaderElement),
     /// Liquid-glass titlebar placeholder; the backend turns this into a
     /// textured blur element once the frame's blur texture exists.
     Glass(GlassTitlebarInfo),

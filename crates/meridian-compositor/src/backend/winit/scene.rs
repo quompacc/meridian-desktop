@@ -234,6 +234,9 @@ pub(super) fn render_elements_for_output(
                             crate::decoration::DecorationRenderElement::PixelShader(s) => {
                                 Some(WinitRenderElements::Shadow(s))
                             }
+                            crate::decoration::DecorationRenderElement::DropShadow(s) => {
+                                Some(WinitRenderElements::Shadow(s))
+                            }
                             // Winit dev backend has no blur pass; skip glass.
                             crate::decoration::DecorationRenderElement::Glass(_) => None,
                         }),

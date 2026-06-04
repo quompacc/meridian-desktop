@@ -446,79 +446,143 @@ impl DecorationManager {
             // soft accent wash on the hovered zone (close = muted matte red).
             if let Some(ref prog) = rounded_quad_shader {
                 let pill = buttons.pill_rect;
-                let pr = (pill.size.h as f32 / 2.0) * ps as f32;
                 let psf = ps as f32;
-
-                if let Some(h) = hovered {
-                    let (rect, col, alpha, radii) = match h {
-                        HoveredButton::Close => (
-                            buttons.close_rect,
-                            colors.error,
-                            0.55f32,
-                            (0.0, pr, pr, 0.0),
-                        ),
-                        HoveredButton::Maximize => (
-                            buttons.maximize_rect,
-                            colors.accent,
-                            0.28f32,
+                let pr = (pill.size.h as f32 / 2.0) * psf;
+                if theme.glass {
+                    // Full-height frosted colour zones: close=red,
+                    // maximize=accent, minimize=lighter blue. The frosted
+                    // titlebar shows through a translucent colour veil per
+                    // zone, stronger under the pointer. Rounded pill ends.
+                    let base = 0.22f32;
+                    let zones = [
+                        (buttons.minimize_rect, colors.accent_alt, (pr, 0.0, 0.0, pr)),
+                        (buttons.maximize_rect, colors.accent, (0.0, 0.0, 0.0, 0.0)),
+                        (buttons.close_rect, colors.error, (0.0, pr, pr, 0.0)),
+                    ];
+                    for (rect, col, radii) in zones {
+                        let [zr, zg, zb, _] = col.as_f32_array();
+                        elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
+                            prog,
+                            rect,
+                            [zr, zg, zb],
+                            radii,
+                            0.0,
+                            base,
+                            psf,
+                        )));
+                    }
+                    if let Some(h) = hovered {
+                        let (rect, col, radii) = match h {
+                            HoveredButton::Close => {
+                                (buttons.close_rect, colors.error, (0.0, pr, pr, 0.0))
+                            }
+                            HoveredButton::Maximize => {
+                                (buttons.maximize_rect, colors.accent, (0.0, 0.0, 0.0, 0.0))
+                            }
+                            HoveredButton::Minimize => {
+                                (buttons.minimize_rect, colors.accent_alt, (pr, 0.0, 0.0, pr))
+                            }
+                        };
+                        let [zr, zg, zb, _] = col.as_f32_array();
+                        elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
+                            prog,
+                            rect,
+                            [zr, zg, zb],
+                            radii,
+                            0.0,
+                            0.45,
+                            psf,
+                        )));
+                    }
+                    let [br, bg, bb, _] = colors.border.as_f32_array();
+                    for i in 1..3 {
+                        let dx = pill.loc.x + (pill.size.w / 3) * i;
+                        let divider = Rectangle::<i32, Logical>::new(
+                            Point::from((dx, pill.loc.y + 4)),
+                            Size::from((1, (pill.size.h - 8).max(1))),
+                        );
+                        elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
+                            prog,
+                            divider,
+                            [br, bg, bb],
                             (0.0, 0.0, 0.0, 0.0),
-                        ),
-                        HoveredButton::Minimize => (
-                            buttons.minimize_rect,
-                            colors.accent,
-                            0.28f32,
-                            (pr, 0.0, 0.0, pr),
-                        ),
-                    };
-                    let [cr, cg, cb, _] = col.as_f32_array();
-                    elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
-                        prog,
-                        rect,
-                        [cr, cg, cb],
-                        radii,
-                        0.0,
-                        alpha,
-                        psf,
-                    )));
-                }
+                            0.0,
+                            0.30,
+                            psf,
+                        )));
+                    }
+                } else {
+                    if let Some(h) = hovered {
+                        let (rect, col, alpha, radii) = match h {
+                            HoveredButton::Close => (
+                                buttons.close_rect,
+                                colors.error,
+                                0.55f32,
+                                (0.0, pr, pr, 0.0),
+                            ),
+                            HoveredButton::Maximize => (
+                                buttons.maximize_rect,
+                                colors.accent,
+                                0.28f32,
+                                (0.0, 0.0, 0.0, 0.0),
+                            ),
+                            HoveredButton::Minimize => (
+                                buttons.minimize_rect,
+                                colors.accent,
+                                0.28f32,
+                                (pr, 0.0, 0.0, pr),
+                            ),
+                        };
+                        let [cr, cg, cb, _] = col.as_f32_array();
+                        elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
+                            prog,
+                            rect,
+                            [cr, cg, cb],
+                            radii,
+                            0.0,
+                            alpha,
+                            psf,
+                        )));
+                    }
 
-                let [br, bg, bb, _] = colors.border.as_f32_array();
-                for i in 1..3 {
-                    let dx = pill.loc.x + (pill.size.w / 3) * i;
-                    let divider = Rectangle::<i32, Logical>::new(
-                        Point::from((dx, pill.loc.y + 4)),
-                        Size::from((1, (pill.size.h - 8).max(1))),
-                    );
+                    let [br, bg, bb, _] = colors.border.as_f32_array();
+                    for i in 1..3 {
+                        let dx = pill.loc.x + (pill.size.w / 3) * i;
+                        let divider = Rectangle::<i32, Logical>::new(
+                            Point::from((dx, pill.loc.y + 4)),
+                            Size::from((1, (pill.size.h - 8).max(1))),
+                        );
+                        elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
+                            prog,
+                            divider,
+                            [br, bg, bb],
+                            (0.0, 0.0, 0.0, 0.0),
+                            0.0,
+                            0.5,
+                            psf,
+                        )));
+                    }
+
                     elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
                         prog,
-                        divider,
+                        pill,
                         [br, bg, bb],
-                        (0.0, 0.0, 0.0, 0.0),
+                        (pr, pr, pr, pr),
+                        psf,
+                        1.0,
+                        psf,
+                    )));
+                    let [sr, sg, sb, _] = colors.surface_alt.as_f32_array();
+                    elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
+                        prog,
+                        pill,
+                        [sr, sg, sb],
+                        (pr, pr, pr, pr),
                         0.0,
-                        0.5,
+                        0.6,
                         psf,
                     )));
                 }
-
-                elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
-                    prog,
-                    pill,
-                    [br, bg, bb],
-                    (pr, pr, pr, pr),
-                    psf,
-                    1.0,
-                    psf,
-                )));
-                let [sr, sg, sb, _] = colors.surface_alt.as_f32_array();
-                elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
-                    prog,
-                    pill,
-                    [sr, sg, sb],
-                    (pr, pr, pr, pr),
-                    0.0,
-                    0.6,
-                    psf,
-                )));
             }
 
             if deco.is_focused {
@@ -702,7 +766,7 @@ impl DecorationManager {
                     uniforms,
                     Kind::Unspecified,
                 );
-                elements.push(DecorationRenderElement::PixelShader(element));
+                elements.push(DecorationRenderElement::DropShadow(element));
             }
         }
 

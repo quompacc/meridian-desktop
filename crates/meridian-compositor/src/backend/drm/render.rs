@@ -454,6 +454,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                 );
 
                 let mut content_clip = None;
+                let mut window_drop_shadow = None;
                 if let Some(wl_surf) = window.wl_surface().map(|s| s.into_owned()) {
                     let metrics = state.decoration_manager.ssd_render_metrics(
                         &wl_surf,
@@ -471,27 +472,31 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                         scale,
                     );
                     decoration_element_count += window_deco_elements.len();
-                    out.scratch_normal
-                        .extend(
-                            window_deco_elements
-                                .into_iter()
-                                .map(|element| match element {
-                                    crate::decoration::DecorationRenderElement::Solid(solid) => {
-                                        MeridianRenderElements::Decoration(solid)
-                                    }
-                                    crate::decoration::DecorationRenderElement::Icon(icon) => {
-                                        MeridianRenderElements::DecorationIcon(icon.into())
-                                    }
-                                    crate::decoration::DecorationRenderElement::PixelShader(s) => {
-                                        MeridianRenderElements::Shadow(s)
-                                    }
-                                    crate::decoration::DecorationRenderElement::Glass(info) => {
-                                        MeridianRenderElements::Glass(GlassElement::pending(
-                                            info, scale,
-                                        ))
-                                    }
-                                }),
-                        );
+                    for element in window_deco_elements {
+                        match element {
+                            crate::decoration::DecorationRenderElement::Solid(solid) => {
+                                out.scratch_normal
+                                    .push(MeridianRenderElements::Decoration(solid));
+                            }
+                            crate::decoration::DecorationRenderElement::Icon(icon) => {
+                                out.scratch_normal
+                                    .push(MeridianRenderElements::DecorationIcon(icon.into()));
+                            }
+                            crate::decoration::DecorationRenderElement::PixelShader(s) => {
+                                out.scratch_normal.push(MeridianRenderElements::Shadow(s));
+                            }
+                            crate::decoration::DecorationRenderElement::Glass(info) => {
+                                out.scratch_normal.push(MeridianRenderElements::Glass(
+                                    GlassElement::pending(info, scale),
+                                ));
+                            }
+                            crate::decoration::DecorationRenderElement::DropShadow(s) => {
+                                // Held aside and pushed after the content
+                                // below, so it sits *behind* the window.
+                                window_drop_shadow = Some(s);
+                            }
+                        }
+                    }
 
                     // Round the client content's bottom corners to match the
                     // rounded border/titlebar (top corners sit under the
@@ -519,6 +524,9 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                 );
                 let appended_space = out.scratch_normal.len().saturating_sub(space_start);
                 space_element_count += appended_space;
+                if let Some(s) = window_drop_shadow {
+                    out.scratch_normal.push(MeridianRenderElements::Shadow(s));
+                }
             }
 
             if let Some(pointer) = state.seat.get_pointer() {
