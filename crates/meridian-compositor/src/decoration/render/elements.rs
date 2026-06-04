@@ -486,7 +486,7 @@ impl DecorationManager {
                             HoveredButton::Minimize => (
                                 buttons.minimize_rect,
                                 colors.accent_alt,
-                                (0.0, 0.0, 0.0, 0.0),
+                                (pr, 0.0, 0.0, 0.0),
                             ),
                         };
                         let [zr, zg, zb, _] = col.as_f32_array();
@@ -548,7 +548,7 @@ impl DecorationManager {
                                 buttons.minimize_rect,
                                 colors.accent,
                                 0.28f32,
-                                (0.0, 0.0, 0.0, 0.0),
+                                (pr, 0.0, 0.0, 0.0),
                             ),
                         };
                         let [cr, cg, cb, _] = col.as_f32_array();
