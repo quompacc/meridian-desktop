@@ -10,8 +10,8 @@ pub mod paint;
 pub mod style;
 pub mod widget;
 pub use effect::{
-    blend_text_sample, measure_text, paint_border, paint_fill, paint_metro_surface, paint_text,
-    rounded_rect_path, truncate_to_fit, ui_font, TextInk,
+    blend_text_sample, clear_ui_font, measure_text, paint_border, paint_fill, paint_metro_surface,
+    paint_text, rounded_rect_path, set_ui_font, truncate_to_fit, ui_font, TextInk,
 };
 pub use event::{hit_test, Event, PointerButton, PointerPosition, WidgetPath, WidgetState};
 pub use paint::{compute_layout, render, render_idle, PixelSize, Rect};

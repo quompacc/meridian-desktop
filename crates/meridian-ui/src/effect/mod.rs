@@ -18,4 +18,7 @@ pub use dominant_color::dominant_color;
 pub use fill::paint_fill;
 pub use metro_surface::paint_metro_surface;
 pub use radius::rounded_rect_path;
-pub use text::{blend_text_sample, measure_text, paint_text, truncate_to_fit, ui_font, TextInk};
+pub use text::{
+    blend_text_sample, clear_ui_font, measure_text, paint_text, set_ui_font, truncate_to_fit,
+    ui_font, TextInk,
+};

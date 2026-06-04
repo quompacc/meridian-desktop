@@ -9,7 +9,7 @@
 //! per glyph) — acceptable for the current low-frequency render path; a
 //! glyph-cache wrapper is a later optimization.
 
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 
 use fontdue::{Font, FontSettings};
 use tiny_skia::PixmapMut;
@@ -96,13 +96,44 @@ pub fn blend_text_sample(px: &mut [u8], ink: TextInk, coverage: u8, rgb: [usize;
     px[3] = (out_a.clamp(0.0, 1.0) * 255.0).round() as u8;
 }
 
-static UI_FONT: OnceLock<Font> = OnceLock::new();
+static UI_FONT_DEFAULT: OnceLock<Font> = OnceLock::new();
+static UI_FONT_OVERRIDE: RwLock<Option<&'static Font>> = RwLock::new(None);
 
-pub fn ui_font() -> &'static Font {
-    UI_FONT.get_or_init(|| {
+fn embedded_ui_font() -> &'static Font {
+    UI_FONT_DEFAULT.get_or_init(|| {
         Font::from_bytes(UI_FONT_DATA, FontSettings::default())
             .expect("embedded Adwaita Sans Regular parses")
     })
+}
+
+/// The active UI font: the theme-resolved override if one is set, else the
+/// embedded Adwaita Sans. Returns `&'static` so callers can hold it across a
+/// draw without locking.
+pub fn ui_font() -> &'static Font {
+    if let Some(font) = *UI_FONT_OVERRIDE.read().expect("ui font override poisoned") {
+        return font;
+    }
+    embedded_ui_font()
+}
+
+/// Set the active UI font from raw TTF/OTF bytes (a fontconfig-resolved
+/// `theme.fonts.ui` family). Returns false (keeping the current font) if the
+/// bytes do not parse. The font is leaked for a `'static` reference; intended
+/// for the rare theme-font change, not per-frame use.
+pub fn set_ui_font(bytes: &[u8]) -> bool {
+    match Font::from_bytes(bytes, FontSettings::default()) {
+        Ok(font) => {
+            *UI_FONT_OVERRIDE.write().expect("ui font override poisoned") =
+                Some(Box::leak(Box::new(font)));
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// Drop any override, reverting to the embedded Adwaita Sans.
+pub fn clear_ui_font() {
+    *UI_FONT_OVERRIDE.write().expect("ui font override poisoned") = None;
 }
 
 pub fn measure_text(text: &str, size_px: f32) -> (i32, i32) {

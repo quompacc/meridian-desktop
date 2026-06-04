@@ -121,6 +121,23 @@ impl Default for Fonts {
     }
 }
 
+impl Fonts {
+    /// The UI font family with any trailing Pango-style point size stripped:
+    /// "Adwaita Sans 11" -> "Adwaita Sans". Used to resolve the active font;
+    /// the size itself is not yet honoured (the render scale is fixed).
+    pub fn ui_family(&self) -> &str {
+        let trimmed = self.ui.trim();
+        match trimmed.rsplit_once(' ') {
+            Some((head, tail))
+                if !tail.is_empty() && tail.chars().all(|c| c.is_ascii_digit() || c == '.') =>
+            {
+                head.trim_end()
+            }
+            _ => trimmed,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Icons {
@@ -278,6 +295,18 @@ mod tests {
         let fonts = Fonts::default();
         assert_eq!(fonts.ui, "Adwaita Sans 11");
         assert_eq!(fonts.mono, "Adwaita Mono 10");
+    }
+
+    #[test]
+    fn ui_family_strips_trailing_size() {
+        let mk = |ui: &str| Fonts {
+            ui: ui.to_string(),
+            mono: String::new(),
+        };
+        assert_eq!(mk("Adwaita Sans 11").ui_family(), "Adwaita Sans");
+        assert_eq!(mk("Noto Sans 13.5").ui_family(), "Noto Sans");
+        assert_eq!(mk("Inter").ui_family(), "Inter");
+        assert_eq!(mk("  Cantarell 12  ").ui_family(), "Cantarell");
     }
 
     #[test]

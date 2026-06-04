@@ -7,7 +7,7 @@ use smithay_client_toolkit::shell::WaylandSurface;
 use tracing::{debug, info};
 use wayland_client::QueueHandle;
 
-use crate::{launcher, status_notifier, status_notifier_popup, TextRenderer};
+use crate::{launcher, status_notifier, status_notifier_popup};
 
 use super::{time, types::WindowInfo, ClickAction, CommitReason, MeridianShell, RepaintReason};
 
@@ -943,14 +943,7 @@ impl MeridianShell {
                 self.available_themes = available_themes;
 
                 if font_changed {
-                    if let Some(renderer) = TextRenderer::new(&self.theme.fonts.ui, 13) {
-                        *self.font.borrow_mut() = Some(renderer);
-                    } else {
-                        tracing::warn!(
-                            "shell font reload failed for {:?}; keeping previous renderer",
-                            self.theme.fonts.ui
-                        );
-                    }
+                    crate::font_resolve::apply_theme_ui_font(&self.theme);
                 }
 
                 self.launcher_state.apps = launcher::DesktopApp::load_system();

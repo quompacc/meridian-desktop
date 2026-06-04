@@ -18,6 +18,7 @@ mod context_menu;
 mod cursor;
 mod default_apps;
 mod draw;
+mod font_resolve;
 mod icons;
 mod launcher;
 mod network;

@@ -407,6 +407,7 @@ pub(crate) fn initialize(
     info!("Wayland connection flushed, entering event loop");
 
     let font = TextRenderer::new(&theme.fonts.ui, 13);
+    crate::font_resolve::apply_theme_ui_font(&theme);
     let pool = SlotPool::new(1024 * 1024 * 16, &shm)?;
     let launcher_apps = launcher::DesktopApp::load_system();
 
