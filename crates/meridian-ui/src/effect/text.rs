@@ -22,7 +22,7 @@ const UI_FONT_DATA: &[u8] = meridian_tokens::font::ADWAITA_SANS_REGULAR;
 /// renders a touch heavier than the raw outline coverage; this "stem darkening"
 /// together with the gamma-correct blend below is what stops light text on dark
 /// backgrounds from looking thin and muddy.
-const COVERAGE_GAMMA: f32 = 0.82;
+const COVERAGE_GAMMA: f32 = 0.76;
 
 #[inline]
 fn srgb_to_linear(c: f32) -> f32 {
