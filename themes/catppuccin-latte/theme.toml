@@ -13,13 +13,21 @@ success = "#40a02b"
 
 [decorations]
 border_width = 1
-corner_radius = 0
-shadow = false
-shadow_radius = 16
-shadow_radius_top = 8
-shadow_alpha = 0.18
-shadow_offset_y = 0
+corner_radius = 10
+shadow = true
+shadow_radius = 20
+shadow_radius_top = 10
+shadow_alpha = 0.22
+shadow_offset_y = 3
 gap = 8
+glass = true
+glass_blur = true
+glass_blur_radius = 10
+glass_tint = 0.5
+glass_frame_alpha = 0.4
+glass_button_alpha = 0.45
+glass_alpha = 0.55
+glass_specular = 0.6
 
 [fonts]
 ui = "Adwaita Sans 11"
