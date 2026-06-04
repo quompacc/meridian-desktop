@@ -121,6 +121,60 @@ pub const POPUP_SHADOW_BLUR: f32 = meridian_tokens::Elevation::POPUP.blur;
 pub const POPUP_SHADOW_ALPHA: f32 = meridian_tokens::Elevation::POPUP.alpha;
 pub const POPUP_SHADOW_OFFSET_Y: i32 = meridian_tokens::Elevation::POPUP.offset_y;
 
+/// Draw the shared glass popup border into a BGRA buffer at `rect`.
+///
+/// This is the same coverage code used by [`draw_card_body`], exposed for
+/// composite popup surfaces that contain more than one glass panel.
+pub fn draw_glass_card_border_in_rect(buf: &mut [u8], buf_w: i32, buf_h: i32, rect: Rect) {
+    draw_card_border_in_rect(buf, buf_w, buf_h, rect, GLASS_BORDER, CARD_RADIUS);
+}
+
+fn draw_card_border_in_rect(
+    buf: &mut [u8],
+    buf_w: i32,
+    buf_h: i32,
+    rect: Rect,
+    color: Color,
+    radius: i32,
+) {
+    if buf_w <= 0 || buf_h <= 0 || rect.w <= 0 || rect.h <= 0 {
+        return;
+    }
+
+    for y in 0..rect.h {
+        let py = rect.y + y;
+        if py < 0 || py >= buf_h {
+            continue;
+        }
+        for x in 0..rect.w {
+            let px = rect.x + x;
+            if px < 0 || px >= buf_w {
+                continue;
+            }
+
+            let outer = rounded_rect_coverage(x, y, rect.w, rect.h, radius);
+            if outer == 0 {
+                continue;
+            }
+            let inner = rounded_rect_coverage(x - 1, y - 1, rect.w - 2, rect.h - 2, radius - 1);
+            let coverage = outer.saturating_sub(inner);
+            if coverage == 0 {
+                continue;
+            }
+
+            let alpha = ((u16::from(color.a) * u16::from(coverage)) / 255) as u8;
+            let offset = ((py * buf_w + px) * 4) as usize;
+            if offset + 4 > buf.len() {
+                continue;
+            }
+            buf[offset] = ((u16::from(color.b) * u16::from(alpha)) / 255) as u8;
+            buf[offset + 1] = ((u16::from(color.g) * u16::from(alpha)) / 255) as u8;
+            buf[offset + 2] = ((u16::from(color.r) * u16::from(alpha)) / 255) as u8;
+            buf[offset + 3] = alpha;
+        }
+    }
+}
+
 /// Composite an already-rendered `card_buf` (card_w * card_h * 4 BGRA bytes)
 /// onto a layer-shell `surface` buffer plus a soft drop shadow. The surface
 /// buffer is sized `card + 2*POPUP_SHADOW_PAD`; the card lands at
@@ -137,22 +191,52 @@ pub fn paint_card_with_shadow(
     card_h: u32,
     card_buf: &[u8],
 ) {
+    let panel = Rect {
+        x: 0,
+        y: 0,
+        w: card_w as i32,
+        h: card_h as i32,
+    };
+    paint_card_panels_with_shadow(
+        surface,
+        surface_w,
+        surface_h,
+        card_w,
+        card_h,
+        card_buf,
+        &[panel],
+    );
+}
+
+/// Composite a card buffer and draw the shared popup shadow for each glass
+/// panel inside it. Panel coordinates are local to `card_buf`.
+pub fn paint_card_panels_with_shadow(
+    surface: &mut [u8],
+    surface_w: u32,
+    surface_h: u32,
+    card_w: u32,
+    card_h: u32,
+    card_buf: &[u8],
+    panels: &[Rect],
+) {
     surface.fill(0);
     let pad = crate::POPUP_SHADOW_PAD;
-    crate::soft_shadow::draw_soft_shadow(
-        surface,
-        surface_w as i32,
-        surface_h as i32,
-        pad,
-        pad,
-        card_w as i32,
-        card_h as i32,
-        CARD_RADIUS as f32,
-        POPUP_SHADOW_BLUR,
-        POPUP_SHADOW_ALPHA,
-        POPUP_SHADOW_OFFSET_Y,
-        true,
-    );
+    for panel in panels {
+        crate::soft_shadow::draw_soft_shadow(
+            surface,
+            surface_w as i32,
+            surface_h as i32,
+            pad + panel.x,
+            pad + panel.y,
+            panel.w,
+            panel.h,
+            CARD_RADIUS as f32,
+            POPUP_SHADOW_BLUR,
+            POPUP_SHADOW_ALPHA,
+            POPUP_SHADOW_OFFSET_Y,
+            true,
+        );
+    }
     crate::soft_shadow::composite_card_onto_surface(
         surface,
         surface_w as usize,

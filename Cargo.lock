@@ -1404,6 +1404,7 @@ dependencies = [
  "meridian-compass-render",
  "meridian-config",
  "meridian-ipc",
+ "meridian-tokens",
  "meridian-wm",
  "smallvec",
  "smithay",

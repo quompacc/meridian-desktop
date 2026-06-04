@@ -19,7 +19,7 @@ const ITEM_H: i32 = 36;
 const VPAD: i32 = 6;
 const PADDING_X: i32 = 14;
 const FONT_SIZE: f32 = 13.0;
-pub(crate) const CORNER_R: i32 = 14;
+pub(crate) const CORNER_R: i32 = crate::popup_card::CARD_RADIUS;
 
 fn is_glass_menu(theme_config: &ThemeConfig) -> bool {
     theme_config.decorations.glass && theme_config.decorations.glass_blur
@@ -526,6 +526,34 @@ pub(crate) fn draw_overlay(
     submenu_arrows: &[bool],
     theme_config: &ThemeConfig,
 ) {
+    draw_overlay_with_background(
+        canvas,
+        canvas_w,
+        canvas_h,
+        state,
+        items,
+        icons,
+        submenu_arrows,
+        theme_config,
+        true,
+    );
+}
+
+/// Render the context menu as an overlay onto the existing BGRA `canvas`.
+/// `draw_background` is disabled by the desktop glass menu, which gets its
+/// border/shadow from `popup_card` so the popup chrome has one source.
+#[allow(clippy::too_many_arguments)]
+fn draw_overlay_with_background(
+    canvas: &mut [u8],
+    canvas_w: u32,
+    canvas_h: u32,
+    state: &ContextMenuState,
+    items: &[(&str, ContextMenuAction)],
+    icons: &[MenuIcon],
+    submenu_arrows: &[bool],
+    theme_config: &ThemeConfig,
+    draw_background: bool,
+) {
     let n = items.len();
     let mw = MENU_WIDTH as u32;
     let mh = menu_height(n) as u32;
@@ -544,7 +572,9 @@ pub(crate) fn draw_overlay(
     let Some(bg_path) = rounded_rect_path(bg_rect, CORNER_R) else {
         return;
     };
-    paint_menu_background(&mut pm.as_mut(), &bg_path, theme_config, pal);
+    if draw_background {
+        paint_menu_background(&mut pm.as_mut(), &bg_path, theme_config, pal);
+    }
 
     // Separator before last item
     let sep_before = n.saturating_sub(1);
@@ -663,7 +693,8 @@ pub(crate) fn draw_desktop_overlay(
     if SETTINGS_ITEM_IDX < submenu_arrows.len() {
         submenu_arrows[SETTINGS_ITEM_IDX] = true;
     }
-    draw_overlay(
+    let draw_panel_background = !is_glass_menu(theme_config);
+    draw_overlay_with_background(
         canvas,
         canvas_w,
         canvas_h,
@@ -672,10 +703,18 @@ pub(crate) fn draw_desktop_overlay(
         &icons,
         &submenu_arrows,
         theme_config,
+        draw_panel_background,
     );
 
     if state.submenu_open {
-        draw_submenu_overlay(canvas, canvas_w, canvas_h, state, theme_config);
+        draw_submenu_overlay(
+            canvas,
+            canvas_w,
+            canvas_h,
+            state,
+            theme_config,
+            draw_panel_background,
+        );
     }
 }
 
@@ -686,6 +725,7 @@ fn draw_submenu_overlay(
     canvas_h: u32,
     state: &DesktopContextMenuState,
     theme_config: &ThemeConfig,
+    draw_background: bool,
 ) {
     let items = submenu_items();
     let n = items.len();
@@ -705,7 +745,9 @@ fn draw_submenu_overlay(
     let Some(bg_path) = rounded_rect_path(bg_rect, CORNER_R) else {
         return;
     };
-    paint_menu_background(&mut pm.as_mut(), &bg_path, theme_config, pal);
+    if draw_background {
+        paint_menu_background(&mut pm.as_mut(), &bg_path, theme_config, pal);
+    }
 
     for (i, (label, _)) in items.iter().enumerate() {
         let item_top = VPAD + i as i32 * ITEM_H;
