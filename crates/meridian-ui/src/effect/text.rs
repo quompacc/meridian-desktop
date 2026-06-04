@@ -42,6 +42,60 @@ fn linear_to_srgb(c: f32) -> f32 {
     }
 }
 
+/// Pre-tonemapped text colour, computed once per run and reused for each glyph
+/// pixel by [`blend_text_sample`].
+#[derive(Clone, Copy)]
+pub struct TextInk {
+    src_lin: [f32; 3],
+    alpha: f32,
+}
+
+impl TextInk {
+    pub fn new(color: Color) -> Self {
+        Self {
+            src_lin: [
+                srgb_to_linear(color.r as f32 / 255.0),
+                srgb_to_linear(color.g as f32 / 255.0),
+                srgb_to_linear(color.b as f32 / 255.0),
+            ],
+            alpha: color.a as f32 / 255.0,
+        }
+    }
+}
+
+/// Blend one glyph coverage sample into a premultiplied 4-byte pixel, using the
+/// UI text gamma + stem-darkening and a gamma-correct linear "over". `rgb` gives
+/// the byte positions of the R, G, B channels (alpha is byte 3): `[0, 1, 2]` for
+/// RGBA, `[2, 1, 0]` for BGRA. The single home of the text blend, shared by the
+/// fontdue `paint_text` (tiny-skia RGBA) and the shell `Painter` glyph path
+/// (premultiplied BGRA).
+pub fn blend_text_sample(px: &mut [u8], ink: TextInk, coverage: u8, rgb: [usize; 3]) {
+    if coverage == 0 {
+        return;
+    }
+    let cov = (coverage as f32 / 255.0).powf(COVERAGE_GAMMA) * ink.alpha;
+    let dst_a = px[3] as f32 / 255.0;
+    let dst_lin = if dst_a <= 0.0 {
+        [0.0f32; 3]
+    } else {
+        [
+            srgb_to_linear(((px[rgb[0]] as f32 / 255.0) / dst_a).min(1.0)),
+            srgb_to_linear(((px[rgb[1]] as f32 / 255.0) / dst_a).min(1.0)),
+            srgb_to_linear(((px[rgb[2]] as f32 / 255.0) / dst_a).min(1.0)),
+        ]
+    };
+    let keep = dst_a * (1.0 - cov);
+    let out_a = cov + keep;
+    if out_a <= 0.0 {
+        return;
+    }
+    for i in 0..3 {
+        let lin = (ink.src_lin[i] * cov + dst_lin[i] * keep) / out_a;
+        px[rgb[i]] = (linear_to_srgb(lin).clamp(0.0, 1.0) * out_a * 255.0).round() as u8;
+    }
+    px[3] = (out_a.clamp(0.0, 1.0) * 255.0).round() as u8;
+}
+
 static UI_FONT: OnceLock<Font> = OnceLock::new();
 
 pub fn ui_font() -> &'static Font {
@@ -91,13 +145,7 @@ pub fn paint_text(
     let stride = canvas_w as usize * 4;
     let data = canvas.data_mut();
 
-    // Glyph colour in linear light (constant across the run).
-    let color_a = color.a as f32 / 255.0;
-    let src_lin = [
-        srgb_to_linear(color.r as f32 / 255.0),
-        srgb_to_linear(color.g as f32 / 255.0),
-        srgb_to_linear(color.b as f32 / 255.0),
-    ];
+    let ink = TextInk::new(color);
 
     let mut pen_x = x as f32;
     for c in text.chars() {
@@ -121,34 +169,8 @@ pub fn paint_text(
                 if alpha == 0 {
                     continue;
                 }
-                // Gamma-correct "over": composite in linear light, not in raw
-                // sRGB bytes (the latter darkens antialiased edges and is what
-                // made small text read as muddy/blurry). The canvas is
-                // premultiplied sRGB, so un-premultiply the destination, blend
-                // straight in linear, then re-premultiply.
-                let cov = (alpha as f32 / 255.0).powf(COVERAGE_GAMMA) * color_a;
                 let idx = dy as usize * stride + dx as usize * 4;
-                let dst_a = data[idx + 3] as f32 / 255.0;
-                let dst_lin = if dst_a <= 0.0 {
-                    [0.0f32; 3]
-                } else {
-                    [
-                        srgb_to_linear(((data[idx] as f32 / 255.0) / dst_a).min(1.0)),
-                        srgb_to_linear(((data[idx + 1] as f32 / 255.0) / dst_a).min(1.0)),
-                        srgb_to_linear(((data[idx + 2] as f32 / 255.0) / dst_a).min(1.0)),
-                    ]
-                };
-                let keep = dst_a * (1.0 - cov);
-                let out_a = cov + keep;
-                if out_a <= 0.0 {
-                    continue;
-                }
-                for off in 0..3 {
-                    let lin = (src_lin[off] * cov + dst_lin[off] * keep) / out_a;
-                    data[idx + off] =
-                        (linear_to_srgb(lin).clamp(0.0, 1.0) * out_a * 255.0).round() as u8;
-                }
-                data[idx + 3] = (out_a.clamp(0.0, 1.0) * 255.0).round() as u8;
+                blend_text_sample(&mut data[idx..idx + 4], ink, alpha, [0, 1, 2]);
             }
         }
 

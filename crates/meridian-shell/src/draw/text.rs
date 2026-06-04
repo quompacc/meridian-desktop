@@ -1,40 +1,32 @@
-use std::{
-    ffi::{CStr, CString},
-    mem::ManuallyDrop,
-    path::PathBuf,
-    ptr,
-};
+//! Shell text rendering. The glyph source is fontdue, via the shared
+//! `meridian_ui::ui_font()` — the same engine the widget views use — so the
+//! whole shell rasterises through one library. Each glyph coverage sample is
+//! blended into the premultiplied BGRA `Painter` buffer through the shared
+//! `meridian_ui::blend_text_sample`, so popups and widgets use the identical
+//! gamma / stem-darkening blend.
+//!
+//! `TextRenderer` is now a thin handle carrying the pixel size. The font
+//! family in the theme string is not yet honoured (the embedded Adwaita Sans
+//! is always used); that lands with the theme-font work. Keeping the type and
+//! its `Option` plumbing avoids churning the popup call sites for this step.
 
 use meridian_config::Color;
+use meridian_ui::{blend_text_sample, ui_font, TextInk};
 
-use super::{fc, ft, painter::Painter};
-
-pub(crate) const ADWAITA_SANS_REGULAR: &[u8] = meridian_tokens::font::ADWAITA_SANS_REGULAR;
+use super::painter::Painter;
 
 pub struct TextRenderer {
-    // Drop order is load-bearing: the FreeType face must be released
-    // (FT_Done_Face) before its library (FT_Done_FreeType), or the face
-    // teardown touches freed library memory. ManuallyDrop + the explicit
-    // Drop below enforce this regardless of field declaration order.
-    face: ManuallyDrop<ft::Face>,
-    library: ManuallyDrop<ft::Library>,
+    size_px: f32,
 }
 
 impl TextRenderer {
-    pub fn new(pattern: &str, pixels: u32) -> Option<Self> {
-        let library = ft::Library::new().ok()?;
-        if let Ok(face) = ft::Face::new_from_memory(&library, ADWAITA_SANS_REGULAR, pixels) {
-            return Some(Self {
-                face: ManuallyDrop::new(face),
-                library: ManuallyDrop::new(library),
-            });
-        }
-
-        let font_path = fontconfig_match(pattern).or_else(|| fontconfig_match("sans"))?;
-        let face = ft::Face::new(&library, &font_path, pixels).ok()?;
+    /// `_pattern` (the theme font family) is intentionally ignored for now;
+    /// only `pixels` (the render size) is used. Returns `Some` unconditionally
+    /// so the bitmap fallback in `Painter::text_clipped` only triggers when no
+    /// renderer is present at all.
+    pub fn new(_pattern: &str, pixels: u32) -> Option<Self> {
         Some(Self {
-            face: ManuallyDrop::new(face),
-            library: ManuallyDrop::new(library),
+            size_px: pixels as f32,
         })
     }
 
@@ -47,99 +39,55 @@ impl TextRenderer {
         max_w: i32,
         color: Color,
     ) -> bool {
-        let mut pen_x = x;
+        let font = ui_font();
+        let ink = TextInk::new(color);
+        let (w, h) = (painter.width, painter.height);
         let end_x = x + max_w;
+        let mut pen_x = x as f32;
         let mut drew = false;
 
         for ch in text.chars() {
-            if pen_x >= end_x {
+            if pen_x.round() as i32 >= end_x {
                 break;
             }
-            let Some(glyph) = self.face.load_char(ch) else {
-                continue;
-            };
-
-            let draw_x = pen_x + glyph.left;
-            let draw_y = baseline - glyph.top;
-            for row in 0..glyph.rows {
-                for col in 0..glyph.width {
-                    let idx = if glyph.pitch >= 0 {
-                        (row * glyph.pitch as u32 + col) as usize
-                    } else {
-                        ((glyph.rows - 1 - row) * (-glyph.pitch) as u32 + col) as usize
-                    };
-                    let alpha = glyph.buffer.get(idx).copied().unwrap_or(0);
-                    painter.blend_pixel(draw_x + col as i32, draw_y + row as i32, color, alpha);
-                    drew = drew || alpha != 0;
+            let (metrics, bitmap) = font.rasterize(ch, self.size_px);
+            let left = pen_x.round() as i32 + metrics.xmin;
+            // fontdue's ymin is the offset of the glyph bottom from the
+            // baseline; the top edge sits height+ymin above it.
+            let top = baseline - metrics.height as i32 - metrics.ymin;
+            for gy in 0..metrics.height {
+                let dy = top + gy as i32;
+                if dy < 0 || dy >= h {
+                    continue;
+                }
+                for gx in 0..metrics.width {
+                    let dx = left + gx as i32;
+                    if dx < 0 || dx >= w {
+                        continue;
+                    }
+                    let alpha = bitmap[gy * metrics.width + gx];
+                    if alpha == 0 {
+                        continue;
+                    }
+                    let idx = (dy as usize * w as usize + dx as usize) * 4;
+                    // BGRA byte order: R, G, B live at offsets 2, 1, 0.
+                    blend_text_sample(&mut painter.data[idx..idx + 4], ink, alpha, [2, 1, 0]);
+                    drew = true;
                 }
             }
-            pen_x += glyph.advance;
+            pen_x += metrics.advance_width;
         }
 
         drew
     }
 
     pub fn measure_text(&mut self, text: &str) -> i32 {
-        let mut width = 0i32;
+        let font = ui_font();
+        let mut width = 0.0f32;
         for ch in text.chars() {
-            if let Some(glyph) = self.face.load_char(ch) {
-                width = width.saturating_add(glyph.advance.max(0));
-            }
+            width += font.metrics(ch, self.size_px).advance_width;
         }
-        width
-    }
-}
-
-impl Drop for TextRenderer {
-    fn drop(&mut self) {
-        // SAFETY: both fields are live (constructed once, dropped only here).
-        // Face before library, per FreeType's ownership rule.
-        unsafe {
-            ManuallyDrop::drop(&mut self.face);
-            ManuallyDrop::drop(&mut self.library);
-        }
-    }
-}
-
-fn fontconfig_match(pattern: &str) -> Option<PathBuf> {
-    // SAFETY: all Fontconfig pointers are created/checked in this block and destroyed on each exit path.
-    unsafe {
-        if fc::FcInit() == 0 {
-            return None;
-        }
-        let pattern = CString::new(pattern).ok()?;
-        let fc_pattern = fc::FcNameParse(pattern.as_ptr() as *const fc::FcChar8);
-        if fc_pattern.is_null() {
-            return None;
-        }
-
-        fc::FcConfigSubstitute(ptr::null_mut(), fc_pattern, fc::FcMatchPattern);
-        fc::FcDefaultSubstitute(fc_pattern);
-
-        let mut result = fc::FcResultNoMatch;
-        let match_pattern = fc::FcFontMatch(ptr::null_mut(), fc_pattern, &mut result);
-        fc::FcPatternDestroy(fc_pattern);
-
-        if match_pattern.is_null() || result != fc::FcResultMatch {
-            if !match_pattern.is_null() {
-                fc::FcPatternDestroy(match_pattern);
-            }
-            return None;
-        }
-
-        let mut file: *mut fc::FcChar8 = ptr::null_mut();
-        let key = CString::new("file").ok()?;
-        let get_result = fc::FcPatternGetString(match_pattern, key.as_ptr(), 0, &mut file);
-        let path = if get_result == fc::FcResultMatch && !file.is_null() {
-            CStr::from_ptr(file as *const libc::c_char)
-                .to_str()
-                .ok()
-                .map(PathBuf::from)
-        } else {
-            None
-        };
-        fc::FcPatternDestroy(match_pattern);
-        path
+        width.round() as i32
     }
 }
 
@@ -160,5 +108,11 @@ mod tests {
         let short = renderer.measure_text("A");
         let long = renderer.measure_text("AA");
         assert!(long >= short);
+    }
+
+    #[test]
+    fn measure_text_empty_is_zero() {
+        let mut renderer = TextRenderer::new("sans", 13).expect("renderer");
+        assert_eq!(renderer.measure_text(""), 0);
     }
 }
