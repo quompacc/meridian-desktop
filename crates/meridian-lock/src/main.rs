@@ -20,7 +20,7 @@ use wayland_protocols::ext::session_lock::v1::client::{
 use xkbcommon::xkb;
 use zeroize::Zeroizing;
 
-static FONT_DATA: &[u8] = include_bytes!("../../meridian-ui/assets/fonts/AdwaitaSans-Regular.ttf");
+static FONT_DATA: &[u8] = meridian_tokens::font::ADWAITA_SANS_REGULAR;
 
 // ── colours (RGBA, tiny-skia order) ──────────────────────────────────────────
 const BG: u32 = 0xFF1A1B26;

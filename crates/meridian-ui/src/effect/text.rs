@@ -16,7 +16,7 @@ use tiny_skia::PixmapMut;
 
 use crate::style::Color;
 
-const UI_FONT_DATA: &[u8] = include_bytes!("../../assets/fonts/AdwaitaSans-Regular.ttf");
+const UI_FONT_DATA: &[u8] = meridian_tokens::font::ADWAITA_SANS_REGULAR;
 
 /// Glyph coverage exponent (< 1.0 thickens strokes slightly). macOS-style text
 /// renders a touch heavier than the raw outline coverage; this "stem darkening"

@@ -22,7 +22,7 @@ use tracing_subscriber::EnvFilter;
 
 use crate::wayland::{AppState, PamResult};
 
-static FONT_DATA: &[u8] = include_bytes!("../../meridian-ui/assets/fonts/AdwaitaSans-Regular.ttf");
+static FONT_DATA: &[u8] = meridian_tokens::font::ADWAITA_SANS_REGULAR;
 
 fn install_panic_logger() {
     let default_hook = std::panic::take_hook();

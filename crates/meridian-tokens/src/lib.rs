@@ -6,11 +6,12 @@
 //!
 //! Phase 1 hosts the colour primitive and the canonical palette; phase 2 the
 //! corner-radius scale; phase 3 interaction-state tokens; phase 4 the
-//! per-surface elevation (drop-shadow) scale. Later phases move the blur
-//! accent and typography here too (design-tokens refactor plan).
+//! per-surface elevation (drop-shadow) scale; phase 6 the shared embedded UI
+//! font. Later phases move typography sizing here too (refactor plan).
 
 pub mod color;
 pub mod elevation;
+pub mod font;
 pub mod interaction;
 pub mod radius;
 

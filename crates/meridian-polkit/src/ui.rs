@@ -374,8 +374,7 @@ mod tests {
     use super::*;
 
     fn test_font() -> FontRef<'static> {
-        static FONT: &[u8] =
-            include_bytes!("../../meridian-ui/assets/fonts/AdwaitaSans-Regular.ttf");
+        static FONT: &[u8] = meridian_tokens::font::ADWAITA_SANS_REGULAR;
         FontRef::try_from_slice(FONT).expect("load test font")
     }
 

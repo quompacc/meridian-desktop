@@ -8,6 +8,7 @@ name = "meridian-lock"
 path = "src/main.rs"
 
 [dependencies]
+meridian-tokens = { path = "../meridian-tokens" }
 ab_glyph = { workspace = true }
 libc = "0.2"
 pam-sys = "1.0.0-alpha5"

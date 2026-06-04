@@ -9,8 +9,7 @@ use meridian_config::Color;
 
 use super::{fc, ft, painter::Painter};
 
-pub(crate) const ADWAITA_SANS_REGULAR: &[u8] =
-    include_bytes!("../../assets/fonts/AdwaitaSans-Regular.ttf");
+pub(crate) const ADWAITA_SANS_REGULAR: &[u8] = meridian_tokens::font::ADWAITA_SANS_REGULAR;
 
 pub struct TextRenderer {
     // Drop order is load-bearing: the FreeType face must be released
