@@ -499,7 +499,7 @@ impl MeridianShell {
                 crate::popup_card::POPUP_SHADOW_BLUR,
                 crate::popup_card::POPUP_SHADOW_ALPHA,
                 crate::popup_card::POPUP_SHADOW_OFFSET_Y,
-                false,
+                true,
             );
             if menu.submenu_open {
                 let sub_x =
@@ -517,7 +517,7 @@ impl MeridianShell {
                     crate::popup_card::POPUP_SHADOW_BLUR,
                     crate::popup_card::POPUP_SHADOW_ALPHA,
                     crate::popup_card::POPUP_SHADOW_OFFSET_Y,
-                    false,
+                    true,
                 );
             }
             crate::soft_shadow::composite_card_onto_surface(
