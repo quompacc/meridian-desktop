@@ -109,14 +109,12 @@ impl Default for Decorations {
 #[serde(default)]
 pub struct Fonts {
     pub ui: String,
-    pub mono: String,
 }
 
 impl Default for Fonts {
     fn default() -> Self {
         Self {
             ui: "Adwaita Sans 11".to_string(),
-            mono: "Adwaita Mono 10".to_string(),
         }
     }
 }
@@ -294,15 +292,11 @@ mod tests {
     fn test_fonts_default_uses_adwaita() {
         let fonts = Fonts::default();
         assert_eq!(fonts.ui, "Adwaita Sans 11");
-        assert_eq!(fonts.mono, "Adwaita Mono 10");
     }
 
     #[test]
     fn ui_family_strips_trailing_size() {
-        let mk = |ui: &str| Fonts {
-            ui: ui.to_string(),
-            mono: String::new(),
-        };
+        let mk = |ui: &str| Fonts { ui: ui.to_string() };
         assert_eq!(mk("Adwaita Sans 11").ui_family(), "Adwaita Sans");
         assert_eq!(mk("Noto Sans 13.5").ui_family(), "Noto Sans");
         assert_eq!(mk("Inter").ui_family(), "Inter");

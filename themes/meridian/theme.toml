@@ -31,7 +31,6 @@ glass_specular = 0.6
 
 [fonts]
 ui = "Adwaita Sans 11"
-mono = "Adwaita Mono 10"
 
 [icons]
 theme = "Papirus-Dark"
