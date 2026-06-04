@@ -83,7 +83,13 @@ type Rect = (f32, f32, f32, f32);
 type PowerButtonRects = (Rect, Rect);
 
 const CARD_PAD: f32 = 32.0;
-const METRO_STRIPE_HEIGHT: f32 = 4.0;
+const METRO_STRIPE_HEIGHT: f32 = 2.0;
+const CARD_RADIUS: f32 = meridian_tokens::Radius::DEFAULT.xl as f32;
+const FIELD_RADIUS: f32 = meridian_tokens::Radius::DEFAULT.md as f32;
+const BUTTON_RADIUS: f32 = meridian_tokens::Radius::DEFAULT.md as f32;
+const CARD_SHADOW_BLUR: f32 = meridian_tokens::Elevation::LAUNCHER.blur;
+const CARD_SHADOW_ALPHA: f32 = meridian_tokens::Elevation::LAUNCHER.alpha;
+const CARD_SHADOW_OFFSET_Y: f32 = meridian_tokens::Elevation::LAUNCHER.offset_y as f32;
 const TITLE_OFFSET_Y: f32 = 31.0;
 const USER_BOX_OFFSET_Y: f32 = 88.0;
 const PASSWORD_BOX_OFFSET_Y: f32 = 150.0;
@@ -1305,15 +1311,30 @@ fn metro_color(alpha: f32, dark: (u8, u8, u8), light: (u8, u8, u8), base: f32) -
 }
 
 fn metro_surface(alpha: f32) -> Color {
-    metro_color(alpha, (0x24, 0x28, 0x3b), (0xf4, 0xef, 0xe3), 244.0)
+    metro_color(
+        alpha,
+        (0x1f, 0x28, 0x34),
+        (0xff, 0xff, 0xff),
+        if light_appearance() { 58.0 } else { 86.0 },
+    )
 }
 
 fn metro_surface_alt(alpha: f32) -> Color {
-    metro_color(alpha, (0x1f, 0x23, 0x35), (0xe3, 0xd9, 0xc4), 242.0)
+    metro_color(
+        alpha,
+        (0x16, 0x20, 0x2c),
+        (0xff, 0xff, 0xff),
+        if light_appearance() { 74.0 } else { 118.0 },
+    )
 }
 
 fn metro_background(alpha: f32) -> Color {
-    metro_color(alpha, (0x1a, 0x1b, 0x26), (0xec, 0xe4, 0xd3), 238.0)
+    metro_color(
+        alpha,
+        (0x05, 0x08, 0x0c),
+        (0xff, 0xff, 0xff),
+        if light_appearance() { 42.0 } else { 64.0 },
+    )
 }
 
 fn metro_accent(alpha: f32) -> Color {
@@ -1321,15 +1342,15 @@ fn metro_accent(alpha: f32) -> Color {
 }
 
 fn metro_text(alpha: f32) -> Color {
-    metro_color(alpha, (0xc0, 0xca, 0xf5), (0x1e, 0x2b, 0x38), 255.0)
+    metro_color(alpha, (0xf3, 0xf6, 0xff), (0x05, 0x08, 0x0c), 255.0)
 }
 
 fn metro_text_dim(alpha: f32) -> Color {
-    metro_color(alpha, (0xa9, 0xb1, 0xd6), (0x5d, 0x6b, 0x78), 230.0)
+    metro_color(alpha, (0xd8, 0xde, 0xff), (0x1e, 0x28, 0x34), 235.0)
 }
 
 fn metro_border(alpha: f32) -> Color {
-    metro_color(alpha, (0x41, 0x48, 0x68), (0xc9, 0xbc, 0xa0), 230.0)
+    metro_color(alpha, (0xf3, 0xf6, 0xff), (0x05, 0x08, 0x0c), 110.0)
 }
 
 fn metro_error(alpha: f32) -> Color {
@@ -1341,10 +1362,25 @@ fn metro_success(alpha: f32) -> Color {
 }
 
 fn draw_soft_card_shadow(pm: &mut PixmapMut, left: f32, top: f32, w: f32, h: f32, alpha: f32) {
-    for (dy, spread, opacity) in [(8.0, 4.0, 36u8), (2.0, 1.0, 28u8)] {
-        let path = rounded_rect_path(left - spread / 2.0, top + dy, w + spread, h, 0.0);
+    let strength = if light_appearance() {
+        0.035
+    } else {
+        CARD_SHADOW_ALPHA
+    };
+    for i in 0..14 {
+        let t = i as f32 / 13.0;
+        let spread = 3.0 + CARD_SHADOW_BLUR * (1.85 * t);
+        let dy = CARD_SHADOW_OFFSET_Y + 2.0 + CARD_SHADOW_BLUR * (0.34 * t);
+        let opacity = (1.0 - t).powf(1.65) * strength * 255.0 * alpha;
+        let path = rounded_rect_path(
+            left - spread / 2.0,
+            top + dy - spread * 0.18,
+            w + spread,
+            h + spread * 0.36,
+            CARD_RADIUS + spread * 0.45,
+        );
         let mut paint = Paint::default();
-        paint.set_color(Color::from_rgba8(0, 0, 0, (alpha * opacity as f32) as u8));
+        paint.set_color(Color::from_rgba8(0, 0, 0, opacity.clamp(0.0, 255.0) as u8));
         paint.anti_alias = true;
         pm.fill_path(
             &path,
@@ -1393,12 +1429,12 @@ fn draw_login_button(
     alpha: f32,
     selected: bool,
 ) {
-    let path = rounded_rect_path(rect.0, rect.1, rect.2, rect.3, 0.0);
+    let path = rounded_rect_path(rect.0, rect.1, rect.2, rect.3, BUTTON_RADIUS);
     let fill = mix_color(
         metro_surface(1.0),
         accent,
         if selected { 0.26 } else { 0.08 },
-        alpha_byte(alpha, if selected { 238.0 } else { 224.0 }),
+        alpha_byte(alpha, if selected { 142.0 } else { 88.0 }),
     );
     let mut fill_paint = Paint::default();
     fill_paint.set_color(fill);
@@ -1422,7 +1458,13 @@ fn draw_login_button(
         if selected { 2.0 } else { 1.0 },
     );
 
-    let stripe = rounded_rect_path(rect.0, rect.1, rect.2, 3.0, 0.0);
+    let stripe = rounded_rect_path(
+        rect.0 + BUTTON_RADIUS,
+        rect.1 + 1.0,
+        (rect.2 - 2.0 * BUTTON_RADIUS).max(1.0),
+        METRO_STRIPE_HEIGHT,
+        1.0,
+    );
     let mut stripe_paint = Paint::default();
     stripe_paint.set_color(color_with_alpha(accent, alpha_byte(alpha, 230.0)));
     stripe_paint.anti_alias = true;
@@ -1496,7 +1538,7 @@ fn draw_card(
 ) {
     let (left, top, cw, ch) = card_rect(w, h);
     let left = left + shake_dx;
-    let path = rounded_rect_path(left, top, cw, ch, 0.0);
+    let path = rounded_rect_path(left, top, cw, ch, CARD_RADIUS);
     draw_soft_card_shadow(pm, left, top, cw, ch, alpha);
     let key_accent = if security_key_present {
         metro_success(alpha)
@@ -1510,7 +1552,7 @@ fn draw_card(
             metro_surface_alt(1.0),
             metro_success(1.0),
             0.08,
-            alpha_byte(alpha, 242.0),
+            alpha_byte(alpha, if light_appearance() { 86.0 } else { 128.0 }),
         )
     } else {
         metro_surface_alt(alpha)
@@ -1518,7 +1560,13 @@ fn draw_card(
     fill.anti_alias = true;
     pm.fill_path(&path, &fill, FillRule::Winding, Transform::identity(), None);
 
-    let stripe = rounded_rect_path(left, top, cw, METRO_STRIPE_HEIGHT, 0.0);
+    let stripe = rounded_rect_path(
+        left + CARD_RADIUS,
+        top + 1.0,
+        (cw - 2.0 * CARD_RADIUS).max(1.0),
+        METRO_STRIPE_HEIGHT,
+        1.0,
+    );
     let mut stripe_paint = Paint::default();
     stripe_paint.set_color(key_accent);
     stripe_paint.anti_alias = true;
@@ -1531,7 +1579,10 @@ fn draw_card(
     );
 
     let border = if security_key_present {
-        color_with_alpha(metro_success(1.0), alpha_byte(alpha, 220.0))
+        color_with_alpha(
+            metro_success(1.0),
+            alpha_byte(alpha, if light_appearance() { 150.0 } else { 220.0 }),
+        )
     } else {
         metro_border(alpha)
     };
@@ -1851,7 +1902,7 @@ fn draw_input_box(
     focused: bool,
     alpha: f32,
 ) {
-    let path = rounded_rect_path(x, y, w, h, 0.0);
+    let path = rounded_rect_path(x, y, w, h, FIELD_RADIUS);
     let mut fill_paint = Paint::default();
     fill_paint.set_color(fill);
     fill_paint.anti_alias = true;
@@ -1877,7 +1928,13 @@ fn draw_input_box(
     pm.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
 
     if focused {
-        let accent = rounded_rect_path(x, y, 3.0, h, 0.0);
+        let accent = rounded_rect_path(
+            x,
+            y + FIELD_RADIUS,
+            3.0,
+            (h - 2.0 * FIELD_RADIUS).max(1.0),
+            1.5,
+        );
         let mut accent_paint = Paint::default();
         accent_paint.set_color(metro_accent(alpha));
         accent_paint.anti_alias = true;

@@ -1461,6 +1461,7 @@ dependencies = [
  "libc",
  "meridian-boot-common",
  "meridian-compass-render",
+ "meridian-tokens",
  "nix",
  "pam-sys",
  "tiny-skia",

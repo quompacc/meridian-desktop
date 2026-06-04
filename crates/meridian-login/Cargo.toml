@@ -9,6 +9,7 @@ evdev = "0.13"
 libc = "0.2"
 meridian-boot-common = { path = "../meridian-boot-common" }
 meridian-compass-render = { path = "../meridian-compass-render" }
+meridian-tokens = { path = "../meridian-tokens" }
 nix = { version = "0.29", features = ["user", "fs"] }
 pam-sys = "1.0.0-alpha5"
 tiny-skia = { workspace = true }
