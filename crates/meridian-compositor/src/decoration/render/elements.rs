@@ -453,7 +453,8 @@ impl DecorationManager {
                     // maximize=accent, minimize=lighter blue. The frosted
                     // titlebar shows through a translucent colour veil per
                     // zone, stronger under the pointer. Rounded pill ends.
-                    let base = 0.22f32;
+                    let base = theme.glass_button_alpha;
+                    let hover_a = (theme.glass_button_alpha + 0.25).min(0.95);
                     let zones = [
                         (buttons.minimize_rect, colors.accent_alt, (pr, 0.0, 0.0, pr)),
                         (buttons.maximize_rect, colors.accent, (0.0, 0.0, 0.0, 0.0)),
@@ -490,7 +491,7 @@ impl DecorationManager {
                             [zr, zg, zb],
                             radii,
                             0.0,
-                            0.45,
+                            hover_a,
                             psf,
                         )));
                     }

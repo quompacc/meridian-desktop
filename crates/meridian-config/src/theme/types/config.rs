@@ -70,6 +70,8 @@ pub struct Decorations {
     pub glass_tint: f32,
     /// Opacity of the cool-white glass window frame (0.0..1.0).
     pub glass_frame_alpha: f32,
+    /// Base opacity of the colour veil on the glass window buttons (0.0..1.0).
+    pub glass_button_alpha: f32,
 }
 
 impl Default for Decorations {
@@ -90,6 +92,7 @@ impl Default for Decorations {
             glass_blur_radius: 8.0,
             glass_tint: 0.5,
             glass_frame_alpha: 0.4,
+            glass_button_alpha: 0.45,
         }
     }
 }
