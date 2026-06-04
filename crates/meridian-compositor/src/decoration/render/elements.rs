@@ -437,13 +437,22 @@ impl DecorationManager {
                     // maximize=accent, minimize=lighter blue. The frosted
                     // titlebar shows through a translucent colour veil per
                     // zone, stronger under the pointer. Rounded pill ends.
-                    let base = theme.glass_button_alpha;
-                    let hover_a = (theme.glass_button_alpha + 0.25).min(0.95);
+                    let base = if theme.glass_blur {
+                        (theme.glass_button_alpha * 0.22).min(0.16)
+                    } else {
+                        theme.glass_button_alpha
+                    };
+                    let hover_a = if theme.glass_blur {
+                        (theme.glass_button_alpha * 0.70).min(0.42)
+                    } else {
+                        (theme.glass_button_alpha + 0.25).min(0.95)
+                    };
+                    let button_tint = (theme.glass_button_alpha * 0.75).min(0.55);
                     let zones = [
                         (
                             buttons.minimize_rect,
                             colors.accent_alt,
-                            (0.0, 0.0, 0.0, 0.0),
+                            (pr, 0.0, 0.0, 0.0),
                         ),
                         (buttons.maximize_rect, colors.accent, (0.0, 0.0, 0.0, 0.0)),
                         (
@@ -507,6 +516,18 @@ impl DecorationManager {
                             0.30,
                             psf,
                         )));
+                    }
+                    if theme.glass_blur {
+                        for (rect, col, radii) in zones.iter().copied() {
+                            let [zr, zg, zb, _] = col.as_f32_array();
+                            elements.push(DecorationRenderElement::Glass(GlassTitlebarInfo {
+                                rect,
+                                radius: [radii.0, radii.1, radii.2, radii.3],
+                                tint: [zr, zg, zb],
+                                tint_amount: button_tint,
+                                blur: theme.glass_blur_radius,
+                            }));
+                        }
                     }
                 } else {
                     if let Some(h) = hovered {
