@@ -16,7 +16,27 @@ use super::WinitRenderElements;
 pub(super) type LayerRenderData = (LayerSurface, Rectangle<i32, Logical>);
 
 fn is_upper_layer(namespace: &str, layer: WlrLayer) -> bool {
-    namespace == "meridian-launcher" || matches!(layer, WlrLayer::Top | WlrLayer::Overlay)
+    // Meridian's shell overlays (launcher, popups, menus) are created on the
+    // Overlay/Top layer, but smithay can transiently report Background/Bottom for
+    // a layer surface across a null-buffer unmap->remap cycle — which the
+    // calendar/network/workspace popups perform on every open/close. When that
+    // happens the surface would fall into the lower bucket: the glass loop (which
+    // only scans the upper bucket) would miss it (visible popup, no blur) and it
+    // would z-order below windows. Pin every known shell overlay to the upper
+    // bucket by namespace, independent of the reported layer. The launcher already
+    // relied on this; here it is extended to all popups.
+    matches!(
+        namespace,
+        "meridian-launcher"
+            | "meridian-calendar-popup"
+            | "meridian-workspace-popup"
+            | "meridian-network-popup"
+            | "meridian-notification"
+            | "meridian-thumbnail-popup"
+            | "meridian-desktop-menu"
+            | "meridian-screenshot-consent"
+            | "meridian-screenshot-region-picker"
+    ) || matches!(layer, WlrLayer::Top | WlrLayer::Overlay)
 }
 
 pub(super) fn collect_layer_data(
