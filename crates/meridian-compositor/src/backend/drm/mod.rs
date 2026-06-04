@@ -20,6 +20,7 @@ use crate::state::{OutputGeometry, OutputId};
 
 use crate::{cursor::CursorImage, wallpaper::WallpaperGpuCache};
 
+pub(crate) mod glass;
 mod gpu;
 pub(crate) mod init;
 mod init_diagnostics;

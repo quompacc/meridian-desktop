@@ -53,6 +53,23 @@ pub struct Decorations {
     pub shadow_alpha: f32,
     pub shadow_offset_y: i32,
     pub gap: u32,
+    /// Liquid-glass titlebar: translucent tinted fill with a specular top
+    /// edge instead of an opaque bar. Blur-behind lands in a later phase.
+    pub glass: bool,
+    /// Base fill opacity of the glass titlebar (0.0..1.0).
+    pub glass_alpha: f32,
+    /// Specular top-edge highlight strength (0.0..~1.5).
+    pub glass_specular: f32,
+    /// Use the textured blur-behind glass (frosted) instead of the
+    /// tint-only fallback. Requires `glass = true`.
+    pub glass_blur: bool,
+    /// Blur radius behind the glass, in physical pixels.
+    pub glass_blur_radius: f32,
+    /// How strongly the frosted background is pulled toward the tint
+    /// colour (0.0 = clear glass, 1.0 = solid tint).
+    pub glass_tint: f32,
+    /// Opacity of the cool-white glass window frame (0.0..1.0).
+    pub glass_frame_alpha: f32,
 }
 
 impl Default for Decorations {
@@ -66,6 +83,13 @@ impl Default for Decorations {
             shadow_alpha: 0.18,
             shadow_offset_y: 0,
             gap: 8,
+            glass: false,
+            glass_alpha: 0.55,
+            glass_specular: 0.6,
+            glass_blur: true,
+            glass_blur_radius: 8.0,
+            glass_tint: 0.5,
+            glass_frame_alpha: 0.4,
         }
     }
 }

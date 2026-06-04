@@ -219,21 +219,25 @@ pub(super) fn render_elements_for_output(
                 &theme.colors,
                 scale,
             );
-            scratch.normal.extend(
-                window_deco_elements
-                    .into_iter()
-                    .map(|element| match element {
-                        crate::decoration::DecorationRenderElement::Solid(solid) => {
-                            WinitRenderElements::Decoration(solid)
-                        }
-                        crate::decoration::DecorationRenderElement::Icon(icon) => {
-                            WinitRenderElements::DecorationIcon(icon.into())
-                        }
-                        crate::decoration::DecorationRenderElement::PixelShader(s) => {
-                            WinitRenderElements::Shadow(s)
-                        }
-                    }),
-            );
+            scratch
+                .normal
+                .extend(
+                    window_deco_elements
+                        .into_iter()
+                        .filter_map(|element| match element {
+                            crate::decoration::DecorationRenderElement::Solid(solid) => {
+                                Some(WinitRenderElements::Decoration(solid))
+                            }
+                            crate::decoration::DecorationRenderElement::Icon(icon) => {
+                                Some(WinitRenderElements::DecorationIcon(icon.into()))
+                            }
+                            crate::decoration::DecorationRenderElement::PixelShader(s) => {
+                                Some(WinitRenderElements::Shadow(s))
+                            }
+                            // Winit dev backend has no blur pass; skip glass.
+                            crate::decoration::DecorationRenderElement::Glass(_) => None,
+                        }),
+                );
 
             if let Some(r) = state
                 .decoration_manager

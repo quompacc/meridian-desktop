@@ -10,6 +10,8 @@ use smithay::{
     utils::{Logical, Physical, Point, Rectangle, Scale, Size},
 };
 
+use crate::backend::drm::glass::GlassTitlebarInfo;
+
 use super::{
     super::{
         icons::{IconTint, WindowIcon},
@@ -156,6 +158,104 @@ fn rounded_quad_element(
     PixelShaderElement::new(prog.clone(), area, None, alpha, uniforms, Kind::Unspecified)
 }
 
+/// Liquid-glass titlebar shader (GLSL ES 100). A translucent, tinted pane:
+/// rounded top corners, a soft vertical sheen (brighter along the top, a touch
+/// darker at the bottom), and a single calligraphic specular hairline just
+/// inside the top edge. No background blur yet — that lands in a later phase;
+/// this gives the glass *structure* and is fully theme-tunable. Output is
+/// premultiplied to match the renderer's SRC_OVER blend, like the other
+/// decoration shaders.
+const GLASS_SHADER_SRC: &str = r#"
+precision highp float;
+uniform vec2 size;
+uniform float alpha;
+uniform vec3 u_color;
+uniform vec4 u_radius;
+uniform float u_base_alpha;
+uniform float u_specular;
+uniform float u_scale;
+varying vec2 v_coords;
+
+float rounding_alpha(vec2 coords, vec2 sz, vec4 radius) {
+    vec2 center;
+    float r;
+    if (coords.x < radius.x && coords.y < radius.x) {
+        r = radius.x; center = vec2(r, r);
+    } else if (sz.x - radius.y < coords.x && coords.y < radius.y) {
+        r = radius.y; center = vec2(sz.x - r, r);
+    } else if (sz.x - radius.z < coords.x && sz.y - radius.z < coords.y) {
+        r = radius.z; center = vec2(sz.x - r, sz.y - r);
+    } else if (coords.x < radius.w && sz.y - radius.w < coords.y) {
+        r = radius.w; center = vec2(r, sz.y - r);
+    } else {
+        return 1.0;
+    }
+    float dist = distance(coords, center);
+    float half_px = 0.5 / u_scale;
+    return 1.0 - smoothstep(r - half_px, r + half_px, dist);
+}
+
+void main() {
+    vec2 loc = v_coords * size;
+    float cov = rounding_alpha(loc, size, u_radius);
+    float ny = v_coords.y; // 0 = top edge, 1 = bottom edge
+
+    // Vertical sheen: a curved pane catches a little more light along its top.
+    float sheen = mix(1.16, 0.90, ny);
+    vec3 col = u_color * sheen;
+
+    // Specular hairline just inside the top edge — the calligraphic light line.
+    float top_px = loc.y;
+    float fwhm = 1.4 * u_scale;
+    float center_px = 1.6 * u_scale;
+    float d = (top_px - center_px) / fwhm;
+    float line = exp(-d * d);
+    col += vec3(line) * u_specular;
+
+    // Base translucency, a hair denser near the top to seat the highlight.
+    float a = u_base_alpha * mix(1.05, 0.94, ny);
+    a = clamp(a + line * u_specular * 0.45, 0.0, 1.0);
+
+    float out_a = cov * a * alpha;
+    gl_FragColor = vec4(col * out_a, out_a);
+}
+"#;
+
+fn glass_uniform_names() -> [UniformName<'static>; 5] {
+    [
+        UniformName::new("u_color", UniformType::_3f),
+        UniformName::new("u_radius", UniformType::_4f),
+        UniformName::new("u_base_alpha", UniformType::_1f),
+        UniformName::new("u_specular", UniformType::_1f),
+        UniformName::new("u_scale", UniformType::_1f),
+    ]
+}
+
+/// Build a liquid-glass titlebar `PixelShaderElement` over `area` (logical).
+/// `radius` values are physical pixels; normally only the top corners round.
+#[allow(clippy::too_many_arguments)]
+fn glass_titlebar_element(
+    prog: &smithay::backend::renderer::gles::GlesPixelProgram,
+    area: Rectangle<i32, Logical>,
+    color: [f32; 3],
+    radius_phys: (f32, f32, f32, f32),
+    base_alpha: f32,
+    specular: f32,
+    scale: f32,
+) -> PixelShaderElement {
+    let uniforms = vec![
+        Uniform::new("u_color", color),
+        Uniform::new(
+            "u_radius",
+            [radius_phys.0, radius_phys.1, radius_phys.2, radius_phys.3],
+        ),
+        Uniform::new("u_base_alpha", base_alpha),
+        Uniform::new("u_specular", specular),
+        Uniform::new("u_scale", scale),
+    ];
+    PixelShaderElement::new(prog.clone(), area, None, 1.0, uniforms, Kind::Unspecified)
+}
+
 impl DecorationManager {
     #[allow(clippy::too_many_arguments)]
     pub fn render_elements(
@@ -182,8 +282,15 @@ impl DecorationManager {
                 Err(err) => tracing::warn!("rounded-quad shader compile failed: {:?}", err),
             }
         }
+        if self.glass_shader.is_none() {
+            match renderer.compile_custom_pixel_shader(GLASS_SHADER_SRC, &glass_uniform_names()) {
+                Ok(prog) => self.glass_shader = Some(prog),
+                Err(err) => tracing::warn!("glass shader compile failed: {:?}", err),
+            }
+        }
         let shadow_shader = self.shadow_shader.clone();
         let rounded_quad_shader = self.rounded_quad_shader.clone();
+        let glass_shader = self.glass_shader.clone();
         let key = Self::key(surface);
         let deco = match self.decorations.get_mut(&key) {
             Some(d) => d,
@@ -255,6 +362,23 @@ impl DecorationManager {
         let frame_metrics =
             SsdFrameMetrics::from_frame_origin(window_loc, content_size, bw, title_h);
         let chrome = SsdChromeMetrics::new(frame_metrics);
+
+        // Glass: a complete cool-white (slightly blue) 2px frame around
+        // the whole window, drawn topmost so it reads as one continuous
+        // outline over the translucent titlebar.
+        if theme.glass && rounded {
+            if let Some(ref prog) = rounded_quad_shader {
+                elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
+                    prog,
+                    frame_metrics.frame_rect,
+                    [0.82, 0.88, 1.0],
+                    (rphys, rphys, rphys, rphys),
+                    2.0 * ps as f32,
+                    theme.glass_frame_alpha,
+                    ps as f32,
+                )));
+            }
+        }
 
         if show_title {
             let buttons = chrome
@@ -409,13 +533,42 @@ impl DecorationManager {
                 ));
             }
 
-            if rounded {
-                let titlebar_col = if deco.is_focused {
-                    colors.surface
+            let titlebar_col = if deco.is_focused {
+                colors.surface
+            } else {
+                colors.surface_alt
+            };
+            let [r, g, b, _] = titlebar_col.as_f32_array();
+            if theme.glass && theme.glass_blur {
+                // Textured liquid-glass: emit a placeholder; the backend
+                // builds the real element after rendering the scene texture.
+                elements.push(DecorationRenderElement::Glass(GlassTitlebarInfo {
+                    rect: frame_metrics.titlebar_rect,
+                    radius: [rphys, rphys, 0.0, 0.0],
+                    tint: [r, g, b],
+                    tint_amount: theme.glass_tint,
+                    blur: theme.glass_blur_radius,
+                }));
+            } else if theme.glass && glass_shader.is_some() {
+                // Tint-only glass fallback (no blur).
+                let prog = glass_shader.as_ref().unwrap();
+                let specular = if deco.is_focused {
+                    theme.glass_specular
                 } else {
-                    colors.surface_alt
+                    theme.glass_specular * 0.5
                 };
-                let [r, g, b, _] = titlebar_col.as_f32_array();
+                elements.push(DecorationRenderElement::PixelShader(
+                    glass_titlebar_element(
+                        prog,
+                        frame_metrics.titlebar_rect,
+                        [r, g, b],
+                        (rphys, rphys, 0.0, 0.0),
+                        theme.glass_alpha,
+                        specular,
+                        ps as f32,
+                    ),
+                ));
+            } else if rounded {
                 if let Some(ref prog) = rounded_quad_shader {
                     elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
                         prog,
@@ -440,7 +593,7 @@ impl DecorationManager {
             }
         }
 
-        if bw > 0 {
+        if bw > 0 && !theme.glass {
             if rounded {
                 // One rounded outline ring around the whole frame replaces the
                 // four straight border strips, so the outer corners round

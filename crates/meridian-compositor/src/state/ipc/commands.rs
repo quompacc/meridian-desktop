@@ -308,6 +308,14 @@ impl MeridianState {
             self.reload_cursor_runtime();
         }
 
+        // Re-render every output so theme/decoration changes (incl. live
+        // glass tuning) show up immediately instead of waiting for damage.
+        if let Some(ref mut drm) = self.drm_backend {
+            for out in drm.outputs.iter_mut() {
+                out.needs_repaint = true;
+            }
+        }
+
         tracing::info!("config reload succeeded");
         self.ipc
             .broadcast(&ShellEvent::ConfigReloaded { success: true });

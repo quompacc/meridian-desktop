@@ -7,8 +7,10 @@ use smithay::backend::renderer::element::{
 use smithay::{
     backend::renderer::{
         element::{
-            memory::MemoryRenderBufferRenderElement, solid::SolidColorRenderElement,
-            texture::TextureRenderElement, Kind,
+            memory::MemoryRenderBufferRenderElement,
+            solid::SolidColorRenderElement,
+            texture::{TextureBuffer, TextureRenderElement},
+            Kind,
         },
         gles::{element::PixelShaderElement, GlesRenderer, GlesTexture},
     },
@@ -27,6 +29,7 @@ use crate::{
     wallpaper::WallpaperGpuCache,
 };
 
+use super::glass::{glass_shader, GlassElement, GlassTitlebarElement};
 use super::{DrmBackend, RenderPassMetrics};
 
 mod layers;
@@ -44,9 +47,152 @@ render_elements! {
     Decoration=SolidColorRenderElement,
     DecorationIcon=Wrap<MemoryRenderBufferRenderElement<GlesRenderer>>,
     Shadow=PixelShaderElement,
+    Glass=GlassElement,
     ClippedSurface=ClippedSurfaceRenderElement,
     Wallpaper=TextureRenderElement<GlesTexture>,
     Layer=WaylandSurfaceRenderElement<GlesRenderer>,
+}
+
+/// Render the scene *without decorations or cursor* into an offscreen
+/// texture, used as the blur source behind glass titlebars.
+fn render_scene_for_blur(
+    renderer: &mut GlesRenderer,
+    elements: &[MeridianRenderElements],
+    out_size: (u32, u32),
+) -> Option<GlesTexture> {
+    use smithay::backend::{
+        allocator::Fourcc,
+        renderer::{
+            element::{Element, RenderElement},
+            Bind, Frame as RendererFrame, Offscreen, Renderer,
+        },
+    };
+    use smithay::utils::{Buffer, Physical, Rectangle, Scale, Size, Transform};
+
+    let w = out_size.0 as i32;
+    let h = out_size.1 as i32;
+    let buf_size = Size::<i32, Buffer>::from((w, h));
+    let phys_size = Size::<i32, Physical>::from((w, h));
+    let phys_region = Rectangle::from_size(phys_size);
+
+    let mut tex = <GlesRenderer as Offscreen<GlesTexture>>::create_buffer(
+        renderer,
+        Fourcc::Abgr8888,
+        buf_size,
+    )
+    .ok()?;
+    {
+        let mut target = renderer.bind(&mut tex).ok()?;
+        let mut frame = renderer
+            .render(&mut target, phys_size, Transform::Normal)
+            .ok()?;
+        let _ = frame.clear([0.0, 0.0, 0.0, 1.0].into(), &[phys_region]);
+        for element in elements.iter().rev() {
+            if matches!(
+                element,
+                MeridianRenderElements::Decoration(_)
+                    | MeridianRenderElements::DecorationIcon(_)
+                    | MeridianRenderElements::Shadow(_)
+                    | MeridianRenderElements::Glass(_)
+                    | MeridianRenderElements::Cursor(_)
+            ) {
+                continue;
+            }
+            let src = element.src();
+            let dst = element.geometry(Scale::from(1.0f64));
+            let dmg = [Rectangle::from_size(dst.size)];
+            let _ = element.draw(&mut frame, src, dst, &dmg, &[], None);
+        }
+        drop(frame);
+        drop(target);
+    }
+    Some(tex)
+}
+
+/// One separable blur pass: render `input` through the blur shader with the
+/// given per-unit UV `step` into a fresh offscreen texture.
+fn blur_pass(
+    renderer: &mut GlesRenderer,
+    prog: &smithay::backend::renderer::gles::GlesTexProgram,
+    input: GlesTexture,
+    out_size: (u32, u32),
+    step: (f32, f32),
+) -> Option<GlesTexture> {
+    use smithay::backend::{
+        allocator::Fourcc,
+        renderer::{
+            element::{Element, RenderElement},
+            gles::Uniform,
+            Bind, Offscreen, Renderer,
+        },
+    };
+    use smithay::utils::{Buffer, Logical, Physical, Point, Rectangle, Scale, Size, Transform};
+
+    let w = out_size.0 as i32;
+    let h = out_size.1 as i32;
+    let buf_size = Size::<i32, Buffer>::from((w, h));
+    let phys_size = Size::<i32, Physical>::from((w, h));
+
+    let in_buf = TextureBuffer::from_texture(renderer, input, 1, Transform::Normal, None);
+    let elem = TextureRenderElement::from_texture_buffer(
+        Point::<f64, Physical>::from((0.0, 0.0)),
+        &in_buf,
+        Some(1.0),
+        None::<Rectangle<f64, Logical>>,
+        None::<Size<i32, Logical>>,
+        Kind::Unspecified,
+    );
+
+    let mut out_tex = <GlesRenderer as Offscreen<GlesTexture>>::create_buffer(
+        renderer,
+        Fourcc::Abgr8888,
+        buf_size,
+    )
+    .ok()?;
+    {
+        let mut target = renderer.bind(&mut out_tex).ok()?;
+        let mut frame = renderer
+            .render(&mut target, phys_size, Transform::Normal)
+            .ok()?;
+        frame.override_default_tex_program(prog.clone(), vec![Uniform::new("u_step", step)]);
+        let dst = elem.geometry(Scale::from(1.0f64));
+        let dmg = [Rectangle::from_size(dst.size)];
+        let _ = RenderElement::<GlesRenderer>::draw(
+            &elem,
+            &mut frame,
+            elem.src(),
+            dst,
+            &dmg,
+            &[],
+            None,
+        );
+        frame.clear_tex_program_override();
+        drop(frame);
+        drop(target);
+    }
+    Some(out_tex)
+}
+
+/// Two-pass separable Gaussian blur of the scene texture. Falls back to the
+/// unblurred texture if the shader is unavailable or the radius is tiny.
+fn blur_scene(
+    renderer: &mut GlesRenderer,
+    scene: GlesTexture,
+    out_size: (u32, u32),
+    radius: f32,
+) -> Option<GlesTexture> {
+    let prog = match super::glass::blur_shader(renderer) {
+        Some(p) => p,
+        None => return Some(scene),
+    };
+    if radius <= 0.5 {
+        return Some(scene);
+    }
+    let spread = radius / 4.0;
+    let ow = out_size.0.max(1) as f32;
+    let oh = out_size.1.max(1) as f32;
+    let tmp = blur_pass(renderer, &prog, scene, out_size, (spread / ow, 0.0))?;
+    blur_pass(renderer, &prog, tmp, out_size, (0.0, spread / oh))
 }
 
 fn clear_output_dirty(
@@ -339,6 +485,11 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                                     crate::decoration::DecorationRenderElement::PixelShader(s) => {
                                         MeridianRenderElements::Shadow(s)
                                     }
+                                    crate::decoration::DecorationRenderElement::Glass(info) => {
+                                        MeridianRenderElements::Glass(GlassElement::pending(
+                                            info, scale,
+                                        ))
+                                    }
                                 }),
                         );
 
@@ -559,6 +710,52 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
         serve_screencopy_frames(state, renderer, out, out_size);
         process_thumbnail_requests(state, renderer, out, out_size);
         process_screenshot_requests(state, renderer, out, out_size);
+
+        // Liquid-glass: render the scene minus decorations to an offscreen
+        // texture, then swap each pending glass placeholder for a real
+        // element that samples (and blurs) it behind the titlebar.
+        if !state.idle_blanked
+            && out
+                .scratch_final
+                .iter()
+                .any(|e| matches!(e, MeridianRenderElements::Glass(_)))
+        {
+            if let Some(scene) = render_scene_for_blur(renderer, &out.scratch_final, out_size) {
+                let radius = out
+                    .scratch_final
+                    .iter()
+                    .find_map(|e| match e {
+                        MeridianRenderElements::Glass(g) => g.pending_info().map(|i| i.blur),
+                        _ => None,
+                    })
+                    .unwrap_or(8.0);
+                if let Some(blurred) = blur_scene(renderer, scene, out_size, radius) {
+                    let buffer = TextureBuffer::from_texture(
+                        renderer,
+                        blurred,
+                        1,
+                        smithay::utils::Transform::Normal,
+                        None,
+                    );
+                    if let Some(prog) = glass_shader(renderer) {
+                        for el in out.scratch_final.iter_mut() {
+                            if let MeridianRenderElements::Glass(g) = el {
+                                if let Some(info) = g.pending_info() {
+                                    let ready = GlassTitlebarElement::new(
+                                        prog.clone(),
+                                        &buffer,
+                                        info,
+                                        (out_size.0 as i32, out_size.1 as i32),
+                                        scale,
+                                    );
+                                    *g = GlassElement::Ready(ready);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         let elements: &[MeridianRenderElements] = if state.idle_blanked {
             &[]

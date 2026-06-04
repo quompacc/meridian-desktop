@@ -12,6 +12,8 @@ pub mod icons;
 mod model;
 mod render;
 
+use crate::backend::drm::glass::GlassTitlebarInfo;
+
 pub use model::HoveredButton;
 use model::WindowDecoration;
 use render::icon_cache::IconCache;
@@ -39,6 +41,9 @@ pub enum DecorationRenderElement {
     Icon(MemoryRenderBufferRenderElement<GlesRenderer>),
     /// Shader-driven soft drop shadow (rounded-box SDF).
     PixelShader(PixelShaderElement),
+    /// Liquid-glass titlebar placeholder; the backend turns this into a
+    /// textured blur element once the frame's blur texture exists.
+    Glass(GlassTitlebarInfo),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +75,9 @@ pub struct DecorationManager {
     /// Lazily-compiled rounded-rectangle fill/outline pixel shader, used for
     /// the rounded titlebar (fill) and the rounded window border (outline).
     rounded_quad_shader: Option<GlesPixelProgram>,
+    /// Lazily-compiled liquid-glass titlebar shader: translucent tinted fill
+    /// with a vertical sheen and a specular top edge.
+    glass_shader: Option<GlesPixelProgram>,
 }
 
 impl DecorationManager {
@@ -79,6 +87,7 @@ impl DecorationManager {
             icon_cache: IconCache::new(BUTTON_ICON_PX, BUTTON_STROKE_WIDTH),
             shadow_shader: None,
             rounded_quad_shader: None,
+            glass_shader: None,
         }
     }
 
