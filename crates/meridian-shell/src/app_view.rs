@@ -9,7 +9,7 @@ use crate::launcher::DesktopApp;
 use crate::panel::PinnedApp;
 use crate::{
     icons::{icon_image_to_pixmap, IconCache},
-    ui::tokens::theme_from_config,
+    ui::tokens::glass_theme_from_config,
 };
 use meridian_ui::{
     effect::{paint_fill, paint_text, rounded_rect_path, truncate_to_fit},
@@ -60,6 +60,13 @@ const POWER_IDS: [&str; 5] = [
     "power-restart",
     "power-off",
 ];
+
+const LAUNCHER_GLASS_ALPHA: u8 = 0;
+const LAUNCHER_BAND_ALPHA: u8 = 0;
+const LAUNCHER_CELL_ALPHA: u8 = 0;
+const LAUNCHER_HOVER_ALPHA: u8 = 42;
+const LAUNCHER_SELECTED_ALPHA: u8 = 56;
+const LAUNCHER_TILE_RADIUS: i32 = 8;
 
 // ─── Hit testing ──────────────────────────────────────────────────────────────
 
@@ -261,9 +268,12 @@ pub(crate) fn draw_command_palette(
         return;
     };
 
-    let theme = theme_from_config(theme_config);
+    let theme = glass_theme_from_config(theme_config);
     let pal = theme.palette;
-    pixmap.fill(to_tiny_skia_color(pal.background));
+    pixmap.fill(to_tiny_skia_color(with_alpha(
+        pal.surface_alt,
+        LAUNCHER_GLASS_ALPHA,
+    )));
 
     {
         let mut pm = pixmap.as_mut();
@@ -341,7 +351,20 @@ fn draw_header(
             width: width as i32,
             height: CP_HEADER_H,
         },
-        pal.surface,
+        with_alpha(pal.surface, LAUNCHER_BAND_ALPHA),
+    );
+
+    let search_w = (width as i32 - 78).max(120);
+    fill_round_rect(
+        pm,
+        Rect {
+            x: 14,
+            y: 10,
+            width: search_w,
+            height: 32,
+        },
+        with_alpha(pal.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10), 24),
+        10,
     );
 
     let text_x = 20i32;
@@ -384,11 +407,14 @@ fn draw_bento_strip(
         let tx = strip_x + i as i32 * (CP_BENTO_TILE_W + CP_BENTO_TILE_GAP);
 
         let bg = if hovered_idx == Some(i) {
-            pal.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12)
+            with_alpha(
+                pal.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.16),
+                LAUNCHER_HOVER_ALPHA,
+            )
         } else {
-            pal.surface
+            with_alpha(pal.surface, LAUNCHER_CELL_ALPHA)
         };
-        fill_rect(
+        fill_round_rect(
             pm,
             Rect {
                 x: tx,
@@ -397,6 +423,7 @@ fn draw_bento_strip(
                 height: CP_BENTO_TILE_H,
             },
             bg,
+            LAUNCHER_TILE_RADIUS,
         );
         // bottom accent line
         fill_rect(
@@ -407,7 +434,7 @@ fn draw_bento_strip(
                 width: CP_BENTO_TILE_W,
                 height: 1,
             },
-            Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 140),
+            Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 105),
         );
 
         // icon – try large then small sizes
@@ -462,7 +489,7 @@ fn draw_app_grid(
     let Some(mut grid_pix) = Pixmap::new(width, grid_h) else {
         return;
     };
-    grid_pix.fill(to_tiny_skia_color(pal.background));
+    grid_pix.fill(to_tiny_skia_color(Color::rgba(0, 0, 0, 0)));
     {
         let mut gpm = grid_pix.as_mut();
         let filtered = collect_palette_apps(apps, search_query, icon_cache, hidden_execs);
@@ -486,28 +513,29 @@ fn draw_app_grid(
 
             if is_sel || is_hov {
                 let bg = if is_sel {
-                    pal.surface.lerp(pal.accent, 0.10)
+                    with_alpha(pal.surface.lerp(pal.accent, 0.14), LAUNCHER_SELECTED_ALPHA)
                 } else {
-                    pal.surface
+                    with_alpha(pal.surface, LAUNCHER_HOVER_ALPHA)
                 };
-                fill_rect(
+                fill_round_rect(
                     &mut gpm,
                     Rect {
                         x: card_x,
-                        y: row_y,
+                        y: row_y + 3,
                         width: CP_CARD_W,
-                        height: CP_APP_ROW_H,
+                        height: CP_APP_ROW_H - 6,
                     },
                     bg,
+                    LAUNCHER_TILE_RADIUS,
                 );
                 if is_sel {
                     fill_rect(
                         &mut gpm,
                         Rect {
                             x: card_x,
-                            y: row_y,
+                            y: row_y + 7,
                             width: 2,
-                            height: CP_APP_ROW_H,
+                            height: CP_APP_ROW_H - 14,
                         },
                         pal.accent,
                     );
@@ -550,7 +578,7 @@ fn draw_search_results(
     let Some(mut list_pix) = Pixmap::new(width, list_h) else {
         return;
     };
-    list_pix.fill(to_tiny_skia_color(pal.background));
+    list_pix.fill(to_tiny_skia_color(Color::rgba(0, 0, 0, 0)));
     {
         let mut lpm = list_pix.as_mut();
         let filtered = collect_palette_apps(apps, search_query, icon_cache, hidden_execs);
@@ -570,28 +598,29 @@ fn draw_search_results(
 
             if is_sel || is_hov {
                 let bg = if is_sel {
-                    pal.surface.lerp(pal.accent, 0.10)
+                    with_alpha(pal.surface.lerp(pal.accent, 0.14), LAUNCHER_SELECTED_ALPHA)
                 } else {
-                    pal.surface
+                    with_alpha(pal.surface, LAUNCHER_HOVER_ALPHA)
                 };
-                fill_rect(
+                fill_round_rect(
                     &mut lpm,
                     Rect {
-                        x: 0,
-                        y: row_y,
-                        width: width as i32,
-                        height: CP_APP_ROW_H,
+                        x: CP_GUTTER,
+                        y: row_y + 3,
+                        width: width as i32 - 2 * CP_GUTTER,
+                        height: CP_APP_ROW_H - 6,
                     },
                     bg,
+                    LAUNCHER_TILE_RADIUS,
                 );
                 if is_sel {
                     fill_rect(
                         &mut lpm,
                         Rect {
-                            x: 0,
-                            y: row_y,
+                            x: CP_GUTTER,
+                            y: row_y + 7,
                             width: 3,
-                            height: CP_APP_ROW_H,
+                            height: CP_APP_ROW_H - 14,
                         },
                         pal.accent,
                     );
@@ -673,7 +702,7 @@ fn draw_power_footer(
             width: width as i32,
             height: CP_FOOTER_H,
         },
-        pal.surface,
+        with_alpha(pal.surface, LAUNCHER_BAND_ALPHA),
     );
 
     let btn_y = footer_y + (CP_FOOTER_H - CP_PWR_BTN_SIZE) / 2;
@@ -685,6 +714,28 @@ fn draw_power_footer(
         let is_armed = armed_power
             .map(|(id, _)| id == POWER_IDS[i])
             .unwrap_or(false);
+
+        if is_hov || is_armed {
+            let bg = if is_armed {
+                Color::rgba(pal.error.r, pal.error.g, pal.error.b, 46)
+            } else {
+                with_alpha(
+                    pal.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.14),
+                    LAUNCHER_HOVER_ALPHA,
+                )
+            };
+            fill_round_rect(
+                pm,
+                Rect {
+                    x: bx,
+                    y: btn_y,
+                    width: CP_PWR_BTN_SIZE,
+                    height: CP_PWR_BTN_SIZE,
+                },
+                bg,
+                8,
+            );
+        }
 
         let col = if is_armed {
             pal.error
@@ -940,13 +991,23 @@ fn divider(pm: &mut PixmapMut<'_>, width: u32, y: i32, pal: &meridian_ui::style:
 }
 
 fn divider_col(pal: &meridian_ui::style::Palette) -> Color {
-    Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 60)
+    Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 44)
 }
 
 fn fill_rect(pm: &mut PixmapMut<'_>, rect: Rect, color: Color) {
     if let Some(path) = rounded_rect_path(rect, 0) {
         paint_fill(pm, &path, color);
     }
+}
+
+fn fill_round_rect(pm: &mut PixmapMut<'_>, rect: Rect, color: Color, radius: i32) {
+    if let Some(path) = rounded_rect_path(rect, radius) {
+        paint_fill(pm, &path, color);
+    }
+}
+
+fn with_alpha(color: Color, alpha: u8) -> Color {
+    Color::rgba(color.r, color.g, color.b, alpha)
 }
 
 fn blit_rgba_to_argb(src: &[u8], dst: &mut [u8]) {

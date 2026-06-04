@@ -11,7 +11,7 @@ use meridian_ui::{
 };
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, Transform};
 
-use crate::ui::tokens::theme_from_config;
+use crate::ui::tokens::glass_theme_from_config;
 use crate::{
     audio::AudioSnapshot,
     icons::{icon_image_to_pixmap, IconCache},
@@ -1232,7 +1232,7 @@ pub(crate) fn draw_panel_ui(
         return;
     }
 
-    let theme = theme_from_config(theme_config);
+    let theme = glass_theme_from_config(theme_config);
 
     let root = build_panel_widget_tree(
         width,

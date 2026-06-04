@@ -1007,7 +1007,7 @@ impl MeridianShell {
                             w: x1 - x0,
                             h: weekday_h,
                         },
-                        self.theme.colors.text_dim,
+                        crate::ui::tokens::GLASS_FOREGROUND_DIM,
                     );
                 }
                 let grid_y = weekday_y + weekday_h + 6;
@@ -1053,7 +1053,7 @@ impl MeridianShell {
                                 &self.font,
                                 &day_text,
                                 cell_rect,
-                                self.theme.colors.text,
+                                crate::ui::tokens::GLASS_FOREGROUND,
                             );
                         }
                     }
@@ -1070,7 +1070,12 @@ impl MeridianShell {
                     w: card.w - 24,
                     h: 28,
                 };
-                painter.text_centered(&self.font, &time_text, text_rect, self.theme.colors.text);
+                painter.text_centered(
+                    &self.font,
+                    &time_text,
+                    text_rect,
+                    crate::ui::tokens::GLASS_FOREGROUND,
+                );
             }
         }
         round_buffer_corners(

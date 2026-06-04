@@ -130,9 +130,9 @@ impl<'a> Painter<'a> {
         }
 
         let offset = ((y * self.width + x) * 4) as usize;
-        self.data[offset] = color.b;
-        self.data[offset + 1] = color.g;
-        self.data[offset + 2] = color.r;
+        self.data[offset] = premul_component(color.b, color.a);
+        self.data[offset + 1] = premul_component(color.g, color.a);
+        self.data[offset + 2] = premul_component(color.r, color.a);
         self.data[offset + 3] = color.a;
     }
 
@@ -241,11 +241,12 @@ impl<'a> Painter<'a> {
         let dst_b = u16::from(self.data[offset]);
         let dst_g = u16::from(self.data[offset + 1]);
         let dst_r = u16::from(self.data[offset + 2]);
+        let dst_a = u16::from(self.data[offset + 3]);
 
         self.data[offset] = ((u16::from(color.b) * src_a + dst_b * inv_a) / 255) as u8;
         self.data[offset + 1] = ((u16::from(color.g) * src_a + dst_g * inv_a) / 255) as u8;
         self.data[offset + 2] = ((u16::from(color.r) * src_a + dst_r * inv_a) / 255) as u8;
-        self.data[offset + 3] = 255;
+        self.data[offset + 3] = (src_a + dst_a * inv_a / 255) as u8;
     }
 
     pub fn draw_image(&mut self, rect: Rect, image: &IconImage) {
@@ -304,9 +305,13 @@ fn clamped_radius(width: i32, height: i32, desired: i32) -> i32 {
 
 fn argb(color: Color) -> u32 {
     (u32::from(color.a) << 24)
-        | (u32::from(color.r) << 16)
-        | (u32::from(color.g) << 8)
-        | u32::from(color.b)
+        | (u32::from(premul_component(color.r, color.a)) << 16)
+        | (u32::from(premul_component(color.g, color.a)) << 8)
+        | u32::from(premul_component(color.b, color.a))
+}
+
+fn premul_component(component: u8, alpha: u8) -> u8 {
+    ((u16::from(component) * u16::from(alpha)) / 255) as u8
 }
 
 fn corner_coverage(radius: i32, dx: i32, dy: i32, rr: f32) -> u8 {
@@ -464,7 +469,7 @@ mod tests {
     }
 
     #[test]
-    fn rounded_fill_uses_rect_alpha_write_semantics() {
+    fn rounded_fill_uses_premultiplied_alpha_write_semantics() {
         let mut data = vec![0x11u8; 8 * 8 * 4];
         let mut painter = Painter::new(&mut data, 8, 8);
         let color = Color::rgba(0xaa, 0xbb, 0xcc, 0x80);
@@ -478,11 +483,11 @@ mod tests {
             color,
             3,
         );
-        assert_eq!(pixel_at(&data, 8, 3, 3), [0xcc, 0xbb, 0xaa, 0x80]);
+        assert_eq!(pixel_at(&data, 8, 3, 3), [0x66, 0x5d, 0x55, 0x80]);
     }
 
     #[test]
-    fn rounded_fill_full_coverage_pixels_are_raw_filled() {
+    fn rounded_fill_full_coverage_pixels_are_premultiplied() {
         let mut data = vec![0x20u8; 8 * 8 * 4];
         let mut painter = Painter::new(&mut data, 8, 8);
         let color = Color::rgba(0xaa, 0xbb, 0xcc, 0x80);
@@ -496,7 +501,7 @@ mod tests {
             color,
             3,
         );
-        assert_eq!(pixel_at(&data, 8, 3, 3), [0xcc, 0xbb, 0xaa, 0x80]);
+        assert_eq!(pixel_at(&data, 8, 3, 3), [0x66, 0x5d, 0x55, 0x80]);
     }
 
     #[test]
@@ -535,7 +540,10 @@ mod tests {
         assert!(edge[0] > 0 && edge[0] < 0xff);
         assert!(edge[1] > 0 && edge[1] < 0xff);
         assert!(edge[2] > 0 && edge[2] < 0xff);
-        assert_eq!(edge[3], 0xff);
+        assert_eq!(edge[0], edge[3]);
+        assert_eq!(edge[1], edge[3]);
+        assert_eq!(edge[2], edge[3]);
+        assert!(edge[3] > 0 && edge[3] < 0xff);
     }
 
     #[test]

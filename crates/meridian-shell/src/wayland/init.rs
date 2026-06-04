@@ -246,7 +246,7 @@ pub(crate) fn initialize(
     let launcher_layer = layer_shell.create_layer_surface(
         &qh,
         launcher_surface,
-        Layer::Overlay,
+        Layer::Top,
         Some("meridian-launcher"),
         None,
     );
@@ -256,19 +256,20 @@ pub(crate) fn initialize(
     launcher_layer.set_exclusive_zone(0);
     launcher_layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
     debug!(
-        "Launcher surface created: namespace=meridian-launcher layer=Overlay anchor=Bottom size={}x{} margin_bottom={} exclusive_zone=0 keyboard_interactivity=Exclusive",
+        "Launcher surface created: namespace=meridian-launcher layer=Top anchor=Bottom size={}x{} margin_bottom={} exclusive_zone=0 keyboard_interactivity=Exclusive",
         LAUNCHER_WIDTH,
         LAUNCHER_HEIGHT,
         SHELL_POPUP_BOTTOM_MARGIN
     );
 
     let calendar_surface = compositor.create_surface(&qh);
-    // Reuse the launcher namespace bucket so popup stacking matches launcher behavior.
+    // Calendar stays Overlay, but needs its own namespace so compositor-side
+    // launcher glass can identify the actual launcher surface.
     let calendar_layer = layer_shell.create_layer_surface(
         &qh,
         calendar_surface,
         Layer::Overlay,
-        Some("meridian-launcher"),
+        Some("meridian-calendar-popup"),
         None,
     );
     calendar_layer.set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
@@ -280,7 +281,7 @@ pub(crate) fn initialize(
     calendar_layer.set_exclusive_zone(0);
     calendar_layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
     debug!(
-        "Calendar popup surface created: namespace=meridian-launcher layer=Overlay anchor=Bottom|Right size={}x{} margin_bottom={} margin_right=12 exclusive_zone=0 keyboard_interactivity=OnDemand",
+        "Calendar popup surface created: namespace=meridian-calendar-popup layer=Overlay anchor=Bottom|Right size={}x{} margin_bottom={} margin_right=12 exclusive_zone=0 keyboard_interactivity=OnDemand",
         CALENDAR_POPUP_WIDTH,
         CALENDAR_POPUP_HEIGHT,
         SHELL_POPUP_BOTTOM_MARGIN

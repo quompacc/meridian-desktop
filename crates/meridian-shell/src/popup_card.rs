@@ -9,7 +9,10 @@ use std::cell::RefCell;
 
 use meridian_config::{Color, ThemeConfig};
 
-use crate::{Painter, Rect, TextRenderer};
+use crate::{
+    ui::tokens::{GLASS_BORDER, GLASS_FOREGROUND, GLASS_FOREGROUND_DIM},
+    Painter, Rect, TextRenderer,
+};
 
 pub const POPUP_WIDTH: u32 = 280;
 pub const PAD_X: i32 = 16;
@@ -30,17 +33,92 @@ pub const STATUS_DOT_SIZE: i32 = 8;
 pub const FOOTER_LINK_HEIGHT: i32 = 28;
 pub const VOLUME_BAR_HEIGHT: i32 = 4;
 
-/// Fill the popup canvas with the card body color. Rounded corners are
-/// applied later by the surface-level `round_buffer_corners` helper so the
-/// corner pixels become transparent and the wallpaper shows through.
-pub fn draw_card_body(painter: &mut Painter<'_>, theme: &ThemeConfig) {
-    painter.clear(theme.colors.surface_alt);
+/// Keep the popup canvas transparent and draw only the card outline. The
+/// compositor supplies the blurred glass body behind this layer.
+pub fn draw_card_body(painter: &mut Painter<'_>, _theme: &ThemeConfig) {
+    painter.clear(Color::rgba(0, 0, 0, 0));
+    draw_card_border(painter, GLASS_BORDER, CARD_RADIUS);
+}
+
+fn draw_card_border(painter: &mut Painter<'_>, color: Color, radius: i32) {
+    let w = painter.width.max(0);
+    let h = painter.height.max(0);
+    if w == 0 || h == 0 {
+        return;
+    }
+
+    for y in 0..h {
+        for x in 0..w {
+            let outer = rounded_rect_coverage(x, y, w, h, radius);
+            if outer == 0 {
+                continue;
+            }
+            let inner = rounded_rect_coverage(x - 1, y - 1, w - 2, h - 2, radius - 1);
+            let coverage = outer.saturating_sub(inner);
+            if coverage == 0 {
+                continue;
+            }
+
+            let alpha = ((u16::from(color.a) * u16::from(coverage)) / 255) as u8;
+            let offset = ((y * painter.width + x) * 4) as usize;
+            painter.data[offset] = ((u16::from(color.b) * u16::from(alpha)) / 255) as u8;
+            painter.data[offset + 1] = ((u16::from(color.g) * u16::from(alpha)) / 255) as u8;
+            painter.data[offset + 2] = ((u16::from(color.r) * u16::from(alpha)) / 255) as u8;
+            painter.data[offset + 3] = alpha;
+        }
+    }
+}
+
+fn rounded_rect_coverage(x: i32, y: i32, w: i32, h: i32, radius: i32) -> u8 {
+    if w <= 0 || h <= 0 || x < 0 || y < 0 || x >= w || y >= h {
+        return 0;
+    }
+    let radius = radius.max(0).min(w / 2).min(h / 2);
+    if radius == 0 {
+        return 255;
+    }
+
+    let mut inside = 0u8;
+    for sy in [0.25_f32, 0.75] {
+        for sx in [0.25_f32, 0.75] {
+            if rounded_rect_sample_inside(x as f32 + sx, y as f32 + sy, w, h, radius) {
+                inside += 1;
+            }
+        }
+    }
+
+    match inside {
+        0 => 0,
+        4 => 255,
+        _ => ((u16::from(inside) * 255) / 4) as u8,
+    }
+}
+
+fn rounded_rect_sample_inside(x: f32, y: f32, w: i32, h: i32, radius: i32) -> bool {
+    let w = w as f32;
+    let h = h as f32;
+    let r = radius as f32;
+    if x < 0.0 || y < 0.0 || x >= w || y >= h {
+        return false;
+    }
+    if x >= r && x < w - r {
+        return true;
+    }
+    if y >= r && y < h - r {
+        return true;
+    }
+
+    let cx = if x < r { r } else { w - r };
+    let cy = if y < r { r } else { h - r };
+    let dx = x - cx;
+    let dy = y - cy;
+    dx * dx + dy * dy <= r * r
 }
 
 /// Soft drop shadow params shared by every tray popup. Same look as the
 /// panel island (`panel_view.rs`) so the visual language stays uniform.
 pub const POPUP_SHADOW_BLUR: f32 = 13.0;
-pub const POPUP_SHADOW_ALPHA: f32 = 0.18;
+pub const POPUP_SHADOW_ALPHA: f32 = 0.12;
 pub const POPUP_SHADOW_OFFSET_Y: i32 = 3;
 
 /// Composite an already-rendered `card_buf` (card_w * card_h * 4 BGRA bytes)
@@ -92,7 +170,7 @@ pub fn paint_card_with_shadow(
 pub fn draw_card_title(
     painter: &mut Painter<'_>,
     font: &RefCell<Option<TextRenderer>>,
-    theme: &ThemeConfig,
+    _theme: &ThemeConfig,
     title: &str,
 ) {
     let width = POPUP_WIDTH as i32;
@@ -102,7 +180,7 @@ pub fn draw_card_title(
         PAD_X,
         TITLE_BASELINE,
         width - 2 * PAD_X,
-        theme.colors.text,
+        GLASS_FOREGROUND,
     );
     let title_w = font
         .borrow_mut()
@@ -117,7 +195,7 @@ pub fn draw_card_title(
             w: rule_w,
             h: TITLE_RULE_HEIGHT,
         },
-        theme.colors.accent,
+        GLASS_FOREGROUND,
     );
 }
 
@@ -125,7 +203,7 @@ pub fn draw_card_title(
 pub fn draw_kv_row(
     painter: &mut Painter<'_>,
     font: &RefCell<Option<TextRenderer>>,
-    theme: &ThemeConfig,
+    _theme: &ThemeConfig,
     label: &str,
     value: &str,
     row_y: i32,
@@ -138,7 +216,7 @@ pub fn draw_kv_row(
         PAD_X,
         baseline,
         width / 2 - PAD_X,
-        theme.colors.text_dim,
+        GLASS_FOREGROUND_DIM,
     );
     let value_w = font
         .borrow_mut()
@@ -146,14 +224,14 @@ pub fn draw_kv_row(
         .map(|r| r.measure_text(value))
         .unwrap_or(value.chars().count() as i32 * 8);
     let value_x = width - PAD_X - value_w;
-    painter.text_clipped(font, value, value_x, baseline, value_w, theme.colors.text);
+    painter.text_clipped(font, value, value_x, baseline, value_w, GLASS_FOREGROUND);
 }
 
 /// Status row: label on the left, colored dot + status text on the right.
 pub fn draw_status_row(
     painter: &mut Painter<'_>,
     font: &RefCell<Option<TextRenderer>>,
-    theme: &ThemeConfig,
+    _theme: &ThemeConfig,
     label: &str,
     status: &str,
     dot_color: Color,
@@ -167,7 +245,7 @@ pub fn draw_status_row(
         PAD_X,
         baseline,
         width / 2 - PAD_X,
-        theme.colors.text_dim,
+        GLASS_FOREGROUND_DIM,
     );
     let status_w = font
         .borrow_mut()
@@ -175,14 +253,7 @@ pub fn draw_status_row(
         .map(|r| r.measure_text(status))
         .unwrap_or(status.chars().count() as i32 * 8);
     let status_x = width - PAD_X - status_w;
-    painter.text_clipped(
-        font,
-        status,
-        status_x,
-        baseline,
-        status_w,
-        theme.colors.text,
-    );
+    painter.text_clipped(font, status, status_x, baseline, status_w, GLASS_FOREGROUND);
     let dot_x = status_x - STATUS_DOT_SIZE - 8;
     let dot_y = row_y + (ROW_HEIGHT - STATUS_DOT_SIZE) / 2;
     painter.roundish_rect_with_radius(
@@ -221,7 +292,7 @@ pub fn draw_volume_row(
         .as_mut()
         .map(|r| r.measure_text(label))
         .unwrap_or(70);
-    painter.text_clipped(font, label, PAD_X, baseline, label_w, theme.colors.text_dim);
+    painter.text_clipped(font, label, PAD_X, baseline, label_w, GLASS_FOREGROUND_DIM);
 
     let value_w = font
         .borrow_mut()
@@ -242,14 +313,14 @@ pub fn draw_volume_row(
                 w: bar_w,
                 h: VOLUME_BAR_HEIGHT,
             },
-            theme.colors.border,
+            GLASS_BORDER,
             VOLUME_BAR_HEIGHT,
         );
         if let Some(pct) = percent {
             let fill_w = (bar_w * pct.min(100) as i32) / 100;
             if fill_w > 0 {
                 let fill_color = if muted {
-                    theme.colors.text_dim
+                    GLASS_FOREGROUND_DIM
                 } else {
                     theme.colors.accent
                 };
@@ -273,7 +344,7 @@ pub fn draw_volume_row(
         value_x,
         baseline,
         value_w,
-        theme.colors.text,
+        GLASS_FOREGROUND,
     );
 }
 
@@ -282,7 +353,7 @@ pub fn draw_volume_row(
 pub fn draw_footer_link(
     painter: &mut Painter<'_>,
     font: &RefCell<Option<TextRenderer>>,
-    theme: &ThemeConfig,
+    _theme: &ThemeConfig,
     height: i32,
     label: &str,
 ) -> Rect {
@@ -296,7 +367,7 @@ pub fn draw_footer_link(
     let y_top = height - PAD_BOTTOM - FOOTER_LINK_HEIGHT;
     let x = width - PAD_X - measured;
     let baseline = y_top + ROW_TEXT_BASELINE_OFFSET;
-    painter.text_clipped(font, &text, x, baseline, measured, theme.colors.accent);
+    painter.text_clipped(font, &text, x, baseline, measured, GLASS_FOREGROUND);
     Rect {
         x: x - 10,
         y: y_top,

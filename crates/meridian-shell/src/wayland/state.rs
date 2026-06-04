@@ -1002,18 +1002,24 @@ impl MeridianShell {
         self.launcher_state.toggle();
         let open_after = self.launcher_state.open;
         if self.launcher_state.open {
-            // Full-screen transparent surface so outside-clicks reach the shell.
+            // Keep the launcher as a card-sized layer surface. The compositor
+            // can then place the live glass backdrop directly behind the card,
+            // same as the panel island.
             self.launcher_layer
-                .set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
-            self.launcher_layer.set_margin(0, 0, 0, 0);
-            self.launcher_layer.set_exclusive_zone(-1);
-            self.launcher_layer.set_size(0, 0);
+                .set_anchor(Anchor::BOTTOM | Anchor::LEFT);
+            self.launcher_layer.set_margin(
+                0,
+                0,
+                crate::SHELL_POPUP_BOTTOM_MARGIN,
+                crate::PANEL_SIDE_MARGIN as i32,
+            );
+            self.launcher_layer.set_exclusive_zone(0);
+            self.launcher_layer
+                .set_size(crate::LAUNCHER_WIDTH, crate::LAUNCHER_HEIGHT);
             self.launcher_layer
                 .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
-            tracing::debug!(
-                "launcher focus request: keyboard_interactivity=Exclusive (fullscreen)"
-            );
-            self.launcher_is_fullscreen = true;
+            tracing::debug!("launcher focus request: keyboard_interactivity=Exclusive (card)");
+            self.launcher_is_fullscreen = false;
             self.launcher_state.reshuffle();
         } else {
             self.launcher_is_fullscreen = false;
@@ -1152,12 +1158,14 @@ impl MeridianShell {
         self.calendar_layer
             .set_margin(0, 12, crate::SHELL_POPUP_BOTTOM_MARGIN, 0);
         self.calendar_layer.set_exclusive_zone(0);
-        self.calendar_layer
-            .set_size(crate::CALENDAR_POPUP_WIDTH, crate::CALENDAR_POPUP_HEIGHT);
+        self.calendar_layer.set_size(
+            crate::popup_surface_w(crate::CALENDAR_POPUP_WIDTH),
+            crate::popup_surface_h(crate::CALENDAR_POPUP_HEIGHT),
+        );
         self.calendar_layer
             .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
-        self.calendar_width = crate::CALENDAR_POPUP_WIDTH;
-        self.calendar_height = crate::CALENDAR_POPUP_HEIGHT;
+        self.calendar_width = crate::popup_surface_w(crate::CALENDAR_POPUP_WIDTH);
+        self.calendar_height = crate::popup_surface_h(crate::CALENDAR_POPUP_HEIGHT);
         self.calendar_dirty = true;
         tracing::debug!(
             "toggle_calendar_popup: open_after={} configured={} size={}x{} keyboard_focus={:?}",
@@ -1213,12 +1221,14 @@ impl MeridianShell {
         self.workspace_layer
             .set_margin(0, 160, crate::SHELL_POPUP_BOTTOM_MARGIN, 0);
         self.workspace_layer.set_exclusive_zone(0);
-        self.workspace_layer
-            .set_size(crate::WORKSPACE_POPUP_WIDTH, crate::WORKSPACE_POPUP_HEIGHT);
+        self.workspace_layer.set_size(
+            crate::popup_surface_w(crate::WORKSPACE_POPUP_WIDTH),
+            crate::popup_surface_h(crate::WORKSPACE_POPUP_HEIGHT),
+        );
         self.workspace_layer
             .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
-        self.workspace_width = crate::WORKSPACE_POPUP_WIDTH;
-        self.workspace_height = crate::WORKSPACE_POPUP_HEIGHT;
+        self.workspace_width = crate::popup_surface_w(crate::WORKSPACE_POPUP_WIDTH);
+        self.workspace_height = crate::popup_surface_h(crate::WORKSPACE_POPUP_HEIGHT);
         self.workspace_dirty = true;
         tracing::debug!(
             "toggle_workspace_popup: open_after={} configured={} size={}x{} keyboard_focus={:?}",
@@ -1280,12 +1290,14 @@ impl MeridianShell {
             0,
         );
         self.network_layer.set_exclusive_zone(0);
-        self.network_layer
-            .set_size(crate::NETWORK_POPUP_WIDTH, crate::NETWORK_POPUP_HEIGHT);
+        self.network_layer.set_size(
+            crate::popup_surface_w(crate::NETWORK_POPUP_WIDTH),
+            crate::popup_surface_h(crate::NETWORK_POPUP_HEIGHT),
+        );
         self.network_layer
             .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
-        self.network_width = crate::NETWORK_POPUP_WIDTH;
-        self.network_height = crate::NETWORK_POPUP_HEIGHT;
+        self.network_width = crate::popup_surface_w(crate::NETWORK_POPUP_WIDTH);
+        self.network_height = crate::popup_surface_h(crate::NETWORK_POPUP_HEIGHT);
         self.network_dirty = true;
         // If we just unmapped (transitioning from another shared-layer popup),
         // flush the pending state so the compositor sends a fresh configure
@@ -1354,12 +1366,14 @@ impl MeridianShell {
             0,
         );
         self.network_layer.set_exclusive_zone(0);
-        self.network_layer
-            .set_size(crate::AUDIO_POPUP_WIDTH, crate::AUDIO_POPUP_HEIGHT);
+        self.network_layer.set_size(
+            crate::popup_surface_w(crate::AUDIO_POPUP_WIDTH),
+            crate::popup_surface_h(crate::AUDIO_POPUP_HEIGHT),
+        );
         self.network_layer
             .set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
-        self.audio_width = crate::AUDIO_POPUP_WIDTH;
-        self.audio_height = crate::AUDIO_POPUP_HEIGHT;
+        self.audio_width = crate::popup_surface_w(crate::AUDIO_POPUP_WIDTH);
+        self.audio_height = crate::popup_surface_h(crate::AUDIO_POPUP_HEIGHT);
         self.audio_dirty = true;
         if !self.network_configured {
             self.network_layer.commit();

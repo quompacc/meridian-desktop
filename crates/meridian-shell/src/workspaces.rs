@@ -111,7 +111,7 @@ pub fn draw_workspace_popup(
         } else if is_occupied {
             colors.accent
         } else {
-            colors.text_dim
+            crate::ui::tokens::GLASS_FOREGROUND_DIM
         };
         painter.text_centered(font, &ws_id.to_string(), rect, text_color);
         state.clicks.push(ClickZone {

@@ -690,6 +690,93 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                     )));
             }
 
+            // Liquid-glass launcher: the shell paints a translucent rounded
+            // command palette on a full-screen layer surface. Mirror the
+            // shell's visual card geometry here so the card samples a live
+            // blurred backdrop instead of darkening the wallpaper behind it.
+            if let Some((_, lg)) = out
+                .scratch_upper_layer_data
+                .iter()
+                .find(|(ls, _)| ls.namespace() == "meridian-launcher")
+            {
+                let launcher_w = 880;
+                let launcher_h = 620;
+                let panel_surface_h = 16 + 42 + 8;
+                let popup_bottom_margin = 2;
+                let visual_x = if lg.size.w > launcher_w {
+                    lg.loc.x + 12
+                } else {
+                    lg.loc.x
+                };
+                let visual_y = if lg.size.h > launcher_h {
+                    lg.loc.y + lg.size.h - launcher_h - panel_surface_h - popup_bottom_margin
+                } else {
+                    lg.loc.y
+                };
+                let card = smithay::utils::Rectangle::<i32, smithay::utils::Logical>::new(
+                    (visual_x.max(lg.loc.x), visual_y.max(lg.loc.y)).into(),
+                    (
+                        launcher_w.min(lg.size.w).max(1),
+                        launcher_h.min(lg.size.h).max(1),
+                    )
+                        .into(),
+                );
+                let theme_config = &state.theme_manager.current().config;
+                let surface = theme_config.colors.surface_alt;
+                let blur = theme_config.decorations.glass_blur_radius;
+                let info = super::glass::GlassTitlebarInfo {
+                    rect: card,
+                    radius: [12.0; 4],
+                    tint: [
+                        surface.r as f32 / 255.0,
+                        surface.g as f32 / 255.0,
+                        surface.b as f32 / 255.0,
+                    ],
+                    tint_amount: (theme_config.decorations.glass_tint * 0.45).clamp(0.0, 0.45),
+                    blur,
+                };
+                out.scratch_upper_layer_elements
+                    .push(MeridianRenderElements::Glass(GlassElement::pending(
+                        info, scale,
+                    )));
+            }
+
+            for (_, popup_geo) in out.scratch_upper_layer_data.iter().filter(|(ls, _)| {
+                matches!(
+                    ls.namespace(),
+                    "meridian-calendar-popup"
+                        | "meridian-workspace-popup"
+                        | "meridian-network-popup"
+                        | "meridian-notification"
+                        | "meridian-thumbnail-popup"
+                )
+            }) {
+                let pad = 16;
+                let card_w = (popup_geo.size.w - 2 * pad).max(1);
+                let card_h = (popup_geo.size.h - 2 * pad).max(1);
+                let card = smithay::utils::Rectangle::<i32, smithay::utils::Logical>::new(
+                    (popup_geo.loc.x + pad, popup_geo.loc.y + pad).into(),
+                    (card_w, card_h).into(),
+                );
+                let theme_config = &state.theme_manager.current().config;
+                let surface = theme_config.colors.surface_alt;
+                let info = super::glass::GlassTitlebarInfo {
+                    rect: card,
+                    radius: [14.0; 4],
+                    tint: [
+                        surface.r as f32 / 255.0,
+                        surface.g as f32 / 255.0,
+                        surface.b as f32 / 255.0,
+                    ],
+                    tint_amount: (theme_config.decorations.glass_tint * 0.38).clamp(0.0, 0.38),
+                    blur: (theme_config.decorations.glass_blur_radius * 0.45).max(2.0),
+                };
+                out.scratch_upper_layer_elements
+                    .push(MeridianRenderElements::Glass(GlassElement::pending(
+                        info, scale,
+                    )));
+            }
+
             let wallpaper_elem = out
                 .wallpaper
                 .as_ref()
@@ -869,7 +956,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                 renderer,
                 elements,
                 bg,
-                smithay::backend::drm::compositor::FrameFlags::DEFAULT,
+                smithay::backend::drm::compositor::FrameFlags::empty(),
             ) {
             Ok(frame) if !frame.is_empty => {
                 metrics.commit_duration += commit_started.elapsed();

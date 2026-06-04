@@ -5,6 +5,9 @@ use meridian_ui::style::{
 };
 
 pub const ACCENT_FOREGROUND: Color = Color::rgb(0x1a, 0x1b, 0x26);
+pub const GLASS_FOREGROUND: Color = Color::rgb(0x05, 0x08, 0x0c);
+pub const GLASS_FOREGROUND_DIM: Color = Color::rgb(0x1e, 0x28, 0x34);
+pub const GLASS_BORDER: Color = Color::rgba(0x05, 0x08, 0x0c, 110);
 
 pub(crate) fn color_from_config(color: Color) -> UiColor {
     UiColor::rgba(color.r, color.g, color.b, color.a)
@@ -27,9 +30,25 @@ pub(crate) fn palette_from_config(config: &ThemeConfig) -> UiPalette {
     }
 }
 
+pub(crate) fn glass_palette_from_config(config: &ThemeConfig) -> UiPalette {
+    let mut palette = palette_from_config(config);
+    palette.text = color_from_config(GLASS_FOREGROUND);
+    palette.text_dim = color_from_config(GLASS_FOREGROUND_DIM);
+    palette.border = color_from_config(GLASS_BORDER);
+    palette
+}
+
 pub(crate) fn theme_from_config(config: &ThemeConfig) -> UiTheme {
     UiTheme {
         palette: palette_from_config(config),
+        spacing: UiSpacing::DEFAULT,
+        radius: UiRadius::METRO,
+    }
+}
+
+pub(crate) fn glass_theme_from_config(config: &ThemeConfig) -> UiTheme {
+    UiTheme {
+        palette: glass_palette_from_config(config),
         spacing: UiSpacing::DEFAULT,
         radius: UiRadius::METRO,
     }
