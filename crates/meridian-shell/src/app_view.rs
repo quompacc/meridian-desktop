@@ -1,3 +1,4 @@
+use meridian_tokens::Interaction;
 use std::collections::HashSet;
 
 use tiny_skia::{
@@ -408,7 +409,7 @@ fn draw_bento_strip(
 
         let bg = if hovered_idx == Some(i) {
             with_alpha(
-                pal.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.16),
+                Interaction::DEFAULT.hover(pal.surface),
                 LAUNCHER_HOVER_ALPHA,
             )
         } else {
@@ -720,7 +721,7 @@ fn draw_power_footer(
                 Color::rgba(pal.error.r, pal.error.g, pal.error.b, 46)
             } else {
                 with_alpha(
-                    pal.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.14),
+                    Interaction::DEFAULT.hover(pal.surface),
                     LAUNCHER_HOVER_ALPHA,
                 )
             };

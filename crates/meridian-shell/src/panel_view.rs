@@ -1,3 +1,4 @@
+use meridian_tokens::Interaction;
 use meridian_ui::{
     compute_layout,
     effect::{measure_text, paint_fill, paint_text, rounded_rect_path},
@@ -524,13 +525,8 @@ impl Widget for PanelChip {
         if is_launcher {
             let halo_color = match state {
                 WidgetState::Idle => None,
-                WidgetState::Hovered => Some(
-                    theme
-                        .palette
-                        .accent
-                        .lerp(Color::rgb(0xff, 0xff, 0xff), 0.10),
-                ),
-                WidgetState::Pressed => Some(theme.palette.accent.lerp(Color::rgb(0, 0, 0), 0.18)),
+                WidgetState::Hovered => Some(Interaction::DEFAULT.hover(theme.palette.accent)),
+                WidgetState::Pressed => Some(Interaction::DEFAULT.pressed(theme.palette.accent)),
             };
             if let Some(mut color) = halo_color {
                 color.a = match state {
@@ -553,13 +549,12 @@ impl Widget for PanelChip {
             // only the icon floats. Active/hover/pressed get a soft, rounded,
             // translucent highlight that keeps the glass visible.
             let hl: Option<Color> = if self.active {
-                let a = theme.palette.accent;
-                Some(Color::rgba(a.r, a.g, a.b, 64))
+                Some(Interaction::DEFAULT.accent_idle(theme.palette.accent))
             } else {
                 match state {
                     WidgetState::Idle => None,
-                    WidgetState::Hovered => Some(Color::rgba(0xFF, 0xFF, 0xFF, 30)),
-                    WidgetState::Pressed => Some(Color::rgba(0, 0, 0, 56)),
+                    WidgetState::Hovered => Some(Interaction::DEFAULT.neutral_hover),
+                    WidgetState::Pressed => Some(Interaction::DEFAULT.neutral_pressed),
                 }
             };
             if let Some(color) = hl {
@@ -652,17 +647,18 @@ impl Widget for PanelPinnedChip {
         // app gets a subtle translucent accent cushion; hover/press a soft
         // rounded highlight.
         let hl: Option<Color> = if self.has_focused {
-            let a = theme.palette.accent;
             match state {
-                WidgetState::Idle => Some(Color::rgba(a.r, a.g, a.b, 54)),
-                WidgetState::Hovered => Some(Color::rgba(a.r, a.g, a.b, 80)),
-                WidgetState::Pressed => Some(Color::rgba(0, 0, 0, 56)),
+                WidgetState::Idle => Some(Interaction::DEFAULT.accent_idle(theme.palette.accent)),
+                WidgetState::Hovered => {
+                    Some(Interaction::DEFAULT.accent_hover(theme.palette.accent))
+                }
+                WidgetState::Pressed => Some(Interaction::DEFAULT.neutral_pressed),
             }
         } else {
             match state {
                 WidgetState::Idle => None,
-                WidgetState::Hovered => Some(Color::rgba(0xFF, 0xFF, 0xFF, 30)),
-                WidgetState::Pressed => Some(Color::rgba(0, 0, 0, 56)),
+                WidgetState::Hovered => Some(Interaction::DEFAULT.neutral_hover),
+                WidgetState::Pressed => Some(Interaction::DEFAULT.neutral_pressed),
             }
         };
         if let Some(color) = hl {
@@ -816,8 +812,8 @@ impl Widget for PanelWindowChip {
 
         let bg = match state {
             WidgetState::Idle => base_bg,
-            WidgetState::Hovered => base_bg.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
-            WidgetState::Pressed => base_bg.lerp(Color::rgb(0, 0, 0), 0.10),
+            WidgetState::Hovered => Interaction::DEFAULT.hover(base_bg),
+            WidgetState::Pressed => Interaction::DEFAULT.pressed(base_bg),
         };
 
         if let Some(ref path) = rounded_rect_path(area, CHIP_HL_RADIUS) {

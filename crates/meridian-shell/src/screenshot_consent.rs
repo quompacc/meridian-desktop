@@ -6,6 +6,7 @@
 //! centered by its layer anchor, so everything is drawn at the origin.
 
 use meridian_config::ThemeConfig;
+use meridian_tokens::Interaction;
 use meridian_ui::{
     effect::{paint_border, paint_fill, paint_text, rounded_rect_path},
     paint::Rect,
@@ -120,8 +121,7 @@ pub(crate) fn draw_consent_overlay(
     let (deny, _, allow, _) = button_rects();
     // Deny: neutral surface; Allow: accent fill.
     let deny_bg = if hovered == Some(ConsentButton::Deny) {
-        pal.surface
-            .lerp(meridian_ui::style::Color::rgb(0xFF, 0xFF, 0xFF), 0.10)
+        Interaction::DEFAULT.hover(pal.surface)
     } else {
         pal.surface
     };
@@ -130,8 +130,7 @@ pub(crate) fn draw_consent_overlay(
         paint_border(&mut pm.as_mut(), &p, pal.border, 1.0);
     }
     let allow_bg = if hovered == Some(ConsentButton::Allow) {
-        pal.accent
-            .lerp(meridian_ui::style::Color::rgb(0xFF, 0xFF, 0xFF), 0.12)
+        Interaction::DEFAULT.hover(pal.accent)
     } else {
         pal.accent
     };
