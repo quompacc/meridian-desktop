@@ -10,6 +10,19 @@ single version.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-04
+
+### Fixed
+
+- **Compositor glass memory use:** layer-owned glass backdrops now honour
+  `glass_blur = false`, matching window titlebars and allowing themes to disable
+  live blur consistently across panel, launcher, desktop menu, and popups.
+- **Compositor glass blur batching:** multiple glass panes that sample the same
+  behind-scene and blur radius now share one rendered/blurred backdrop within a
+  frame instead of each rendering the full output into separate offscreen blur
+  passes. On the llvmpipe dev VM this reduced the compositor from roughly
+  463 MB RSS / 424 MB PSS to roughly 246-258 MB RSS / 212 MB PSS after reboot.
+
 ## [0.4.0] - 2026-06-04
 
 ### Added
@@ -233,7 +246,9 @@ shared compass renderer.
   running fmt/clippy/test, and unit tests for `meridian-lock` and
   `meridian-polkit`.
 
-[Unreleased]: https://github.com/quompacc/meridian-desktop/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/quompacc/meridian-desktop/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/quompacc/meridian-desktop/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/quompacc/meridian-desktop/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/quompacc/meridian-desktop/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/quompacc/meridian-desktop/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/quompacc/meridian-desktop/releases/tag/v0.1.0
