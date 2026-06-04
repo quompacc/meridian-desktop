@@ -5,7 +5,7 @@ use meridian_ui::{
 };
 use tiny_skia::Pixmap;
 
-use crate::ui::tokens::palette_from_config;
+use crate::ui::tokens::{glass_palette_from_config, palette_from_config};
 
 pub(crate) const MENU_WIDTH: i32 = 236;
 pub(crate) const SUBMENU_GAP: i32 = 6;
@@ -20,6 +20,34 @@ const VPAD: i32 = 6;
 const PADDING_X: i32 = 14;
 const FONT_SIZE: f32 = 13.0;
 pub(crate) const CORNER_R: i32 = 14;
+
+fn is_glass_menu(theme_config: &ThemeConfig) -> bool {
+    theme_config.decorations.glass && theme_config.decorations.glass_blur
+}
+
+fn menu_palette_from_config(theme_config: &ThemeConfig) -> meridian_ui::style::Palette {
+    if is_glass_menu(theme_config) {
+        glass_palette_from_config(theme_config)
+    } else {
+        palette_from_config(theme_config)
+    }
+}
+
+fn with_alpha(color: meridian_ui::style::Color, alpha: u8) -> meridian_ui::style::Color {
+    meridian_ui::style::Color::rgba(color.r, color.g, color.b, alpha)
+}
+
+fn paint_menu_background(
+    canvas: &mut tiny_skia::PixmapMut<'_>,
+    path: &tiny_skia::Path,
+    theme_config: &ThemeConfig,
+    pal: meridian_ui::style::Palette,
+) {
+    if !is_glass_menu(theme_config) {
+        paint_fill(canvas, path, pal.surface_alt);
+    }
+    paint_border(canvas, path, pal.border, 1.0);
+}
 
 /// Total surface width depending on whether the settings flyout is open.
 pub(crate) fn total_menu_width(submenu_open: bool) -> i32 {
@@ -504,7 +532,7 @@ pub(crate) fn draw_overlay(
     let Some(mut pm) = Pixmap::new(mw, mh) else {
         return;
     };
-    let pal = palette_from_config(theme_config);
+    let pal = menu_palette_from_config(theme_config);
 
     // Background
     let bg_rect = Rect {
@@ -516,8 +544,7 @@ pub(crate) fn draw_overlay(
     let Some(bg_path) = rounded_rect_path(bg_rect, CORNER_R) else {
         return;
     };
-    paint_fill(&mut pm.as_mut(), &bg_path, pal.surface_alt);
-    paint_border(&mut pm.as_mut(), &bg_path, pal.border, 1.0);
+    paint_menu_background(&mut pm.as_mut(), &bg_path, theme_config, pal);
 
     // Separator before last item
     let sep_before = n.saturating_sub(1);
@@ -545,7 +572,12 @@ pub(crate) fn draw_overlay(
 
         if state.hover_idx == Some(i) {
             if let Some(p) = rounded_rect_path(item_rect, 6) {
-                paint_fill(&mut pm.as_mut(), &p, pal.surface_alt.lerp(pal.accent, 0.20));
+                let hover_fill = if is_glass_menu(theme_config) {
+                    with_alpha(pal.accent, 46)
+                } else {
+                    pal.surface_alt.lerp(pal.accent, 0.20)
+                };
+                paint_fill(&mut pm.as_mut(), &p, hover_fill);
             }
             let marker = Rect {
                 x: item_rect.x + 1,
@@ -554,7 +586,12 @@ pub(crate) fn draw_overlay(
                 height: ITEM_H - 14,
             };
             if let Some(mp) = rounded_rect_path(marker, 1) {
-                paint_fill(&mut pm.as_mut(), &mp, pal.accent);
+                let marker_fill = if is_glass_menu(theme_config) {
+                    with_alpha(pal.accent, 170)
+                } else {
+                    pal.accent
+                };
+                paint_fill(&mut pm.as_mut(), &mp, marker_fill);
             }
         }
 
@@ -657,7 +694,7 @@ fn draw_submenu_overlay(
     let Some(mut pm) = Pixmap::new(mw, mh) else {
         return;
     };
-    let pal = palette_from_config(theme_config);
+    let pal = menu_palette_from_config(theme_config);
 
     let bg_rect = Rect {
         x: 0,
@@ -668,8 +705,7 @@ fn draw_submenu_overlay(
     let Some(bg_path) = rounded_rect_path(bg_rect, CORNER_R) else {
         return;
     };
-    paint_fill(&mut pm.as_mut(), &bg_path, pal.surface_alt);
-    paint_border(&mut pm.as_mut(), &bg_path, pal.border, 1.0);
+    paint_menu_background(&mut pm.as_mut(), &bg_path, theme_config, pal);
 
     for (i, (label, _)) in items.iter().enumerate() {
         let item_top = VPAD + i as i32 * ITEM_H;
@@ -682,7 +718,12 @@ fn draw_submenu_overlay(
 
         if state.submenu_hover_idx == Some(i) {
             if let Some(p) = rounded_rect_path(item_rect, 6) {
-                paint_fill(&mut pm.as_mut(), &p, pal.surface_alt.lerp(pal.accent, 0.20));
+                let hover_fill = if is_glass_menu(theme_config) {
+                    with_alpha(pal.accent, 46)
+                } else {
+                    pal.surface_alt.lerp(pal.accent, 0.20)
+                };
+                paint_fill(&mut pm.as_mut(), &p, hover_fill);
             }
             let marker = Rect {
                 x: item_rect.x + 1,
@@ -691,7 +732,12 @@ fn draw_submenu_overlay(
                 height: ITEM_H - 14,
             };
             if let Some(mp) = rounded_rect_path(marker, 1) {
-                paint_fill(&mut pm.as_mut(), &mp, pal.accent);
+                let marker_fill = if is_glass_menu(theme_config) {
+                    with_alpha(pal.accent, 170)
+                } else {
+                    pal.accent
+                };
+                paint_fill(&mut pm.as_mut(), &mp, marker_fill);
             }
         }
 
