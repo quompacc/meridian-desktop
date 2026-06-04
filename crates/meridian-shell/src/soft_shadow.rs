@@ -114,7 +114,7 @@ pub(crate) fn draw_soft_shadow(
                 // still comes from the drop-shifted SDF below, so the shadow
                 // stays continuous directly under the element (no offset gap).
                 let d_win = rounded_box_sdf(px as f32, py as f32, cx, cy_win, hx, hy, radius);
-                if d_win <= 0.0 {
+                if d_win < 0.0 {
                     continue; // translucent surface owns its interior
                 }
             }
@@ -136,5 +136,32 @@ pub(crate) fn draw_soft_shadow(
             buf[idx + 2] = (buf[idx + 2] as f32 * inv) as u8;
             buf[idx + 3] = (sa * 255.0 + buf[idx + 3] as f32 * inv) as u8;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn translucent_clip_keeps_the_actual_edge_pixel() {
+        let mut buf = vec![0u8; 64 * 64 * 4];
+        draw_soft_shadow(&mut buf, 64, 64, 16, 16, 24, 16, 6.0, 13.0, 0.12, 3, true);
+
+        let center_x = 16 + 12;
+        let bottom_edge_y = 16 + 16;
+        let edge_idx = ((bottom_edge_y * 64 + center_x) * 4) as usize;
+        assert!(
+            buf[edge_idx + 3] > 0,
+            "the exact un-offset bottom edge must receive shadow coverage"
+        );
+
+        let inner_y = bottom_edge_y - 1;
+        let inner_idx = ((inner_y * 64 + center_x) * 4) as usize;
+        assert_eq!(
+            buf[inner_idx + 3],
+            0,
+            "pixels inside the translucent card remain untouched"
+        );
     }
 }
