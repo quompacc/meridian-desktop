@@ -6,6 +6,7 @@ members = [
     "crates/meridian-shell",
     "crates/meridian-ipc",
     "crates/meridian-config",
+    "crates/meridian-tokens",
     "crates/meridian-portal",
     "crates/meridian-ui",
     "crates/meridian-login",

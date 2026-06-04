@@ -21,23 +21,24 @@ pub struct ThemeColors {
 }
 
 impl Default for ThemeColors {
-    // MIRROR von `meridian_ui::Palette::TOKYO_NIGHT_METRO`
-    // (crates/meridian-ui/src/style/color.rs). Werte synchron halten bis die
-    // Token-Migration mit dem Launcher-Rework abgeschlossen ist; siehe
-    // memory/meridian_ui_token_migration_pending.md.
+    // Defaults derive from the canonical palette in `meridian_tokens` — the
+    // single source of truth. No hand-synced mirror (design-tokens audit
+    // 2026-06-04). The per-field hex assertions in the tests below guard that
+    // this stays equal to the documented Tokyo-Night-Metro spec.
     fn default() -> Self {
+        let p = meridian_tokens::Palette::TOKYO_NIGHT_METRO;
         Self {
-            background: Color::rgb(0x1a, 0x1b, 0x26),
-            surface: Color::rgb(0x24, 0x28, 0x3b),
-            surface_alt: Color::rgb(0x1f, 0x23, 0x35),
-            accent: Color::rgb(0x7a, 0xa2, 0xf7),
-            accent_alt: Color::rgb(0xbb, 0x9a, 0xf7),
-            text: Color::rgb(0xc0, 0xca, 0xf5),
-            text_dim: Color::rgb(0xa9, 0xb1, 0xd6),
-            border: Color::rgb(0x41, 0x48, 0x68),
-            error: Color::rgb(0xf7, 0x76, 0x8e),
-            warning: Color::rgb(0xe0, 0xaf, 0x68),
-            success: Color::rgb(0x9e, 0xce, 0x6a),
+            background: p.background,
+            surface: p.surface,
+            surface_alt: p.surface_alt,
+            accent: p.accent,
+            accent_alt: p.accent_alt,
+            text: p.text,
+            text_dim: p.text_dim,
+            border: p.border,
+            error: p.error,
+            warning: p.warning,
+            success: p.success,
         }
     }
 }
