@@ -119,12 +119,8 @@ impl ThemeManager {
     }
 
     pub fn set_theme(&mut self, name: &str) -> Result<(), ThemeError> {
-        let theme = if name == "default" {
-            load_named_theme("default", &self.theme_dirs)
-                .unwrap_or_else(|_| Theme::builtin_default())
-        } else {
-            load_named_theme(name, &self.theme_dirs)?
-        };
+        let resolved_name = if name == "default" { "meridian" } else { name };
+        let theme = load_named_theme(resolved_name, &self.theme_dirs)?;
         info!("Theme: {} -> {}", self.current.name, theme.name);
         self.current = theme;
         self.notify_observers();
@@ -242,8 +238,8 @@ fn load_named_theme(name: &str, theme_dirs: &[PathBuf]) -> Result<Theme, ThemeEr
 }
 
 fn available_theme_names(theme_dirs: &[PathBuf]) -> Vec<String> {
-    let mut names = vec!["default".to_string()];
-    let mut seen = HashSet::from(["default".to_string()]);
+    let mut names = Vec::new();
+    let mut seen = HashSet::new();
     for dir in theme_dirs {
         let Ok(rd) = fs::read_dir(dir) else {
             continue;
@@ -264,21 +260,16 @@ fn available_theme_names(theme_dirs: &[PathBuf]) -> Vec<String> {
 }
 
 fn load_or_default(theme_dirs: &[PathBuf]) -> Theme {
-    match load_named_theme("default", theme_dirs) {
+    match load_named_theme("meridian", theme_dirs) {
         Ok(theme) => {
-            info!("Loaded theme \"default\" from {:?}", theme.dir);
+            info!("Loaded default theme \"meridian\" from {:?}", theme.dir);
             theme
-        }
-        Err(ThemeError::NotFound(_)) => {
-            info!("Using built-in default theme (Catppuccin Mocha)");
-            Theme::builtin_default()
         }
         Err(err) => {
             warn!(
-                "Failed to load external default theme: {} - using built-in",
+                "Failed to load default theme meridian: {} - using built-in fallback",
                 err
             );
-            info!("Using built-in default theme (Catppuccin Mocha)");
             Theme::builtin_default()
         }
     }
@@ -353,7 +344,7 @@ accent = "{accent}"
 
         assert_eq!(
             manager.available_themes(),
-            vec!["catppuccin-mocha", "default", "earth-cream"]
+            vec!["catppuccin-mocha", "earth-cream"]
         );
     }
 

@@ -7,10 +7,10 @@
 
 use std::cell::RefCell;
 
-use meridian_config::{Color, ThemeConfig};
+use meridian_config::{Color, ThemeConfig, ThemeSurface};
 
 use crate::{
-    ui::tokens::{GLASS_BORDER, GLASS_FOREGROUND, GLASS_FOREGROUND_DIM},
+    ui::tokens::{glass_border_from_config, glass_dim_from_config, glass_foreground_from_config},
     Painter, Rect, TextRenderer,
 };
 
@@ -18,7 +18,12 @@ pub const POPUP_WIDTH: u32 = 280;
 pub const PAD_X: i32 = 16;
 pub const PAD_TOP: i32 = 14;
 pub const PAD_BOTTOM: i32 = 14;
-pub const CARD_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.xl;
+fn card_radius(theme: &ThemeConfig) -> i32 {
+    theme
+        .decorations
+        .surface_radius(ThemeSurface::Popup)
+        .round() as i32
+}
 
 pub const TITLE_BASELINE: i32 = PAD_TOP + 14;
 pub const TITLE_RULE_Y: i32 = PAD_TOP + 22;
@@ -35,9 +40,9 @@ pub const VOLUME_BAR_HEIGHT: i32 = 4;
 
 /// Keep the popup canvas transparent and draw only the card outline. The
 /// compositor supplies the blurred glass body behind this layer.
-pub fn draw_card_body(painter: &mut Painter<'_>, _theme: &ThemeConfig) {
+pub fn draw_card_body(painter: &mut Painter<'_>, theme: &ThemeConfig) {
     painter.clear(Color::rgba(0, 0, 0, 0));
-    draw_card_border(painter, GLASS_BORDER, CARD_RADIUS);
+    draw_card_border(painter, glass_border_from_config(theme), card_radius(theme));
 }
 
 fn draw_card_border(painter: &mut Painter<'_>, color: Color, radius: i32) {
@@ -128,8 +133,9 @@ pub fn draw_glass_card_border_in_rect_with_color(
     buf_h: i32,
     rect: Rect,
     color: Color,
+    radius: i32,
 ) {
-    draw_card_border_in_rect(buf, buf_w, buf_h, rect, color, CARD_RADIUS);
+    draw_card_border_in_rect(buf, buf_w, buf_h, rect, color, radius);
 }
 
 fn draw_card_border_in_rect(
@@ -193,6 +199,7 @@ pub fn paint_card_with_shadow(
     card_w: u32,
     card_h: u32,
     card_buf: &[u8],
+    radius: i32,
 ) {
     let panel = Rect {
         x: 0,
@@ -208,11 +215,13 @@ pub fn paint_card_with_shadow(
         card_h,
         card_buf,
         &[panel],
+        radius,
     );
 }
 
 /// Composite a card buffer and draw the shared popup shadow for each glass
 /// panel inside it. Panel coordinates are local to `card_buf`.
+#[allow(clippy::too_many_arguments)]
 pub fn paint_card_panels_with_shadow(
     surface: &mut [u8],
     surface_w: u32,
@@ -221,6 +230,7 @@ pub fn paint_card_panels_with_shadow(
     card_h: u32,
     card_buf: &[u8],
     panels: &[Rect],
+    radius: i32,
 ) {
     surface.fill(0);
     let pad = crate::POPUP_SHADOW_PAD;
@@ -233,7 +243,7 @@ pub fn paint_card_panels_with_shadow(
             pad + panel.y,
             panel.w,
             panel.h,
-            CARD_RADIUS as f32,
+            radius as f32,
             POPUP_SHADOW_BLUR,
             POPUP_SHADOW_ALPHA,
             POPUP_SHADOW_OFFSET_Y,
@@ -257,7 +267,7 @@ pub fn paint_card_panels_with_shadow(
 pub fn draw_card_title(
     painter: &mut Painter<'_>,
     font: &RefCell<Option<TextRenderer>>,
-    _theme: &ThemeConfig,
+    theme: &ThemeConfig,
     title: &str,
 ) {
     let width = POPUP_WIDTH as i32;
@@ -267,7 +277,7 @@ pub fn draw_card_title(
         PAD_X,
         TITLE_BASELINE,
         width - 2 * PAD_X,
-        GLASS_FOREGROUND,
+        glass_foreground_from_config(theme),
     );
     let title_w = font
         .borrow_mut()
@@ -282,7 +292,7 @@ pub fn draw_card_title(
             w: rule_w,
             h: TITLE_RULE_HEIGHT,
         },
-        GLASS_FOREGROUND,
+        glass_foreground_from_config(theme),
     );
 }
 
@@ -290,7 +300,7 @@ pub fn draw_card_title(
 pub fn draw_kv_row(
     painter: &mut Painter<'_>,
     font: &RefCell<Option<TextRenderer>>,
-    _theme: &ThemeConfig,
+    theme: &ThemeConfig,
     label: &str,
     value: &str,
     row_y: i32,
@@ -303,7 +313,7 @@ pub fn draw_kv_row(
         PAD_X,
         baseline,
         width / 2 - PAD_X,
-        GLASS_FOREGROUND_DIM,
+        glass_dim_from_config(theme),
     );
     let value_w = font
         .borrow_mut()
@@ -311,14 +321,21 @@ pub fn draw_kv_row(
         .map(|r| r.measure_text(value))
         .unwrap_or(value.chars().count() as i32 * 8);
     let value_x = width - PAD_X - value_w;
-    painter.text_clipped(font, value, value_x, baseline, value_w, GLASS_FOREGROUND);
+    painter.text_clipped(
+        font,
+        value,
+        value_x,
+        baseline,
+        value_w,
+        glass_foreground_from_config(theme),
+    );
 }
 
 /// Status row: label on the left, colored dot + status text on the right.
 pub fn draw_status_row(
     painter: &mut Painter<'_>,
     font: &RefCell<Option<TextRenderer>>,
-    _theme: &ThemeConfig,
+    theme: &ThemeConfig,
     label: &str,
     status: &str,
     dot_color: Color,
@@ -332,7 +349,7 @@ pub fn draw_status_row(
         PAD_X,
         baseline,
         width / 2 - PAD_X,
-        GLASS_FOREGROUND_DIM,
+        glass_dim_from_config(theme),
     );
     let status_w = font
         .borrow_mut()
@@ -340,7 +357,14 @@ pub fn draw_status_row(
         .map(|r| r.measure_text(status))
         .unwrap_or(status.chars().count() as i32 * 8);
     let status_x = width - PAD_X - status_w;
-    painter.text_clipped(font, status, status_x, baseline, status_w, GLASS_FOREGROUND);
+    painter.text_clipped(
+        font,
+        status,
+        status_x,
+        baseline,
+        status_w,
+        glass_foreground_from_config(theme),
+    );
     let dot_x = status_x - STATUS_DOT_SIZE - 8;
     let dot_y = row_y + (ROW_HEIGHT - STATUS_DOT_SIZE) / 2;
     painter.roundish_rect_with_radius(
@@ -379,7 +403,14 @@ pub fn draw_volume_row(
         .as_mut()
         .map(|r| r.measure_text(label))
         .unwrap_or(70);
-    painter.text_clipped(font, label, PAD_X, baseline, label_w, GLASS_FOREGROUND_DIM);
+    painter.text_clipped(
+        font,
+        label,
+        PAD_X,
+        baseline,
+        label_w,
+        glass_dim_from_config(theme),
+    );
 
     let value_w = font
         .borrow_mut()
@@ -400,14 +431,14 @@ pub fn draw_volume_row(
                 w: bar_w,
                 h: VOLUME_BAR_HEIGHT,
             },
-            GLASS_BORDER,
+            glass_border_from_config(theme),
             VOLUME_BAR_HEIGHT,
         );
         if let Some(pct) = percent {
             let fill_w = (bar_w * pct.min(100) as i32) / 100;
             if fill_w > 0 {
                 let fill_color = if muted {
-                    GLASS_FOREGROUND_DIM
+                    glass_dim_from_config(theme)
                 } else {
                     theme.colors.accent
                 };
@@ -431,7 +462,7 @@ pub fn draw_volume_row(
         value_x,
         baseline,
         value_w,
-        GLASS_FOREGROUND,
+        glass_foreground_from_config(theme),
     );
 }
 
@@ -440,7 +471,7 @@ pub fn draw_volume_row(
 pub fn draw_footer_link(
     painter: &mut Painter<'_>,
     font: &RefCell<Option<TextRenderer>>,
-    _theme: &ThemeConfig,
+    theme: &ThemeConfig,
     height: i32,
     label: &str,
 ) -> Rect {
@@ -454,7 +485,14 @@ pub fn draw_footer_link(
     let y_top = height - PAD_BOTTOM - FOOTER_LINK_HEIGHT;
     let x = width - PAD_X - measured;
     let baseline = y_top + ROW_TEXT_BASELINE_OFFSET;
-    painter.text_clipped(font, &text, x, baseline, measured, GLASS_FOREGROUND);
+    painter.text_clipped(
+        font,
+        &text,
+        x,
+        baseline,
+        measured,
+        glass_foreground_from_config(theme),
+    );
     Rect {
         x: x - 10,
         y: y_top,

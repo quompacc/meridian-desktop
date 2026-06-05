@@ -4,8 +4,8 @@ surface = "#122231"
 surface_alt = "#0f1c29"
 accent = "#5b9bd5"
 accent_alt = "#4a83bd"
-text = "#d6e0ec"
-text_dim = "#8597ab"
+text = "#f4f8ff"
+text_dim = "#c2d0df"
 border = "#243749"
 error = "#b5685c"
 warning = "#b89a6a"
@@ -30,7 +30,7 @@ glass_alpha = 0.55
 glass_specular = 0.6
 
 [fonts]
-ui = "Adwaita Sans 11"
+ui = "Inter 11"
 
 [icons]
 theme = "Papirus-Dark"

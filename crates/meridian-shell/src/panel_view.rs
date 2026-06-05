@@ -1,3 +1,4 @@
+use meridian_config::ThemeSurface;
 use meridian_tokens::{Elevation, Interaction};
 use meridian_ui::{
     compute_layout,
@@ -49,7 +50,6 @@ const CHIP_HL_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.md;
 const GAP: i32 = 4;
 
 // Floating island
-const ISLAND_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.lg;
 const SIDE_MARGIN: i32 = PANEL_SIDE_MARGIN as i32;
 const BOTTOM_GAP: i32 = PANEL_BOTTOM_GAP as i32;
 const SURFACE_H: i32 = PANEL_SURFACE_HEIGHT as i32;
@@ -58,8 +58,6 @@ const ISLAND_TOP: i32 = PANEL_TOP_SHADOW as i32;
 const DIVIDER_W: i32 = 11;
 // Frosted-glass island: transparent shell tint over the compositor-owned
 // live backdrop blur. Noise stays off so the real blurred scene remains legible.
-const PANEL_ISLAND_ALPHA: u8 = 72;
-const PANEL_FROST_ALPHA: u8 = 10;
 const PANEL_NOISE_STRENGTH: i32 = 0;
 
 const FONT_SIZE: f32 = 14.0;
@@ -1214,7 +1212,6 @@ pub(crate) fn draw_panel_ui(
     theme_config: &meridian_config::ThemeConfig,
     state_fn: &dyn Fn(&[usize]) -> WidgetState,
     clicks_out: &mut Vec<ClickZone>,
-    intro_progress: f32,
 ) {
     let expected_len = (width as usize)
         .saturating_mul(height as usize)
@@ -1229,6 +1226,10 @@ pub(crate) fn draw_panel_ui(
     }
 
     let theme = glass_theme_from_config(theme_config);
+    let treatment = theme_config
+        .decorations
+        .surface_treatment(ThemeSurface::Panel);
+    let island_radius = treatment.radius.round() as i32;
 
     let root = build_panel_widget_tree(
         width,
@@ -1262,7 +1263,7 @@ pub(crate) fn draw_panel_ui(
     // the shell only adds translucent tint/chrome and then the widgets.
     let inner_w = (width as i32 - 2 * SIDE_MARGIN).max(0);
     let base = theme.palette.surface_alt;
-    let body_col = Color::rgba(base.r, base.g, base.b, PANEL_ISLAND_ALPHA);
+    let body_col = Color::rgba(base.r, base.g, base.b, treatment.fill_alpha);
     let outline = Rect {
         x: SIDE_MARGIN,
         y: ISLAND_TOP,
@@ -1284,7 +1285,7 @@ pub(crate) fn draw_panel_ui(
         outline.y,
         outline.width,
         outline.height,
-        ISLAND_RADIUS as f32,
+        island_radius as f32,
         Elevation::PANEL.blur,
         Elevation::PANEL.alpha,
         Elevation::PANEL.offset_y,
@@ -1292,11 +1293,12 @@ pub(crate) fn draw_panel_ui(
     );
     {
         let mut pc = pixmap.as_mut();
-        if let Some(path) = rounded_rect_path(body, ISLAND_RADIUS - 1) {
+        if let Some(path) = rounded_rect_path(body, island_radius.saturating_sub(1)) {
             paint_fill(&mut pc, &path, body_col);
         }
-        let frost = Color::rgba(0xFF, 0xFF, 0xFF, PANEL_FROST_ALPHA);
-        if let Some(path) = rounded_rect_path(body, ISLAND_RADIUS - 1) {
+        let frost_alpha = ((treatment.frame_alpha as f32) * 0.10).round() as u8;
+        let frost = Color::rgba(0xFF, 0xFF, 0xFF, frost_alpha);
+        if let Some(path) = rounded_rect_path(body, island_radius.saturating_sub(1)) {
             paint_fill(&mut pc, &path, frost);
         }
     }
@@ -1311,11 +1313,11 @@ pub(crate) fn draw_panel_ui(
     );
     {
         let mut pc = pixmap.as_mut();
-        let hl = Color::rgba(0xFF, 0xFF, 0xFF, 26);
+        let hl = Color::rgba(0xFF, 0xFF, 0xFF, treatment.frame_alpha / 4);
         let highlight = Rect {
-            x: SIDE_MARGIN + ISLAND_RADIUS,
+            x: SIDE_MARGIN + island_radius,
             y: ISLAND_TOP + 1,
-            width: (inner_w - 2 * ISLAND_RADIUS).max(0),
+            width: (inner_w - 2 * island_radius).max(0),
             height: 1,
         };
         if let Some(path) = rounded_rect_path(highlight, 0) {
@@ -1324,28 +1326,7 @@ pub(crate) fn draw_panel_ui(
         let _ = render(&*root, &layout, &mut pc, &theme, state_fn);
     }
 
-    if intro_progress < 1.0 {
-        // Login->desktop entrance: slide the panel up from the screen
-        // bottom and fade it in. The area above the rising bar stays
-        // transparent, so the compass wallpaper shows through.
-        let offset_y = ((1.0 - intro_progress) * height as f32).round() as i32;
-        if let Some(mut out) = Pixmap::new(width, height) {
-            out.as_mut().draw_pixmap(
-                0,
-                offset_y,
-                pixmap.as_ref(),
-                &PixmapPaint {
-                    opacity: intro_progress,
-                    ..Default::default()
-                },
-                Transform::identity(),
-                None,
-            );
-            blit_rgba_to_argb(out.data(), canvas);
-        }
-    } else {
-        blit_rgba_to_argb(pixmap.data(), canvas);
-    }
+    blit_rgba_to_argb(pixmap.data(), canvas);
 
     clicks_out.clear();
     collect_click_zones(&*root, &layout.root, 0, 0, clicks_out);
@@ -1504,7 +1485,6 @@ mod tests {
             &meridian_config::ThemeConfig::default(),
             &state_fn,
             &mut clicks,
-            1.0,
         );
 
         assert!(canvas.iter().any(|byte| *byte != 0));

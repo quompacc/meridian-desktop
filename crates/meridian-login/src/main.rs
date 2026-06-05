@@ -21,7 +21,7 @@ use std::os::fd::{AsFd, BorrowedFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::mpsc;
+use std::sync::{mpsc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -30,6 +30,7 @@ use drm::control::{connector, ClipRect, Device as ControlDevice};
 use drm::Device as DrmDevice;
 
 use meridian_compass_render::{CompassPainter, Fonts, FrameOpts, Style, TextStyle, SETTLE_T};
+use meridian_config::{ThemeConfig, ThemeManager, ThemeSurface};
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, PixmapMut, Stroke, Transform};
 use tracing::{info, warn};
 use zeroize::Zeroizing;
@@ -40,7 +41,8 @@ use input::{
     KeyboardStatus, PointerAction, PointerState,
 };
 use meridian_boot_common::{
-    cleanup_socket_path, secure_socket_permissions, select_boot_mode, SocketIdentity,
+    cleanup_socket_path, read_appearance, secure_socket_permissions, select_boot_mode, Appearance,
+    SocketIdentity,
 };
 
 const BOOTSPLASH_SOCKET_ENV: &str = "BOOTSPLASH_SOCKET";
@@ -84,9 +86,17 @@ type PowerButtonRects = (Rect, Rect);
 
 const CARD_PAD: f32 = 32.0;
 const METRO_STRIPE_HEIGHT: f32 = 2.0;
-const CARD_RADIUS: f32 = meridian_tokens::Radius::DEFAULT.xl as f32;
-const FIELD_RADIUS: f32 = meridian_tokens::Radius::DEFAULT.md as f32;
-const BUTTON_RADIUS: f32 = meridian_tokens::Radius::DEFAULT.md as f32;
+fn card_radius() -> f32 {
+    login_theme()
+        .decorations
+        .surface_radius(ThemeSurface::Modal)
+}
+
+fn control_radius() -> f32 {
+    login_theme()
+        .decorations
+        .surface_radius(ThemeSurface::Control)
+}
 const CARD_SHADOW_BLUR: f32 = meridian_tokens::Elevation::LAUNCHER.blur;
 const CARD_SHADOW_ALPHA: f32 = meridian_tokens::Elevation::LAUNCHER.alpha;
 const CARD_SHADOW_OFFSET_Y: f32 = meridian_tokens::Elevation::LAUNCHER.offset_y as f32;
@@ -542,17 +552,39 @@ fn keyboard_layout_label(status: &KeyboardStatus) -> String {
 /// consulted by the metro_* card colours and the compass style so the
 /// login matches the active desktop theme.
 static LIGHT_APPEARANCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static LOGIN_THEME: OnceLock<ThemeConfig> = OnceLock::new();
 
 fn light_appearance() -> bool {
     LIGHT_APPEARANCE.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+fn load_login_theme(appearance: Appearance) -> ThemeConfig {
+    let mut theme_manager = ThemeManager::new();
+    let theme_name = if appearance.is_light() {
+        "meridian-light"
+    } else {
+        "meridian"
+    };
+    if let Err(err) = theme_manager.set_theme(theme_name) {
+        warn!(
+            theme = theme_name,
+            error = %err,
+            "login theme load failed; using default theme"
+        );
+    }
+    theme_manager.current().config.clone()
+}
+
+fn login_theme() -> &'static ThemeConfig {
+    LOGIN_THEME.get_or_init(|| load_login_theme(read_appearance()))
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
-    LIGHT_APPEARANCE.store(
-        meridian_boot_common::read_appearance().is_light(),
-        std::sync::atomic::Ordering::Relaxed,
-    );
+    let appearance = read_appearance();
+    let theme = load_login_theme(appearance);
+    LIGHT_APPEARANCE.store(appearance.is_light(), std::sync::atomic::Ordering::Relaxed);
+    let _ = LOGIN_THEME.set(theme);
     info!("meridian-login starting (Phase 7)");
 
     match bootsplash_handover() {
@@ -1303,62 +1335,66 @@ fn alpha_byte(alpha: f32, max: f32) -> u8 {
     (alpha.clamp(0.0, 1.0) * max).clamp(0.0, 255.0) as u8
 }
 
-/// Card colours mirror the meridian (dark) / meridian-light (chart) themes;
-/// the variant is chosen by the boot-chain appearance marker at startup.
-fn metro_color(alpha: f32, dark: (u8, u8, u8), light: (u8, u8, u8), base: f32) -> Color {
-    let (r, g, b) = if light_appearance() { light } else { dark };
-    Color::from_rgba8(r, g, b, alpha_byte(alpha, base))
+fn theme_color(alpha: f32, color: meridian_config::Color, max_alpha: f32) -> Color {
+    Color::from_rgba8(color.r, color.g, color.b, alpha_byte(alpha, max_alpha))
+}
+
+fn modal_fill_alpha(scale: f32) -> f32 {
+    let treatment = login_theme()
+        .decorations
+        .surface_treatment(ThemeSurface::Modal);
+    (treatment.fill_alpha as f32 * scale).clamp(0.0, 255.0)
+}
+
+fn modal_frame_alpha(scale: f32) -> f32 {
+    let treatment = login_theme()
+        .decorations
+        .surface_treatment(ThemeSurface::Modal);
+    (treatment.frame_alpha as f32 * scale).clamp(0.0, 255.0)
 }
 
 fn metro_surface(alpha: f32) -> Color {
-    metro_color(
-        alpha,
-        (0x1f, 0x28, 0x34),
-        (0xff, 0xff, 0xff),
-        if light_appearance() { 58.0 } else { 86.0 },
-    )
+    theme_color(alpha, login_theme().colors.surface, modal_fill_alpha(0.75))
 }
 
 fn metro_surface_alt(alpha: f32) -> Color {
-    metro_color(
+    theme_color(
         alpha,
-        (0x16, 0x20, 0x2c),
-        (0xff, 0xff, 0xff),
-        if light_appearance() { 74.0 } else { 118.0 },
+        login_theme().colors.surface_alt,
+        modal_fill_alpha(0.92),
     )
 }
 
 fn metro_background(alpha: f32) -> Color {
-    metro_color(
+    theme_color(
         alpha,
-        (0x05, 0x08, 0x0c),
-        (0xff, 0xff, 0xff),
-        if light_appearance() { 42.0 } else { 64.0 },
+        login_theme().colors.background,
+        modal_fill_alpha(0.55),
     )
 }
 
 fn metro_accent(alpha: f32) -> Color {
-    metro_color(alpha, (0x7a, 0xa2, 0xf7), (0x2f, 0x62, 0x99), 255.0)
+    theme_color(alpha, login_theme().colors.accent, 255.0)
 }
 
 fn metro_text(alpha: f32) -> Color {
-    metro_color(alpha, (0xf3, 0xf6, 0xff), (0x05, 0x08, 0x0c), 255.0)
+    theme_color(alpha, login_theme().colors.text, 255.0)
 }
 
 fn metro_text_dim(alpha: f32) -> Color {
-    metro_color(alpha, (0xd8, 0xde, 0xff), (0x1e, 0x28, 0x34), 235.0)
+    theme_color(alpha, login_theme().colors.text_dim, 255.0)
 }
 
 fn metro_border(alpha: f32) -> Color {
-    metro_color(alpha, (0xf3, 0xf6, 0xff), (0x05, 0x08, 0x0c), 110.0)
+    theme_color(alpha, login_theme().colors.border, modal_frame_alpha(1.0))
 }
 
 fn metro_error(alpha: f32) -> Color {
-    metro_color(alpha, (0xf7, 0x76, 0x8e), (0x9a, 0x46, 0x36), 255.0)
+    theme_color(alpha, login_theme().colors.error, 255.0)
 }
 
 fn metro_success(alpha: f32) -> Color {
-    metro_color(alpha, (0x9e, 0xce, 0x6a), (0x3f, 0x7d, 0x5e), 255.0)
+    theme_color(alpha, login_theme().colors.success, 255.0)
 }
 
 fn draw_soft_card_shadow(pm: &mut PixmapMut, left: f32, top: f32, w: f32, h: f32, alpha: f32) {
@@ -1377,7 +1413,7 @@ fn draw_soft_card_shadow(pm: &mut PixmapMut, left: f32, top: f32, w: f32, h: f32
             top + dy - spread * 0.18,
             w + spread,
             h + spread * 0.36,
-            CARD_RADIUS + spread * 0.45,
+            card_radius() + spread * 0.45,
         );
         let mut paint = Paint::default();
         paint.set_color(Color::from_rgba8(0, 0, 0, opacity.clamp(0.0, 255.0) as u8));
@@ -1429,7 +1465,7 @@ fn draw_login_button(
     alpha: f32,
     selected: bool,
 ) {
-    let path = rounded_rect_path(rect.0, rect.1, rect.2, rect.3, BUTTON_RADIUS);
+    let path = rounded_rect_path(rect.0, rect.1, rect.2, rect.3, control_radius());
     let fill = mix_color(
         metro_surface(1.0),
         accent,
@@ -1459,9 +1495,9 @@ fn draw_login_button(
     );
 
     let stripe = rounded_rect_path(
-        rect.0 + BUTTON_RADIUS,
+        rect.0 + control_radius(),
         rect.1 + 1.0,
-        (rect.2 - 2.0 * BUTTON_RADIUS).max(1.0),
+        (rect.2 - 2.0 * control_radius()).max(1.0),
         METRO_STRIPE_HEIGHT,
         1.0,
     );
@@ -1538,7 +1574,7 @@ fn draw_card(
 ) {
     let (left, top, cw, ch) = card_rect(w, h);
     let left = left + shake_dx;
-    let path = rounded_rect_path(left, top, cw, ch, CARD_RADIUS);
+    let path = rounded_rect_path(left, top, cw, ch, card_radius());
     draw_soft_card_shadow(pm, left, top, cw, ch, alpha);
     let key_accent = if security_key_present {
         metro_success(alpha)
@@ -1561,9 +1597,9 @@ fn draw_card(
     pm.fill_path(&path, &fill, FillRule::Winding, Transform::identity(), None);
 
     let stripe = rounded_rect_path(
-        left + CARD_RADIUS,
+        left + card_radius(),
         top + 1.0,
-        (cw - 2.0 * CARD_RADIUS).max(1.0),
+        (cw - 2.0 * card_radius()).max(1.0),
         METRO_STRIPE_HEIGHT,
         1.0,
     );
@@ -1608,7 +1644,7 @@ fn draw_login_ui(
 
     let text_color = metro_text(alpha);
     let label_color = metro_text_dim(alpha);
-    let hint_color = metro_text_dim(alpha * 0.78);
+    let hint_color = metro_text_dim(alpha * 0.92);
     let title_color = metro_accent(alpha);
     let caret_color = metro_accent(alpha);
     let box_fill = metro_background(alpha);
@@ -1878,7 +1914,7 @@ fn draw_yubikey_icon(pm: &mut PixmapMut, cx: f32, y: f32, alpha: f32, present: b
     dot_fill.set_color(if present {
         metro_success(alpha)
     } else {
-        metro_text_dim(alpha * 0.35)
+        metro_text_dim(alpha * 0.65)
     });
     dot_fill.anti_alias = true;
     pm.fill_path(
@@ -1902,7 +1938,7 @@ fn draw_input_box(
     focused: bool,
     alpha: f32,
 ) {
-    let path = rounded_rect_path(x, y, w, h, FIELD_RADIUS);
+    let path = rounded_rect_path(x, y, w, h, control_radius());
     let mut fill_paint = Paint::default();
     fill_paint.set_color(fill);
     fill_paint.anti_alias = true;
@@ -1930,9 +1966,9 @@ fn draw_input_box(
     if focused {
         let accent = rounded_rect_path(
             x,
-            y + FIELD_RADIUS,
+            y + control_radius(),
             3.0,
-            (h - 2.0 * FIELD_RADIUS).max(1.0),
+            (h - 2.0 * control_radius()).max(1.0),
             1.5,
         );
         let mut accent_paint = Paint::default();

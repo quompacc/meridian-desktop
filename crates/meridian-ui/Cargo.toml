@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 meridian-tokens = { path = "../meridian-tokens" }
+meridian-freetype = { path = "../meridian-freetype" }
 fontdue = "0.9"
 taffy = { workspace = true }
 tiny-skia = { workspace = true }

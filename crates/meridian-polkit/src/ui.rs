@@ -6,7 +6,7 @@
 // popup matches whatever the rest of the desktop is wearing — light,
 // dark, custom — instead of a hardcoded Tokyo Night palette.
 
-use meridian_config::{Color as ThemeColor, ThemeConfig};
+use meridian_config::{Color as ThemeColor, ThemeConfig, ThemeSurface};
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, Pixmap, PixmapMut, Transform};
 
 pub const CARD_W: u32 = 520;
@@ -34,14 +34,19 @@ pub struct View<'a> {
 /// Render the popup into `pixels` (RGBA, width*height*4 bytes).
 pub fn render(pixels: &mut [u8], width: u32, height: u32, theme: &ThemeConfig, view: &View<'_>) {
     let colors = &theme.colors;
-    let radius = (theme.decorations.corner_radius.max(8) as f32).min(20.0);
+    let treatment = theme.decorations.surface_treatment(ThemeSurface::Modal);
+    let radius = treatment.radius.min(20.0);
+    let control_radius = theme
+        .decorations
+        .surface_radius(ThemeSurface::Control)
+        .min(20.0);
 
-    let card_bg = u32_from_color(colors.surface_alt, 0xff);
+    let card_bg = u32_from_color(colors.surface_alt, treatment.fill_alpha);
     let text = u32_from_color(colors.text, 0xff);
     let dim = u32_from_color(colors.text_dim, 0xff);
     let accent = u32_from_color(colors.accent, 0xff);
-    let border = u32_from_color(colors.border, 0xff);
-    let field_bg = u32_from_color(colors.surface, 0xff);
+    let border = u32_from_color(colors.border, treatment.frame_alpha);
+    let field_bg = u32_from_color(colors.surface, treatment.fill_alpha.saturating_add(32));
     let err = u32_from_color(colors.error, 0xff);
 
     let mut pm = Pixmap::new(width, height).expect("pixmap");
@@ -122,7 +127,7 @@ pub fn render(pixels: &mut [u8], width: u32, height: u32, theme: &ThemeConfig, v
             field_y - 1.0,
             FIELD_W + 2.0,
             FIELD_H + 2.0,
-            10.0,
+            control_radius + 1.0,
             border_col,
         );
         fill_rect(
@@ -131,7 +136,7 @@ pub fn render(pixels: &mut [u8], width: u32, height: u32, theme: &ThemeConfig, v
             field_y,
             FIELD_W,
             FIELD_H,
-            9.0,
+            control_radius,
             field_bg,
         );
 

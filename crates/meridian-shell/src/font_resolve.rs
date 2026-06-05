@@ -84,14 +84,33 @@ fn resolve_family(family: &str) -> Option<PathBuf> {
     }
 }
 
-/// Apply `theme.fonts.ui` as the active UI font. The default family
-/// ("Adwaita Sans") and an empty family keep the embedded font; any other
-/// installed family is resolved via fontconfig and loaded. On any failure the
-/// embedded font is kept. The point size in the string is not used (the render
-/// scale is fixed for now).
+/// Apply `theme.fonts.ui` as the active UI font. An empty family keeps the
+/// embedded fallback; configured families are resolved via fontconfig and
+/// loaded when available. On any failure the embedded font is kept. The point
+/// size in the string is not used (the render scale is fixed for now).
+fn family_from_pattern(pattern: &str) -> &str {
+    let trimmed = pattern.trim();
+    let Some((family, maybe_size)) = trimmed.rsplit_once(' ') else {
+        return trimmed;
+    };
+    if maybe_size.parse::<f32>().is_ok() {
+        family.trim_end()
+    } else {
+        trimmed
+    }
+}
+
+pub(crate) fn read_theme_font_bytes(pattern: &str) -> Option<Vec<u8>> {
+    let family = family_from_pattern(pattern);
+    if family.is_empty() {
+        return None;
+    }
+    resolve_family(family).and_then(|path| std::fs::read(path).ok())
+}
+
 pub(crate) fn apply_theme_ui_font(theme: &ThemeConfig) {
     let family = theme.fonts.ui_family();
-    if family.is_empty() || family == "Adwaita Sans" {
+    if family.is_empty() {
         meridian_ui::clear_ui_font();
         return;
     }

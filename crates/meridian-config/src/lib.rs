@@ -10,6 +10,6 @@ pub use config::{
 pub use keybind::{Action, Keybind, KeybindConfig, Modifiers, SplitDir};
 pub use output::{OutputEntry, OutputModeConfig, OutputPositionConfig};
 pub use theme::{
-    Color, Cursor, Decorations, Fonts, Icons, Theme, ThemeColors, ThemeConfig, ThemeError,
-    ThemeManager, Wallpaper, WallpaperMode,
+    Color, Cursor, Decorations, Fonts, Icons, SurfaceTreatment, Theme, ThemeColors, ThemeConfig,
+    ThemeError, ThemeManager, ThemeSurface, Wallpaper, WallpaperMode,
 };

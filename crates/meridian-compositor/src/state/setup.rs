@@ -121,10 +121,7 @@ pub(crate) fn apply_config_overrides(
     }
 }
 
-/// Pick the compass palette for the zoom intro from the active theme
-/// background luminance: chart (light) for bright grounds, else midnight.
-/// Map a theme to light/dark by background luminance. Shared by the
-/// compass intro style and the persisted boot-chain appearance.
+/// Map a theme to light/dark by background luminance for the persisted boot-chain appearance.
 pub(crate) fn theme_appearance(theme: &meridian_config::Theme) -> meridian_boot_common::Appearance {
     let bg = theme.config.colors.background;
     let lum = 0.299 * bg.r as f32 + 0.587 * bg.g as f32 + 0.114 * bg.b as f32;
@@ -132,14 +129,6 @@ pub(crate) fn theme_appearance(theme: &meridian_config::Theme) -> meridian_boot_
         meridian_boot_common::Appearance::Light
     } else {
         meridian_boot_common::Appearance::Dark
-    }
-}
-
-fn compass_intro_style(theme: &meridian_config::Theme) -> meridian_compass_render::Style {
-    if theme_appearance(theme).is_light() {
-        meridian_compass_render::Style::chart()
-    } else {
-        meridian_compass_render::Style::default()
     }
 }
 
@@ -714,10 +703,6 @@ impl MeridianState {
 
         let mut wallpaper_manager = WallpaperManager::new();
         wallpaper_manager.apply_theme(theme_manager.current());
-        // Arm the login->desktop compass zoom: the wallpaper shows the
-        // compass at login size from the first frame; render.rs then
-        // shrinks it to wallpaper size and settles onto the static image.
-        wallpaper_manager.begin_intro(compass_intro_style(theme_manager.current()), 0.32);
         // Persist appearance so the boot chain (bootsplash, login) matches
         // the active theme on the next boot.
         let _ = meridian_boot_common::write_appearance(theme_appearance(theme_manager.current()));
@@ -738,7 +723,6 @@ impl MeridianState {
             popups: PopupManager::default(),
             theme_manager,
             wallpaper_manager,
-            intro_start: None,
             wm_workspaces: (0..9).map(|_| WmWorkspace::new()).collect(),
             ipc: IpcServer::new(),
             keybind_config: meridian_config.keybinds,

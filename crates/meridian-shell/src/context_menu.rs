@@ -19,7 +19,12 @@ const ITEM_H: i32 = 36;
 const VPAD: i32 = 6;
 const PADDING_X: i32 = 14;
 const FONT_SIZE: f32 = 13.0;
-pub(crate) const CORNER_R: i32 = crate::popup_card::CARD_RADIUS;
+fn menu_radius(theme_config: &ThemeConfig) -> i32 {
+    theme_config
+        .decorations
+        .surface_radius(meridian_config::ThemeSurface::Popup)
+        .round() as i32
+}
 
 fn is_glass_menu(theme_config: &ThemeConfig) -> bool {
     theme_config.decorations.glass && theme_config.decorations.glass_blur
@@ -573,7 +578,7 @@ fn draw_overlay_with_background(
         width: mw as i32,
         height: mh as i32,
     };
-    let Some(bg_path) = rounded_rect_path(bg_rect, CORNER_R) else {
+    let Some(bg_path) = rounded_rect_path(bg_rect, menu_radius(theme_config)) else {
         return;
     };
     if draw_background {
@@ -749,7 +754,7 @@ fn draw_submenu_overlay(
         width: mw as i32,
         height: mh as i32,
     };
-    let Some(bg_path) = rounded_rect_path(bg_rect, CORNER_R) else {
+    let Some(bg_path) = rounded_rect_path(bg_rect, menu_radius(theme_config)) else {
         return;
     };
     if draw_background {

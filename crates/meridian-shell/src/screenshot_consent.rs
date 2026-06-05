@@ -5,7 +5,7 @@
 //! (or Esc = deny / Enter = allow). The surface is exactly the modal size and
 //! centered by its layer anchor, so everything is drawn at the origin.
 
-use meridian_config::ThemeConfig;
+use meridian_config::{ThemeConfig, ThemeSurface};
 use meridian_tokens::Interaction;
 use meridian_ui::{
     effect::{paint_border, paint_fill, paint_text, rounded_rect_path},
@@ -13,11 +13,10 @@ use meridian_ui::{
 };
 use tiny_skia::Pixmap;
 
-use crate::ui::tokens::palette_from_config;
+use crate::ui::tokens::{color_with_alpha, palette_from_config};
 
 pub(crate) const MODAL_WIDTH: i32 = 460;
 pub(crate) const MODAL_HEIGHT: i32 = 200;
-const CORNER_R: i32 = 14;
 
 const PAD_X: i32 = 28;
 const BTN_W: i32 = 180;
@@ -87,6 +86,16 @@ pub(crate) fn draw_consent_overlay(
         return;
     };
     let pal = palette_from_config(theme_config);
+    let treatment = theme_config
+        .decorations
+        .surface_treatment(ThemeSurface::Modal);
+    let modal_radius = treatment.radius.round() as i32;
+    let card_fill = color_with_alpha(pal.surface_alt, treatment.fill_alpha);
+    let card_border = color_with_alpha(pal.border, treatment.frame_alpha);
+    let control_radius = theme_config
+        .decorations
+        .surface_radius(ThemeSurface::Control)
+        .round() as i32;
 
     // Card background + border.
     let bg = Rect {
@@ -95,9 +104,9 @@ pub(crate) fn draw_consent_overlay(
         width: MODAL_WIDTH,
         height: MODAL_HEIGHT,
     };
-    if let Some(p) = rounded_rect_path(bg, CORNER_R) {
-        paint_fill(&mut pm.as_mut(), &p, pal.surface_alt);
-        paint_border(&mut pm.as_mut(), &p, pal.border, 1.0);
+    if let Some(p) = rounded_rect_path(bg, modal_radius) {
+        paint_fill(&mut pm.as_mut(), &p, card_fill);
+        paint_border(&mut pm.as_mut(), &p, card_border, 1.0);
     }
 
     // Title + body text.
@@ -125,16 +134,16 @@ pub(crate) fn draw_consent_overlay(
     } else {
         pal.surface
     };
-    if let Some(p) = rounded_rect_path(deny, 8) {
+    if let Some(p) = rounded_rect_path(deny, control_radius) {
         paint_fill(&mut pm.as_mut(), &p, deny_bg);
-        paint_border(&mut pm.as_mut(), &p, pal.border, 1.0);
+        paint_border(&mut pm.as_mut(), &p, card_border, 1.0);
     }
     let allow_bg = if hovered == Some(ConsentButton::Allow) {
         Interaction::DEFAULT.hover(pal.accent)
     } else {
         pal.accent
     };
-    if let Some(p) = rounded_rect_path(allow, 8) {
+    if let Some(p) = rounded_rect_path(allow, control_radius) {
         paint_fill(&mut pm.as_mut(), &p, allow_bg);
     }
     // Button labels, roughly centered.

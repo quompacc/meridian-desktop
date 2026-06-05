@@ -23,7 +23,7 @@ pub struct GeneralConfig {
 impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
-            theme: "default".to_string(),
+            theme: "meridian".to_string(),
             idle_timeout_secs: Some(300),
         }
     }
@@ -236,7 +236,7 @@ struct GeneralToml {
 impl Default for GeneralToml {
     fn default() -> Self {
         Self {
-            theme: "default".to_string(),
+            theme: "meridian".to_string(),
             idle_timeout_secs: Some(300),
         }
     }
@@ -334,7 +334,7 @@ pinned = [
     fn missing_file_uses_defaults() {
         let path = unique_test_path("missing.toml");
         let config = MeridianConfig::load_or_default_from_path(&path);
-        assert_eq!(config.general.theme, "default");
+        assert_eq!(config.general.theme, "meridian");
         assert!(config.cursor.is_none());
         assert!(config.wallpaper.is_none());
     }
@@ -375,7 +375,7 @@ mode = "fill"
         let path = unique_test_path("invalid.toml");
         write(&path, r#"[general theme = "broken""#);
         let config = MeridianConfig::load_or_default_from_path(&path);
-        assert_eq!(config.general.theme, "default");
+        assert_eq!(config.general.theme, "meridian");
         assert!(config.cursor.is_none());
         assert!(config.wallpaper.is_none());
     }
@@ -461,7 +461,7 @@ mode = "tile"
     #[test]
     fn set_cursor_in_toml_replaces_existing_section_and_round_trips() {
         let raw = r#"[general]
-theme = "default"
+theme = "meridian"
 
 [cursor]
 theme = "Old"
@@ -486,7 +486,7 @@ mode = "fill"
         let cursor = config.cursor.expect("cursor section");
         assert_eq!(cursor.theme, "Breeze_Light");
         assert_eq!(cursor.size, 48);
-        assert_eq!(config.general.theme, "default");
+        assert_eq!(config.general.theme, "meridian");
     }
 
     #[test]
@@ -568,7 +568,7 @@ mode = "fill"
         });
 
         config.reload_from_path(&path).expect("reload missing");
-        assert_eq!(config.general.theme, "default");
+        assert_eq!(config.general.theme, "meridian");
         assert!(config.cursor.is_none());
         assert!(config.wallpaper.is_none());
     }
@@ -595,7 +595,7 @@ mode = "fill"
             &path,
             r#"
 [general]
-theme = "default"
+theme = "meridian"
 
 [keybinds]
 "Super+NotARealKey" = "toggle-tiling"
@@ -895,7 +895,7 @@ transform = "garbage"
             &path,
             r#"
 [general]
-theme = "default"
+theme = "meridian"
 "#,
         );
 
@@ -1005,7 +1005,7 @@ mode = { width = 1920, height = 1080 }
         let updated = set_primary_output_in_toml(
             r#"
 [general]
-theme = "default"
+theme = "meridian"
 
 [outputs.eDP-1]
 primary = true
@@ -1020,7 +1020,7 @@ pinned = []
             "HDMI-A-1",
         );
 
-        assert!(updated.contains("[general]\ntheme = \"default\""));
+        assert!(updated.contains("[general]\ntheme = \"meridian\""));
         assert!(updated.contains("[outputs.eDP-1]\nprimary = false\nscale = 1.25"));
         assert!(updated.contains("[outputs.HDMI-A-1]\nposition = { right-of = \"eDP-1\" }"));
         assert!(updated.contains("position = { right-of = \"eDP-1\" }\n\nprimary = true"));

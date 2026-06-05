@@ -1,16 +1,54 @@
-use meridian_config::{Color, ThemeConfig};
+use meridian_config::{Color, ThemeConfig, ThemeSurface};
 use meridian_ui::style::{
     Color as UiColor, Palette as UiPalette, Radius as UiRadius, Spacing as UiSpacing,
     Theme as UiTheme,
 };
 
-pub const ACCENT_FOREGROUND: Color = Color::rgb(0x1a, 0x1b, 0x26);
-pub const GLASS_FOREGROUND: Color = Color::rgb(0x05, 0x08, 0x0c);
-pub const GLASS_FOREGROUND_DIM: Color = Color::rgb(0x1e, 0x28, 0x34);
-pub const GLASS_BORDER: Color = Color::rgba(0x05, 0x08, 0x0c, 110);
-
 pub(crate) fn color_from_config(color: Color) -> UiColor {
     UiColor::rgba(color.r, color.g, color.b, color.a)
+}
+
+pub(crate) fn color_with_alpha(color: Color, alpha: u8) -> Color {
+    Color::rgba(color.r, color.g, color.b, alpha)
+}
+
+pub(crate) fn glass_foreground_from_config(config: &ThemeConfig) -> Color {
+    config.colors.text
+}
+
+pub(crate) fn glass_dim_from_config(config: &ThemeConfig) -> Color {
+    config.colors.text_dim
+}
+
+pub(crate) fn glass_border_from_config(config: &ThemeConfig) -> Color {
+    let treatment = config.decorations.surface_treatment(ThemeSurface::Popup);
+    color_with_alpha(config.colors.border, treatment.frame_alpha)
+}
+
+pub(crate) fn accent_foreground_from_config(config: &ThemeConfig) -> Color {
+    let accent = config.colors.accent;
+    let lum = 0.299 * accent.r as f32 + 0.587 * accent.g as f32 + 0.114 * accent.b as f32;
+    if lum > 150.0 {
+        Color::rgb(0x05, 0x08, 0x0c)
+    } else {
+        Color::rgb(0xf6, 0xf9, 0xff)
+    }
+}
+
+pub(crate) fn surface_radius_from_config(config: &ThemeConfig, surface: ThemeSurface) -> i32 {
+    config.decorations.surface_radius(surface).round() as i32
+}
+
+fn radius_scale_from_config(config: &ThemeConfig) -> UiRadius {
+    let card = surface_radius_from_config(config, ThemeSurface::Popup);
+    let control = surface_radius_from_config(config, ThemeSurface::Control);
+    UiRadius {
+        none: 0,
+        sm: (control * 3 / 4).max(0),
+        md: control.max(0),
+        lg: surface_radius_from_config(config, ThemeSurface::Panel).max(0),
+        xl: card.max(0),
+    }
 }
 
 pub(crate) fn palette_from_config(config: &ThemeConfig) -> UiPalette {
@@ -32,9 +70,7 @@ pub(crate) fn palette_from_config(config: &ThemeConfig) -> UiPalette {
 
 pub(crate) fn glass_palette_from_config(config: &ThemeConfig) -> UiPalette {
     let mut palette = palette_from_config(config);
-    palette.text = color_from_config(GLASS_FOREGROUND);
-    palette.text_dim = color_from_config(GLASS_FOREGROUND_DIM);
-    palette.border = color_from_config(GLASS_BORDER);
+    palette.border = color_from_config(glass_border_from_config(config));
     palette
 }
 
@@ -42,7 +78,7 @@ pub(crate) fn theme_from_config(config: &ThemeConfig) -> UiTheme {
     UiTheme {
         palette: palette_from_config(config),
         spacing: UiSpacing::DEFAULT,
-        radius: UiRadius::METRO,
+        radius: radius_scale_from_config(config),
     }
 }
 
@@ -50,6 +86,6 @@ pub(crate) fn glass_theme_from_config(config: &ThemeConfig) -> UiTheme {
     UiTheme {
         palette: glass_palette_from_config(config),
         spacing: UiSpacing::DEFAULT,
-        radius: UiRadius::METRO,
+        radius: radius_scale_from_config(config),
     }
 }

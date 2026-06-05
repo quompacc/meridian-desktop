@@ -38,7 +38,7 @@ pub fn draw_network_popup(
     let (status_text, dot_color) = match state {
         NetworkState::Connected { .. } => ("Aktiv", colors.success),
         NetworkState::Disconnected => ("Aus", colors.error),
-        NetworkState::Offline => ("Nicht verfügbar", crate::ui::tokens::GLASS_FOREGROUND_DIM),
+        NetworkState::Offline => ("Nicht verfügbar", colors.text_dim),
     };
     draw_status_row(
         painter,

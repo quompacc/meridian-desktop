@@ -37,9 +37,7 @@ pub fn draw_audio_popup(
 
     let (status_text, dot_color) = match snapshot.service {
         AudioServiceState::Running => ("Aktiv", colors.success),
-        AudioServiceState::Unavailable => {
-            ("Nicht verfügbar", crate::ui::tokens::GLASS_FOREGROUND_DIM)
-        }
+        AudioServiceState::Unavailable => ("Nicht verfügbar", colors.text_dim),
     };
     draw_status_row(
         painter,

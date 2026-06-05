@@ -1,5 +1,7 @@
 use std::time::{Duration, Instant};
 
+use meridian_config::ThemeSurface;
+
 use smithay::backend::renderer::element::{
     render_elements, surface::render_elements_from_surface_tree,
     surface::WaylandSurfaceRenderElement, AsRenderElements, Wrap,
@@ -51,6 +53,26 @@ render_elements! {
     ClippedSurface=ClippedSurfaceRenderElement,
     Wallpaper=TextureRenderElement<GlesTexture>,
     Layer=WaylandSurfaceRenderElement<GlesRenderer>,
+}
+
+fn themed_layer_glass_info(
+    theme: &meridian_config::ThemeConfig,
+    rect: smithay::utils::Rectangle<i32, smithay::utils::Logical>,
+    surface: ThemeSurface,
+) -> super::glass::GlassTitlebarInfo {
+    let treatment = theme.decorations.surface_treatment(surface);
+    let tint = theme.glass_tint_color();
+    super::glass::GlassTitlebarInfo {
+        rect,
+        radius: [treatment.radius; 4],
+        tint: [
+            tint.r as f32 / 255.0,
+            tint.g as f32 / 255.0,
+            tint.b as f32 / 255.0,
+        ],
+        tint_amount: treatment.tint_amount,
+        blur: treatment.blur_radius,
+    }
 }
 
 /// Render the scene behind one glass placeholder into an offscreen texture.
@@ -369,33 +391,6 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
     let kms_node_path = drm.kms_node_path.clone();
     let kms_is_primary_node = drm.kms_is_primary_node;
 
-    // Drive the login->desktop compass zoom-out. The intro is armed at
-    // setup (the wallpaper already shows the compass at login size); start
-    // the countdown on the first committed frame, then shrink the compass
-    // to wallpaper size and settle onto the static image.
-    if state.wallpaper_manager.intro_active() {
-        const INTRO_SECS: f32 = 0.7;
-        const START_RF: f32 = 0.32;
-        const END_RF: f32 = 0.19;
-        if state.intro_start.is_none() && kms_first_commit_verified {
-            state.intro_start = Some(Instant::now());
-        }
-        if let Some(started) = state.intro_start {
-            let p = (started.elapsed().as_secs_f32() / INTRO_SECS).clamp(0.0, 1.0);
-            let eased = 1.0 - (1.0 - p).powi(3);
-            state
-                .wallpaper_manager
-                .set_intro_radius(START_RF + (END_RF - START_RF) * eased);
-            if p >= 1.0 {
-                state.wallpaper_manager.end_intro();
-                state.intro_start = None;
-            }
-            for out in outputs.iter_mut() {
-                out.needs_repaint = true;
-            }
-        }
-    }
-
     let pointer_location = state
         .seat
         .get_pointer()
@@ -674,6 +669,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
 
             let layer_glass_enabled = theme.decorations.glass && theme.decorations.glass_blur;
             if layer_glass_enabled {
+                let theme_config = &state.theme_manager.current().config;
                 // Liquid-glass panel: a blurred-scene backdrop behind the
                 // translucent panel island. Pushed last in the upper-layer block so
                 // it sits behind the panel surface but in front of windows. The
@@ -689,23 +685,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                         (pg.loc.x + 12, pg.loc.y + 16).into(),
                         ((pg.size.w - 24).max(1), 42).into(),
                     );
-                    let theme_config = &state.theme_manager.current().config;
-                    let surface = theme_config
-                        .decorations
-                        .glass_tint_color
-                        .unwrap_or(theme_config.colors.surface_alt);
-                    let blur = theme_config.decorations.glass_blur_radius;
-                    let info = super::glass::GlassTitlebarInfo {
-                        rect: island,
-                        radius: [12.0; 4],
-                        tint: [
-                            surface.r as f32 / 255.0,
-                            surface.g as f32 / 255.0,
-                            surface.b as f32 / 255.0,
-                        ],
-                        tint_amount: (theme_config.decorations.glass_tint * 0.35).clamp(0.0, 0.35),
-                        blur,
-                    };
+                    let info = themed_layer_glass_info(theme_config, island, ThemeSurface::Panel);
                     out.scratch_upper_layer_elements
                         .push(MeridianRenderElements::Glass(GlassElement::pending(
                             info, scale,
@@ -742,23 +722,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                         )
                             .into(),
                     );
-                    let theme_config = &state.theme_manager.current().config;
-                    let surface = theme_config
-                        .decorations
-                        .glass_tint_color
-                        .unwrap_or(theme_config.colors.surface_alt);
-                    let blur = theme_config.decorations.glass_blur_radius;
-                    let info = super::glass::GlassTitlebarInfo {
-                        rect: card,
-                        radius: [meridian_tokens::Radius::DEFAULT.lg as f32; 4],
-                        tint: [
-                            surface.r as f32 / 255.0,
-                            surface.g as f32 / 255.0,
-                            surface.b as f32 / 255.0,
-                        ],
-                        tint_amount: (theme_config.decorations.glass_tint * 0.45).clamp(0.0, 0.45),
-                        blur,
-                    };
+                    let info = themed_layer_glass_info(theme_config, card, ThemeSurface::Launcher);
                     out.scratch_upper_layer_elements
                         .push(MeridianRenderElements::Glass(GlassElement::pending(
                             info, scale,
@@ -780,34 +744,14 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                     const SUBMENU_GAP: i32 = 6;
                     const SUBMENU_W: i32 = 188;
                     const SUBMENU_H: i32 = 228;
-                    const RADIUS: f32 = meridian_tokens::Radius::DEFAULT.xl as f32;
-
                     let card_w = (menu_geo.size.w - 2 * PAD).max(1);
                     let card_h = (menu_geo.size.h - 2 * PAD).max(1);
-                    let theme_config = &state.theme_manager.current().config;
-                    let surface = theme_config
-                        .decorations
-                        .glass_tint_color
-                        .unwrap_or(theme_config.colors.surface_alt);
-                    let tint = [
-                        surface.r as f32 / 255.0,
-                        surface.g as f32 / 255.0,
-                        surface.b as f32 / 255.0,
-                    ];
-                    let tint_amount = (theme_config.decorations.glass_tint * 0.35).clamp(0.0, 0.35);
-                    let blur = theme_config.decorations.glass_blur_radius;
                     let mut push_menu_glass = |x: i32, y: i32, w: i32, h: i32| {
                         let card = smithay::utils::Rectangle::<i32, smithay::utils::Logical>::new(
                             (x, y).into(),
                             (w.max(1), h.max(1)).into(),
                         );
-                        let info = super::glass::GlassTitlebarInfo {
-                            rect: card,
-                            radius: [RADIUS; 4],
-                            tint,
-                            tint_amount,
-                            blur,
-                        };
+                        let info = themed_layer_glass_info(theme_config, card, ThemeSurface::Popup);
                         out.scratch_upper_layer_elements
                             .push(MeridianRenderElements::Glass(GlassElement::pending(
                                 info, scale,
@@ -846,22 +790,7 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
                         (popup_geo.loc.x + pad, popup_geo.loc.y + pad).into(),
                         (card_w, card_h).into(),
                     );
-                    let theme_config = &state.theme_manager.current().config;
-                    let surface = theme_config
-                        .decorations
-                        .glass_tint_color
-                        .unwrap_or(theme_config.colors.surface_alt);
-                    let info = super::glass::GlassTitlebarInfo {
-                        rect: card,
-                        radius: [14.0; 4],
-                        tint: [
-                            surface.r as f32 / 255.0,
-                            surface.g as f32 / 255.0,
-                            surface.b as f32 / 255.0,
-                        ],
-                        tint_amount: (theme_config.decorations.glass_tint * 0.38).clamp(0.0, 0.38),
-                        blur: (theme_config.decorations.glass_blur_radius * 0.45).max(2.0),
-                    };
+                    let info = themed_layer_glass_info(theme_config, card, ThemeSurface::Popup);
                     out.scratch_upper_layer_elements
                         .push(MeridianRenderElements::Glass(GlassElement::pending(
                             info, scale,

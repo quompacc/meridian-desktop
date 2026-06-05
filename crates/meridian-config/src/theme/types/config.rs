@@ -81,6 +81,24 @@ pub struct Decorations {
     pub glass_tint_color: Option<Color>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThemeSurface {
+    Panel,
+    Launcher,
+    Popup,
+    Modal,
+    Control,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SurfaceTreatment {
+    pub radius: f32,
+    pub tint_amount: f32,
+    pub blur_radius: f32,
+    pub fill_alpha: u8,
+    pub frame_alpha: u8,
+}
+
 impl Default for Decorations {
     fn default() -> Self {
         Self {
@@ -103,6 +121,63 @@ impl Default for Decorations {
             glass_tint_color: None,
         }
     }
+}
+
+impl Decorations {
+    pub fn surface_radius(&self, surface: ThemeSurface) -> f32 {
+        let base = self.corner_radius as f32;
+        if base <= 0.0 {
+            return 0.0;
+        }
+        match surface {
+            ThemeSurface::Panel | ThemeSurface::Launcher => base + 2.0,
+            ThemeSurface::Popup | ThemeSurface::Modal => base + 4.0,
+            ThemeSurface::Control => (base * 0.8).round().max(1.0),
+        }
+    }
+
+    pub fn surface_treatment(&self, surface: ThemeSurface) -> SurfaceTreatment {
+        if !self.glass {
+            return SurfaceTreatment {
+                radius: self.surface_radius(surface),
+                tint_amount: 1.0,
+                blur_radius: 0.0,
+                fill_alpha: 0xff,
+                frame_alpha: 0xff,
+            };
+        }
+
+        let tint_amount = match surface {
+            ThemeSurface::Panel => (self.glass_tint * 0.35).clamp(0.0, 0.35),
+            ThemeSurface::Launcher => (self.glass_tint * 0.45).clamp(0.0, 0.45),
+            ThemeSurface::Popup => (self.glass_tint * 0.38).clamp(0.0, 0.38),
+            ThemeSurface::Modal | ThemeSurface::Control => self.glass_tint.clamp(0.0, 1.0),
+        };
+        let blur_radius = if self.glass_blur {
+            match surface {
+                ThemeSurface::Popup => (self.glass_blur_radius * 0.45).max(2.0),
+                _ => self.glass_blur_radius.max(0.0),
+            }
+        } else {
+            0.0
+        };
+        let fill_scale = match surface {
+            ThemeSurface::Panel => 0.52,
+            _ => 1.0,
+        };
+
+        SurfaceTreatment {
+            radius: self.surface_radius(surface),
+            tint_amount,
+            blur_radius,
+            fill_alpha: alpha_byte(self.glass_alpha * fill_scale),
+            frame_alpha: alpha_byte(self.glass_frame_alpha),
+        }
+    }
+}
+
+fn alpha_byte(value: f32) -> u8 {
+    (value.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -205,9 +280,23 @@ pub struct ThemeConfig {
     pub wallpaper: Option<Wallpaper>,
 }
 
+impl ThemeConfig {
+    pub fn glass_tint_color(&self) -> Color {
+        self.decorations
+            .glass_tint_color
+            .unwrap_or(self.colors.surface_alt)
+    }
+
+    pub fn appearance_is_light(&self) -> bool {
+        let bg = self.colors.background;
+        let lum = 0.299 * bg.r as f32 + 0.587 * bg.g as f32 + 0.114 * bg.b as f32;
+        lum > 140.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Color, Cursor, Decorations, Fonts, ThemeColors, ThemeConfig};
+    use super::{Color, Cursor, Decorations, Fonts, ThemeColors, ThemeConfig, ThemeSurface};
 
     #[test]
     fn test_theme_colors_default_tokyo_night() {
@@ -286,6 +375,62 @@ mod tests {
         assert_eq!(config.decorations.shadow_alpha, 0.18);
         assert_eq!(config.decorations.shadow_offset_y, 0);
         assert_eq!(config.decorations.gap, 8);
+    }
+
+    #[test]
+    fn surface_treatment_uses_theme_radius_and_glass_alpha() {
+        let decorations = Decorations {
+            corner_radius: 10,
+            glass: true,
+            glass_alpha: 0.5,
+            glass_frame_alpha: 0.25,
+            glass_tint: 0.6,
+            glass_blur_radius: 12.0,
+            ..Decorations::default()
+        };
+
+        let modal = decorations.surface_treatment(ThemeSurface::Modal);
+        assert_eq!(modal.radius, 14.0);
+        assert_eq!(modal.fill_alpha, 128);
+        assert_eq!(modal.frame_alpha, 64);
+        assert_eq!(modal.tint_amount, 0.6);
+        assert_eq!(modal.blur_radius, 12.0);
+        assert_eq!(decorations.surface_radius(ThemeSurface::Control), 8.0);
+
+        let panel = decorations.surface_treatment(ThemeSurface::Panel);
+        assert_eq!(panel.radius, 12.0);
+        assert_eq!(panel.fill_alpha, 66);
+        assert!((panel.tint_amount - 0.21).abs() < 1e-6);
+
+        let popup = decorations.surface_treatment(ThemeSurface::Popup);
+        assert_eq!(popup.radius, 14.0);
+        assert!((popup.blur_radius - 5.4).abs() < 1e-6);
+    }
+
+    #[test]
+    fn surface_treatment_non_glass_is_opaque_without_blur() {
+        let decorations = Decorations {
+            corner_radius: 0,
+            glass: false,
+            glass_blur: true,
+            ..Decorations::default()
+        };
+
+        let popup = decorations.surface_treatment(ThemeSurface::Popup);
+        assert_eq!(popup.radius, 0.0);
+        assert_eq!(popup.fill_alpha, 0xff);
+        assert_eq!(popup.frame_alpha, 0xff);
+        assert_eq!(popup.tint_amount, 1.0);
+        assert_eq!(popup.blur_radius, 0.0);
+    }
+
+    #[test]
+    fn theme_config_appearance_tracks_background_luminance() {
+        let mut config = ThemeConfig::default();
+        config.colors.background = Color::rgb(0xf0, 0xf0, 0xf0);
+        assert!(config.appearance_is_light());
+        config.colors.background = Color::rgb(0x10, 0x18, 0x20);
+        assert!(!config.appearance_is_light());
     }
 
     #[test]

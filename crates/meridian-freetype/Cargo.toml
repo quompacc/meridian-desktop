@@ -1,0 +1,9 @@
+[package]
+name = "meridian-freetype"
+version.workspace = true
+edition = "2021"
+
+[dependencies]
+
+[dev-dependencies]
+meridian-tokens = { path = "../meridian-tokens" }

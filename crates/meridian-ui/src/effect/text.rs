@@ -1,28 +1,22 @@
-//! Text rendering via fontdue.
+//! Text rendering for Meridian UI surfaces.
 //!
-//! The Adwaita Sans Regular font is embedded at compile time. `ui_font()`
-//! parses it on first access (OnceLock) and hands out a `&'static fontdue::Font`
-//! thereafter.
-//!
-//! `paint_text` rasterizes each glyph on demand and alpha-blends it onto the
-//! canvas. Allocation per call (fontdue's rasterize returns a fresh Vec<u8>
-//! per glyph) — acceptable for the current low-frequency render path; a
-//! glyph-cache wrapper is a later optimization.
+//! FreeType is the primary rasterizer because it applies TrueType hinting for
+//! small UI text. Fontdue remains as the pure-Rust fallback and metrics parser.
 
-use std::sync::{OnceLock, RwLock};
+use std::sync::{Mutex, OnceLock, RwLock};
 
 use fontdue::{Font, FontSettings};
+use meridian_freetype::Font as FreeTypeFont;
 use tiny_skia::PixmapMut;
 
 use crate::style::Color;
 
 const UI_FONT_DATA: &[u8] = meridian_tokens::font::ADWAITA_SANS_REGULAR;
 
-/// Glyph coverage exponent (< 1.0 thickens strokes slightly). macOS-style text
-/// renders a touch heavier than the raw outline coverage; this "stem darkening"
-/// together with the gamma-correct blend below is what stops light text on dark
-/// backgrounds from looking thin and muddy.
-const COVERAGE_GAMMA: f32 = 0.76;
+// Keep glyph coverage unmodified. FreeType already applies grayscale coverage
+// and TrueType hinting; extra stem darkening makes dark text on light themes
+// look ragged on translucent surfaces.
+const COVERAGE_GAMMA: f32 = 1.0;
 
 #[inline]
 fn srgb_to_linear(c: f32) -> f32 {
@@ -98,6 +92,17 @@ pub fn blend_text_sample(px: &mut [u8], ink: TextInk, coverage: u8, rgb: [usize;
 
 static UI_FONT_DEFAULT: OnceLock<Font> = OnceLock::new();
 static UI_FONT_OVERRIDE: RwLock<Option<&'static Font>> = RwLock::new(None);
+static FREETYPE_FONT: OnceLock<Mutex<Option<FreeTypeFont>>> = OnceLock::new();
+
+fn freetype_font() -> &'static Mutex<Option<FreeTypeFont>> {
+    FREETYPE_FONT.get_or_init(|| Mutex::new(FreeTypeFont::from_static_bytes(UI_FONT_DATA)))
+}
+
+fn replace_freetype_font(bytes: &'static [u8]) {
+    if let Ok(mut font) = freetype_font().lock() {
+        *font = FreeTypeFont::from_static_bytes(bytes);
+    }
+}
 
 fn embedded_ui_font() -> &'static Font {
     UI_FONT_DEFAULT.get_or_init(|| {
@@ -123,8 +128,10 @@ pub fn ui_font() -> &'static Font {
 pub fn set_ui_font(bytes: &[u8]) -> bool {
     match Font::from_bytes(bytes, FontSettings::default()) {
         Ok(font) => {
+            let leaked_bytes: &'static [u8] = Box::leak(bytes.to_vec().into_boxed_slice());
             *UI_FONT_OVERRIDE.write().expect("ui font override poisoned") =
                 Some(Box::leak(Box::new(font)));
+            replace_freetype_font(leaked_bytes);
             true
         }
         Err(_) => false,
@@ -134,12 +141,21 @@ pub fn set_ui_font(bytes: &[u8]) -> bool {
 /// Drop any override, reverting to the embedded Adwaita Sans.
 pub fn clear_ui_font() {
     *UI_FONT_OVERRIDE.write().expect("ui font override poisoned") = None;
+    replace_freetype_font(UI_FONT_DATA);
 }
 
 pub fn measure_text(text: &str, size_px: f32) -> (i32, i32) {
     if text.is_empty() {
         return (0, 0);
     }
+    if let Ok(mut guard) = freetype_font().lock() {
+        if let Some(font) = guard.as_mut() {
+            if let Some(measured) = font.measure_text(text, size_px) {
+                return measured;
+            }
+        }
+    }
+
     let font = ui_font();
     let mut width: f32 = 0.0;
     let mut max_above: i32 = 0;
@@ -149,12 +165,8 @@ pub fn measure_text(text: &str, size_px: f32) -> (i32, i32) {
         width += metrics.advance_width;
         let above = (metrics.height as i32 + metrics.ymin).max(0);
         let below = (-metrics.ymin).max(0);
-        if above > max_above {
-            max_above = above;
-        }
-        if below > max_below {
-            max_below = below;
-        }
+        max_above = max_above.max(above);
+        max_below = max_below.max(below);
     }
     (width.round() as i32, max_above + max_below)
 }
@@ -180,6 +192,10 @@ pub fn paint_text(
     if text.is_empty() {
         return;
     }
+    if paint_text_freetype(canvas, text, x, baseline, size_px, color) {
+        return;
+    }
+
     let font = ui_font();
     let canvas_w = canvas.width() as i32;
     let canvas_h = canvas.height() as i32;
@@ -217,6 +233,60 @@ pub fn paint_text(
 
         pen_x += metrics.advance_width;
     }
+}
+
+fn paint_text_freetype(
+    canvas: &mut PixmapMut<'_>,
+    text: &str,
+    x: i32,
+    baseline: i32,
+    size_px: f32,
+    color: Color,
+) -> bool {
+    let Ok(mut guard) = freetype_font().lock() else {
+        return false;
+    };
+    let Some(font) = guard.as_mut() else {
+        return false;
+    };
+
+    let canvas_w = canvas.width() as i32;
+    let canvas_h = canvas.height() as i32;
+    let stride = canvas_w as usize * 4;
+    let data = canvas.data_mut();
+    let ink = TextInk::new(color);
+    let mut pen_x = x as f32;
+    let mut drew = false;
+
+    for ch in text.chars() {
+        let Some(glyph) = font.rasterize(ch, size_px) else {
+            return false;
+        };
+        let left = pen_x.round() as i32 + glyph.left;
+        let top = baseline - glyph.top;
+        for gy in 0..glyph.height {
+            let dy = top + gy as i32;
+            if dy < 0 || dy >= canvas_h {
+                continue;
+            }
+            for gx in 0..glyph.width {
+                let dx = left + gx as i32;
+                if dx < 0 || dx >= canvas_w {
+                    continue;
+                }
+                let alpha = glyph.bitmap[gy * glyph.width + gx];
+                if alpha == 0 {
+                    continue;
+                }
+                let idx = dy as usize * stride + dx as usize * 4;
+                blend_text_sample(&mut data[idx..idx + 4], ink, alpha, [0, 1, 2]);
+                drew = true;
+            }
+        }
+        pen_x += glyph.advance_x;
+    }
+
+    drew || text.chars().all(char::is_whitespace)
 }
 
 pub fn truncate_to_fit(text: &str, max_w: i32, font_size: f32) -> String {

@@ -4,8 +4,8 @@ surface = "#f4efe3"
 surface_alt = "#e3d9c4"
 accent = "#2f6299"
 accent_alt = "#244f7d"
-text = "#1e2b38"
-text_dim = "#5d6b78"
+text = "#07111c"
+text_dim = "#263746"
 border = "#c9bca0"
 error = "#9a4636"
 warning = "#8a6a30"
@@ -17,12 +17,20 @@ corner_radius = 10
 shadow = true
 shadow_radius = 20
 shadow_radius_top = 10
-shadow_alpha = 0.20
+shadow_alpha = 0.22
 shadow_offset_y = 3
 gap = 8
+glass = true
+glass_blur = true
+glass_blur_radius = 10
+glass_tint = 0.5
+glass_frame_alpha = 0.4
+glass_button_alpha = 0.45
+glass_alpha = 0.55
+glass_specular = 0.6
 
 [fonts]
-ui = "Adwaita Sans 11"
+ui = "Inter 11"
 
 [icons]
 theme = "Papirus"

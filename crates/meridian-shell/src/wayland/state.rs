@@ -264,7 +264,7 @@ fn resolve_shell_theme_from_config(
 ) -> Result<(String, ThemeConfig, Vec<String>), String> {
     let mut theme_manager = ThemeManager::new();
     let requested_theme = if config.general.theme.trim().is_empty() {
-        "default"
+        "meridian"
     } else {
         config.general.theme.trim()
     };
@@ -383,9 +383,6 @@ fn first_minimized_pinned_app_window_id(
 
 impl MeridianShell {
     pub(crate) fn tick_timer_interval(&self) -> Duration {
-        if !self.panel_intro_done {
-            return Duration::from_millis(16);
-        }
         if self.needs_fast_tick() {
             Duration::from_millis(250)
         } else {
@@ -430,9 +427,6 @@ impl MeridianShell {
                     self.draw_calendar_popup(qh, RepaintReason::Clock);
                 }
             }
-        }
-        if !self.panel_intro_done && self.panel_configured {
-            self.draw_panel(qh, crate::wayland::RepaintReason::Pointer);
         }
         self.maybe_log_repaint_stats(now);
         self.maybe_log_commit_stats(now);
@@ -2359,11 +2353,11 @@ mod tests {
     fn resolve_shell_theme_from_config_applies_cursor_and_wallpaper_overrides() {
         let config = MeridianConfig {
             general: GeneralConfig {
-                theme: "default".to_string(),
+                theme: "meridian".to_string(),
                 idle_timeout_secs: None,
             },
             cursor: Some(meridian_config::CursorConfig {
-                theme: "default".to_string(),
+                theme: "meridian".to_string(),
                 size: 30,
             }),
             wallpaper: Some(WallpaperConfig {
@@ -2376,7 +2370,7 @@ mod tests {
         let (_name, theme, _available) =
             resolve_shell_theme_from_config(&config).expect("resolve theme");
         assert_eq!(theme.cursor.size, 30);
-        assert_eq!(theme.cursor.theme, "default");
+        assert_eq!(theme.cursor.theme, "meridian");
         assert_eq!(
             theme.wallpaper.as_ref().map(|w| w.mode),
             Some(WallpaperMode::Tile)

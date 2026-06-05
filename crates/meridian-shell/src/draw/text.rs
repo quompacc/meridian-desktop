@@ -1,22 +1,21 @@
-//! Shell text rendering. The glyph source is fontdue, via the shared
-//! `meridian_ui::ui_font()` — the same engine the widget views use — so the
-//! whole shell rasterises through one library. Each glyph coverage sample is
-//! blended into the premultiplied BGRA `Painter` buffer through the shared
-//! `meridian_ui::blend_text_sample`, so popups and widgets use the identical
-//! gamma / stem-darkening blend.
+//! Shell text rendering. Glyphs are rasterized through FreeType so small UI
+//! text gets TrueType hinting before being blended into the premultiplied BGRA
+//! `Painter` buffer through `meridian_ui::blend_text_sample`.
 //!
-//! `TextRenderer` is now a thin handle carrying the pixel size. The font
-//! family in the theme string is not yet honoured (the embedded Adwaita Sans
-//! is always used); that lands with the theme-font work. Keeping the type and
-//! its `Option` plumbing avoids churning the popup call sites for this step.
+//! The theme font pattern is resolved through fontconfig when available;
+//! otherwise the embedded Adwaita Sans fallback is used.
 
 use meridian_config::Color;
-use meridian_ui::{blend_text_sample, ui_font, TextInk};
+use meridian_freetype::Font as FreeTypeFont;
+use meridian_ui::{blend_text_sample, TextInk};
+
+use crate::font_resolve;
 
 use super::painter::Painter;
 
 pub struct TextRenderer {
     size_px: f32,
+    font: FreeTypeFont,
 }
 
 impl TextRenderer {
@@ -25,8 +24,14 @@ impl TextRenderer {
     /// so the bitmap fallback in `Painter::text_clipped` only triggers when no
     /// renderer is present at all.
     pub fn new(_pattern: &str, pixels: u32) -> Option<Self> {
+        let font = font_resolve::read_theme_font_bytes(_pattern)
+            .and_then(|bytes| FreeTypeFont::from_static_bytes(Box::leak(bytes.into_boxed_slice())))
+            .or_else(|| {
+                FreeTypeFont::from_static_bytes(meridian_tokens::font::ADWAITA_SANS_REGULAR)
+            })?;
         Some(Self {
             size_px: pixels as f32,
+            font,
         })
     }
 
@@ -39,7 +44,6 @@ impl TextRenderer {
         max_w: i32,
         color: Color,
     ) -> bool {
-        let font = ui_font();
         let ink = TextInk::new(color);
         let (w, h) = (painter.width, painter.height);
         let end_x = x + max_w;
@@ -50,22 +54,22 @@ impl TextRenderer {
             if pen_x.round() as i32 >= end_x {
                 break;
             }
-            let (metrics, bitmap) = font.rasterize(ch, self.size_px);
-            let left = pen_x.round() as i32 + metrics.xmin;
-            // fontdue's ymin is the offset of the glyph bottom from the
-            // baseline; the top edge sits height+ymin above it.
-            let top = baseline - metrics.height as i32 - metrics.ymin;
-            for gy in 0..metrics.height {
+            let Some(glyph) = self.font.rasterize(ch, self.size_px) else {
+                return false;
+            };
+            let left = pen_x.round() as i32 + glyph.left;
+            let top = baseline - glyph.top;
+            for gy in 0..glyph.height {
                 let dy = top + gy as i32;
                 if dy < 0 || dy >= h {
                     continue;
                 }
-                for gx in 0..metrics.width {
+                for gx in 0..glyph.width {
                     let dx = left + gx as i32;
                     if dx < 0 || dx >= w {
                         continue;
                     }
-                    let alpha = bitmap[gy * metrics.width + gx];
+                    let alpha = glyph.bitmap[gy * glyph.width + gx];
                     if alpha == 0 {
                         continue;
                     }
@@ -75,19 +79,17 @@ impl TextRenderer {
                     drew = true;
                 }
             }
-            pen_x += metrics.advance_width;
+            pen_x += glyph.advance_x;
         }
 
         drew
     }
 
     pub fn measure_text(&mut self, text: &str) -> i32 {
-        let font = ui_font();
-        let mut width = 0.0f32;
-        for ch in text.chars() {
-            width += font.metrics(ch, self.size_px).advance_width;
-        }
-        width.round() as i32
+        self.font
+            .measure_text(text, self.size_px)
+            .map(|(width, _)| width)
+            .unwrap_or(0)
     }
 }
 

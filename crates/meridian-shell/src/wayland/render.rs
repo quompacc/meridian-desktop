@@ -177,25 +177,6 @@ impl MeridianShell {
             CommitSurfaceKind::Launcher => self.launcher_layer.commit(),
         }
     }
-
-    /// Eased progress (0..1) of the panel entrance; 1.0 once finished.
-    /// Starts the clock on the first call and latches done at the end.
-    fn panel_intro_progress(&mut self) -> f32 {
-        if self.panel_intro_done {
-            return 1.0;
-        }
-        let start = *self
-            .panel_intro_start
-            .get_or_insert_with(std::time::Instant::now);
-        let p = (start.elapsed().as_secs_f32() / crate::PANEL_INTRO_SECS).clamp(0.0, 1.0);
-        if p >= 1.0 {
-            self.panel_intro_start = None;
-            self.panel_intro_done = true;
-            return 1.0;
-        }
-        1.0 - (1.0 - p).powi(3)
-    }
-
     pub(crate) fn draw_panel(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
         debug!(
             "draw_panel: reason={:?} configured={} width={} panel_dirty={} launcher_open={} commit_expected={}",
@@ -216,9 +197,6 @@ impl MeridianShell {
         }
         self.repaint_stats.record_panel(reason);
 
-        let intro_progress = self.panel_intro_progress();
-        let intro_active = intro_progress < 1.0;
-
         let panel_active_workspace = self.panel_active_workspace();
         let panel_window_entries = self.panel_window_entries(panel_active_workspace);
         let width = self.width;
@@ -229,7 +207,7 @@ impl MeridianShell {
             self.last_clock.clone()
         };
         let signature = self.panel_render_signature(width, height, panel_active_workspace, &clock);
-        if !intro_active && self.panel_last_signature.as_ref() == Some(&signature) {
+        if self.panel_last_signature.as_ref() == Some(&signature) {
             self.render_stats.panel.skips += 1;
             debug!(
                 "draw_panel skipped: reason={:?} commit=no signature_unchanged=true",
@@ -315,7 +293,6 @@ impl MeridianShell {
                 &self.theme,
                 &state_fn,
                 &mut self.panel_state.clicks,
-                intro_progress,
             );
             if self.workspace_indicator_dirty {
                 tracing::debug!(
@@ -482,6 +459,10 @@ impl MeridianShell {
                     card_h as i32,
                     *panel,
                     border,
+                    crate::ui::tokens::surface_radius_from_config(
+                        &self.theme,
+                        meridian_config::ThemeSurface::Popup,
+                    ),
                 );
             }
         }
@@ -508,7 +489,17 @@ impl MeridianShell {
                 return;
             };
             crate::popup_card::paint_card_panels_with_shadow(
-                canvas, surface_w, surface_h, card_w, card_h, &card_buf, &panels,
+                canvas,
+                surface_w,
+                surface_h,
+                card_w,
+                card_h,
+                &card_buf,
+                &panels,
+                crate::ui::tokens::surface_radius_from_config(
+                    &self.theme,
+                    meridian_config::ThemeSurface::Popup,
+                ),
             );
             if let Err(err) = buf.attach_to(self.desktop_menu_layer.wl_surface()) {
                 warn!("desktop menu buffer attach failed: {}", err);
@@ -987,7 +978,7 @@ impl MeridianShell {
                             w: x1 - x0,
                             h: weekday_h,
                         },
-                        crate::ui::tokens::GLASS_FOREGROUND_DIM,
+                        crate::ui::tokens::glass_dim_from_config(&self.theme),
                     );
                 }
                 let grid_y = weekday_y + weekday_h + 6;
@@ -1026,14 +1017,14 @@ impl MeridianShell {
                                 &self.font,
                                 &day_text,
                                 cell_rect,
-                                crate::ui::tokens::ACCENT_FOREGROUND,
+                                crate::ui::tokens::accent_foreground_from_config(&self.theme),
                             );
                         } else {
                             painter.text_centered(
                                 &self.font,
                                 &day_text,
                                 cell_rect,
-                                crate::ui::tokens::GLASS_FOREGROUND,
+                                crate::ui::tokens::glass_foreground_from_config(&self.theme),
                             );
                         }
                     }
@@ -1054,7 +1045,7 @@ impl MeridianShell {
                     &self.font,
                     &time_text,
                     text_rect,
-                    crate::ui::tokens::GLASS_FOREGROUND,
+                    crate::ui::tokens::glass_foreground_from_config(&self.theme),
                 );
             }
         }
@@ -1062,7 +1053,10 @@ impl MeridianShell {
             &mut card_buf,
             card_w as usize,
             card_h as usize,
-            crate::popup_card::CARD_RADIUS,
+            crate::ui::tokens::surface_radius_from_config(
+                &self.theme,
+                meridian_config::ThemeSurface::Popup,
+            ),
         );
 
         // Now obtain the SHM surface buffer and composite card + shadow into it.
@@ -1088,7 +1082,16 @@ impl MeridianShell {
                 return;
             };
             crate::popup_card::paint_card_with_shadow(
-                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
+                canvas,
+                surface_w,
+                surface_h,
+                card_w,
+                card_h,
+                &card_buf,
+                crate::ui::tokens::surface_radius_from_config(
+                    &self.theme,
+                    meridian_config::ThemeSurface::Popup,
+                ),
             );
             if let Err(err) = buf.attach_to(self.calendar_layer.wl_surface()) {
                 warn!("calendar popup buffer attach failed: {}", err);
@@ -1146,7 +1149,10 @@ impl MeridianShell {
             &mut card_buf,
             card_w as usize,
             card_h as usize,
-            crate::popup_card::CARD_RADIUS,
+            crate::ui::tokens::surface_radius_from_config(
+                &self.theme,
+                meridian_config::ThemeSurface::Popup,
+            ),
         );
 
         let stride = buffer::shm_buffer_stride(surface_w);
@@ -1171,7 +1177,16 @@ impl MeridianShell {
                 return;
             };
             crate::popup_card::paint_card_with_shadow(
-                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
+                canvas,
+                surface_w,
+                surface_h,
+                card_w,
+                card_h,
+                &card_buf,
+                crate::ui::tokens::surface_radius_from_config(
+                    &self.theme,
+                    meridian_config::ThemeSurface::Popup,
+                ),
             );
             if let Err(err) = buf.attach_to(self.workspace_layer.wl_surface()) {
                 warn!("workspace popup buffer attach failed: {}", err);
@@ -1222,7 +1237,10 @@ impl MeridianShell {
             &mut card_buf,
             card_w as usize,
             card_h as usize,
-            crate::popup_card::CARD_RADIUS,
+            crate::ui::tokens::surface_radius_from_config(
+                &self.theme,
+                meridian_config::ThemeSurface::Popup,
+            ),
         );
 
         let stride = buffer::shm_buffer_stride(surface_w);
@@ -1247,7 +1265,16 @@ impl MeridianShell {
                 return;
             };
             crate::popup_card::paint_card_with_shadow(
-                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
+                canvas,
+                surface_w,
+                surface_h,
+                card_w,
+                card_h,
+                &card_buf,
+                crate::ui::tokens::surface_radius_from_config(
+                    &self.theme,
+                    meridian_config::ThemeSurface::Popup,
+                ),
             );
             if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {
                 warn!("network popup buffer attach failed: {}", err);
@@ -1300,7 +1327,10 @@ impl MeridianShell {
             &mut card_buf,
             card_w as usize,
             card_h as usize,
-            crate::popup_card::CARD_RADIUS,
+            crate::ui::tokens::surface_radius_from_config(
+                &self.theme,
+                meridian_config::ThemeSurface::Popup,
+            ),
         );
 
         let stride = buffer::shm_buffer_stride(surface_w);
@@ -1325,7 +1355,16 @@ impl MeridianShell {
                 return;
             };
             crate::popup_card::paint_card_with_shadow(
-                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
+                canvas,
+                surface_w,
+                surface_h,
+                card_w,
+                card_h,
+                &card_buf,
+                crate::ui::tokens::surface_radius_from_config(
+                    &self.theme,
+                    meridian_config::ThemeSurface::Popup,
+                ),
             );
             if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {
                 warn!("audio popup buffer attach failed: {}", err);
@@ -1386,7 +1425,10 @@ impl MeridianShell {
             &mut card_buf,
             card_w as usize,
             card_h as usize,
-            crate::popup_card::CARD_RADIUS,
+            crate::ui::tokens::surface_radius_from_config(
+                &self.theme,
+                meridian_config::ThemeSurface::Popup,
+            ),
         );
 
         let stride = buffer::shm_buffer_stride(surface_w);
@@ -1411,7 +1453,16 @@ impl MeridianShell {
                 return;
             };
             crate::popup_card::paint_card_with_shadow(
-                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
+                canvas,
+                surface_w,
+                surface_h,
+                card_w,
+                card_h,
+                &card_buf,
+                crate::ui::tokens::surface_radius_from_config(
+                    &self.theme,
+                    meridian_config::ThemeSurface::Popup,
+                ),
             );
             if let Err(err) = buf.attach_to(self.network_layer.wl_surface()) {
                 warn!("SNI menu buffer attach failed: {}", err);
@@ -1466,7 +1517,10 @@ impl MeridianShell {
             &mut card_buf,
             card_w as usize,
             card_h as usize,
-            crate::popup_card::CARD_RADIUS,
+            crate::ui::tokens::surface_radius_from_config(
+                &self.theme,
+                meridian_config::ThemeSurface::Popup,
+            ),
         );
 
         let stride = buffer::shm_buffer_stride(surface_w);
@@ -1491,7 +1545,16 @@ impl MeridianShell {
                 return;
             };
             crate::popup_card::paint_card_with_shadow(
-                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
+                canvas,
+                surface_w,
+                surface_h,
+                card_w,
+                card_h,
+                &card_buf,
+                crate::ui::tokens::surface_radius_from_config(
+                    &self.theme,
+                    meridian_config::ThemeSurface::Popup,
+                ),
             );
             if let Err(err) = buf.attach_to(self.notification_layer.wl_surface()) {
                 warn!("notification buffer attach failed: {}", err);
@@ -1545,7 +1608,10 @@ impl MeridianShell {
             &mut card_buf,
             card_w as usize,
             card_h as usize,
-            crate::popup_card::CARD_RADIUS,
+            crate::ui::tokens::surface_radius_from_config(
+                &self.theme,
+                meridian_config::ThemeSurface::Popup,
+            ),
         );
 
         let stride = buffer::shm_buffer_stride(surface_w);
@@ -1570,7 +1636,16 @@ impl MeridianShell {
                 return;
             };
             crate::popup_card::paint_card_with_shadow(
-                canvas, surface_w, surface_h, card_w, card_h, &card_buf,
+                canvas,
+                surface_w,
+                surface_h,
+                card_w,
+                card_h,
+                &card_buf,
+                crate::ui::tokens::surface_radius_from_config(
+                    &self.theme,
+                    meridian_config::ThemeSurface::Popup,
+                ),
             );
             if let Err(err) = buf.attach_to(self.thumbnail_layer.wl_surface()) {
                 warn!("thumbnail buffer attach failed: {}", err);
