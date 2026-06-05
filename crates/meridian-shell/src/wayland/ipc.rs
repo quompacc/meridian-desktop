@@ -44,7 +44,23 @@ impl IpcClient {
     pub(crate) fn reconnect(&mut self) {
         self.last_attempt = Instant::now();
         match UnixStream::connect(meridian_ipc::socket_path()) {
-            Ok(stream) => {
+            Ok(mut stream) => {
+                let Some(auth) = shell_auth_command() else {
+                    warn!(
+                        "meridian IPC auth token missing; shell will not connect to compositor control socket"
+                    );
+                    let _ = stream.shutdown(Shutdown::Both);
+                    return;
+                };
+                match meridian_ipc::encode_command(&auth).and_then(|bytes| stream.write_all(&bytes))
+                {
+                    Ok(()) => {}
+                    Err(err) => {
+                        warn!("failed to authenticate meridian IPC client: {}", err);
+                        let _ = stream.shutdown(Shutdown::Both);
+                        return;
+                    }
+                }
                 if let Err(err) = stream.set_nonblocking(true) {
                     warn!("failed to set meridian IPC nonblocking: {}", err);
                 }
@@ -135,6 +151,16 @@ impl IpcClient {
             let _ = stream.shutdown(Shutdown::Both);
         }
     }
+}
+
+fn shell_auth_command() -> Option<ShellCommand> {
+    std::env::var(meridian_ipc::IPC_TOKEN_ENV)
+        .ok()
+        .filter(|token| !token.is_empty())
+        .map(|token| ShellCommand::Authenticate {
+            role: "shell".to_string(),
+            token,
+        })
 }
 
 fn parse_event_line(line: &str) -> Option<ShellEvent> {

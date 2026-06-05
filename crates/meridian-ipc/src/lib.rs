@@ -3,6 +3,7 @@ use std::{env, io, path::PathBuf};
 use serde::{Deserialize, Serialize};
 
 pub const SOCKET_NAME: &str = "meridian.sock";
+pub const IPC_TOKEN_ENV: &str = "MERIDIAN_IPC_TOKEN";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WindowSnapshotEntry {
@@ -266,6 +267,10 @@ pub enum ShellEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum ShellCommand {
+    Authenticate {
+        role: String,
+        token: String,
+    },
     SwitchWorkspace {
         workspace: u8,
     },

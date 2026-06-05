@@ -1,7 +1,7 @@
 use std::{env, path::Path, process::Command};
 
 use meridian_config::MeridianConfig;
-use meridian_ipc::{ShellCommand, ShellEvent};
+use meridian_ipc::{ScreenshotBridgeError, ScreenshotBridgeResult, ShellCommand, ShellEvent};
 use smithay::utils::SERIAL_COUNTER;
 use smithay::wayland::seat::WaylandFocus;
 
@@ -48,9 +48,8 @@ impl MeridianState {
                         .push(crate::state::PendingScreenshotRequest { client_id, request });
                 }
                 super::screenshot::ScreenshotBridgeOutcome::AwaitConsent(request) => {
-                    // Hold the request and ask the shell to show a consent
-                    // modal. The user's answer returns as a
-                    // ScreenshotConsentResponse shell command.
+                    // Hold the request and ask the authenticated shell to show a
+                    // consent modal. The answer returns as a shell command.
                     let app_id = request.metadata.requester.clone().unwrap_or_default();
                     tracing::info!(
                         "screenshot bridge needs consent: request_id={} app_id={:?}",
@@ -59,13 +58,16 @@ impl MeridianState {
                     );
                     self.pending_screenshot_consent
                         .push(crate::state::PendingScreenshotRequest { client_id, request });
-                    self.ipc
+                    let recipients = self
+                        .ipc
                         .broadcast(&ShellEvent::ScreenshotConsentRequest { request_id, app_id });
+                    if recipients == 0 {
+                        self.reject_pending_screenshot_consent_without_shell();
+                    }
                 }
                 super::screenshot::ScreenshotBridgeOutcome::AwaitRegionPick(request) => {
-                    // Hold the request and ask the shell to show the region
-                    // picker; the picked region (or cancel) returns as a
-                    // ScreenshotRegionResponse shell command.
+                    // Hold the request and ask the authenticated shell to show
+                    // the region picker. The answer returns as a shell command.
                     let app_id = request.metadata.requester.clone().unwrap_or_default();
                     tracing::info!(
                         "screenshot bridge needs region pick: request_id={} app_id={:?}",
@@ -74,8 +76,12 @@ impl MeridianState {
                     );
                     self.pending_screenshot_region
                         .push(crate::state::PendingScreenshotRequest { client_id, request });
-                    self.ipc
+                    let recipients = self
+                        .ipc
                         .broadcast(&ShellEvent::ScreenshotRegionRequest { request_id, app_id });
+                    if recipients == 0 {
+                        self.reject_pending_screenshot_region_without_shell();
+                    }
                 }
                 super::screenshot::ScreenshotBridgeOutcome::Respond(result) => {
                     tracing::info!(
@@ -92,6 +98,9 @@ impl MeridianState {
 
     fn handle_shell_command(&mut self, command: ShellCommand) {
         match command {
+            ShellCommand::Authenticate { .. } => {
+                tracing::debug!("ignoring IPC authentication command after server-side handling");
+            }
             ShellCommand::SwitchWorkspace { workspace } => {
                 let idx = ipc_workspace_to_index(workspace);
                 self.switch_workspace(idx);
@@ -178,6 +187,44 @@ impl MeridianState {
                 self.resolve_screenshot_region(&request_id, region);
             }
         }
+    }
+
+    fn reject_pending_screenshot_consent_without_shell(&mut self) {
+        let Some(pending) = self.pending_screenshot_consent.pop() else {
+            return;
+        };
+        tracing::warn!(
+            request_id = %pending.request.request_id,
+            "screenshot consent request rejected: no authenticated shell IPC client"
+        );
+        self.ipc.send_screenshot_bridge_response(
+            pending.client_id,
+            pending.request.request_id,
+            ScreenshotBridgeResult::Error {
+                error: ScreenshotBridgeError::CompositorUnavailable(
+                    "shell IPC client unavailable".to_string(),
+                ),
+            },
+        );
+    }
+
+    fn reject_pending_screenshot_region_without_shell(&mut self) {
+        let Some(pending) = self.pending_screenshot_region.pop() else {
+            return;
+        };
+        tracing::warn!(
+            request_id = %pending.request.request_id,
+            "screenshot region request rejected: no authenticated shell IPC client"
+        );
+        self.ipc.send_screenshot_bridge_response(
+            pending.client_id,
+            pending.request.request_id,
+            ScreenshotBridgeResult::Error {
+                error: ScreenshotBridgeError::CompositorUnavailable(
+                    "shell IPC client unavailable".to_string(),
+                ),
+            },
+        );
     }
 
     /// Apply the user's region pick to a held screenshot request: `Some(region)`

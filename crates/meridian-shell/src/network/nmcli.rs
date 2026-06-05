@@ -1,4 +1,7 @@
-use std::process::Command;
+use std::{
+    io::Write,
+    process::{Command, Stdio},
+};
 
 use super::{ConnectionKind, NetworkState};
 
@@ -242,7 +245,7 @@ pub(crate) fn activate_connection_args(name: &str) -> Vec<String> {
 /// bringing a link up can block for seconds (DHCP, auth) and must never stall
 /// the single-threaded shell event loop. Best-effort: logs on failure.
 pub fn activate_connection(name: &str) {
-    run_nmcli_background(activate_connection_args(name));
+    run_nmcli_background(NmcliInvocation::args(activate_connection_args(name)));
 }
 
 /// Scan for Wi-Fi networks (read-only). Best-effort: empty list if nmcli is
@@ -308,47 +311,103 @@ pub(crate) fn parse_wifi_networks(output: &str) -> Vec<WifiNetwork> {
     networks
 }
 
-/// Build the argv to connect to a Wi-Fi network. With `password`, appends
-/// `password <pw>`; without, relies on stored credentials or an open network.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NmcliInvocation {
+    args: Vec<String>,
+    stdin: Option<String>,
+}
+
+impl NmcliInvocation {
+    fn args(args: Vec<String>) -> Self {
+        Self { args, stdin: None }
+    }
+}
+
+/// Build the nmcli invocation to connect to a Wi-Fi network. Passwords are
+/// supplied through stdin to nmcli --ask, never through argv.
 /// Pure for unit testing.
-pub(crate) fn connect_wifi_args(ssid: &str, password: Option<&str>) -> Vec<String> {
-    let mut args = vec![
+pub(crate) fn connect_wifi_invocation(ssid: &str, password: Option<&str>) -> NmcliInvocation {
+    let mut args = Vec::new();
+    let stdin = password.map(|pw| format!("{pw}\n"));
+    if stdin.is_some() {
+        args.push("--ask".to_string());
+    }
+    args.extend([
         "device".to_string(),
         "wifi".to_string(),
         "connect".to_string(),
         ssid.to_string(),
-    ];
-    if let Some(pw) = password {
-        args.push("password".to_string());
-        args.push(pw.to_string());
-    }
-    args
+    ]);
+    NmcliInvocation { args, stdin }
 }
 
-/// Connect to a Wi-Fi network on a background thread (the connect blocks for
-/// seconds on association/DHCP/auth and must never stall the event loop).
-/// Best-effort: logs on failure. NOTE: the password is passed as a process
-/// argument, briefly visible in the process table — acceptable for a local
-/// single-user desktop, matching how `nmcli` is normally invoked.
+/// Connect to a Wi-Fi network on a background thread. Passwords are piped to
+/// nmcli stdin so they do not appear in the process table or warning logs.
 pub fn connect_wifi(ssid: &str, password: Option<&str>) {
-    run_nmcli_background(connect_wifi_args(ssid, password));
+    run_nmcli_background(connect_wifi_invocation(ssid, password));
 }
 
 /// Run nmcli with owned args on a detached thread, logging non-zero/spawn
 /// failures. Shared by the activate/connect actions.
-fn run_nmcli_background(args: Vec<String>) {
+fn run_nmcli_background(invocation: NmcliInvocation) {
     std::thread::spawn(move || {
-        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        match Command::new("nmcli")
-            .env("LC_ALL", "C")
-            .args(&arg_refs)
-            .status()
-        {
+        let mut command = Command::new("nmcli");
+        command.env("LC_ALL", "C").args(&invocation.args);
+        if invocation.stdin.is_some() {
+            command.stdin(Stdio::piped());
+        }
+
+        let status = if let Some(stdin_body) = invocation.stdin {
+            match command.spawn() {
+                Ok(mut child) => {
+                    if let Some(mut stdin) = child.stdin.take() {
+                        if let Err(err) = stdin.write_all(stdin_body.as_bytes()) {
+                            tracing::warn!(
+                                "failed to write nmcli stdin for {:?}: {}",
+                                redact_nmcli_args(&invocation.args),
+                                err
+                            );
+                        }
+                    }
+                    child.wait()
+                }
+                Err(err) => Err(err),
+            }
+        } else {
+            command.status()
+        };
+
+        match status {
             Ok(status) if status.success() => {}
-            Ok(status) => tracing::warn!("nmcli {:?} exited with {}", args, status),
-            Err(err) => tracing::warn!("failed to run nmcli {:?}: {}", args, err),
+            Ok(status) => tracing::warn!(
+                "nmcli {:?} exited with {}",
+                redact_nmcli_args(&invocation.args),
+                status
+            ),
+            Err(err) => tracing::warn!(
+                "failed to run nmcli {:?}: {}",
+                redact_nmcli_args(&invocation.args),
+                err
+            ),
         }
     });
+}
+
+fn redact_nmcli_args(args: &[String]) -> Vec<String> {
+    let mut out = Vec::with_capacity(args.len());
+    let mut redact_next = false;
+    for arg in args {
+        if redact_next {
+            out.push("<redacted>".to_string());
+            redact_next = false;
+            continue;
+        }
+        out.push(arg.clone());
+        if arg == "password" || arg == "passwd-file" {
+            redact_next = true;
+        }
+    }
+    out
 }
 
 fn run_nmcli(args: &[&str]) -> Option<String> {
@@ -409,8 +468,8 @@ fn parse_wifi_signal_from_scan(output: &str) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::{
-        activate_connection_args, connect_wifi_args, parse_saved_connections, parse_state,
-        parse_wifi_networks, parse_wifi_signal_from_scan, NetworkController,
+        activate_connection_args, connect_wifi_invocation, parse_saved_connections, parse_state,
+        parse_wifi_networks, parse_wifi_signal_from_scan, redact_nmcli_args, NetworkController,
     };
     use crate::network::{ConnectionKind, NetworkState};
 
@@ -539,14 +598,49 @@ mod tests {
     }
 
     #[test]
-    fn connect_wifi_args_with_and_without_password() {
+    fn connect_wifi_invocation_uses_stdin_for_passwords() {
         assert_eq!(
-            connect_wifi_args("Cafe", None),
-            vec!["device", "wifi", "connect", "Cafe"]
+            connect_wifi_invocation("Cafe", None),
+            super::NmcliInvocation {
+                args: vec!["device", "wifi", "connect", "Cafe"]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                stdin: None,
+            }
         );
         assert_eq!(
-            connect_wifi_args("Home", Some("s3cret")),
-            vec!["device", "wifi", "connect", "Home", "password", "s3cret"]
+            connect_wifi_invocation("Home", Some("s3cret")),
+            super::NmcliInvocation {
+                args: vec!["--ask", "device", "wifi", "connect", "Home"]
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+                stdin: Some("s3cret\n".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn redact_nmcli_args_hides_password_values() {
+        let args = vec![
+            "device".to_string(),
+            "wifi".to_string(),
+            "connect".to_string(),
+            "Home".to_string(),
+            "password".to_string(),
+            "s3cret".to_string(),
+        ];
+        assert_eq!(
+            redact_nmcli_args(&args),
+            vec![
+                "device",
+                "wifi",
+                "connect",
+                "Home",
+                "password",
+                "<redacted>"
+            ]
         );
     }
 

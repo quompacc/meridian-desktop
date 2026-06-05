@@ -28,6 +28,8 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
+use std::time::Duration;
 
 use zeroize::Zeroizing;
 
@@ -36,6 +38,7 @@ const HELPER_PATHS: &[&str] = &[
     "/usr/libexec/polkit-agent-helper-1",
     "/usr/lib/policykit-1/polkit-agent-helper-1",
 ];
+const HELPER_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
 fn find_helper() -> Option<&'static str> {
     HELPER_PATHS
@@ -57,7 +60,7 @@ pub fn authenticate_via_helper(username: &str, cookie: &str, password: &Zeroizin
         .arg(username)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()
     {
         Ok(c) => c,
@@ -95,27 +98,57 @@ pub fn authenticate_via_helper(username: &str, cookie: &str, password: &Zeroizin
         }
     };
     let mut stdin = child.stdin.take().expect("piped stdin");
-    let mut reader = BufReader::new(stdout);
+    let (line_tx, line_rx) = mpsc::channel::<Result<Option<String>, String>>();
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        loop {
+            let mut line = String::new();
+            match reader.read_line(&mut line) {
+                Ok(0) => {
+                    let _ = line_tx.send(Ok(None));
+                    break;
+                }
+                Ok(_) => {
+                    if line_tx.send(Ok(Some(line))).is_err() {
+                        break;
+                    }
+                }
+                Err(err) => {
+                    let _ = line_tx.send(Err(err.to_string()));
+                    break;
+                }
+            }
+        }
+    });
     let mut password_sent = false;
 
     loop {
-        let mut line = String::new();
-        match reader.read_line(&mut line) {
-            Ok(0) => {
+        let line = match line_rx.recv_timeout(HELPER_IDLE_TIMEOUT) {
+            Ok(Ok(Some(line))) => line,
+            Ok(Ok(None)) => {
                 tracing::warn!("polkit-agent-helper-1 closed stdout without SUCCESS/FAILURE");
                 break;
             }
-            Ok(_) => {}
-            Err(e) => {
-                tracing::error!(error = %e, "read from helper failed");
+            Ok(Err(err)) => {
+                tracing::error!(error = %err, "read from helper failed");
                 break;
             }
-        }
-        let trimmed = line.trim_end_matches(['\r', '\n']);
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                tracing::warn!(
+                    timeout_secs = HELPER_IDLE_TIMEOUT.as_secs(),
+                    "polkit-agent-helper-1 timed out waiting for PAM conversation"
+                );
+                break;
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                tracing::warn!("polkit-agent-helper-1 reader thread stopped");
+                break;
+            }
+        };
+        let trimmed = line.trim_end_matches(|c| c == char::from(13) || c == char::from(10));
         tracing::trace!(line = %trimmed, "helper >");
 
         if let Some(_prompt) = trimmed.strip_prefix("PAM_PROMPT_ECHO_OFF ") {
-            // password prompt
             if password_sent {
                 tracing::debug!("helper asked for a second ECHO_OFF; sending empty");
                 let _ = writeln!(stdin);

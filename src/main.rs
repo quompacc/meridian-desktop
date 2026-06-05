@@ -21,6 +21,7 @@ use tracing::{info, warn};
 const SHELL_RESTART_MIN_DELAY: Duration = Duration::from_secs(2);
 const SHELL_RESTART_MAX_DELAY: Duration = Duration::from_secs(30);
 const SHELL_STABLE_AFTER: Duration = Duration::from_secs(10);
+const IPC_TOKEN_ENV: &str = "MERIDIAN_IPC_TOKEN";
 
 struct ShellWatchdog {
     child: Option<Child>,
@@ -29,10 +30,11 @@ struct ShellWatchdog {
     shutting_down: bool,
     wayland_display: String,
     shell_binary: PathBuf,
+    ipc_token: String,
 }
 
 impl ShellWatchdog {
-    fn new(wayland_display: String) -> Self {
+    fn new(wayland_display: String, ipc_token: String) -> Self {
         let shell_binary = find_shell_binary();
         info!("meridian-shell binary: {:?}", shell_binary);
         Self {
@@ -42,6 +44,7 @@ impl ShellWatchdog {
             shutting_down: false,
             wayland_display,
             shell_binary,
+            ipc_token,
         }
     }
 
@@ -55,6 +58,7 @@ impl ShellWatchdog {
         );
         match Command::new(&self.shell_binary)
             .env("WAYLAND_DISPLAY", &self.wayland_display)
+            .env(IPC_TOKEN_ENV, &self.ipc_token)
             .env(
                 "XDG_RUNTIME_DIR",
                 std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
@@ -204,7 +208,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     if !shell_disabled {
-        let mut watchdog = ShellWatchdog::new(socket_name);
+        let mut watchdog = ShellWatchdog::new(socket_name, state.ipc.auth_token().to_string());
         watchdog.start();
         event_loop.handle().insert_source(
             Timer::from_duration(Duration::from_secs(2)),

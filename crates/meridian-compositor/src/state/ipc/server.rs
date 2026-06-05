@@ -23,6 +23,7 @@ pub struct IpcServer {
     next_client_id: u64,
     socket_path: Option<PathBuf>,
     socket_identity: Option<SocketIdentity>,
+    auth_token: String,
 }
 
 pub struct IpcPoll {
@@ -41,6 +42,13 @@ struct IpcClient {
     stream: UnixStream,
     buffer: Vec<u8>,
     alive: bool,
+    role: IpcClientRole,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IpcClientRole {
+    Public,
+    Shell,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +60,7 @@ struct SocketIdentity {
 impl IpcServer {
     pub fn new() -> Self {
         let path = meridian_ipc::socket_path();
+        let auth_token = generate_ipc_auth_token();
         if path.exists() {
             if let Err(err) = fs::remove_file(&path) {
                 tracing::warn!("failed to remove stale IPC socket {:?}: {}", path, err);
@@ -85,7 +94,12 @@ impl IpcServer {
             next_client_id: 1,
             socket_path,
             socket_identity,
+            auth_token,
         }
+    }
+
+    pub fn auth_token(&self) -> &str {
+        &self.auth_token
     }
 
     pub fn poll(&mut self) -> IpcPoll {
@@ -111,6 +125,7 @@ impl IpcServer {
                             stream,
                             buffer: Vec::new(),
                             alive: true,
+                            role: IpcClientRole::Public,
                         });
                         accepted_clients += 1;
                     }
@@ -164,7 +179,34 @@ impl IpcServer {
                 let line = String::from_utf8_lossy(&line);
                 let line = line.trim();
                 match meridian_ipc::decode_command(line) {
-                    Ok(command) => commands.push(command),
+                    Ok(ShellCommand::Authenticate { role, token }) => {
+                        if role == "shell" && token == self.auth_token {
+                            client.role = IpcClientRole::Shell;
+                            tracing::info!(
+                                client_id = client.id,
+                                "IPC client authenticated as shell"
+                            );
+                        } else {
+                            tracing::warn!(
+                                client_id = client.id,
+                                role = %role,
+                                "rejecting IPC client authentication"
+                            );
+                            client.alive = false;
+                            break;
+                        }
+                    }
+                    Ok(command) => {
+                        if client.role == IpcClientRole::Shell {
+                            commands.push(command);
+                        } else {
+                            tracing::warn!(
+                                client_id = client.id,
+                                command = ?command,
+                                "ignoring unauthenticated IPC control command"
+                            );
+                        }
+                    }
                     Err(_) => match meridian_ipc::decode_screenshot_bridge_message(line) {
                         Ok(ScreenshotBridgeMessage::ScreenshotRequest { request }) => {
                             screenshot_requests.push(ScreenshotBridgeRequestEnvelope {
@@ -193,19 +235,26 @@ impl IpcServer {
         }
     }
 
-    pub fn broadcast(&mut self, event: &ShellEvent) {
+    pub fn broadcast(&mut self, event: &ShellEvent) -> usize {
         let Ok(bytes) = meridian_ipc::encode_event(event) else {
-            return;
+            return 0;
         };
 
+        let mut sent = 0;
         for client in &mut self.clients {
+            if client.role != IpcClientRole::Shell {
+                continue;
+            }
             if let Err(err) = client.stream.write_all(&bytes) {
                 tracing::debug!("IPC client write failed: {}", err);
                 client.alive = false;
+            } else {
+                sent += 1;
             }
         }
 
         self.retain_alive();
+        sent
     }
 
     pub fn send_screenshot_bridge_response(
@@ -376,16 +425,34 @@ fn should_cleanup_socket_path(path: &Path, expected: SocketIdentity) -> io::Resu
     } == expected)
 }
 
+fn generate_ipc_auth_token() -> String {
+    let mut bytes = [0_u8; 32];
+    match fs::File::open("/dev/urandom").and_then(|mut file| file.read_exact(&mut bytes)) {
+        Ok(()) => bytes.iter().map(|byte| format!("{byte:02x}")).collect(),
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to read IPC auth token from /dev/urandom; using process-local fallback");
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or(0);
+            format!("fallback-{}-{nanos}", std::process::id())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
         fs,
-        io::Write,
-        os::unix::net::UnixListener,
+        io::{Read, Write},
+        os::unix::net::{UnixListener, UnixStream},
+        sync::{Mutex, OnceLock},
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use super::{is_same_uid, should_cleanup_socket_path, socket_identity_for_path};
+    use meridian_ipc::{ShellCommand, ShellEvent};
+
+    use super::{is_same_uid, should_cleanup_socket_path, socket_identity_for_path, IpcServer};
 
     #[test]
     fn same_uid_is_allowed() {
@@ -395,6 +462,124 @@ mod tests {
     #[test]
     fn different_uid_is_rejected() {
         assert!(!is_same_uid(1000, 1001));
+    }
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn temp_runtime_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "meridian-ipc-{name}-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).expect("create runtime dir");
+        dir
+    }
+
+    fn with_runtime_dir<R>(dir: &std::path::Path, f: impl FnOnce() -> R) -> R {
+        let _guard = env_lock().lock().expect("env lock");
+        let previous = std::env::var_os("XDG_RUNTIME_DIR");
+        std::env::set_var("XDG_RUNTIME_DIR", dir);
+        let result = f();
+        match previous {
+            Some(value) => std::env::set_var("XDG_RUNTIME_DIR", value),
+            None => std::env::remove_var("XDG_RUNTIME_DIR"),
+        }
+        result
+    }
+
+    fn connect_client() -> UnixStream {
+        UnixStream::connect(meridian_ipc::socket_path()).expect("connect ipc client")
+    }
+
+    fn write_command(stream: &mut UnixStream, command: &ShellCommand) {
+        let bytes = meridian_ipc::encode_command(command).expect("encode command");
+        stream.write_all(&bytes).expect("write command");
+    }
+
+    #[test]
+    fn unauthenticated_control_command_is_ignored() {
+        let dir = temp_runtime_dir("unauth-command");
+        with_runtime_dir(&dir, || {
+            let mut server = IpcServer::new();
+            let mut client = connect_client();
+            write_command(&mut client, &ShellCommand::Quit);
+
+            let poll = server.poll();
+            assert_eq!(poll.accepted_clients, 1);
+            assert!(poll.commands.is_empty());
+        });
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn authenticated_shell_control_command_is_accepted() {
+        let dir = temp_runtime_dir("auth-command");
+        with_runtime_dir(&dir, || {
+            let mut server = IpcServer::new();
+            let token = server.auth_token().to_string();
+            let mut client = connect_client();
+            write_command(
+                &mut client,
+                &ShellCommand::Authenticate {
+                    role: "shell".to_string(),
+                    token,
+                },
+            );
+            write_command(&mut client, &ShellCommand::Quit);
+
+            let poll = server.poll();
+            assert_eq!(poll.commands, vec![ShellCommand::Quit]);
+        });
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn broadcasts_only_reach_authenticated_shell_clients() {
+        let dir = temp_runtime_dir("broadcast-auth");
+        with_runtime_dir(&dir, || {
+            let mut server = IpcServer::new();
+            let mut public_client = connect_client();
+            let mut shell_client = connect_client();
+            write_command(
+                &mut shell_client,
+                &ShellCommand::Authenticate {
+                    role: "shell".to_string(),
+                    token: server.auth_token().to_string(),
+                },
+            );
+            server.poll();
+
+            public_client
+                .set_nonblocking(true)
+                .expect("set public nonblocking");
+            shell_client
+                .set_nonblocking(true)
+                .expect("set shell nonblocking");
+            let sent = server.broadcast(&ShellEvent::ConfigReloaded { success: true });
+            assert_eq!(sent, 1);
+
+            let mut shell_buf = [0_u8; 512];
+            let n = shell_client.read(&mut shell_buf).expect("read shell event");
+            let line = std::str::from_utf8(&shell_buf[..n]).expect("utf8 event");
+            assert!(matches!(
+                meridian_ipc::decode_event(line).expect("decode event"),
+                ShellEvent::ConfigReloaded { success: true }
+            ));
+
+            let mut public_buf = [0_u8; 64];
+            let err = public_client
+                .read(&mut public_buf)
+                .expect_err("public client must not receive broadcast");
+            assert_eq!(err.kind(), std::io::ErrorKind::WouldBlock);
+        });
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
