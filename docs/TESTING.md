@@ -162,12 +162,14 @@ und der GitHub-CI erzwungen:
 - Portal FileChooser:
   - `crates/meridian-portal/src/file_chooser.rs` (`#[cfg(test)]`)
   - `file://` URI-Erzeugung und Percent-Encoding
-- Compositor Screenshot-Bridge deny-only:
+- Compositor Screenshot-Bridge / Policy:
   - `crates/meridian-compositor/src/state/ipc/screenshot.rs` (`#[cfg(test)]`)
-  - invalid request -> `InvalidRequest`, valid request -> `PermissionDenied`, region -> `Unsupported`
-- Compositor Screenshot-Policy:
   - `crates/meridian-compositor/src/state/ipc/screenshot_policy.rs` (`#[cfg(test)]`)
-  - valid full-output -> `Deny`, region -> `Unsupported`, invalid -> `Invalid`, unknown requester -> `Deny`
+  - invalid request -> `InvalidRequest`
+  - unknown/untrusted origin -> `PermissionDenied`
+  - portal non-interactive -> shell consent
+  - portal interactive -> region picker
+  - internal capture only with `MERIDIAN_SCREENSHOT_DEV=1`
 - Shell screenshots:
   - `crates/meridian-shell/src/wayland/screencopy.rs` (`#[cfg(test)]`)
   - XRGB->RGB PNG-Encoding und Buffer-Layout-Grenzen
@@ -207,10 +209,11 @@ Hinweis: `cargo test --workspace` und `cargo check --workspace` enthalten `merid
 - Panel Active/Occupied:
   - Siehe `docs/PROJECT_STATUS.md`, Abschnitt `Manueller Testhinweis (Panel Workspace-Indikator)` und `Manueller Testhinweis (Occupied Workspaces)`
   - Für die finale Produktregel (active output-aware, occupied global, active hat Vorrang): `docs/DEBUGGING.md`, Abschnitt `Manueller E2E-Test: Phase-4 Abschluss (Switch/Move/Panel/Fallback)`
-- XDG Portals (Planungsstand):
+- XDG Portals:
   - Siehe `docs/XDG_PORTALS.md`.
   - FileChooser ist implementiert und sollte mit `MERIDIAN_FILE_PICKER` gegen einen realen Picker getestet werden.
-  - Screenshot/ScreenCast bleiben offen.
+  - Screenshot ist implementiert, braucht aber den installierten xdg-desktop-portal-E2E-Smoke mit Consent/Region-Picker.
+  - ScreenCast bleibt offen.
 - Multi-Monitor Audit:
   - Siehe `docs/MULTI_MONITOR.md` (Ist-Zustand, Zielmodell, Risiken, nächster Slice)
   - NVIDIA VFIO-Hardwarelauf: `docs/NVIDIA_PASSTHROUGH.md`

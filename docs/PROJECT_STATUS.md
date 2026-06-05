@@ -168,25 +168,28 @@ der Code-Stand plus `AGENTS.md`.
 - FileChooser ist implementiert: `OpenFile`, `SaveFile`, `SaveFiles`
   delegieren an `MERIDIAN_FILE_PICKER` bzw.
   `/usr/local/bin/meridian-file-picker`.
-- Screenshot-Bridge-Typen existieren in `meridian-ipc`; der Compositor
-  behandelt Bridge-Requests deny-only. Ein echtes Portal-Screenshot-Capture
-  und ScreenCast sind noch offen.
+- Screenshot ist im Portal-Prozess exponiert und laeuft ueber Meridian-IPC,
+  Compositor-Policy, Shell-Consent bzw. Region-Picker und DRM-PNG-Capture.
+  Der installierte xdg-desktop-portal-E2E-Pfad muss noch real validiert werden;
+  ScreenCast bleibt offen.
 
 ## Offene Risiken
 - Shell-Idle-Last ist verbessert, aber noch nicht abgeschlossen; naechster
   sinnvoller Fokus sind laengere Burn-in-Messungen und die Frage, ob weitere
   Popup-/Notification-Pfade Signaturen statt Voll-Redraws brauchen.
-- Theme-Assets sind im Repo und unter `/usr/local/share` nutzbar; ein echter
-  Packaging-Installationspfad fuer Arch/Debian/Fedora ist noch offen.
+- Theme-Assets sind im Repo und via `scripts/install-local.sh` nach
+  `/usr/local/share/meridian/themes` installierbar; distro-native Pakete fuer
+  Arch/Debian/Fedora bleiben offen.
 - Runtime-Hotplug braucht weiterhin einen dokumentierten realen E2E-Lauf.
 - Login ist live mit Passwort-Fallback und YubiKey-Hotplug validiert; die
   Host-/VM-USB-Durchreichung bleibt eine externe Fehlerquelle.
-- Portal-Screenshot/ScreenCast und Permission-Prompts sind noch nicht
-  produktionsfaehig.
+- Portal-Screenshot hat einen Consent-/Region-Pfad, ist aber noch nicht als
+  installierter xdg-desktop-portal-E2E-Lauf validiert; ScreenCast fehlt.
 - Per-output Occupancy, pro-Output-Panel-Rollout und vollstaendige
   Multi-Monitor-Politur bleiben offen.
-- Lock-Screen-Frontend ist noch offen, obwohl session-lock serverseitig
-  vorhanden ist.
+- `meridian-lock` ist als Session-Lock-Frontend vorhanden und wird via
+  `scripts/install-local.sh` installiert; installierter E2E-Lauf, Idle-Trigger
+  und Multi-Output-Politur bleiben offen.
 
 ## Naechste sinnvolle Arbeiten
 1. Runtime-Hotplug H5d auf echter DRM-Hardware erneut ausfuehren und

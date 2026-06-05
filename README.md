@@ -31,7 +31,7 @@ It is not yet ready as a daily driver for most users.
 - XWayland support
 - IPC between compositor and shell, including window snapshots, thumbnails, workspace state, launch, reload, and quit
 - Boot/login chain with `meridian-login`, PAM/logind handover, YubiKey/PIN login, and password fallback
-- FileChooser portal backend via `meridian-portal`
+- FileChooser portal backend and experimental Screenshot portal via `meridian-portal`
 - Ongoing NVIDIA timing and mode-selection stability work
 
 ### Experimental / in progress
@@ -39,8 +39,8 @@ It is not yet ready as a daily driver for most users.
 - Multi-monitor polish and hotplug edge cases
 - Shell idle wakeup/commit optimization, with timer and popup redraw reductions landed
 - Settings UI completion beyond the current Desktop/System skeleton
-- Portal screenshot/screencast support
-- Lock screen frontend
+- Portal Screenshot hardening and ScreenCast support
+- Lock screen frontend install and E2E validation
 - Gaming-oriented UX features
 
 ## Features Overview
@@ -175,7 +175,7 @@ git push && git push origin vX.Y.Z
 - Foundation and stability hardening
 - Shell UI quality and consistency
 - Settings UI completion: fill the Desktop/System skeleton with real controls
-- Portal screenshot/screencast support
+- Portal Screenshot hardening and ScreenCast support
 - Multi-monitor and hotplug validation
 - Shell idle performance and popup redraw profiling
 - Gaming-friendly features and performance polish

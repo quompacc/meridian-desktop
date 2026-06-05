@@ -2,6 +2,6 @@
 Type=Application
 Name=Meridian Polkit Agent
 Comment=PolicyKit authentication agent for the Meridian desktop
-Exec=/usr/local/bin/meridian-polkit-agent
+Exec=@PREFIX@/bin/meridian-polkit-agent
 OnlyShowIn=Meridian;
 X-GNOME-Autostart-Phase=Initialization

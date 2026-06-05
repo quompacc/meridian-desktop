@@ -1,0 +1,14 @@
+[Unit]
+Description=Meridian desktop portal backend
+PartOf=graphical-session.target
+After=dbus.service
+
+[Service]
+Type=dbus
+BusName=org.freedesktop.impl.portal.desktop.meridian
+ExecStart=@PREFIX@/bin/meridian-portal
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

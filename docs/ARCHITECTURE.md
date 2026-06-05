@@ -81,8 +81,9 @@ Stand: 2026-05-25, auditiert gegen `master` bei `2e7a2ed`.
   - `ConfigReloaded`
   - `ToggleLauncher`
   - `WindowThumbnail`
-- Screenshot-Bridge-Messages sind im IPC-Typensystem vorhanden, werden
-  compositorseitig aber deny-only behandelt.
+- Screenshot-Bridge-Messages sind im IPC-Typensystem vorhanden; Portal-
+  Requests werden ueber Compositor-Policy und Shell-Consent/Region-Picker
+  vermittelt, nicht global erlaubt.
 
 ## Shell-Oberflaeche
 - Panel: Launcher, Workspaces, pinned Apps, Network, Screenshot, Clock.
@@ -138,11 +139,13 @@ Die visuelle Stapelung ist Korrektheit, nicht Stilfrage:
 
 ## XDG-Portals
 - `meridian-portal` ist ein separater Prozess.
-- Aktuell implementiert: FileChooser-Backend unter
+- Implementiert: FileChooser, Screenshot und Access unter
   `org.freedesktop.impl.portal.desktop.meridian`.
 - FileChooser delegiert an `MERIDIAN_FILE_PICKER` oder
   `/usr/local/bin/meridian-file-picker`.
-- Screenshot/ScreenCast/Settings/OpenURI bleiben offene Portal-Slices.
+- Screenshot laeuft ueber IPC, Compositor-Policy und Shell-Consent/Region-
+  Picker; installierter E2E-Pfad muss noch validiert werden.
+- ScreenCast/Settings/OpenURI bleiben offene Portal-Slices.
 - Referenz: `docs/XDG_PORTALS.md`.
 
 ## Multi-Monitor

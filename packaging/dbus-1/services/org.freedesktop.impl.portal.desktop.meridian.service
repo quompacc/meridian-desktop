@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.freedesktop.impl.portal.desktop.meridian
+Exec=@PREFIX@/bin/meridian-portal
+SystemdService=meridian-portal.service

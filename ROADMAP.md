@@ -27,8 +27,8 @@ The shell is beyond a minimal panel/launcher: notification daemon,
 StatusNotifierItem watcher v1, network/calendar/workspace/thumbnail popups,
 screenshot capture, context menus, power footer, partial settings UI, and
 first idle wakeup/input-redraw reductions are present. `meridian-portal`
-currently implements FileChooser delegation; screenshot/screencast portals
-remain open.
+implements FileChooser plus an experimental Screenshot path with Meridian
+consent/region UI; ScreenCast remains open.
 
 What follows is the path from "author's experimental desktop" to "real
 people can use it".
@@ -42,7 +42,7 @@ people can use it".
 | # | Item | Effort | Why |
 |---|------|--------|-----|
 | A1 | ~~**Notification daemon**~~ — v1 scope: Notify/CloseNotification/GetCapabilities/GetServerInformation on dbus; top-right popup; auto-expiry timer. Polish deferred: click-to-dismiss, richer wrapping, app icons, stacking display, NotificationClosed signal. | done | |
-| A2 | **xdg-desktop-portal v1** — FileChooser is present via delegated picker; screenshot and screen-share remain open. | 2-3 weeks | Flatpaks, browser screen-share, and file dialogs need portal coverage. |
+| A2 | **xdg-desktop-portal v1** — FileChooser is present via delegated picker; Screenshot has consent/region plumbing and needs installed-session E2E validation; ScreenCast remains open. | 2-3 weeks | Flatpaks, browser screen-share, screenshots, and file dialogs need portal coverage. |
 | A3 | **Settings UI v1** — Desktop/System root skeleton is present; theme, wallpaper, pinned apps, display status, primary-output switching, Printers read-only v1, and Sound read-only v1 are active. | 1-2 weeks | Without it every adjustment is a TOML edit + restart. |
 | A4 | **Multi-monitor hotplug stable** (README flagged in-progress) | ongoing | First thing that breaks when you plug into a beamer or dock. |
 
@@ -55,7 +55,7 @@ people can use it".
 | B1 | System tray (StatusNotifierItem dbus) — watcher v1 registers items, reads `Title`/`IconName`/`Menu`, renders panel slots with icon/label fallback, forwards `Activate`/`SecondaryActivate`/`ContextMenu`, parses DBusMenu `GetLayout` into a local menu model, returns it to the shell event loop, renders a first popup, and sends `clicked` events for enabled menu rows; richer submenu/scroll polish remains open. | 2-3 weeks |
 | B2 | Panel applets: network is partial via `nmcli`; audio has a first tray card backed by PipeWire/`wpctl` with an optional `System -> Sound` settings link; bluetooth, battery, brightness, and full StatusNotifierItem tray remain open | 1-2 weeks each |
 | B3 | Fractional scaling — for HiDPI laptop + FHD external setups | 2-3 weeks |
-| B4 | Lock screen UI + idle timer — `session_lock.rs` exists, the front-end doesn't | 1-2 weeks |
+| B4 | Lock screen polish + idle timer — `meridian-lock` exists and now installs; remaining work is installed-session E2E, idle integration, and multi-output polish | 1-2 weeks |
 | B5 | Input methods — `text_input_v3` + IBus/fcitx bridge for CJK | 2-3 weeks |
 | B6 | Clipboard manager + cross-app drag-and-drop polish | 1-2 weeks |
 

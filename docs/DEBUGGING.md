@@ -236,19 +236,22 @@ Bei zukünftigen XDG-Portal-Bugs zuerst trennen:
 
 Referenzplan: `docs/XDG_PORTALS.md`
 
-## Portal FileChooser
+## Portal FileChooser / Screenshot
 Aktueller Zustand:
 - `meridian-portal` stellt `org.freedesktop.impl.portal.desktop.meridian`
   auf `/org/freedesktop/portal/desktop` bereit.
-- Implementiert ist `org.freedesktop.impl.portal.FileChooser`.
+- Implementiert sind `org.freedesktop.impl.portal.FileChooser`,
+  `org.freedesktop.impl.portal.Screenshot` und
+  `org.freedesktop.impl.portal.Access`.
 - `OpenFile`, `SaveFile` und `SaveFiles` delegieren an
   `MERIDIAN_FILE_PICKER` oder `/usr/local/bin/meridian-file-picker`.
-- Screenshot-Portal ist derzeit nicht ueber `meridian-portal` exponiert;
-  die Screenshot-Bridge-Typen existieren nur als deny-only Compositor-Pfad.
+- Screenshot laeuft ueber Portal -> Meridian-IPC -> Compositor-Policy ->
+  Shell-Consent/Region-Picker -> DRM-PNG-Capture.
+- ScreenCast ist weiterhin offen.
 
 ### Manueller FileChooser-Smoke
-1. Portal starten:
-   `RUST_LOG=debug cargo run -p meridian-portal`
+1. Installationsmetadaten installieren (`scripts/install-local.sh --build`) oder
+   Portal manuell starten: `RUST_LOG=debug cargo run -p meridian-portal`.
 2. Sicherstellen, dass `MERIDIAN_FILE_PICKER` gesetzt ist oder
    `/usr/local/bin/meridian-file-picker` existiert.
 3. Einen echten `xdg-desktop-portal`-Client gegen den Meridian-Backend-Namen
@@ -260,13 +263,16 @@ Aktueller Zustand:
      `SaveFiles` `destination`.
    - Cancel liefert Response-Code `1`, Picker-Fehler `2`.
 
-### Screenshot-Bridge (intern, deny-only)
-- Compositor kann `ScreenshotBridgeMessage::ScreenshotRequest` ueber den
-  bestehenden IPC-Socket parsen und antwortet mit
-  `ScreenshotBridgeMessage::ScreenshotResponse`.
-- Policy bleibt deny-only (`PermissionDenied` fuer valide Requests,
-  `Unsupported` fuer Region, `InvalidRequest` fuer ungueltige Requests).
-- Es gibt aktuell keinen passenden `busctl`-Smoke ueber `meridian-portal`.
+### Manueller Screenshot-Portal-Smoke
+1. Meridian-Session mit laufender Shell starten.
+2. Portal-Aktivierung pruefen:
+   `busctl --user introspect org.freedesktop.impl.portal.desktop.meridian /org/freedesktop/portal/desktop --no-pager`.
+3. Screenshot ueber einen echten xdg-desktop-portal-Client anfordern.
+4. Erwartung:
+   - Nicht-interaktive Requests zeigen ein Meridian-Consent-Modal.
+   - Interaktive Requests zeigen den Region-Picker.
+   - Allow schreibt eine PNG in `XDG_RUNTIME_DIR` und liefert eine `file://` URI.
+   - Deny/Cancel liefert Response-Code `1`.
 
 ## Manueller E2E-Test: ReloadConfig
 Vorbereitung:
