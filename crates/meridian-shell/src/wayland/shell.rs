@@ -307,6 +307,9 @@ pub(crate) struct MeridianShell {
     pub(crate) network_height: u32,
     pub(crate) audio_width: u32,
     pub(crate) audio_height: u32,
+    /// True while the pointer is dragging the volume bar in the audio popup, so
+    /// motion events keep updating the level until the button is released.
+    pub(crate) audio_volume_dragging: bool,
     pub(crate) status_notifier_menu_width: u32,
     pub(crate) status_notifier_menu_height: u32,
     pub(crate) notification_width: u32,

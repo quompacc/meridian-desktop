@@ -498,6 +498,7 @@ pub(crate) fn initialize(
         default_apps_picker_open: None,
         default_apps_loaded: false,
         audio_popup_open: false,
+        audio_volume_dragging: false,
         panel_buffer: None,
         desktop_buffer: None,
         desktop_menu_buffer: None,

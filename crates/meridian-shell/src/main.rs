@@ -76,7 +76,6 @@ pub const NETWORK_POPUP_WIDTH: u32 = 280;
 pub const NETWORK_POPUP_HEIGHT: u32 = 200;
 pub const AUDIO_POPUP_WIDTH: u32 = 280;
 pub const AUDIO_POPUP_HEIGHT: u32 = 200;
-pub const AUDIO_POPUP_RIGHT_MARGIN: i32 = 126;
 pub const SNI_MENU_RIGHT_MARGIN: i32 = 8;
 pub const SHELL_POPUP_BOTTOM_MARGIN: i32 = 2;
 /// Padding around every tray popup that holds room for the soft drop

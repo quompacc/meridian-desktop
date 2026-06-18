@@ -117,6 +117,17 @@ pub fn popup_hit_test(width: u32, height: u32, x: f64, y: f64) -> Option<AudioPo
     Some(AudioPopupHit::Card)
 }
 
+/// During a drag, map a card-relative x to a volume percent using the last
+/// drawn bar, ignoring y (so the level keeps tracking even if the pointer
+/// strays vertically). Returns None when no bar is currently shown.
+pub fn volume_from_x(x: f64) -> Option<u8> {
+    let bar = VOLUME_BAR_RECT.with(|r| r.get());
+    if bar.w <= 0 {
+        return None;
+    }
+    Some(volume_from_bar_x(bar, x))
+}
+
 /// Map a click x position over the volume bar `bar` to a 0..=100 percent.
 fn volume_from_bar_x(bar: Rect, x: f64) -> u8 {
     if bar.w <= 0 {

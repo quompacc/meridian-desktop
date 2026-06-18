@@ -1345,14 +1345,11 @@ impl MeridianShell {
 
         self.audio_snapshot = crate::audio::AudioSnapshot::poll();
         self.audio_popup_open = true;
+        // Volume OSD: anchor BOTTOM only so layer-shell centres it horizontally
+        // over the panel, rather than tucking it into the bottom-right tray.
+        self.network_layer.set_anchor(Anchor::BOTTOM);
         self.network_layer
-            .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
-        self.network_layer.set_margin(
-            0,
-            crate::AUDIO_POPUP_RIGHT_MARGIN,
-            crate::SHELL_POPUP_BOTTOM_MARGIN,
-            0,
-        );
+            .set_margin(0, 0, crate::SHELL_POPUP_BOTTOM_MARGIN, 0);
         self.network_layer.set_exclusive_zone(0);
         self.network_layer.set_size(
             crate::popup_surface_w(crate::AUDIO_POPUP_WIDTH),
@@ -1381,6 +1378,7 @@ impl MeridianShell {
             return false;
         }
         self.audio_popup_open = false;
+        self.audio_volume_dragging = false;
         self.network_layer
             .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
         self.unmap_audio_popup(reason);

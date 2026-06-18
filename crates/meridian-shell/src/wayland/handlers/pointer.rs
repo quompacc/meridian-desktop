@@ -840,6 +840,37 @@ impl PointerHandler for MeridianShell {
                 }
             }
 
+            // Volume bar drag: while the left button is held on the audio popup,
+            // motion keeps re-setting the level; release ends the drag. The
+            // snapshot is updated optimistically so the bar tracks the pointer
+            // without re-polling the mixer on every motion event.
+            if self.audio_popup_open && self.pointer_surface == SurfaceKind::NetworkPopup {
+                match event.kind {
+                    PointerEventKind::Motion { .. } if self.audio_volume_dragging => {
+                        let pad = crate::POPUP_SHADOW_PAD as f64;
+                        let px = event.position.0 - pad;
+                        if let Some(percent) = audio_popup::volume_from_x(px) {
+                            let current = self
+                                .audio_snapshot
+                                .default_output
+                                .as_ref()
+                                .and_then(|device| device.volume_percent);
+                            if current != Some(percent) {
+                                crate::audio::set_default_sink_volume(percent);
+                                if let Some(device) = self.audio_snapshot.default_output.as_mut() {
+                                    device.volume_percent = Some(percent);
+                                }
+                                self.draw_audio_popup(qh, RepaintReason::Pointer);
+                            }
+                        }
+                    }
+                    PointerEventKind::Release { button: 0x110, .. } => {
+                        self.audio_volume_dragging = false;
+                    }
+                    _ => {}
+                }
+            }
+
             if let PointerEventKind::Press { button: 0x112, .. } = event.kind {
                 if self.pointer_surface == SurfaceKind::Panel {
                     let action = self
@@ -914,6 +945,9 @@ impl PointerHandler for MeridianShell {
                                     Some(crate::wayland::ClickAction::OpenSoundSettings)
                                 }
                                 Some(audio_popup::AudioPopupHit::Volume(percent)) => {
+                                    // Begin a drag: subsequent motion keeps
+                                    // updating the level until button release.
+                                    self.audio_volume_dragging = true;
                                     Some(crate::wayland::ClickAction::SetAudioVolume(percent))
                                 }
                                 Some(audio_popup::AudioPopupHit::Card) => None,
