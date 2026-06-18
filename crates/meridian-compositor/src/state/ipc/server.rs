@@ -401,7 +401,36 @@ fn peer_effective_uid(stream: &UnixStream) -> io::Result<Option<u32>> {
     Ok(Some(creds.uid))
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "android")))]
+#[cfg(any(
+    target_os = "freebsd",
+    target_os = "dragonfly",
+    target_os = "openbsd",
+    target_os = "netbsd",
+    target_os = "macos",
+    target_os = "ios",
+))]
+fn peer_effective_uid(stream: &UnixStream) -> io::Result<Option<u32>> {
+    let mut uid: libc::uid_t = 0;
+    let mut gid: libc::gid_t = 0;
+    // SAFETY: getpeereid writes the connected AF_LOCAL peer's effective uid/gid
+    // into the two out-params; the fd is valid for the lifetime of `stream`.
+    let rc = unsafe { libc::getpeereid(stream.as_raw_fd(), &mut uid, &mut gid) };
+    if rc == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(Some(uid as u32))
+}
+
+#[cfg(not(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "freebsd",
+    target_os = "dragonfly",
+    target_os = "openbsd",
+    target_os = "netbsd",
+    target_os = "macos",
+    target_os = "ios",
+)))]
 fn peer_effective_uid(_stream: &UnixStream) -> io::Result<Option<u32>> {
     Ok(None)
 }
@@ -462,6 +491,30 @@ mod tests {
     #[test]
     fn different_uid_is_rejected() {
         assert!(!is_same_uid(1000, 1001));
+    }
+
+    // On every platform where we implement a real peer-credential check, both
+    // ends of a socketpair live in this process, so the peer's effective uid
+    // must equal ours. This covers the Linux SO_PEERCRED path and the BSD/macOS
+    // getpeereid path; targets with the no-op fallback return None and are
+    // excluded.
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "freebsd",
+        target_os = "dragonfly",
+        target_os = "openbsd",
+        target_os = "netbsd",
+        target_os = "macos",
+        target_os = "ios",
+    ))]
+    #[test]
+    fn peer_uid_of_socketpair_matches_own_euid() {
+        let (a, _b) = UnixStream::pair().expect("socketpair");
+        // SAFETY: geteuid has no preconditions and just reads our effective uid.
+        let euid = unsafe { libc::geteuid() } as u32;
+        let peer = super::peer_effective_uid(&a).expect("peer credentials");
+        assert_eq!(peer, Some(euid));
     }
 
     fn env_lock() -> &'static Mutex<()> {
