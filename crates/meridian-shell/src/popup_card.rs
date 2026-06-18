@@ -381,6 +381,9 @@ pub fn draw_status_row(
 
 /// Volume row: label, slim cyan bar, percent text. `muted=true` greys out the
 /// fill and appends "stumm".
+/// Draws the volume row and returns the clickable bar rectangle (spanning the
+/// full row height for an easy hit target) so the caller can map a click x to a
+/// percent. Returns a zero rect when the bar is too narrow to draw.
 pub fn draw_volume_row(
     painter: &mut Painter<'_>,
     font: &RefCell<Option<TextRenderer>>,
@@ -389,7 +392,7 @@ pub fn draw_volume_row(
     percent: Option<u32>,
     muted: bool,
     row_y: i32,
-) {
+) -> Rect {
     let width = POPUP_WIDTH as i32;
     let value_text = match (percent, muted) {
         (Some(v), true) => format!("{v}% stumm"),
@@ -464,6 +467,22 @@ pub fn draw_volume_row(
         value_w,
         glass_foreground_from_config(theme),
     );
+
+    if bar_w >= 20 {
+        Rect {
+            x: bar_left,
+            y: row_y,
+            w: bar_w,
+            h: ROW_HEIGHT,
+        }
+    } else {
+        Rect {
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 0,
+        }
+    }
 }
 
 /// Right-aligned cyan link with a chevron at the bottom of the popup.

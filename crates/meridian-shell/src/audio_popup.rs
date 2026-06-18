@@ -15,10 +15,14 @@ use crate::{
 pub enum AudioPopupHit {
     Card,
     SettingsLink,
+    /// Click landed on the volume bar; payload is the target volume (0..=100)
+    /// derived from the click x position.
+    Volume(u8),
 }
 
 thread_local! {
     static SETTINGS_LINK_RECT: std::cell::Cell<Rect> = const { std::cell::Cell::new(Rect { x: 0, y: 0, w: 0, h: 0 }) };
+    static VOLUME_BAR_RECT: std::cell::Cell<Rect> = const { std::cell::Cell::new(Rect { x: 0, y: 0, w: 0, h: 0 }) };
 }
 
 pub fn draw_audio_popup(
@@ -68,7 +72,8 @@ pub fn draw_audio_popup(
         .as_ref()
         .map(|device| device.muted)
         .unwrap_or(false);
-    draw_volume_row(painter, font, theme, "Lautstärke", percent, muted, row_y);
+    let volume_bar = draw_volume_row(painter, font, theme, "Lautstärke", percent, muted, row_y);
+    VOLUME_BAR_RECT.with(|r| r.set(volume_bar));
     row_y += ROW_HEIGHT;
 
     let input = snapshot
@@ -105,7 +110,20 @@ pub fn popup_hit_test(width: u32, height: u32, x: f64, y: f64) -> Option<AudioPo
     if link.w > 0 && link.h > 0 && link.contains(x, y) {
         return Some(AudioPopupHit::SettingsLink);
     }
+    let bar = VOLUME_BAR_RECT.with(|r| r.get());
+    if bar.w > 0 && bar.contains(x, y) {
+        return Some(AudioPopupHit::Volume(volume_from_bar_x(bar, x)));
+    }
     Some(AudioPopupHit::Card)
+}
+
+/// Map a click x position over the volume bar `bar` to a 0..=100 percent.
+fn volume_from_bar_x(bar: Rect, x: f64) -> u8 {
+    if bar.w <= 0 {
+        return 0;
+    }
+    let fraction = ((x - bar.x as f64) / bar.w as f64).clamp(0.0, 1.0);
+    (fraction * 100.0).round() as u8
 }
 
 #[cfg(test)]
@@ -131,6 +149,22 @@ mod tests {
         assert_eq!(popup_hit_test(w, h, 1.0, 1.0), Some(AudioPopupHit::Card));
         assert_eq!(popup_hit_test(w, h, -1.0, 5.0), None);
         assert_eq!(popup_hit_test(w, h, 1000.0, 5.0), None);
+    }
+
+    #[test]
+    fn volume_from_bar_x_maps_position_to_percent() {
+        let bar = crate::Rect {
+            x: 100,
+            y: 0,
+            w: 200,
+            h: 20,
+        };
+        assert_eq!(super::volume_from_bar_x(bar, 100.0), 0);
+        assert_eq!(super::volume_from_bar_x(bar, 200.0), 50);
+        assert_eq!(super::volume_from_bar_x(bar, 300.0), 100);
+        // Positions outside the bar clamp to the ends.
+        assert_eq!(super::volume_from_bar_x(bar, 40.0), 0);
+        assert_eq!(super::volume_from_bar_x(bar, 500.0), 100);
     }
 
     #[test]

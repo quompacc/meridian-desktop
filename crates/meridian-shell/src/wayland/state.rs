@@ -1811,6 +1811,17 @@ impl MeridianShell {
                     self.draw_audio_popup(qh, RepaintReason::Pointer);
                 }
             }
+            ClickAction::SetAudioVolume(percent) => {
+                // System state, not Meridian config: drive the mixer/wpctl
+                // backend directly, then re-poll so the popup reflects the real
+                // new level. The popup surface stays open for further dragging.
+                crate::audio::set_default_sink_volume(percent);
+                self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+                self.draw_panel(qh, RepaintReason::Pointer);
+                if self.audio_popup_open {
+                    self.draw_audio_popup(qh, RepaintReason::Pointer);
+                }
+            }
             ClickAction::OpenSoundSettings => {
                 self.open_sound_settings_from_tray(CommitReason::Input);
                 self.draw_panel(qh, RepaintReason::Pointer);
@@ -1944,6 +1955,7 @@ impl MeridianShell {
             ClickAction::ToggleWorkspacePopup => {}
             ClickAction::ToggleNetworkPopup => {}
             ClickAction::ToggleAudioPopup => {}
+            ClickAction::SetAudioVolume(_) => {}
             ClickAction::OpenSoundSettings => {}
             ClickAction::OpenNetworkSettings => {}
             ClickAction::ActivateStatusNotifierItem(_) => {}

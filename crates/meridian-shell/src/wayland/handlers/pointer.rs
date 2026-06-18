@@ -913,6 +913,9 @@ impl PointerHandler for MeridianShell {
                                 Some(audio_popup::AudioPopupHit::SettingsLink) => {
                                     Some(crate::wayland::ClickAction::OpenSoundSettings)
                                 }
+                                Some(audio_popup::AudioPopupHit::Volume(percent)) => {
+                                    Some(crate::wayland::ClickAction::SetAudioVolume(percent))
+                                }
                                 Some(audio_popup::AudioPopupHit::Card) => None,
                                 None => Some(crate::wayland::ClickAction::ToggleAudioPopup),
                             }
