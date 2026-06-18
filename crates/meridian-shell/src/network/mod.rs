@@ -1,6 +1,19 @@
+// Network management is platform-specific: Linux drives NetworkManager via
+// nmcli, while FreeBSD derives state from ifconfig (NetworkManager is Linux-
+// only). Both backends expose the same surface so the panel/settings UI below
+// is backend-agnostic.
+#[cfg(target_os = "linux")]
 mod nmcli;
-
+#[cfg(target_os = "linux")]
 pub use self::nmcli::{
+    activate_connection, connect_wifi, list_saved_connections, scan_wifi_networks,
+    ConnectionProfile, NetworkController, WifiNetwork,
+};
+
+#[cfg(not(target_os = "linux"))]
+mod freebsd;
+#[cfg(not(target_os = "linux"))]
+pub use self::freebsd::{
     activate_connection, connect_wifi, list_saved_connections, scan_wifi_networks,
     ConnectionProfile, NetworkController, WifiNetwork,
 };

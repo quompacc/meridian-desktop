@@ -323,9 +323,14 @@ pub fn snapshot_current_defaults() -> HashMap<DefaultAppCategory, String> {
 /// directory.
 pub fn pick_file_manager() -> (String, Vec<String>) {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
+    // pkg installs to /usr/local/bin on FreeBSD; Linux distros use /usr/bin.
+    // Probe both so the file manager is found regardless of prefix.
+    let bindirs = ["/usr/local/bin", "/usr/bin"];
     for fm in ["dolphin", "nautilus", "thunar", "pcmanfm", "nemo", "caja"] {
-        let path = std::path::PathBuf::from("/usr/bin").join(fm);
-        if path.exists() {
+        if bindirs
+            .iter()
+            .any(|dir| std::path::Path::new(dir).join(fm).exists())
+        {
             return (fm.to_string(), vec![home]);
         }
     }
