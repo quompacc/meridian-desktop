@@ -1,0 +1,70 @@
+#!/bin/sh
+#
+# PROVIDE: meridian
+# REQUIRE: seatd dbus
+# KEYWORD: shutdown
+#
+# Meridian Wayland desktop session for FreeBSD.
+#
+# This is the FreeBSD analogue of the systemd meridian-login.service used on
+# Linux. FreeBSD has no logind; the compositor acquires its seat and DRM master
+# through libseat/seatd directly, so seatd and dbus are the only prerequisites.
+#
+# Enable in /etc/rc.conf only AFTER verifying SSH recovery -- starting this
+# takes over the GPU and the console:
+#
+#   meridian_enable="YES"
+#   meridian_user="youruser"   # must be in the "video" group; defaults to root
+#
+# Then: service meridian start   (or reboot)
+# Recover over SSH with: service meridian stop
+
+. /etc/rc.subr
+
+name=meridian
+desc="Meridian Wayland desktop"
+rcvar=meridian_enable
+
+load_rc_config $name
+
+: ${meridian_enable:="NO"}
+: ${meridian_user:="root"}
+: ${meridian_prefix:="/usr/local"}
+
+pidfile="/var/run/${name}.pid"
+meridian_bin="${meridian_prefix}/bin/meridian"
+
+start_cmd="meridian_start"
+
+meridian_start()
+{
+	if [ ! -x "${meridian_bin}" ]; then
+		echo "meridian: ${meridian_bin} not found or not executable" >&2
+		return 1
+	fi
+
+	_uid=$(id -u "${meridian_user}") || return 1
+	_home=$(eval echo "~${meridian_user}")
+	_runtime="/var/run/user/${_uid}"
+
+	# /run does not exist on FreeBSD by default; create the XDG runtime dir the
+	# wayland socket lives in, owned by the session user.
+	install -d -o "${meridian_user}" -g "$(id -gn "${meridian_user}")" \
+		-m 0700 "${_runtime}"
+
+	echo "Starting meridian (user=${meridian_user})."
+	# Xcursor themes from pkg live under ${prefix}/share/icons, which is not in
+	# the default XCURSOR search path on FreeBSD; XKB needs the xorg ruleset.
+	/usr/sbin/daemon -p "${pidfile}" -u "${meridian_user}" -- \
+		/usr/bin/env \
+			XDG_RUNTIME_DIR="${_runtime}" \
+			XDG_SESSION_TYPE=wayland \
+			XDG_CURRENT_DESKTOP=Meridian \
+			XDG_SESSION_DESKTOP=meridian \
+			DESKTOP_SESSION=meridian \
+			XKB_DEFAULT_RULES=xorg \
+			XCURSOR_PATH="${_home}/.icons:${_home}/.local/share/icons:${meridian_prefix}/share/icons:${meridian_prefix}/lib/X11/icons" \
+			"${meridian_bin}"
+}
+
+run_rc_command "$1"
