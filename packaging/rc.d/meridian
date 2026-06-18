@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 # PROVIDE: meridian
-# REQUIRE: seatd dbus
+# REQUIRE: seatd dbus bootsplash
 # KEYWORD: shutdown
 #
 # Meridian Wayland desktop session for FreeBSD.
@@ -30,17 +30,55 @@ load_rc_config $name
 : ${meridian_enable:="NO"}
 : ${meridian_user:="root"}
 : ${meridian_prefix:="/usr/local"}
+: ${meridian_bootsplash_socket:="/var/run/bootsplash.sock"}
 
 pidfile="/var/run/${name}.pid"
 meridian_bin="${meridian_prefix}/bin/meridian"
 
 start_cmd="meridian_start"
+stop_cmd="meridian_stop"
+status_cmd="meridian_status"
+
+meridian_stop()
+{
+	if [ -f "${pidfile}" ] && kill -0 "$(cat "${pidfile}")" 2>/dev/null; then
+		_pid=$(cat "${pidfile}")
+		echo "Stopping meridian (pid ${_pid})."
+		kill -TERM "${_pid}"
+		wait_for_pids "${_pid}"
+	else
+		echo "meridian not running."
+	fi
+	# The compositor restarts meridian-shell itself, but reap any stragglers.
+	pkill -f "${meridian_prefix}/bin/meridian-shell" 2>/dev/null || true
+	rm -f "${pidfile}"
+}
+
+meridian_status()
+{
+	if [ -f "${pidfile}" ] && kill -0 "$(cat "${pidfile}")" 2>/dev/null; then
+		echo "meridian is running as pid $(cat "${pidfile}")."
+	else
+		echo "meridian is not running."
+		return 1
+	fi
+}
 
 meridian_start()
 {
 	if [ ! -x "${meridian_bin}" ]; then
 		echo "meridian: ${meridian_bin} not found or not executable" >&2
 		return 1
+	fi
+
+	# Hand the boot splash off before we grab DRM master. "handover" makes the
+	# splash freeze its last frame and drop master, then acks once master is
+	# released, so the compositor's first modeset has no black flash and no
+	# EACCES race. Best-effort: skip cleanly if no splash is running.
+	if [ -S "${meridian_bootsplash_socket}" ]; then
+		echo "meridian: handing over from bootsplash."
+		printf 'handover\n' | \
+			nc -UN -w 5 "${meridian_bootsplash_socket}" >/dev/null 2>&1 || true
 	fi
 
 	_uid=$(id -u "${meridian_user}") || return 1
@@ -55,7 +93,10 @@ meridian_start()
 	echo "Starting meridian (user=${meridian_user})."
 	# Xcursor themes from pkg live under ${prefix}/share/icons, which is not in
 	# the default XCURSOR search path on FreeBSD; XKB needs the xorg ruleset.
-	/usr/sbin/daemon -p "${pidfile}" -u "${meridian_user}" -- \
+	# -o redirects the session's stdout/stderr to a log so daemon detaches fully
+	# (otherwise an interactive `service start` over SSH never returns).
+	/usr/sbin/daemon -p "${pidfile}" -o /var/log/meridian.log \
+		-u "${meridian_user}" -- \
 		/usr/bin/env \
 			XDG_RUNTIME_DIR="${_runtime}" \
 			XDG_SESSION_TYPE=wayland \
