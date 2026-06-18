@@ -1,4 +1,5 @@
 use meridian_config::{Action, Modifiers, SplitDir};
+use meridian_ipc::ShellEvent;
 use smithay::{
     backend::input::{Event, InputBackend, KeyState, KeyboardKeyEvent},
     desktop::Window,
@@ -78,7 +79,8 @@ pub fn handle_keyboard<I: InputBackend>(
             if let Some(&sym) = handle.raw_syms().first() {
                 let keysym = sym.raw();
                 let is_global_shortcut = data.keybind_config.find_action(mods, keysym).is_some()
-                    || is_workspace_fallback_shortcut(mods, keysym);
+                    || is_workspace_fallback_shortcut(mods, keysym)
+                    || is_audio_key(keysym);
                 if !is_global_shortcut {
                     return FilterResult::Forward;
                 }
@@ -94,6 +96,13 @@ pub fn handle_keyboard<I: InputBackend>(
     );
 
     let Some(km) = match_result else { return };
+
+    // Multimedia volume keys are handled globally and routed to the shell, which
+    // owns the platform audio backend. They carry no keybind action.
+    if let Some(event) = audio_key_event(km.keysym) {
+        state.ipc.broadcast(&event);
+        return;
+    }
 
     let action = match state.keybind_config.find_action(km.modifiers, km.keysym) {
         Some(a) => a.clone(),
@@ -235,4 +244,50 @@ fn workspace_idx_from_digit_keysym(keysym: u32) -> Option<usize> {
 fn is_workspace_fallback_shortcut(modifiers: Modifiers, keysym: u32) -> bool {
     workspace_idx_from_digit_keysym(keysym).is_some()
         && (modifiers == Modifiers::SUPER || modifiers == (Modifiers::SUPER | Modifiers::SHIFT))
+}
+
+// XF86 multimedia volume keysyms (independent of modifiers).
+const XF86_AUDIO_LOWER_VOLUME: u32 = 0x1008_FF11;
+const XF86_AUDIO_MUTE: u32 = 0x1008_FF12;
+const XF86_AUDIO_RAISE_VOLUME: u32 = 0x1008_FF13;
+
+/// Volume keys are intercepted globally so they never reach the focused app.
+fn is_audio_key(keysym: u32) -> bool {
+    matches!(
+        keysym,
+        XF86_AUDIO_LOWER_VOLUME | XF86_AUDIO_MUTE | XF86_AUDIO_RAISE_VOLUME
+    )
+}
+
+/// Map a volume keysym to the shell event that performs the change. The shell
+/// owns the platform mixer, so the compositor only forwards intent.
+fn audio_key_event(keysym: u32) -> Option<ShellEvent> {
+    match keysym {
+        XF86_AUDIO_RAISE_VOLUME => Some(ShellEvent::AudioVolumeStep { delta: 5 }),
+        XF86_AUDIO_LOWER_VOLUME => Some(ShellEvent::AudioVolumeStep { delta: -5 }),
+        XF86_AUDIO_MUTE => Some(ShellEvent::AudioMuteToggle),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod audio_key_tests {
+    use super::{audio_key_event, is_audio_key};
+    use meridian_ipc::ShellEvent;
+
+    #[test]
+    fn audio_keys_map_to_events() {
+        assert_eq!(
+            audio_key_event(0x1008_FF13),
+            Some(ShellEvent::AudioVolumeStep { delta: 5 })
+        );
+        assert_eq!(
+            audio_key_event(0x1008_FF11),
+            Some(ShellEvent::AudioVolumeStep { delta: -5 })
+        );
+        assert_eq!(audio_key_event(0x1008_FF12), Some(ShellEvent::AudioMuteToggle));
+        assert_eq!(audio_key_event(0x41), None);
+        assert!(is_audio_key(0x1008_FF13));
+        assert!(!is_audio_key(0x41));
+    }
 }

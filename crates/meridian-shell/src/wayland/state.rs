@@ -869,6 +869,25 @@ impl MeridianShell {
             ShellEvent::ToggleLauncher => {
                 self.toggle_launcher();
             }
+            ShellEvent::AudioVolumeStep { delta } => {
+                let current = self
+                    .audio_snapshot
+                    .default_output
+                    .as_ref()
+                    .and_then(|device| device.volume_percent)
+                    .unwrap_or(50) as i16;
+                let next = (current + delta as i16).clamp(0, 100) as u8;
+                crate::audio::set_default_sink_volume(next);
+                self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+                self.panel_dirty = true;
+                self.audio_dirty = true;
+            }
+            ShellEvent::AudioMuteToggle => {
+                crate::audio::toggle_default_sink_mute();
+                self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+                self.panel_dirty = true;
+                self.audio_dirty = true;
+            }
             ShellEvent::DesktopContextMenu { x, y } => {
                 self.open_desktop_context_menu_from_ipc(x, y);
             }

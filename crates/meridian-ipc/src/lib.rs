@@ -235,6 +235,15 @@ pub enum ShellEvent {
         success: bool,
     },
     ToggleLauncher,
+    /// A multimedia volume key was pressed. The compositor intercepts the
+    /// XF86Audio{Raise,Lower}Volume keysyms (so they never reach apps) and asks
+    /// the shell, which owns the platform audio backend, to nudge the level by
+    /// `delta` percent (positive = louder).
+    AudioVolumeStep {
+        delta: i8,
+    },
+    /// XF86AudioMute was pressed; the shell toggles the default sink mute.
+    AudioMuteToggle,
     DesktopContextMenu {
         x: i32,
         y: i32,
