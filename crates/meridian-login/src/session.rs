@@ -143,7 +143,9 @@ pub fn launch_compositor_for(
     // and `groups` is already allocated -- we only read its pointer here.
     unsafe {
         cmd.pre_exec(move || {
-            if libc::setgroups(groups.len() as libc::size_t, groups.as_ptr()) != 0 {
+            // setgroups' ngroups arg is size_t on Linux but c_int on FreeBSD;
+            // infer the width from the libc signature so both platforms compile.
+            if libc::setgroups(groups.len() as _, groups.as_ptr()) != 0 {
                 return Err(std::io::Error::last_os_error());
             }
             nix::unistd::setgid(gid_nix)

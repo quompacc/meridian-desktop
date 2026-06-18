@@ -5,10 +5,27 @@ use std::ptr;
 use libc::{calloc, free, size_t, strdup};
 use pam_sys::{
     pam_authenticate, pam_conv, pam_end, pam_handle_t, pam_message, pam_response, pam_start,
+};
+use zeroize::Zeroizing;
+
+// pam_sys types its integer constants as u32 on OpenPAM (FreeBSD) and as i32 on
+// Linux-PAM, yet libpam's own functions take and return c_int everywhere.
+// Normalize the codes we compare against to c_int once so the conversation
+// callback and the rc checks stay well-typed against both PAM flavours.
+mod pam_codes {
+    use std::os::raw::c_int;
+    pub const PAM_SUCCESS: c_int = pam_sys::PAM_SUCCESS as c_int;
+    pub const PAM_BUF_ERR: c_int = pam_sys::PAM_BUF_ERR as c_int;
+    pub const PAM_CONV_ERR: c_int = pam_sys::PAM_CONV_ERR as c_int;
+    pub const PAM_PROMPT_ECHO_ON: c_int = pam_sys::PAM_PROMPT_ECHO_ON as c_int;
+    pub const PAM_PROMPT_ECHO_OFF: c_int = pam_sys::PAM_PROMPT_ECHO_OFF as c_int;
+    pub const PAM_TEXT_INFO: c_int = pam_sys::PAM_TEXT_INFO as c_int;
+    pub const PAM_ERROR_MSG: c_int = pam_sys::PAM_ERROR_MSG as c_int;
+}
+use pam_codes::{
     PAM_BUF_ERR, PAM_CONV_ERR, PAM_ERROR_MSG, PAM_PROMPT_ECHO_OFF, PAM_PROMPT_ECHO_ON, PAM_SUCCESS,
     PAM_TEXT_INFO,
 };
-use zeroize::Zeroizing;
 
 const PAM_SERVICE: &str = "meridian-lock";
 

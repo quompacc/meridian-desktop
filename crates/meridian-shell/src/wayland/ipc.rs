@@ -226,11 +226,32 @@ mod tests {
             last_attempt: Instant::now() - Duration::from_secs(5),
         };
 
-        writer
-            .write_all(&vec![b'x'; IPC_MAX_BUFFER_BYTES + 1])
-            .expect("write oversized payload");
+        // Write the oversized payload from a separate thread. A blocking
+        // write_all from this thread would deadlock on platforms whose unix
+        // socket send buffer is no larger than IPC_MAX_BUFFER_BYTES (FreeBSD's
+        // net.local.stream.sendspace defaults to exactly 64 KiB), because the
+        // reader is only drained by client.poll() below. Once poll() trips the
+        // overflow guard and shuts the socket down, the writer sees a broken
+        // pipe — expected, so the result is ignored.
+        let payload = vec![b'x'; IPC_MAX_BUFFER_BYTES + 1];
+        let writer_thread = std::thread::spawn(move || {
+            let _ = writer.write_all(&payload);
+        });
 
-        let events = client.poll();
+        // The kernel may dribble the payload through a small socket buffer, so a
+        // single poll() can return before the buffer crosses the limit. Poll
+        // until the overflow guard disconnects (bounded so a real failure still
+        // ends the test).
+        let mut events = Vec::new();
+        for _ in 0..200 {
+            events = client.poll();
+            if !client.is_connected() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+
+        let _ = writer_thread.join();
         assert!(events.is_empty());
         assert!(!client.is_connected());
         assert!(client.buffer.is_empty());

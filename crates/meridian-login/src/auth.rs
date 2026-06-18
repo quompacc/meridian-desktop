@@ -31,6 +31,24 @@ use libc::{calloc, free, size_t, strdup};
 use pam_sys::{
     pam_acct_mgmt, pam_authenticate, pam_close_session, pam_conv, pam_end, pam_getenvlist,
     pam_handle_t, pam_message, pam_open_session, pam_response, pam_set_item, pam_start,
+};
+
+// pam_sys types its integer constants as u32 on OpenPAM (FreeBSD) and as i32 on
+// Linux-PAM, yet libpam's own functions take and return c_int on every platform.
+// Normalize the codes we compare against to c_int once here so the conversation
+// callback and the rc checks below stay well-typed against both PAM flavours.
+mod pam_codes {
+    use std::os::raw::c_int;
+    pub const PAM_SUCCESS: c_int = pam_sys::PAM_SUCCESS as c_int;
+    pub const PAM_BUF_ERR: c_int = pam_sys::PAM_BUF_ERR as c_int;
+    pub const PAM_CONV_ERR: c_int = pam_sys::PAM_CONV_ERR as c_int;
+    pub const PAM_PROMPT_ECHO_ON: c_int = pam_sys::PAM_PROMPT_ECHO_ON as c_int;
+    pub const PAM_PROMPT_ECHO_OFF: c_int = pam_sys::PAM_PROMPT_ECHO_OFF as c_int;
+    pub const PAM_TEXT_INFO: c_int = pam_sys::PAM_TEXT_INFO as c_int;
+    pub const PAM_ERROR_MSG: c_int = pam_sys::PAM_ERROR_MSG as c_int;
+    pub const PAM_TTY: c_int = pam_sys::PAM_TTY as c_int;
+}
+use pam_codes::{
     PAM_BUF_ERR, PAM_CONV_ERR, PAM_ERROR_MSG, PAM_PROMPT_ECHO_OFF, PAM_PROMPT_ECHO_ON, PAM_SUCCESS,
     PAM_TEXT_INFO, PAM_TTY,
 };
@@ -235,6 +253,13 @@ unsafe extern "C" fn conv_cb(
 /// the array itself per the Linux-PAM contract.
 fn drain_pam_env(pamh: *mut pam_handle_t) -> Vec<(String, String)> {
     let mut out = Vec::new();
+    // OpenPAM (FreeBSD) dereferences the handle inside pam_getenvlist without a
+    // null check, where Linux-PAM tolerates a NULL handle and returns NULL.
+    // Guard here so a null handle yields an empty snapshot on every platform
+    // instead of segfaulting.
+    if pamh.is_null() {
+        return out;
+    }
     // SAFETY: pamh comes from pam_start and is still live (open_session ok).
     let list = unsafe { pam_getenvlist(pamh) };
     if list.is_null() {
@@ -353,7 +378,7 @@ fn run_pam_session(
     let rc = unsafe {
         pam_set_item(
             guard.pamh,
-            PAM_TTY as c_int,
+            PAM_TTY,
             tty_c.as_ptr() as *const c_void,
         )
     };
