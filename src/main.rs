@@ -58,6 +58,14 @@ impl ShellWatchdog {
         );
         match Command::new(&self.shell_binary)
             .env("WAYLAND_DISPLAY", &self.wayland_display)
+            // Pass DISPLAY so X11 apps the shell launches reach XWayland. The
+            // compositor sets DISPLAY in its own env once XWayland signals Ready;
+            // fall back to :0 (where a fresh session's XWayland lands) if the
+            // shell is spawned before that event.
+            .env(
+                "DISPLAY",
+                std::env::var("DISPLAY").unwrap_or_else(|_| ":0".to_string()),
+            )
             .env(IPC_TOKEN_ENV, &self.ipc_token)
             .env(
                 "XDG_RUNTIME_DIR",
