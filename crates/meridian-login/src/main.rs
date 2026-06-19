@@ -1017,6 +1017,12 @@ fn run_animation(
     let mut exit = ControlFlow::Continue;
     let mut steady_frame_drawn = false;
     let mut next_security_key_probe = Instant::now();
+    // Render every frame into cached RAM, not straight into the DRM dumb buffer.
+    // tiny-skia alpha-blends by reading the destination pixels, and reading the
+    // write-combining scanout memory is brutally slow — that is what made the
+    // login screen crawl. We do all the CPU work here and push the finished
+    // frame to the scanout buffer with a single write-only copy below.
+    let mut frame_buf = vec![0u8; (w as usize) * (h as usize) * 4];
 
     while exit == ControlFlow::Continue {
         let t = anim_start.elapsed();
@@ -1165,9 +1171,8 @@ fn run_animation(
         }
 
         {
-            let mut mapping = card.map_dumb_buffer(db)?;
-            let buf = mapping.as_mut();
-            let mut pm = PixmapMut::from_bytes(buf, w, h).ok_or("pixmap bind failed")?;
+            let mut pm =
+                PixmapMut::from_bytes(&mut frame_buf, w, h).ok_or("pixmap bind failed")?;
 
             painter.render(
                 &mut pm,
@@ -1211,10 +1216,16 @@ fn run_animation(
                 );
                 draw_pointer_cursor(&mut pm, pointer.x, pointer.y, af.ui_alpha);
             }
+        }
 
-            for px in buf.chunks_exact_mut(4) {
-                px.swap(0, 2);
-            }
+        // tiny-skia is RGBA; DRM XRGB8888 on LE wants BGRX. Swap in cached RAM…
+        for px in frame_buf.chunks_exact_mut(4) {
+            px.swap(0, 2);
+        }
+        // …then a single write-only copy into the scanout buffer.
+        {
+            let mut mapping = card.map_dumb_buffer(db)?;
+            mapping.as_mut().copy_from_slice(&frame_buf);
         }
 
         let clip = ClipRect::new(0, 0, w as u16, h as u16);
