@@ -16,6 +16,8 @@
 #   * sets the GPU KMS module in kld_list (autodetected, or --gpu)
 #   * with --enable-boot: enables the login manager at boot, switches networking
 #     to background dhclient, and loads the GPU module now
+#   * with --quiet-boot: installs the Meridian loader image and configures the
+#     native FreeBSD boot_mute splash instead of the stock FreeBSD logo
 #
 # Recovery: every boot-affecting step is gated behind --enable-boot. Always keep
 # an SSH session open the first time you enable boot; recover with:
@@ -35,7 +37,7 @@ Usage: scripts/install-freebsd.sh [options]
 
   --build           cargo build --release --workspace before installing
   --enable-boot     enable the login manager + prerequisites at boot
-  --quiet-boot      also mute the console for a silent boot (best-effort)
+  --quiet-boot      native Meridian boot logo + muted console/rc output
   --user NAME       desktop user (owns appearance state; default: \$SUDO_USER)
   --gpu DRIVER      KMS module: auto|intel|amd|none (default: auto-detect)
   --prefix PATH     install prefix (default: /usr/local)
@@ -107,6 +109,21 @@ require_file() {
 		echo "install-freebsd: missing $1; run with --build first" >&2
 		exit 1
 	fi
+}
+
+set_loader_conf() {
+	name=$1
+	value=$2
+	file=/boot/loader.conf
+	tmp="/tmp/meridian-loader.conf.$$"
+
+	${SUDO} awk -v key="${name}" '
+		index($0, key "=") == 1 { next }
+		{ print }
+	' "${file}" > "${tmp}"
+	printf '%s="%s"\n' "${name}" "${value}" >> "${tmp}"
+	${SUDO} install -m 0644 "${tmp}" "${file}"
+	rm -f "${tmp}"
 }
 
 # ---------------------------------------------------------------------------
@@ -214,7 +231,29 @@ if [ "${ENABLE_BOOT}" -eq 1 ]; then
 		${SUDO} kldload "${gpu_module}" 2>/dev/null || true
 	fi
 	if [ "${QUIET_BOOT}" -eq 1 ]; then
+		require_file assets/bsd_bootlogo-loader.png
+		${SUDO} install -d -m 0755 /boot/images
+		${SUDO} install -m 0644 assets/bsd_bootlogo-loader.png \
+			/boot/images/meridian-bootlogo.png
+
+		# Use FreeBSD's native boot_mute framebuffer splash. This replaces the
+		# stock /boot/images/freebsd-logo-rev.png without modifying system files,
+		# so freebsd-update cannot overwrite the Meridian image or configuration.
+		if [ ! -e /boot/loader.conf.meridian-backup ]; then
+			${SUDO} cp -p /boot/loader.conf /boot/loader.conf.meridian-backup
+		fi
+		set_loader_conf autoboot_delay -1
+		set_loader_conf beastie_disable YES
+		set_loader_conf loader_logo none
+		set_loader_conf loader_brand none
+		set_loader_conf boot_mute YES
+		set_loader_conf kern.consmute 1
+		set_loader_conf splash /boot/images/meridian-bootlogo.png
+		set_loader_conf shutdown_splash /boot/images/meridian-bootlogo.png
+
 		${SUDO} sysrc meridian_quiet_enable=YES >/dev/null
+		${SUDO} sysrc rc_startmsgs=NO >/dev/null
+		echo "install-freebsd: installed native loader logo and enabled silent boot"
 	fi
 	echo "install-freebsd: enabled meridian_login at boot (background_dhclient=YES)"
 	cat <<EOF

@@ -118,34 +118,33 @@ it spawns wraps itself in `dbus-run-session` for the per-session bus.
 - **Session D-Bus via `dbus-run-session`** — FreeBSD has no systemd user bus, so
   GTK/Qt apps and Meridian's own notification/status-notifier services need one.
 
-## 4. Silent boot (optional)
+## 4. Native boot logo and silent boot (optional)
 
-A console-free boot straight into the desktop. In `/boot/loader.conf`:
-
-```
-autoboot_delay="-1"      # no boot-menu countdown
-beastie_disable="YES"    # no boot menu
-boot_mute="YES"          # mute kernel console during boot
-i915kms_load="YES"       # bring KMS up early for a clean logo->desktop handoff
-```
-
-Then silence the rest of `rc` (some driver/`devmatch`/`dhclient` messages slip
-past `boot_mute`):
+`--quiet-boot` installs `assets/bsd_bootlogo-loader.png` as
+`/boot/images/meridian-bootlogo.png` and configures FreeBSD's native
+`boot_mute` framebuffer splash. This replaces the stock FreeBSD logo without a
+userspace bootsplash:
 
 ```sh
-sysrc rc_startmsgs=NO
-scripts/install-freebsd.sh --quiet-boot ...   # or: sysrc meridian_quiet_enable=YES
+scripts/install-freebsd.sh --enable-boot --quiet-boot --user alice
 ```
 
-`rc.d/meridian_quiet` runs `conscontrol mute on` before `devmatch`/`NETWORKING`.
-Recover console output over SSH with `conscontrol mute off`. This is still rough:
-the `getty` login prompt on `ttyv0` can flash up before the greeter takes over.
+The installer writes the equivalent loader settings:
 
-A PlayStation-style animated splash at the firmware/logo stage is **not**
-achievable on a stock PC — the EFI firmware and FreeBSD loader own that stage and
-there is no GPU/KMS yet. A silent boot to the compositor's first frame is the
-better PC path; the sibling `bootsplash` repo is intentionally left out of the
-FreeBSD install.
+```text
+autoboot_delay="-1"
+beastie_disable="YES"
+loader_logo="none"
+loader_brand="none"
+boot_mute="YES"
+kern.consmute="1"
+splash="/boot/images/meridian-bootlogo.png"
+shutdown_splash="/boot/images/meridian-bootlogo.png"
+```
+
+It also sets `rc_startmsgs=NO` and enables `rc.d/meridian_quiet`, which re-mutes
+the console before `devmatch` and networking. Recover console output over SSH
+with `conscontrol mute off`.
 
 ## 5. Known gaps on FreeBSD
 
