@@ -1,6 +1,6 @@
 use smallvec::SmallVec;
 
-use meridian_config::{Decorations, ThemeColors};
+use meridian_config::{Decorations, ThemeColors, ThemeSurface};
 use smithay::{
     backend::renderer::{
         element::{memory::MemoryRenderBufferRenderElement, solid::SolidColorRenderElement, Kind},
@@ -11,6 +11,25 @@ use smithay::{
 };
 
 use crate::backend::drm::glass::GlassTitlebarInfo;
+
+/// Tuning for the frosted window-button cluster on the glass titlebar. Kept in
+/// one named place instead of scattered literals in the render loop: the colour
+/// veils are fractions of the theme's `glass_button_alpha` (with caps), and the
+/// zone divider has its own hairline opacity. Final values are tuned on-screen
+/// against the reference mockup (GUI_CENTRALIZATION_PLAN §6 phase 1).
+mod glass_buttons {
+    /// Resting colour-veil opacity = `glass_button_alpha * FACTOR`, capped.
+    pub const BASE_FACTOR: f32 = 0.22;
+    pub const BASE_CAP: f32 = 0.16;
+    /// Hovered colour-veil opacity = `glass_button_alpha * FACTOR`, capped.
+    pub const HOVER_FACTOR: f32 = 0.70;
+    pub const HOVER_CAP: f32 = 0.42;
+    /// Frosted-button tint pull = `glass_button_alpha * FACTOR`, capped.
+    pub const TINT_FACTOR: f32 = 0.75;
+    pub const TINT_CAP: f32 = 0.55;
+    /// Hairline opacity of the two dividers splitting the three button zones.
+    pub const DIVIDER_ALPHA: f32 = 0.30;
+}
 
 use super::{
     super::{
@@ -438,16 +457,19 @@ impl DecorationManager {
                     // titlebar shows through a translucent colour veil per
                     // zone, stronger under the pointer. Rounded pill ends.
                     let base = if theme.glass_blur {
-                        (theme.glass_button_alpha * 0.22).min(0.16)
+                        (theme.glass_button_alpha * glass_buttons::BASE_FACTOR)
+                            .min(glass_buttons::BASE_CAP)
                     } else {
                         theme.glass_button_alpha
                     };
                     let hover_a = if theme.glass_blur {
-                        (theme.glass_button_alpha * 0.70).min(0.42)
+                        (theme.glass_button_alpha * glass_buttons::HOVER_FACTOR)
+                            .min(glass_buttons::HOVER_CAP)
                     } else {
                         (theme.glass_button_alpha + 0.25).min(0.95)
                     };
-                    let button_tint = (theme.glass_button_alpha * 0.75).min(0.55);
+                    let button_tint = (theme.glass_button_alpha * glass_buttons::TINT_FACTOR)
+                        .min(glass_buttons::TINT_CAP);
                     let zones = [
                         (
                             buttons.minimize_rect,
@@ -513,7 +535,7 @@ impl DecorationManager {
                             [br, bg, bb],
                             (0.0, 0.0, 0.0, 0.0),
                             0.0,
-                            0.30,
+                            glass_buttons::DIVIDER_ALPHA,
                             psf,
                         )));
                     }
@@ -526,6 +548,9 @@ impl DecorationManager {
                                 tint: [zr, zg, zb],
                                 tint_amount: button_tint,
                                 blur: theme.glass_blur_radius,
+                                // Opaque frosted base; the colour veil strength is
+                                // carried by tint_amount, not the pane opacity.
+                                fill_alpha: 1.0,
                             }));
                         }
                     }
@@ -624,12 +649,18 @@ impl DecorationManager {
             if theme.glass && theme.glass_blur {
                 // Textured liquid-glass: emit a placeholder; the backend
                 // builds the real element after rendering the scene texture.
+                // The titlebar reads the SAME central treatment as panel/
+                // launcher/popup — identical tint, blur and fill — so a window
+                // frame can never drift onto its own settings again. Only the
+                // top-rounded radius is titlebar-specific (layout).
+                let treatment = theme.surface_treatment(ThemeSurface::Modal);
                 elements.push(DecorationRenderElement::Glass(GlassTitlebarInfo {
                     rect: frame_metrics.titlebar_rect,
                     radius: [rphys, rphys, 0.0, 0.0],
                     tint: [r, g, b],
-                    tint_amount: theme.glass_tint,
-                    blur: theme.glass_blur_radius,
+                    tint_amount: treatment.tint_amount,
+                    blur: treatment.blur_radius,
+                    fill_alpha: treatment.fill_alpha as f32 / 255.0,
                 }));
             } else if theme.glass && glass_shader.is_some() {
                 // Tint-only glass fallback (no blur).

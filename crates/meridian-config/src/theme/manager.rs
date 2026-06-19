@@ -119,7 +119,7 @@ impl ThemeManager {
     }
 
     pub fn set_theme(&mut self, name: &str) -> Result<(), ThemeError> {
-        let resolved_name = if name == "default" { "meridian" } else { name };
+        let resolved_name = if name == "default" { "dark" } else { name };
         let theme = load_named_theme(resolved_name, &self.theme_dirs)?;
         info!("Theme: {} -> {}", self.current.name, theme.name);
         self.current = theme;
@@ -260,14 +260,14 @@ fn available_theme_names(theme_dirs: &[PathBuf]) -> Vec<String> {
 }
 
 fn load_or_default(theme_dirs: &[PathBuf]) -> Theme {
-    match load_named_theme("meridian", theme_dirs) {
+    match load_named_theme("dark", theme_dirs) {
         Ok(theme) => {
-            info!("Loaded default theme \"meridian\" from {:?}", theme.dir);
+            info!("Loaded default theme \"dark\" from {:?}", theme.dir);
             theme
         }
         Err(err) => {
             warn!(
-                "Failed to load default theme meridian: {} - using built-in fallback",
+                "Failed to load default theme dark: {} - using built-in fallback",
                 err
             );
             Theme::builtin_default()

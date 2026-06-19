@@ -2,13 +2,17 @@ use meridian_config::{Decorations, ThemeColors};
 
 use super::super::model::{opaque, HoveredButton, WindowDecoration};
 
-const INACTIVE_SHADOW_ALPHA: f32 = 0.3;
+/// Unfocused windows keep a softer shadow than focused ones. This is derived
+/// from the theme's (focused) `shadow_alpha` rather than a fixed literal, so a
+/// theme that dials its shadow down/up scales the inactive shadow with it —
+/// the shadow opacity has a single source (GUI_CENTRALIZATION_PLAN §6 phase 1).
+const INACTIVE_SHADOW_FACTOR: f32 = 0.85;
 
 pub(super) fn effective_shadow_alpha(theme_alpha: f32, focused: bool) -> f32 {
     if focused {
         theme_alpha
     } else {
-        INACTIVE_SHADOW_ALPHA
+        theme_alpha * INACTIVE_SHADOW_FACTOR
     }
 }
 
@@ -124,7 +128,10 @@ mod tests {
 
     #[test]
     fn effective_shadow_alpha_drops_to_inactive_when_unfocused() {
-        assert_eq!(effective_shadow_alpha(0.5, false), 0.3);
+        // Inactive shadow is now a fraction of the theme's focused alpha.
+        assert_eq!(effective_shadow_alpha(0.5, false), 0.5 * super::INACTIVE_SHADOW_FACTOR);
+        // ...and always lighter than the focused shadow.
+        assert!(effective_shadow_alpha(0.5, false) < effective_shadow_alpha(0.5, true));
     }
 
     #[test]

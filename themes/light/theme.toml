@@ -1,0 +1,28 @@
+# Meridian — LIGHT theme.
+#
+# Per the GUI centralization model this file carries ONLY the colour table
+# (plus icon set + wallpaper). All geometry, radii, shadows and glass treatment
+# come from the central Rust defaults in `meridian-config` (Decorations::default)
+# so dark and light stay identical in everything but colour.
+#
+# These values mirror `meridian_tokens::Palette::LIGHT` (the single source).
+
+[colors]
+background = "#ece4d3"
+surface = "#f4efe3"
+surface_alt = "#e3d9c4"
+accent = "#2f6299"
+accent_alt = "#244f7d"
+text = "#07111c"
+text_dim = "#263746"
+border = "#c9bca0"
+error = "#9a4636"
+warning = "#8a6a30"
+success = "#3f7d5e"
+
+[icons]
+theme = "Papirus"
+
+[wallpaper]
+path = "assets/wallpaper.png"
+mode = "fill"

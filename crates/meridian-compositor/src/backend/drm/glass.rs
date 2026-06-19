@@ -106,6 +106,12 @@ pub struct GlassTitlebarInfo {
     pub tint_amount: f32,
     /// Blur radius in physical pixels (used by the separable pre-pass).
     pub blur: f32,
+    /// Opacity of the whole frosted pane (0..1). This is the theme's
+    /// `glass_alpha` / surface `fill_alpha` made into the single opacity knob:
+    /// the shader multiplies its output coverage by this, so a value of 1.0 is
+    /// a fully opaque frosted surface and lower values let the wallpaper/scene
+    /// behind show through. See GUI_CENTRALIZATION_PLAN §6 phase 1.
+    pub fill_alpha: f32,
 }
 
 /// A glass titlebar render element: a slice of the blurred-scene texture drawn
@@ -131,10 +137,14 @@ impl GlassTitlebarElement {
         let size_log: Size<i32, Logical> = info.rect.size;
         let src: Rectangle<f64, Logical> = info.rect.to_f64();
 
+        // The pane opacity (theme glass_alpha / surface fill_alpha) rides on the
+        // renderer's standard `alpha` uniform, which the glass shader multiplies
+        // into its coverage. This makes glass_alpha the one opacity knob for the
+        // whole frosted surface instead of the shell painting its own fill.
         let inner = TextureRenderElement::from_texture_buffer(
             loc_phys,
             texture,
-            Some(1.0),
+            Some(info.fill_alpha.clamp(0.0, 1.0)),
             Some(src),
             Some(size_log),
             Kind::Unspecified,
@@ -194,7 +204,8 @@ impl Element for GlassTitlebarElement {
         OpaqueRegions::default()
     }
     fn alpha(&self) -> f32 {
-        1.0
+        // Carries the pane opacity (fill_alpha) baked into the inner element.
+        self.inner.alpha()
     }
     fn kind(&self) -> Kind {
         Kind::Unspecified

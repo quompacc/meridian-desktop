@@ -26,7 +26,7 @@ impl Default for ThemeColors {
     // 2026-06-04). The per-field hex assertions in the tests below guard that
     // this stays equal to the documented Tokyo-Night-Metro spec.
     fn default() -> Self {
-        let p = meridian_tokens::Palette::TOKYO_NIGHT_METRO;
+        let p = meridian_tokens::Palette::DARK;
         Self {
             background: p.background,
             surface: p.surface,
@@ -66,9 +66,6 @@ pub struct Decorations {
     pub glass_blur: bool,
     /// Blur radius behind the glass, in physical pixels.
     pub glass_blur_radius: f32,
-    /// How strongly the frosted background is pulled toward the tint
-    /// colour (0.0 = clear glass, 1.0 = solid tint).
-    pub glass_tint: f32,
     /// Opacity of the cool-white glass window frame (0.0..1.0).
     pub glass_frame_alpha: f32,
     /// Base opacity of the colour veil on the glass window buttons (0.0..1.0).
@@ -100,22 +97,31 @@ pub struct SurfaceTreatment {
 }
 
 impl Default for Decorations {
+    // THE single source of truth for every non-colour decoration value. Both
+    // shipped themes (`dark`/`light`) carry only `[colors]`, so these defaults
+    // define the shared geometry/glass treatment for all of them. The glass
+    // values follow the "andeutung" target measured from the reference mockups
+    // (GUI_CENTRALIZATION_PLAN §5): nearly opaque fills, a faint blur and a
+    // light tint instead of the old heavy frosted glass.
     fn default() -> Self {
         Self {
             border_width: 1,
-            corner_radius: 0,
-            shadow: false,
-            shadow_radius: 16,
-            shadow_radius_top: 8,
-            shadow_alpha: 0.18,
-            shadow_offset_y: 0,
+            corner_radius: 10,
+            shadow: true,
+            shadow_radius: 22,
+            shadow_radius_top: 11,
+            shadow_alpha: 0.35,
+            shadow_offset_y: 3,
             gap: 8,
-            glass: false,
-            glass_alpha: 0.55,
+            glass: true,
+            // High = opaque frosted surface (the launcher look the user signed
+            // off on). Transparency stays a hint; the frost does the work.
+            glass_alpha: 0.92,
             glass_specular: 0.6,
             glass_blur: true,
-            glass_blur_radius: 8.0,
-            glass_tint: 0.5,
+            // Strong frosted blur — the surfaces must read as milk-glass, not
+            // clear glass. (User feedback: blur far too weak at 3.)
+            glass_blur_radius: 20.0,
             glass_frame_alpha: 0.4,
             glass_button_alpha: 0.45,
             glass_tint_color: None,
@@ -147,30 +153,26 @@ impl Decorations {
             };
         }
 
-        let tint_amount = match surface {
-            ThemeSurface::Panel => (self.glass_tint * 0.35).clamp(0.0, 0.35),
-            ThemeSurface::Launcher => (self.glass_tint * 0.45).clamp(0.0, 0.45),
-            ThemeSurface::Popup => (self.glass_tint * 0.38).clamp(0.0, 0.38),
-            ThemeSurface::Modal | ThemeSurface::Control => self.glass_tint.clamp(0.0, 1.0),
-        };
+        // ONE solidity source for the whole desktop. Panel/launcher get their
+        // look from the shell painting a body at `glass_alpha`; the glass panes
+        // (titlebar, popups, modals) must read equally solid, so they tint toward
+        // the surface colour by the SAME `glass_alpha`. No separate tint knob, no
+        // per-surface scaling — every element is identical but for its corner
+        // radius (layout). Move `glass_alpha` and every surface moves together.
+        let tint_amount = self.glass_alpha.clamp(0.0, 1.0);
         let blur_radius = if self.glass_blur {
-            match surface {
-                ThemeSurface::Popup => (self.glass_blur_radius * 0.45).max(2.0),
-                _ => self.glass_blur_radius.max(0.0),
-            }
+            self.glass_blur_radius.max(0.0)
         } else {
             0.0
         };
-        let fill_scale = match surface {
-            ThemeSurface::Panel => 0.52,
-            _ => 1.0,
-        };
-
+        // `glass_alpha` is the single opacity knob for every glass surface —
+        // panel, launcher, popup and titlebar all land at the same fill so the
+        // desktop reads consistently (the launcher look). No per-surface scale.
         SurfaceTreatment {
             radius: self.surface_radius(surface),
             tint_amount,
             blur_radius,
-            fill_alpha: alpha_byte(self.glass_alpha * fill_scale),
+            fill_alpha: alpha_byte(self.glass_alpha),
             frame_alpha: alpha_byte(self.glass_frame_alpha),
         }
     }
@@ -187,9 +189,11 @@ pub struct Fonts {
 }
 
 impl Default for Fonts {
+    // Central UI-font default. Both shipped themes used "Inter 11"; with the
+    // 2-theme model the font is a shared non-colour default, not per-theme.
     fn default() -> Self {
         Self {
-            ui: "Adwaita Sans 11".to_string(),
+            ui: "Inter 11".to_string(),
         }
     }
 }
@@ -299,32 +303,38 @@ mod tests {
     use super::{Color, Cursor, Decorations, Fonts, ThemeColors, ThemeConfig, ThemeSurface};
 
     #[test]
-    fn test_theme_colors_default_tokyo_night() {
+    fn test_theme_colors_default_is_dark_palette() {
+        // Defaults derive from the single source `Palette::DARK`.
         let colors = ThemeColors::default();
-        assert_eq!(colors.background, Color::rgb(0x1a, 0x1b, 0x26));
-        assert_eq!(colors.surface, Color::rgb(0x24, 0x28, 0x3b));
-        assert_eq!(colors.surface_alt, Color::rgb(0x1f, 0x23, 0x35));
-        assert_eq!(colors.accent, Color::rgb(0x7a, 0xa2, 0xf7));
-        assert_eq!(colors.accent_alt, Color::rgb(0xbb, 0x9a, 0xf7));
-        assert_eq!(colors.text, Color::rgb(0xc0, 0xca, 0xf5));
-        assert_eq!(colors.text_dim, Color::rgb(0xa9, 0xb1, 0xd6));
-        assert_eq!(colors.border, Color::rgb(0x41, 0x48, 0x68));
-        assert_eq!(colors.error, Color::rgb(0xf7, 0x76, 0x8e));
-        assert_eq!(colors.warning, Color::rgb(0xe0, 0xaf, 0x68));
-        assert_eq!(colors.success, Color::rgb(0x9e, 0xce, 0x6a));
+        assert_eq!(colors.background, Color::rgb(0x14, 0x17, 0x1b));
+        assert_eq!(colors.surface, Color::rgb(0x20, 0x25, 0x2b));
+        assert_eq!(colors.surface_alt, Color::rgb(0x1b, 0x1f, 0x24));
+        assert_eq!(colors.accent, Color::rgb(0x4e, 0x99, 0xf3));
+        assert_eq!(colors.accent_alt, Color::rgb(0x43, 0x83, 0xce));
+        assert_eq!(colors.text, Color::rgb(0xdc, 0xde, 0xe1));
+        assert_eq!(colors.text_dim, Color::rgb(0x88, 0x8d, 0x93));
+        assert_eq!(colors.border, Color::rgb(0x35, 0x3a, 0x40));
+        assert_eq!(colors.error, Color::rgb(0xb5, 0x68, 0x5c));
+        assert_eq!(colors.warning, Color::rgb(0xb8, 0x9a, 0x6a));
+        assert_eq!(colors.success, Color::rgb(0x6f, 0xa0, 0x8c));
     }
 
     #[test]
-    fn test_decorations_default_soft_form() {
+    fn test_decorations_default_central_glass() {
+        // The one place non-colour decoration values live. Glass tuned to the
+        // "andeutung" target (mockup): near-opaque fill, faint blur+tint.
         let decorations = Decorations::default();
         assert_eq!(decorations.border_width, 1);
-        assert_eq!(decorations.corner_radius, 0);
-        assert!(!decorations.shadow);
-        assert_eq!(decorations.shadow_radius, 16);
-        assert_eq!(decorations.shadow_radius_top, 8);
-        assert_eq!(decorations.shadow_alpha, 0.18);
-        assert_eq!(decorations.shadow_offset_y, 0);
+        assert_eq!(decorations.corner_radius, 10);
+        assert!(decorations.shadow);
+        assert_eq!(decorations.shadow_radius, 22);
+        assert_eq!(decorations.shadow_radius_top, 11);
+        assert_eq!(decorations.shadow_alpha, 0.35);
+        assert_eq!(decorations.shadow_offset_y, 3);
         assert_eq!(decorations.gap, 8);
+        assert!(decorations.glass);
+        assert_eq!(decorations.glass_alpha, 0.92);
+        assert_eq!(decorations.glass_blur_radius, 20.0);
     }
 
     #[test]
@@ -357,23 +367,23 @@ mod tests {
         .expect("partial theme config should deserialize");
 
         assert_eq!(config.colors.background, Color::rgb(0x00, 0x00, 0x00));
-        assert_eq!(config.colors.surface, Color::rgb(0x24, 0x28, 0x3b));
-        assert_eq!(config.colors.surface_alt, Color::rgb(0x1f, 0x23, 0x35));
-        assert_eq!(config.colors.accent, Color::rgb(0x7a, 0xa2, 0xf7));
-        assert_eq!(config.colors.accent_alt, Color::rgb(0xbb, 0x9a, 0xf7));
-        assert_eq!(config.colors.text, Color::rgb(0xc0, 0xca, 0xf5));
-        assert_eq!(config.colors.text_dim, Color::rgb(0xa9, 0xb1, 0xd6));
-        assert_eq!(config.colors.border, Color::rgb(0x41, 0x48, 0x68));
-        assert_eq!(config.colors.error, Color::rgb(0xf7, 0x76, 0x8e));
-        assert_eq!(config.colors.warning, Color::rgb(0xe0, 0xaf, 0x68));
-        assert_eq!(config.colors.success, Color::rgb(0x9e, 0xce, 0x6a));
+        assert_eq!(config.colors.surface, Color::rgb(0x20, 0x25, 0x2b));
+        assert_eq!(config.colors.surface_alt, Color::rgb(0x1b, 0x1f, 0x24));
+        assert_eq!(config.colors.accent, Color::rgb(0x4e, 0x99, 0xf3));
+        assert_eq!(config.colors.accent_alt, Color::rgb(0x43, 0x83, 0xce));
+        assert_eq!(config.colors.text, Color::rgb(0xdc, 0xde, 0xe1));
+        assert_eq!(config.colors.text_dim, Color::rgb(0x88, 0x8d, 0x93));
+        assert_eq!(config.colors.border, Color::rgb(0x35, 0x3a, 0x40));
+        assert_eq!(config.colors.error, Color::rgb(0xb5, 0x68, 0x5c));
+        assert_eq!(config.colors.warning, Color::rgb(0xb8, 0x9a, 0x6a));
+        assert_eq!(config.colors.success, Color::rgb(0x6f, 0xa0, 0x8c));
         assert_eq!(config.decorations.border_width, 1);
-        assert_eq!(config.decorations.corner_radius, 0);
-        assert!(!config.decorations.shadow);
-        assert_eq!(config.decorations.shadow_radius, 16);
-        assert_eq!(config.decorations.shadow_radius_top, 8);
-        assert_eq!(config.decorations.shadow_alpha, 0.18);
-        assert_eq!(config.decorations.shadow_offset_y, 0);
+        assert_eq!(config.decorations.corner_radius, 10);
+        assert!(config.decorations.shadow);
+        assert_eq!(config.decorations.shadow_radius, 22);
+        assert_eq!(config.decorations.shadow_radius_top, 11);
+        assert_eq!(config.decorations.shadow_alpha, 0.35);
+        assert_eq!(config.decorations.shadow_offset_y, 3);
         assert_eq!(config.decorations.gap, 8);
     }
 
@@ -384,7 +394,6 @@ mod tests {
             glass: true,
             glass_alpha: 0.5,
             glass_frame_alpha: 0.25,
-            glass_tint: 0.6,
             glass_blur_radius: 12.0,
             ..Decorations::default()
         };
@@ -393,18 +402,23 @@ mod tests {
         assert_eq!(modal.radius, 14.0);
         assert_eq!(modal.fill_alpha, 128);
         assert_eq!(modal.frame_alpha, 64);
-        assert_eq!(modal.tint_amount, 0.6);
+        // Tint solidity is driven by glass_alpha (the one knob), not a tint field.
+        assert_eq!(modal.tint_amount, 0.5);
         assert_eq!(modal.blur_radius, 12.0);
         assert_eq!(decorations.surface_radius(ThemeSurface::Control), 8.0);
 
         let panel = decorations.surface_treatment(ThemeSurface::Panel);
         assert_eq!(panel.radius, 12.0);
-        assert_eq!(panel.fill_alpha, 66);
-        assert!((panel.tint_amount - 0.21).abs() < 1e-6);
+        // Tint, blur and fill are uniform across every surface (only the radius
+        // differs) — panel == modal == popup == titlebar.
+        assert_eq!(panel.fill_alpha, 128);
+        assert_eq!(panel.tint_amount, 0.5);
+        assert_eq!(panel.blur_radius, 12.0);
 
         let popup = decorations.surface_treatment(ThemeSurface::Popup);
         assert_eq!(popup.radius, 14.0);
-        assert!((popup.blur_radius - 5.4).abs() < 1e-6);
+        assert_eq!(popup.tint_amount, 0.5);
+        assert_eq!(popup.blur_radius, 12.0);
     }
 
     #[test]
@@ -434,9 +448,9 @@ mod tests {
     }
 
     #[test]
-    fn test_fonts_default_uses_adwaita() {
+    fn test_fonts_default_uses_inter() {
         let fonts = Fonts::default();
-        assert_eq!(fonts.ui, "Adwaita Sans 11");
+        assert_eq!(fonts.ui, "Inter 11");
     }
 
     #[test]

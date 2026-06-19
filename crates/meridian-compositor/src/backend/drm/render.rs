@@ -72,6 +72,9 @@ fn themed_layer_glass_info(
         ],
         tint_amount: treatment.tint_amount,
         blur: treatment.blur_radius,
+        // Per-surface fill opacity from the theme (glass_alpha), now the single
+        // opacity knob for panel/launcher/popup instead of a shell-painted fill.
+        fill_alpha: treatment.fill_alpha as f32 / 255.0,
     }
 }
 

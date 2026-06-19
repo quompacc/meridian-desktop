@@ -1,0 +1,28 @@
+# Meridian — DARK theme.
+#
+# Per the GUI centralization model this file carries ONLY the colour table
+# (plus icon set + wallpaper). All geometry, radii, shadows and glass treatment
+# come from the central Rust defaults in `meridian-config` (Decorations::default)
+# so dark and light stay identical in everything but colour.
+#
+# These values mirror `meridian_tokens::Palette::DARK` (the single source).
+
+[colors]
+background = "#14171b"
+surface = "#20252b"
+surface_alt = "#1b1f24"
+accent = "#4e99f3"
+accent_alt = "#4383ce"
+text = "#dcdee1"
+text_dim = "#888d93"
+border = "#353a40"
+error = "#b5685c"
+warning = "#b89a6a"
+success = "#6fa08c"
+
+[icons]
+theme = "Papirus-Dark"
+
+[wallpaper]
+path = "assets/wallpaper.png"
+mode = "fill"

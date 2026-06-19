@@ -120,9 +120,47 @@ pub struct Palette {
 }
 
 impl Palette {
-    /// The canonical Tokyo-Night-Metro palette. THE source of truth for the
-    /// built-in defaults; `meridian_config::ThemeColors::default()` derives
-    /// from this rather than re-listing the values.
+    /// The single source of truth for the **dark** desktop theme. Sampled from
+    /// the dark reference mockup (`assets/bsd_desktop_mockup.png`); a neutral
+    /// grey-blue. `meridian_config::ThemeColors::default()` derives from this,
+    /// and `themes/dark/theme.toml` mirrors these values for human editing.
+    /// The light theme (`LIGHT`) differs **only** in these colours — geometry,
+    /// radii and glass treatment are shared central defaults.
+    pub const DARK: Palette = Palette {
+        background: Color::rgb(0x14, 0x17, 0x1b),
+        surface: Color::rgb(0x20, 0x25, 0x2b),
+        surface_alt: Color::rgb(0x1b, 0x1f, 0x24),
+        accent: Color::rgb(0x4e, 0x99, 0xf3),
+        accent_alt: Color::rgb(0x43, 0x83, 0xce),
+        text: Color::rgb(0xdc, 0xde, 0xe1),
+        text_dim: Color::rgb(0x88, 0x8d, 0x93),
+        border: Color::rgb(0x35, 0x3a, 0x40),
+        error: Color::rgb(0xb5, 0x68, 0x5c),
+        warning: Color::rgb(0xb8, 0x9a, 0x6a),
+        success: Color::rgb(0x6f, 0xa0, 0x8c),
+    };
+
+    /// The single source of truth for the **light** desktop theme. Sampled from
+    /// the light reference mockup (`assets/bsd_desktop_mockup_hell.png`). The
+    /// only thing that differs from [`Palette::DARK`] is the colour table —
+    /// see `themes/light/theme.toml`.
+    pub const LIGHT: Palette = Palette {
+        background: Color::rgb(0xec, 0xe4, 0xd3),
+        surface: Color::rgb(0xf4, 0xef, 0xe3),
+        surface_alt: Color::rgb(0xe3, 0xd9, 0xc4),
+        accent: Color::rgb(0x2f, 0x62, 0x99),
+        accent_alt: Color::rgb(0x24, 0x4f, 0x7d),
+        text: Color::rgb(0x07, 0x11, 0x1c),
+        text_dim: Color::rgb(0x26, 0x37, 0x46),
+        border: Color::rgb(0xc9, 0xbc, 0xa0),
+        error: Color::rgb(0x9a, 0x46, 0x36),
+        warning: Color::rgb(0x8a, 0x6a, 0x30),
+        success: Color::rgb(0x3f, 0x7d, 0x5e),
+    };
+
+    /// The historical Tokyo-Night-Metro palette. No longer a shipped theme;
+    /// retained only as a fixture for `meridian-ui` render tests. Production
+    /// defaults come from [`Palette::DARK`].
     pub const TOKYO_NIGHT_METRO: Palette = Palette {
         background: Color::rgb(0x1a, 0x1b, 0x26),
         surface: Color::rgb(0x24, 0x28, 0x3b),
@@ -139,8 +177,9 @@ impl Palette {
 }
 
 impl Default for Palette {
+    /// The dark desktop theme is the built-in fallback.
     fn default() -> Self {
-        Self::TOKYO_NIGHT_METRO
+        Self::DARK
     }
 }
 
@@ -206,5 +245,36 @@ mod tests {
         assert_eq!(p.background, Color::rgb(0x1a, 0x1b, 0x26));
         assert_eq!(p.text, Color::rgb(0xc0, 0xca, 0xf5));
         assert_eq!(p.error, Color::rgb(0xf7, 0x76, 0x8e));
+    }
+
+    #[test]
+    fn default_palette_is_dark() {
+        assert_eq!(Palette::default(), Palette::DARK);
+    }
+
+    #[test]
+    fn dark_palette_anchors_match_mockup() {
+        let p = Palette::DARK;
+        assert_eq!(p.background, Color::rgb(0x14, 0x17, 0x1b));
+        assert_eq!(p.surface, Color::rgb(0x20, 0x25, 0x2b));
+        assert_eq!(p.accent, Color::rgb(0x4e, 0x99, 0xf3));
+        assert_eq!(p.text, Color::rgb(0xdc, 0xde, 0xe1));
+    }
+
+    #[test]
+    fn light_palette_anchors_match_mockup() {
+        let p = Palette::LIGHT;
+        assert_eq!(p.background, Color::rgb(0xec, 0xe4, 0xd3));
+        assert_eq!(p.surface, Color::rgb(0xf4, 0xef, 0xe3));
+        assert_eq!(p.accent, Color::rgb(0x2f, 0x62, 0x99));
+        assert_eq!(p.text, Color::rgb(0x07, 0x11, 0x1c));
+    }
+
+    #[test]
+    fn dark_and_light_differ_only_in_being_distinct_tables() {
+        // Sanity: the two shipped palettes are genuinely different colour
+        // tables (the only thing a theme switch swaps).
+        assert_ne!(Palette::DARK, Palette::LIGHT);
+        assert_ne!(Palette::DARK.background, Palette::LIGHT.background);
     }
 }

@@ -23,7 +23,7 @@ pub struct GeneralConfig {
 impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
-            theme: "meridian".to_string(),
+            theme: "dark".to_string(),
             idle_timeout_secs: Some(300),
         }
     }
@@ -236,7 +236,7 @@ struct GeneralToml {
 impl Default for GeneralToml {
     fn default() -> Self {
         Self {
-            theme: "meridian".to_string(),
+            theme: "dark".to_string(),
             idle_timeout_secs: Some(300),
         }
     }
@@ -334,7 +334,7 @@ pinned = [
     fn missing_file_uses_defaults() {
         let path = unique_test_path("missing.toml");
         let config = MeridianConfig::load_or_default_from_path(&path);
-        assert_eq!(config.general.theme, "meridian");
+        assert_eq!(config.general.theme, "dark");
         assert!(config.cursor.is_none());
         assert!(config.wallpaper.is_none());
     }
@@ -375,7 +375,7 @@ mode = "fill"
         let path = unique_test_path("invalid.toml");
         write(&path, r#"[general theme = "broken""#);
         let config = MeridianConfig::load_or_default_from_path(&path);
-        assert_eq!(config.general.theme, "meridian");
+        assert_eq!(config.general.theme, "dark");
         assert!(config.cursor.is_none());
         assert!(config.wallpaper.is_none());
     }
@@ -568,7 +568,7 @@ mode = "fill"
         });
 
         config.reload_from_path(&path).expect("reload missing");
-        assert_eq!(config.general.theme, "meridian");
+        assert_eq!(config.general.theme, "dark");
         assert!(config.cursor.is_none());
         assert!(config.wallpaper.is_none());
     }
