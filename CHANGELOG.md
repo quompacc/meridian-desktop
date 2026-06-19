@@ -10,6 +10,28 @@ single version.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Launcher opacity now theme-driven:** the command-palette body was painted
+  fully transparent via a hardcoded `LAUNCHER_GLASS_ALPHA = 0`, so `glass_alpha`
+  had no effect on it. The body now follows the theme's launcher glass fill, like
+  the panel — one `glass_alpha` knob controls launcher transparency.
+
+### Changed
+
+- **Neutral palette nudge:** the default theme colours moved a step further from
+  blue toward grey-blue, and `glass_alpha` raised to 0.75 (less transparent).
+  These are an interim step; see `docs/GUI_CENTRALIZATION_PLAN.md` for the planned
+  central design source + light/dark redesign.
+
+### Docs
+
+- **GUI centralization plan + audit** (`docs/GUI_CENTRALIZATION_PLAN.md`): a
+  fresh-context entry point documenting the hardcoded-value audit (file:line),
+  the mockup-derived "hint of transparency" targets, the phased plan to route all
+  shell/greeter/lock/compositor visuals through one central theme source, and the
+  current FreeBSD box runtime state.
+
 ## [0.5.1] - 2026-06-19
 
 ### Changed
