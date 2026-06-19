@@ -85,6 +85,33 @@ theme = "Bibata-Modern-Classic"
 size = 24
 ```
 
+## Silent boot
+
+For a console-free boot straight into the desktop (`/boot/loader.conf`):
+
+```
+autoboot_delay="-1"      # no boot-menu countdown
+beastie_disable="YES"    # no boot menu
+boot_mute="YES"          # mute kernel console during boot
+i915kms_load="YES"       # bring KMS up early for a clean logo->desktop handoff
+```
+
+Then mute the console for the rest of boot (occasional driver messages slip past
+`boot_mute`) via the bundled rc.d service, and silence rc start messages:
+
+```sh
+sysrc rc_startmsgs=NO
+sysrc meridian_quiet_enable=YES   # rc.d/meridian_quiet: conscontrol mute on
+```
+
+Recover console output over SSH with `conscontrol mute off`.
+
+Note on a boot splash: an animated, GPU-accelerated splash at the firmware/logo
+stage (PlayStation-style) is not achievable on a stock PC — the EFI firmware and
+FreeBSD loader own that stage and there is no GPU/KMS yet. The bundled DRM
+`bootsplash` can only run from `rc` (after KMS), so it appears late and renders
+on the CPU; a silent boot to the compositor's first frame is the better PC path.
+
 ## Known gaps on FreeBSD
 
 - **No boot-to-greeter.** `meridian-login` still assumes `pam_systemd`/logind for

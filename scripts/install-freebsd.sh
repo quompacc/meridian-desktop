@@ -85,8 +85,9 @@ state_user="${SUDO_USER:-$(id -un)}"
 ${SUDO} install -d -o "${state_user}" -g "$(id -gn "${state_user}")" \
 	-m 0755 /var/lib/meridian
 
-# rc.d service (installed but NOT enabled; see the header of the script).
+# rc.d services (installed but NOT enabled; see each script's header).
 ${SUDO} install -m 0755 packaging/rc.d/meridian "${rcdir}/meridian"
+${SUDO} install -m 0755 packaging/rc.d/meridian_quiet "${rcdir}/meridian_quiet"
 
 cat <<EOF
 install-freebsd: installed Meridian to ${PREFIX}

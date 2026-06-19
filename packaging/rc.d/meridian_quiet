@@ -1,0 +1,39 @@
+#!/bin/sh
+#
+# PROVIDE: meridian_quiet
+# REQUIRE: FILESYSTEMS
+# BEFORE:  LOGIN
+# KEYWORD: nojail
+#
+# Mute the system console for a silent graphical boot: Meridian owns the screen,
+# so kernel/console text should never flash up. Combined with boot_mute="YES" in
+# loader.conf (plus beastie_disable + autoboot_delay="-1") this gives an
+# end-to-end quiet boot. Recover console output over SSH with:
+#   conscontrol mute off
+#
+# Enable with:  sysrc meridian_quiet_enable=YES
+
+. /etc/rc.subr
+
+name=meridian_quiet
+desc="Mute console for a silent boot"
+rcvar=meridian_quiet_enable
+
+load_rc_config $name
+: ${meridian_quiet_enable:="NO"}
+
+start_cmd="meridian_quiet_start"
+stop_cmd="meridian_quiet_stop"
+
+meridian_quiet_start()
+{
+	/sbin/conscontrol mute on >/dev/null 2>&1
+	echo "meridian_quiet: console muted."
+}
+
+meridian_quiet_stop()
+{
+	/sbin/conscontrol mute off >/dev/null 2>&1
+}
+
+run_rc_command "$1"
