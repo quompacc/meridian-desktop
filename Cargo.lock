@@ -1446,6 +1446,7 @@ name = "meridian-lock"
 version = "0.5.1"
 dependencies = [
  "libc",
+ "meridian-config",
  "meridian-tokens",
  "meridian-ui",
  "pam-sys",

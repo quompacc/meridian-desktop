@@ -8,6 +8,7 @@ name = "meridian-lock"
 path = "src/main.rs"
 
 [dependencies]
+meridian-config = { path = "../meridian-config" }
 meridian-tokens = { path = "../meridian-tokens" }
 meridian-ui = { path = "../meridian-ui" }
 libc = "0.2"

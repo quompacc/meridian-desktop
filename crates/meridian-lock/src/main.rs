@@ -19,16 +19,65 @@ use wayland_protocols::ext::session_lock::v1::client::{
 use xkbcommon::xkb;
 use zeroize::Zeroizing;
 
-// ── colours (RGBA, tiny-skia order) ──────────────────────────────────────────
-const BG: u32 = 0xFF1A1B26;
-const CARD: u32 = 0xFF1F2335;
-const FIELD_BG: u32 = 0xFF24283B;
-const FIELD_BORDER: u32 = 0xFF414868;
-const ACCENT: u32 = 0xFF7AA2F7;
-const TEXT: u32 = 0xFFC0CAF5;
-const DIM: u32 = 0xFF565F89;
-const DOT: u32 = 0xFF7AA2F7;
-const ERR: u32 = 0xFFF7768E;
+/// Lock-screen colours + corner radii, derived once from the active theme so the
+/// lock matches the desktop instead of a hardcoded palette. `0xAARRGGBB` to feed
+/// the existing `color()` helper. Falls back to the built-in default theme when
+/// no config/theme can be read (see `LockStyle::load`).
+struct LockStyle {
+    bg: u32,
+    card: u32,
+    field_bg: u32,
+    field_border: u32,
+    accent: u32,
+    text: u32,
+    dim: u32,
+    dot: u32,
+    err: u32,
+    card_radius: f32,
+    control_radius: f32,
+}
+
+impl LockStyle {
+    fn from_theme(theme: &meridian_config::ThemeConfig) -> Self {
+        let c = &theme.colors;
+        let argb = |col: meridian_config::Color| -> u32 {
+            ((col.a as u32) << 24)
+                | ((col.r as u32) << 16)
+                | ((col.g as u32) << 8)
+                | (col.b as u32)
+        };
+        Self {
+            bg: argb(c.background),
+            card: argb(c.surface_alt),
+            field_bg: argb(c.surface),
+            field_border: argb(c.border),
+            accent: argb(c.accent),
+            text: argb(c.text),
+            dim: argb(c.text_dim),
+            dot: argb(c.accent),
+            err: argb(c.error),
+            card_radius: theme
+                .decorations
+                .surface_radius(meridian_config::ThemeSurface::Modal),
+            control_radius: theme
+                .decorations
+                .surface_radius(meridian_config::ThemeSurface::Control),
+        }
+    }
+
+    /// Resolve the user's configured theme (same source as the shell/greeter),
+    /// falling back to the built-in default if config or theme are unreadable.
+    fn load() -> Self {
+        let config = meridian_config::MeridianConfig::load();
+        let mut manager = meridian_config::ThemeManager::new();
+        let name = config.general.theme.trim();
+        let name = if name.is_empty() { "dark" } else { name };
+        if let Err(err) = manager.set_theme(name) {
+            tracing::warn!(theme = name, error = %err, "lock theme load failed; using default");
+        }
+        Self::from_theme(&manager.current().config)
+    }
+}
 
 const CARD_W: f32 = 460.0;
 const CARD_H: f32 = 310.0;
@@ -68,6 +117,7 @@ struct AppState {
     username: String,
     status: LockStatus,
     auth_rx: Option<mpsc::Receiver<bool>>,
+    style: LockStyle,
 }
 
 #[derive(Clone, PartialEq)]
@@ -514,7 +564,7 @@ fn fill_circle(pm: &mut PixmapMut, cx: f32, cy: f32, radius: f32, col: u32) {
     );
 }
 
-fn draw_lock_icon(pm: &mut PixmapMut, cx: f32, cy: f32, col: u32) {
+fn draw_lock_icon(pm: &mut PixmapMut, cx: f32, cy: f32, col: u32, bg: u32) {
     let paint_col = color(col);
     // Shackle: arc from 180° to 360° at (cx, cy-10) with r=12
     let sr = 12.0;
@@ -555,7 +605,7 @@ fn draw_lock_icon(pm: &mut PixmapMut, cx: f32, cy: f32, col: u32) {
     fill_rect(pm, bx, by, bw, bh, 5.0, col);
 
     // Keyhole: small circle + line
-    fill_circle(pm, cx, by + 8.0, 4.0, BG);
+    fill_circle(pm, cx, by + 8.0, 4.0, bg);
     // Keyhole shaft
     let mut pb2 = PathBuilder::new();
     pb2.move_to(cx, by + 12.0);
@@ -567,7 +617,7 @@ fn draw_lock_icon(pm: &mut PixmapMut, cx: f32, cy: f32, col: u32) {
         ..Default::default()
     };
     let mut kp = Paint::default();
-    kp.set_color(color(BG));
+    kp.set_color(color(bg));
     pm.stroke_path(&path_keyhole, &kp, &sp2, Transform::identity(), None);
 }
 
@@ -615,6 +665,7 @@ fn render_frame(
     password_len: usize,
     username: &str,
     status: &LockStatus,
+    style: &LockStyle,
 ) -> Vec<u8> {
     let w = width;
     let h = height;
@@ -622,7 +673,7 @@ fn render_frame(
     let mut pm_mut = pm.as_mut();
 
     // Background
-    fill_rect(&mut pm_mut, 0.0, 0.0, w as f32, h as f32, 0.0, BG);
+    fill_rect(&mut pm_mut, 0.0, 0.0, w as f32, h as f32, 0.0, style.bg);
 
     let cx = w as f32 / 2.0;
     let cy = h as f32 / 2.0;
@@ -630,10 +681,18 @@ fn render_frame(
     // Card
     let card_x = cx - CARD_W / 2.0;
     let card_y = cy - CARD_H / 2.0;
-    fill_rect(&mut pm_mut, card_x, card_y, CARD_W, CARD_H, 16.0, CARD);
+    fill_rect(
+        &mut pm_mut,
+        card_x,
+        card_y,
+        CARD_W,
+        CARD_H,
+        style.card_radius,
+        style.card,
+    );
 
     // Lock icon
-    draw_lock_icon(&mut pm_mut, cx, card_y + 50.0, ACCENT);
+    draw_lock_icon(&mut pm_mut, cx, card_y + 50.0, style.accent, style.bg);
 
     // "Meridian Desktop" title
     draw_text_centered(
@@ -642,19 +701,19 @@ fn render_frame(
         cx,
         card_y + 82.0,
         "Meridian Desktop",
-        TEXT,
+        style.text,
     );
 
     // Username
-    draw_text_centered(&mut pm_mut, 14.0, cx, card_y + 114.0, username, DIM);
+    draw_text_centered(&mut pm_mut, 14.0, cx, card_y + 114.0, username, style.dim);
 
     // Password field
     let field_x = cx - FIELD_W / 2.0;
     let field_y = card_y + 150.0;
     let field_border_col = if status == &LockStatus::Failed {
-        ERR
+        style.err
     } else {
-        FIELD_BORDER
+        style.field_border
     };
     fill_rect(
         &mut pm_mut,
@@ -662,7 +721,7 @@ fn render_frame(
         field_y - 1.0,
         FIELD_W + 2.0,
         FIELD_H + 2.0,
-        9.0,
+        style.control_radius + 1.0,
         field_border_col,
     );
     fill_rect(
@@ -671,8 +730,8 @@ fn render_frame(
         field_y,
         FIELD_W,
         FIELD_H,
-        8.0,
-        FIELD_BG,
+        style.control_radius,
+        style.field_bg,
     );
 
     // Password dots
@@ -683,7 +742,7 @@ fn render_frame(
     let dots_y = field_y + FIELD_H / 2.0;
     for i in 0..password_len.min(26) {
         let dx = dots_start_x + i as f32 * (dot_r * 2.0 + dot_gap);
-        fill_circle(&mut pm_mut, dx, dots_y, dot_r, DOT);
+        fill_circle(&mut pm_mut, dx, dots_y, dot_r, style.dot);
     }
     if password_len == 0 {
         // Placeholder text
@@ -694,16 +753,16 @@ fn render_frame(
             field_x + (FIELD_W - m.total_advance) / 2.0,
             field_y + (FIELD_H / 2.0) + (m.ascent - (m.ascent - m.descent) / 2.0),
             "Passwort eingeben",
-            DIM,
+            style.dim,
         );
     }
 
     // Status text
     let status_y = field_y + FIELD_H + 12.0;
     let (status_text, status_col) = match status {
-        LockStatus::Idle => ("Drücke Enter zum Entsperren", DIM),
-        LockStatus::Pending => ("Authentifizierung …", TEXT),
-        LockStatus::Failed => ("Falsches Passwort", ERR),
+        LockStatus::Idle => ("Drücke Enter zum Entsperren", style.dim),
+        LockStatus::Pending => ("Authentifizierung …", style.text),
+        LockStatus::Failed => ("Falsches Passwort", style.err),
     };
     draw_text_centered(&mut pm_mut, 13.0, cx, status_y, status_text, status_col);
 
@@ -747,7 +806,14 @@ fn render_surface(state: &mut AppState, idx: usize, qh: &QueueHandle<AppState>) 
         return;
     }
 
-    let pixels = render_frame(w, h, state.password.len(), &state.username, &state.status);
+    let pixels = render_frame(
+        w,
+        h,
+        state.password.len(),
+        &state.username,
+        &state.status,
+        &state.style,
+    );
 
     let ls = &mut state.lock_surfaces[idx];
 
@@ -833,6 +899,7 @@ fn main() {
         username: get_username(),
         status: LockStatus::Idle,
         auth_rx: None,
+        style: LockStyle::load(),
     };
 
     let display = conn.display();
@@ -961,6 +1028,7 @@ mod tests {
             username: "tester".to_string(),
             status: LockStatus::Idle,
             auth_rx: None,
+            style: LockStyle::from_theme(&meridian_config::ThemeConfig::default()),
         }
     }
 

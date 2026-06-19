@@ -95,18 +95,23 @@ fn draw_cover(target: &mut Pixmap, source: &Pixmap) {
 }
 
 fn draw_tint(target: &mut Pixmap, width: f32, height: f32) {
+    // The backdrop veil follows the theme background hue (one colour source);
+    // the vertical alpha profile (top/middle/bottom) is the darkening shape and
+    // stays fixed. In the dark theme this matches the former navy tint.
+    let bg = crate::login_theme().colors.background;
+    let veil = |alpha: u8| Color::from_rgba8(bg.r, bg.g, bg.b, alpha);
     let shader = LinearGradient::new(
         Point::from_xy(0.0, 0.0),
         Point::from_xy(0.0, height),
         vec![
-            GradientStop::new(0.0, Color::from_rgba8(14, 17, 22, 126)),
-            GradientStop::new(0.48, Color::from_rgba8(18, 21, 26, 104)),
-            GradientStop::new(1.0, Color::from_rgba8(8, 11, 15, 156)),
+            GradientStop::new(0.0, veil(126)),
+            GradientStop::new(0.48, veil(104)),
+            GradientStop::new(1.0, veil(156)),
         ],
         SpreadMode::Pad,
         Transform::identity(),
     )
-    .unwrap_or(Shader::SolidColor(Color::from_rgba8(14, 17, 22, 126)));
+    .unwrap_or(Shader::SolidColor(veil(126)));
     let paint = Paint {
         shader,
         anti_alias: false,
@@ -120,7 +125,12 @@ fn draw_compass_guides(target: &mut Pixmap, width: f32, height: f32) {
     let cx = width * 0.5;
     let cy = height * 0.49;
     let radius = width.min(height) * 0.37;
-    let line_color = Color::from_rgba8(164, 177, 190, 30);
+    // Guide lines track the theme text colour (neutral that flips with light/
+    // dark); the north marker uses the theme accent. Only the alphas — the
+    // drawing's contrast profile — are fixed. Dark theme ≈ the former greys.
+    let text = crate::login_theme().colors.text;
+    let accent = crate::login_theme().colors.accent;
+    let line_color = Color::from_rgba8(text.r, text.g, text.b, 30);
 
     for factor in [0.48_f32, 0.68, 0.82, 1.0] {
         let Some(circle) = PathBuilder::from_circle(cx, cy, radius * factor) else {
@@ -135,7 +145,7 @@ fn draw_compass_guides(target: &mut Pixmap, width: f32, height: f32) {
     axes.move_to(cx - radius, cy);
     axes.line_to(cx + radius, cy);
     if let Some(path) = axes.finish() {
-        stroke(target, &path, Color::from_rgba8(166, 182, 198, 38), 1.0);
+        stroke(target, &path, Color::from_rgba8(text.r, text.g, text.b, 38), 1.0);
     }
 
     let mut needle = PathBuilder::new();
@@ -146,7 +156,7 @@ fn draw_compass_guides(target: &mut Pixmap, width: f32, height: f32) {
     needle.close();
     if let Some(path) = needle.finish() {
         let mut paint = Paint::default();
-        paint.set_color(Color::from_rgba8(196, 207, 218, 50));
+        paint.set_color(Color::from_rgba8(text.r, text.g, text.b, 50));
         paint.anti_alias = true;
         target.fill_path(
             &path,
@@ -160,7 +170,7 @@ fn draw_compass_guides(target: &mut Pixmap, width: f32, height: f32) {
     let marker = PathBuilder::from_circle(cx, cy - radius, 2.4);
     if let Some(marker) = marker {
         let mut paint = Paint::default();
-        paint.set_color(Color::from_rgba8(121, 166, 207, 190));
+        paint.set_color(Color::from_rgba8(accent.r, accent.g, accent.b, 190));
         paint.anti_alias = true;
         target.fill_path(
             &marker,

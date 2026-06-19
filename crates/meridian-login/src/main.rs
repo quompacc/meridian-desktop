@@ -84,14 +84,20 @@ type Rect = (f32, f32, f32, f32);
 type PowerButtonRects = (Rect, Rect);
 
 const CARD_PAD: f32 = 48.0;
-const LOGIN_CARD_RADIUS: f32 = 18.0;
-const LOGIN_CONTROL_RADIUS: f32 = 8.0;
+
+/// Card / control corner radii come from the active theme's central decoration
+/// defaults (one source for every surface), not greeter-local literals. The
+/// card reads as a modal surface; the inputs/buttons as controls.
 fn card_radius() -> f32 {
-    LOGIN_CARD_RADIUS
+    login_theme()
+        .decorations
+        .surface_radius(meridian_config::ThemeSurface::Modal)
 }
 
 fn control_radius() -> f32 {
-    LOGIN_CONTROL_RADIUS
+    login_theme()
+        .decorations
+        .surface_radius(meridian_config::ThemeSurface::Control)
 }
 const CARD_SHADOW_BLUR: f32 = meridian_tokens::Elevation::LAUNCHER.blur;
 const CARD_SHADOW_ALPHA: f32 = meridian_tokens::Elevation::LAUNCHER.alpha;
@@ -560,9 +566,9 @@ fn light_appearance() -> bool {
 fn load_login_theme(appearance: Appearance) -> ThemeConfig {
     let mut theme_manager = ThemeManager::new();
     let theme_name = if appearance.is_light() {
-        "meridian-light"
+        "light"
     } else {
-        "meridian"
+        "dark"
     };
     if let Err(err) = theme_manager.set_theme(theme_name) {
         warn!(
