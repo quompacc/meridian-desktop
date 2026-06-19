@@ -19,9 +19,9 @@ Stand: 2026-06-19 · Branch `freebsd-port` · letzter Commit-Stand siehe `git lo
   Schriftfarbe unterscheiden. Layout, Geometrie, Radien, Glas/Blur/Schatten sind
   **identisch**. Theme-Wechsel = nur die Farbtabelle tauschen.
 - **Transparenz + Blur fast raus** — nur eine *Andeutung*, exakt wie im Mockup.
-- **Harte Referenz:** `assets/bsd_desktop_mockup.png` (Dunkel). Ein **Hell-Mockup
-  liefert der Nutzer noch** (`bsd_desktop_mockup_light.png` o. ä.); bis dahin ist
-  Hell als zweite Farbtabelle vorzubereiten.
+- **Harte Referenz:** `assets/bsd_desktop_mockup.png` (Dunkel) und
+  `assets/bsd_desktop_mockup_hell.png` (Hell). Beide 1672×941, gleiches Layout —
+  Hell-Farben daraus samplen wie bei Dunkel.
 - **Reichweite:** alles — Shell, Greeter (`meridian-login`), Lock
   (`meridian-lock`), Compositor-Titlebars.
 - **Architektur-Entscheidung des Nutzers:** Den Theme-**Loader behalten**, nur
@@ -30,7 +30,7 @@ Stand: 2026-06-19 · Branch `freebsd-port` · letzter Commit-Stand siehe `git lo
 ## 2. Harte Referenzen & Zugang
 
 - Mockup Dunkel: `assets/bsd_desktop_mockup.png` · Wallpaper: `assets/bsd_wallpaper.png`.
-- Mockup Hell: **kommt vom Nutzer** (noch nicht vorhanden).
+- Mockup Hell: `assets/bsd_desktop_mockup_hell.png` (vom Nutzer geliefert).
 - Test-Hardware: FreeBSD 15.1, `ssh meridian-bsd` (passwortlos root, Checkout
   `/root/meridian-desktop`). Build nur dort (Windows baut `wayland-sys` nicht).
   Build-Befehl: `LIBRARY_PATH=/usr/local/lib cargo build --release …`.
@@ -165,8 +165,8 @@ Offene Verifikation: Launcher-Deckkraft/Graublau/Launch nach Re-Login bestätige
 
 ## 8. Offene Entscheidungen / Risiken
 
-- **Hell-Mockup** steht aus (Nutzer liefert). Struktur so bauen, dass Hell = eine
-  Farbtabelle ist.
+- **Hell-Mockup** liegt vor (`assets/bsd_desktop_mockup_hell.png`). Struktur so
+  bauen, dass Hell = eine Farbtabelle ist; Farben daraus samplen.
 - **Lock-Theme-Auslieferung**: Vorschlag `/run/meridian/theme.toml` (vs. Wayland-
   Protokoll-Extension). Im Plan: einfache Datei-Variante zuerst.
 - `Palette::default()`-Tests brechen bei Default-Farbänderung — bewusst mit anpassen.
