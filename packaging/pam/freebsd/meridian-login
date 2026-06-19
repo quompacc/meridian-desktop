@@ -1,0 +1,9 @@
+# /etc/pam.d/meridian-login (FreeBSD)
+#
+# Primary login stack for meridian-login on FreeBSD. The Linux stack reserves
+# this service for pam_u2f (YubiKey); FreeBSD has no pam_u2f set up by default,
+# so this falls back to the same username/password flow as the -password
+# service. No pam_systemd; pam_unix has no session module so use pam_permit.
+auth            required        pam_unix.so     no_warn
+account         required        pam_unix.so
+session         required        pam_permit.so

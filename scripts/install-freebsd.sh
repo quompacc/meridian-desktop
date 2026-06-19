@@ -85,8 +85,14 @@ state_user="${SUDO_USER:-$(id -un)}"
 ${SUDO} install -d -o "${state_user}" -g "$(id -gn "${state_user}")" \
 	-m 0755 /var/lib/meridian
 
+# FreeBSD PAM stacks for the login manager (pam_unix; no pam_systemd/pam_u2f).
+${SUDO} install -m 0644 packaging/pam/freebsd/meridian-login /etc/pam.d/meridian-login
+${SUDO} install -m 0644 packaging/pam/freebsd/meridian-login-password \
+	/etc/pam.d/meridian-login-password
+
 # rc.d services (installed but NOT enabled; see each script's header).
 ${SUDO} install -m 0755 packaging/rc.d/meridian "${rcdir}/meridian"
+${SUDO} install -m 0755 packaging/rc.d/meridian-login "${rcdir}/meridian-login"
 ${SUDO} install -m 0755 packaging/rc.d/meridian_quiet "${rcdir}/meridian_quiet"
 
 cat <<EOF

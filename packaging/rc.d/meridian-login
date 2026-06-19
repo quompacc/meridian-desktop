@@ -1,0 +1,70 @@
+#!/bin/sh
+#
+# PROVIDE: meridian_login
+# REQUIRE: seatd dbus
+# KEYWORD: shutdown
+#
+# Meridian login manager (greeter) for FreeBSD. Runs at boot, authenticates the
+# user via PAM (see /etc/pam.d/meridian-login-password), and spawns the
+# compositor as the authenticated user. This is the FreeBSD analogue of the
+# systemd meridian-login.service. It REPLACES the direct-compositor `meridian`
+# service — enable exactly one of the two:
+#
+#   sysrc meridian_login_enable=YES
+#   sysrc meridian_enable=NO
+#
+# Enable only after verifying SSH recovery; recover with:
+#   service meridian_login stop
+
+. /etc/rc.subr
+
+name=meridian_login
+desc="Meridian login manager"
+rcvar=meridian_login_enable
+
+load_rc_config $name
+
+: ${meridian_login_enable:="NO"}
+: ${meridian_login_prefix:="/usr/local"}
+
+pidfile="/var/run/${name}.pid"
+login_bin="${meridian_login_prefix}/bin/meridian-login"
+
+start_cmd="meridian_login_start"
+stop_cmd="meridian_login_stop"
+
+meridian_login_start()
+{
+	if [ ! -x "${login_bin}" ]; then
+		echo "meridian-login: ${login_bin} not found" >&2
+		return 1
+	fi
+	# /run is absent on FreeBSD; the login IPC socket the compositor connects to
+	# is /run/meridian-login.sock, so alias /run to /var/run.
+	[ -e /run ] || ln -s /var/run /run
+	install -d -m 0700 /var/run/user/0
+
+	echo "Starting meridian-login."
+	# XKB_DEFAULT_RULES=evdev and XCURSOR_PATH are forwarded into the compositor
+	# the greeter spawns (session.rs), so its keymap (incl. volume keys) and
+	# cursor theme are correct.
+	/usr/sbin/daemon -p "${pidfile}" -o /var/log/meridian-login.log -- \
+		/usr/bin/env \
+			XDG_RUNTIME_DIR=/var/run/user/0 \
+			XKB_DEFAULT_RULES=evdev \
+			XCURSOR_PATH=/usr/local/share/icons:/usr/local/lib/X11/icons \
+			"${login_bin}"
+}
+
+meridian_login_stop()
+{
+	if [ -f "${pidfile}" ] && kill -0 "$(cat "${pidfile}")" 2>/dev/null; then
+		echo "Stopping meridian-login."
+		kill -TERM "$(cat "${pidfile}")"
+		wait_for_pids "$(cat "${pidfile}")"
+	fi
+	pkill -f "${meridian_login_prefix}/bin/meridian" 2>/dev/null || true
+	rm -f "${pidfile}"
+}
+
+run_rc_command "$1"
