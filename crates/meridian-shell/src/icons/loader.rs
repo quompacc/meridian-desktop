@@ -70,7 +70,10 @@ impl IconLoader {
             theme_name: theme_name.to_string(),
             symbolic_color: symbolic_color.to_string(),
             search_paths,
-            pixmaps_paths: vec![PathBuf::from("/usr/share/pixmaps")],
+            pixmaps_paths: vec![
+                PathBuf::from("/usr/local/share/pixmaps"),
+                PathBuf::from("/usr/share/pixmaps"),
+            ],
             rcc_sources,
         }
     }
@@ -487,7 +490,12 @@ pub(crate) fn standard_icon_search_paths() -> Vec<PathBuf> {
         paths.push(home_dir.join(".icons"));
     }
 
-    let xdg_data_dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/share".to_string());
+    // Default must include /usr/local/share: that is where FreeBSD pkg installs
+    // every icon theme (breeze, Adwaita, …). A bare "/usr/share" fallback leaves
+    // the search path empty on FreeBSD, so no theme resolves and the launcher —
+    // which hides apps whose icon cannot be found — comes up empty.
+    let xdg_data_dirs = std::env::var("XDG_DATA_DIRS")
+        .unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string());
     for base in xdg_data_dirs
         .split(':')
         .filter(|segment| !segment.trim().is_empty())
