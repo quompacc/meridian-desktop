@@ -112,10 +112,12 @@ case "${MANAGER}" in
     runtime_packages=(
       dbus
       networkmanager
-      breeze
+      breeze                # Breeze_Light cursor theme (theme.toml default)
+      papirus-icon-theme    # Papirus / Papirus-Dark icon set (theme.toml default)
       xkeyboard-config
       ttf-dejavu
       noto-fonts
+      inter-font            # the central UI font (theme.toml ui = "Inter 11")
       xdg-utils
       python-gobject
       gtk3
@@ -124,6 +126,8 @@ case "${MANAGER}" in
       pam-u2f
       cups
       pipewire
+      pipewire-pulse        # PulseAudio compat so apps + the audio OSD get sound
+      pipewire-alsa         # ALSA compat
       wireplumber
       xorg-xwayland
     )
