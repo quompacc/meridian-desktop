@@ -10,6 +10,30 @@ single version.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-19
+
+### Added
+
+- **Adwaita Sans Regular text style:** `meridian-compass-render` now embeds
+  Adwaita Sans Regular and exposes it as `TextStyle::SansRegular`, a calmer
+  companion to the existing DejaVu Sans Bold for UI labels and display text.
+- **Native FreeBSD boot logo (`--quiet-boot`):** `scripts/install-freebsd.sh`
+  can install the Meridian loader image to `/boot/images` and drive FreeBSD's
+  built-in `boot_mute` framebuffer splash instead of the stock FreeBSD logo. It
+  works through `loader.conf` only (no system files patched, so `freebsd-update`
+  cannot clobber it), backs up `loader.conf` before the first change, and ships
+  `assets/bsd_bootlogo-loader.png`. `docs/FREEBSD.md` documents the flow.
+
+### Changed
+
+- **Login greeter visual refresh:** the greeter palette is now neutral and less
+  blue — card fill, input boxes, and the compass guides moved off the cool-blue
+  tones toward muted greys. The blurred wallpaper backdrop is precomputed once
+  into a cached full-size frame (two-stage bicubic down/upscale) and reused for
+  every redraw instead of being convolved per frame. The text caret now sits at
+  the text-entry start on empty username, password, and smartcard-PIN fields
+  rather than behind the placeholder.
+
 ## [0.4.1] - 2026-06-04
 
 ### Fixed
@@ -246,7 +270,8 @@ shared compass renderer.
   running fmt/clippy/test, and unit tests for `meridian-lock` and
   `meridian-polkit`.
 
-[Unreleased]: https://github.com/quompacc/meridian-desktop/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/quompacc/meridian-desktop/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/quompacc/meridian-desktop/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/quompacc/meridian-desktop/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/quompacc/meridian-desktop/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/quompacc/meridian-desktop/compare/v0.2.0...v0.3.0
