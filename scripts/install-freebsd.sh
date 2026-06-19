@@ -49,8 +49,9 @@ cd "${REPO_ROOT}"
 
 if [ "${BUILD}" -eq 1 ]; then
 	# pkg installs libraries under ${PREFIX}/lib, which the linker does not
-	# search by default; libxkbcommon needs the xorg ruleset at build time too.
-	LIBRARY_PATH="${PREFIX}/lib" XKB_DEFAULT_RULES=xorg \
+	# search by default. (XKB_DEFAULT_RULES=evdev matters at runtime, not build;
+	# the rc.d service sets it.)
+	LIBRARY_PATH="${PREFIX}/lib" \
 		cargo build --release --workspace
 fi
 

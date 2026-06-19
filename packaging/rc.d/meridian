@@ -92,7 +92,9 @@ meridian_start()
 
 	echo "Starting meridian (user=${meridian_user})."
 	# Xcursor themes from pkg live under ${prefix}/share/icons, which is not in
-	# the default XCURSOR search path on FreeBSD; XKB needs the xorg ruleset.
+	# the default XCURSOR search path on FreeBSD. XKB_DEFAULT_RULES=evdev is
+	# required: libinput feeds evdev keycodes, and only the evdev ruleset maps
+	# them (incl. the multimedia/volume keys) to the right keysyms.
 	# -o redirects the session's stdout/stderr to a log so daemon detaches fully
 	# (otherwise an interactive `service start` over SSH never returns).
 	/usr/sbin/daemon -p "${pidfile}" -o /var/log/meridian.log \
@@ -103,7 +105,7 @@ meridian_start()
 			XDG_CURRENT_DESKTOP=Meridian \
 			XDG_SESSION_DESKTOP=meridian \
 			DESKTOP_SESSION=meridian \
-			XKB_DEFAULT_RULES=xorg \
+			XKB_DEFAULT_RULES=evdev \
 			XCURSOR_PATH="${_home}/.icons:${_home}/.local/share/icons:${meridian_prefix}/share/icons:${meridian_prefix}/lib/X11/icons" \
 			"${meridian_bin}"
 }

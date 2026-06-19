@@ -19,15 +19,18 @@ fonts, Xwayland).
 
 ## 2. Build
 
-The linker does not search `/usr/local/lib` by default, and libxkbcommon needs
-the xorg ruleset to compile a keymap:
+The linker does not search `/usr/local/lib` by default:
 
 ```sh
 export LIBRARY_PATH=/usr/local/lib
-export XKB_DEFAULT_RULES=xorg
 cargo build --release --workspace
-cargo test --workspace          # 939 tests
+cargo test --workspace          # tests
 ```
+
+At **runtime** the compositor needs `XKB_DEFAULT_RULES=evdev` (the rc.d service
+sets this): libinput feeds evdev keycodes, and only the evdev ruleset maps them
+to the right keysyms — including the multimedia/volume keys. The `xorg` ruleset
+uses the old xfree86 keycodes and silently drops the volume keys.
 
 ## 3. Runtime services and graphics
 
