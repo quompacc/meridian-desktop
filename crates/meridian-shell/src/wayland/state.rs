@@ -264,7 +264,7 @@ fn resolve_shell_theme_from_config(
 ) -> Result<(String, ThemeConfig, Vec<String>), String> {
     let mut theme_manager = ThemeManager::new();
     let requested_theme = if config.general.theme.trim().is_empty() {
-        "meridian"
+        "dark"
     } else {
         config.general.theme.trim()
     };
@@ -2453,7 +2453,7 @@ mod tests {
     fn resolve_shell_theme_from_config_applies_cursor_and_wallpaper_overrides() {
         let config = MeridianConfig {
             general: GeneralConfig {
-                theme: "meridian".to_string(),
+                theme: "dark".to_string(),
                 idle_timeout_secs: None,
             },
             cursor: Some(meridian_config::CursorConfig {

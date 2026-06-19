@@ -50,10 +50,19 @@ pub fn draw_status_notifier_menu(
     height: u32,
 ) {
     let colors = &theme.colors;
+    let treatment = theme
+        .decorations
+        .surface_treatment(meridian_config::ThemeSurface::Popup);
     let width = SNI_MENU_WIDTH as i32;
     let height_i = height as i32;
 
-    painter.clear(colors.surface_alt);
+    // Central glass solidity (glass_alpha) like every other surface.
+    painter.clear(meridian_config::Color::rgba(
+        colors.surface_alt.r,
+        colors.surface_alt.g,
+        colors.surface_alt.b,
+        treatment.fill_alpha,
+    ));
     painter.stroke_rect(
         Rect {
             x: 0,
@@ -61,7 +70,12 @@ pub fn draw_status_notifier_menu(
             w: width,
             h: height_i,
         },
-        colors.border,
+        meridian_config::Color::rgba(
+            colors.border.r,
+            colors.border.g,
+            colors.border.b,
+            treatment.frame_alpha,
+        ),
     );
 
     let title_text = if title.trim().is_empty() {

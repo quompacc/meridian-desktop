@@ -5,6 +5,7 @@
 //! in the render path and is an accepted step-5 trade-off until path caching
 //! is introduced.
 
+use meridian_tokens::Interaction;
 use taffy::prelude::{span, Style};
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, Transform};
 
@@ -144,11 +145,8 @@ impl Widget for Tile {
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
         let body_color = match state {
             WidgetState::Idle => theme.palette.surface,
-            WidgetState::Hovered => theme
-                .palette
-                .surface
-                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.15),
-            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
+            WidgetState::Hovered => Interaction::DEFAULT.hover(theme.palette.surface),
+            WidgetState::Pressed => Interaction::DEFAULT.pressed(theme.palette.surface),
         };
         paint_metro_surface(canvas, area, body_color, self.accent, theme, STRIPE_HEIGHT);
         let font_size = match self.size {

@@ -38,9 +38,18 @@ pub(crate) fn draw_thumbnail_popup(
     height: u32,
 ) {
     let colors = &theme.colors;
+    let treatment = theme
+        .decorations
+        .surface_treatment(meridian_config::ThemeSurface::Popup);
 
-    // Background + thin border around the popup
-    painter.clear(colors.surface_alt);
+    // Background + thin border: central glass solidity (glass_alpha) like every
+    // other surface, with the compositor glass showing through the gap.
+    painter.clear(meridian_config::Color::rgba(
+        colors.surface_alt.r,
+        colors.surface_alt.g,
+        colors.surface_alt.b,
+        treatment.fill_alpha,
+    ));
     painter.stroke_rect(
         Rect {
             x: 0,
@@ -48,14 +57,21 @@ pub(crate) fn draw_thumbnail_popup(
             w: width as i32,
             h: height as i32,
         },
-        colors.border,
+        meridian_config::Color::rgba(
+            colors.border.r,
+            colors.border.g,
+            colors.border.b,
+            treatment.frame_alpha,
+        ),
     );
 
     let pad = crate::THUMBNAIL_CARD_PAD as i32;
     let gap = crate::THUMBNAIL_CARD_GAP as i32;
     let max_thumb_w = crate::THUMBNAIL_THUMB_W as i32;
     let max_thumb_h = crate::THUMBNAIL_THUMB_H as i32;
-    let loading_bg = meridian_config::Color::rgb(40, 40, 55);
+    // Loading slot sits on the surface_alt card; use the brighter surface so it
+    // reads as a recessed thumbnail slot instead of a hardcoded placeholder.
+    let loading_bg = colors.surface;
 
     let mut cursor_x = pad;
     for id in window_ids.iter().take(crate::THUMBNAIL_MAX_WINDOWS) {

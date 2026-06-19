@@ -68,6 +68,17 @@ const LAUNCHER_HOVER_ALPHA: u8 = 42;
 const LAUNCHER_SELECTED_ALPHA: u8 = 56;
 const LAUNCHER_TILE_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.md;
 
+// Translucency of launcher sub-elements over the compositor glass. Named here
+// (not inline) so the launcher's opacity story lives in one place — see the
+// GUI-centralization plan. Hover/selected cushions and the body fill already
+// route through `Interaction` / `surface_treatment`.
+const LAUNCHER_SEARCH_FIELD_ALPHA: u8 = 24;
+const LAUNCHER_BENTO_ACCENT_ALPHA: u8 = 105;
+const LAUNCHER_POWER_ARMED_ALPHA: u8 = 46;
+const LAUNCHER_SCROLLBAR_TRACK_ALPHA: u8 = 25;
+const LAUNCHER_SCROLLBAR_THUMB_ALPHA: u8 = 180;
+const LAUNCHER_DIVIDER_ALPHA: u8 = 44;
+
 // ─── Hit testing ──────────────────────────────────────────────────────────────
 
 fn cp_settings_btn_x(launcher_w: u32) -> i32 {
@@ -368,7 +379,10 @@ fn draw_header(
             width: search_w,
             height: 32,
         },
-        with_alpha(pal.surface.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10), 24),
+        with_alpha(
+            Interaction::DEFAULT.hover(pal.surface),
+            LAUNCHER_SEARCH_FIELD_ALPHA,
+        ),
         10,
     );
 
@@ -438,7 +452,7 @@ fn draw_bento_strip(
                 width: CP_BENTO_TILE_W,
                 height: 1,
             },
-            Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 105),
+            with_alpha(pal.accent, LAUNCHER_BENTO_ACCENT_ALPHA),
         );
 
         // icon – try large then small sizes
@@ -721,7 +735,7 @@ fn draw_power_footer(
 
         if is_hov || is_armed {
             let bg = if is_armed {
-                Color::rgba(pal.error.r, pal.error.g, pal.error.b, 46)
+                with_alpha(pal.error, LAUNCHER_POWER_ARMED_ALPHA)
             } else {
                 with_alpha(
                     Interaction::DEFAULT.hover(pal.surface),
@@ -946,8 +960,8 @@ fn draw_scrollbar(
     let thumb_h = ((track_h * view_h as i32) / content_h).max(20).min(track_h);
     let max_scroll = (content_h - view_h as i32).max(1);
     let thumb_y = 4 + scroll_y * (track_h - thumb_h) / max_scroll;
-    let track_col = Color::rgba(pal.text.r, pal.text.g, pal.text.b, 25);
-    let thumb_col = Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 180);
+    let track_col = with_alpha(pal.text, LAUNCHER_SCROLLBAR_TRACK_ALPHA);
+    let thumb_col = with_alpha(pal.accent, LAUNCHER_SCROLLBAR_THUMB_ALPHA);
     fill_rect(
         pm,
         Rect {
@@ -995,7 +1009,7 @@ fn divider(pm: &mut PixmapMut<'_>, width: u32, y: i32, pal: &meridian_ui::style:
 }
 
 fn divider_col(pal: &meridian_ui::style::Palette) -> Color {
-    Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 44)
+    with_alpha(pal.accent, LAUNCHER_DIVIDER_ALPHA)
 }
 
 fn fill_rect(pm: &mut PixmapMut<'_>, rect: Rect, color: Color) {

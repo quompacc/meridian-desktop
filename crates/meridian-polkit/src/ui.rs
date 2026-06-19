@@ -61,7 +61,7 @@ pub fn render(pixels: &mut [u8], width: u32, height: u32, theme: &ThemeConfig, v
         let card_y = cy - CARD_H as f32 / 2.0;
 
         // Subtle 1-px hairline border under the card for separation
-        // against bright wallpapers (meridian-light).
+        // against bright wallpapers (the light theme).
         fill_rect(
             &mut pm_mut,
             card_x - 1.0,

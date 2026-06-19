@@ -21,10 +21,20 @@ pub fn draw_notification(
     notif: &Notification,
 ) {
     let colors = &theme.colors;
+    let treatment = theme
+        .decorations
+        .surface_treatment(meridian_config::ThemeSurface::Popup);
     let width = NOTIFICATION_WIDTH as i32;
     let height = NOTIFICATION_HEIGHT as i32;
 
-    painter.clear(colors.surface_alt);
+    // Central glass solidity (glass_alpha) like every other surface — not a
+    // local opaque fill. The compositor glass behind shows through the gap.
+    painter.clear(meridian_config::Color::rgba(
+        colors.surface_alt.r,
+        colors.surface_alt.g,
+        colors.surface_alt.b,
+        treatment.fill_alpha,
+    ));
     painter.stroke_rect(
         Rect {
             x: 0,
@@ -32,7 +42,12 @@ pub fn draw_notification(
             w: width,
             h: height,
         },
-        colors.border,
+        meridian_config::Color::rgba(
+            colors.border.r,
+            colors.border.g,
+            colors.border.b,
+            treatment.frame_alpha,
+        ),
     );
 
     const PAD_X: i32 = 14;

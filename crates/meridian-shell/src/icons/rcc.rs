@@ -278,6 +278,9 @@ fn read_u32_be(raw: &[u8], offset: usize) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
+    // Only the Linux-gated integration test below uses `Path`; gate the import
+    // to match so non-Linux builds (e.g. FreeBSD) don't warn on an unused import.
+    #[cfg(target_os = "linux")]
     use std::path::Path;
 
     use super::{parse_header, RccArchive, FLAG_DIRECTORY, FLAG_ZLIB, FLAG_ZSTD};

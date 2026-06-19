@@ -8,6 +8,7 @@ use meridian_ui::{
     AlignItems, FlexDirection, JustifyContent, Rect, TaffyRect, Theme, UiSize, WidgetState,
     WidgetStyle,
 };
+use meridian_tokens::Interaction;
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, PixmapRef, Transform};
 
 use crate::audio::{AudioDevice, AudioServiceState, AudioSnapshot};
@@ -822,10 +823,7 @@ impl Widget for SettingsBackButton {
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
         let hot = matches!(state, WidgetState::Hovered | WidgetState::Pressed);
         if hot {
-            let bg = theme
-                .palette
-                .surface
-                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.08);
+            let bg = Interaction::DEFAULT.hover(theme.palette.surface);
             if let Some(path) = rounded_rect_path(area, 0) {
                 paint_fill(canvas, &path, bg);
             }
@@ -976,8 +974,8 @@ impl Widget for SettingsSidebarRow {
         let bg = match state {
             WidgetState::Idle if self.is_selected => base.lerp(self.accent, 0.16),
             WidgetState::Idle => base,
-            WidgetState::Hovered => base.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.06),
-            WidgetState::Pressed => base.lerp(Color::rgb(0, 0, 0), 0.12),
+            WidgetState::Hovered => Interaction::DEFAULT.hover(base),
+            WidgetState::Pressed => Interaction::DEFAULT.pressed(base),
         };
         if let Some(path) = rounded_rect_path(area, 0) {
             paint_fill(canvas, &path, bg);
@@ -1067,11 +1065,8 @@ impl Widget for ThemeRow {
                     theme.palette.surface
                 }
             }
-            WidgetState::Hovered => theme
-                .palette
-                .surface
-                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.14),
-            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
+            WidgetState::Hovered => Interaction::DEFAULT.hover(theme.palette.surface),
+            WidgetState::Pressed => Interaction::DEFAULT.pressed(theme.palette.surface),
         };
         if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
             paint_fill(canvas, &path, bg);
@@ -1143,11 +1138,8 @@ impl Widget for CursorThemeRow {
                     theme.palette.surface
                 }
             }
-            WidgetState::Hovered => theme
-                .palette
-                .surface
-                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.14),
-            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
+            WidgetState::Hovered => Interaction::DEFAULT.hover(theme.palette.surface),
+            WidgetState::Pressed => Interaction::DEFAULT.pressed(theme.palette.surface),
         };
         if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
             paint_fill(canvas, &path, bg);
@@ -1220,11 +1212,8 @@ impl Widget for WallpaperRow {
                     theme.palette.surface
                 }
             }
-            WidgetState::Hovered => theme
-                .palette
-                .surface
-                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12),
-            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
+            WidgetState::Hovered => Interaction::DEFAULT.hover(theme.palette.surface),
+            WidgetState::Pressed => Interaction::DEFAULT.pressed(theme.palette.surface),
         };
         if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
             paint_fill(canvas, &path, bg);
@@ -1306,11 +1295,8 @@ impl Widget for WallpaperBrowseRow {
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
         let bg = match state {
             WidgetState::Idle => theme.palette.surface,
-            WidgetState::Hovered => theme
-                .palette
-                .surface
-                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.12),
-            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.18),
+            WidgetState::Hovered => Interaction::DEFAULT.hover(theme.palette.surface),
+            WidgetState::Pressed => Interaction::DEFAULT.pressed(theme.palette.surface),
         };
         if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
             paint_fill(canvas, &path, bg);
@@ -1550,11 +1536,8 @@ impl Widget for SoundDeviceRow {
         } else {
             match state {
                 WidgetState::Idle => theme.palette.surface,
-                WidgetState::Hovered => theme
-                    .palette
-                    .surface
-                    .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
-                WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.16),
+                WidgetState::Hovered => Interaction::DEFAULT.hover(theme.palette.surface),
+                WidgetState::Pressed => Interaction::DEFAULT.pressed(theme.palette.surface),
             }
         };
         if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
@@ -1819,11 +1802,8 @@ impl Widget for DefaultAppCategoryRow {
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
         let bg = match state {
             WidgetState::Idle => theme.palette.surface,
-            WidgetState::Hovered => theme
-                .palette
-                .surface
-                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.08),
-            WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.14),
+            WidgetState::Hovered => Interaction::DEFAULT.hover(theme.palette.surface),
+            WidgetState::Pressed => Interaction::DEFAULT.pressed(theme.palette.surface),
         };
         if let Some(path) = rounded_rect_path(area, DEFAULT_APP_ROW_CORNER) {
             paint_fill(canvas, &path, bg);
@@ -1902,11 +1882,8 @@ impl Widget for DefaultAppCandidateRow {
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
         let bg = match state {
             WidgetState::Idle => theme.palette.surface_alt,
-            WidgetState::Hovered => theme
-                .palette
-                .surface_alt
-                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
-            WidgetState::Pressed => theme.palette.surface_alt.lerp(Color::rgb(0, 0, 0), 0.16),
+            WidgetState::Hovered => Interaction::DEFAULT.hover(theme.palette.surface_alt),
+            WidgetState::Pressed => Interaction::DEFAULT.pressed(theme.palette.surface_alt),
         };
         if let Some(path) = rounded_rect_path(area, 6) {
             paint_fill(canvas, &path, bg);
@@ -1966,11 +1943,8 @@ impl Widget for NetworkProfileRow {
         } else {
             match state {
                 WidgetState::Idle => theme.palette.surface,
-                WidgetState::Hovered => theme
-                    .palette
-                    .surface
-                    .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
-                WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.16),
+                WidgetState::Hovered => Interaction::DEFAULT.hover(theme.palette.surface),
+                WidgetState::Pressed => Interaction::DEFAULT.pressed(theme.palette.surface),
             }
         };
         if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
@@ -2064,11 +2038,8 @@ impl Widget for WifiRow {
         } else {
             match state {
                 WidgetState::Idle => theme.palette.surface,
-                WidgetState::Hovered => theme
-                    .palette
-                    .surface
-                    .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
-                WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.16),
+                WidgetState::Hovered => Interaction::DEFAULT.hover(theme.palette.surface),
+                WidgetState::Pressed => Interaction::DEFAULT.pressed(theme.palette.surface),
             }
         };
         if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
@@ -2164,11 +2135,8 @@ impl Widget for BluetoothDeviceRow {
         } else {
             match state {
                 WidgetState::Idle => theme.palette.surface,
-                WidgetState::Hovered => theme
-                    .palette
-                    .surface
-                    .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
-                WidgetState::Pressed => theme.palette.surface.lerp(Color::rgb(0, 0, 0), 0.16),
+                WidgetState::Hovered => Interaction::DEFAULT.hover(theme.palette.surface),
+                WidgetState::Pressed => Interaction::DEFAULT.pressed(theme.palette.surface),
             }
         };
         if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
@@ -2558,8 +2526,8 @@ impl Widget for DisplayModeComboButton {
         };
         let bg = match state {
             WidgetState::Idle => base,
-            WidgetState::Hovered if self.enabled => base.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
-            WidgetState::Pressed if self.enabled => base.lerp(Color::rgb(0, 0, 0), 0.16),
+            WidgetState::Hovered if self.enabled => Interaction::DEFAULT.hover(base),
+            WidgetState::Pressed if self.enabled => Interaction::DEFAULT.pressed(base),
             _ => base,
         };
         if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
@@ -2636,8 +2604,8 @@ impl Widget for DisplayModeOptionRow {
         };
         let bg = match state {
             WidgetState::Idle => base,
-            WidgetState::Hovered => base.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
-            WidgetState::Pressed => base.lerp(Color::rgb(0, 0, 0), 0.16),
+            WidgetState::Hovered => Interaction::DEFAULT.hover(base),
+            WidgetState::Pressed => Interaction::DEFAULT.pressed(base),
         };
         if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
             paint_fill(canvas, &path, bg);
@@ -2698,8 +2666,8 @@ impl Widget for DisplayPrimaryButton {
         };
         let bg = match state {
             WidgetState::Idle => base,
-            WidgetState::Hovered => base.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
-            WidgetState::Pressed => base.lerp(Color::rgb(0, 0, 0), 0.16),
+            WidgetState::Hovered => Interaction::DEFAULT.hover(base),
+            WidgetState::Pressed => Interaction::DEFAULT.pressed(base),
         };
         if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
             paint_fill(canvas, &path, bg);
@@ -2775,8 +2743,8 @@ impl Widget for DisplayCycleButton {
         let base = theme.palette.surface_alt;
         let bg = match state {
             WidgetState::Idle => base,
-            WidgetState::Hovered => base.lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
-            WidgetState::Pressed => base.lerp(Color::rgb(0, 0, 0), 0.16),
+            WidgetState::Hovered => Interaction::DEFAULT.hover(base),
+            WidgetState::Pressed => Interaction::DEFAULT.pressed(base),
         };
         if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
             paint_fill(canvas, &path, bg);
@@ -2826,11 +2794,8 @@ impl Widget for AddAppRow {
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
         let bg = match state {
             WidgetState::Idle => theme.palette.surface_alt,
-            WidgetState::Hovered => theme
-                .palette
-                .surface_alt
-                .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.10),
-            WidgetState::Pressed => theme.palette.surface_alt.lerp(Color::rgb(0, 0, 0), 0.15),
+            WidgetState::Hovered => Interaction::DEFAULT.hover(theme.palette.surface_alt),
+            WidgetState::Pressed => Interaction::DEFAULT.pressed(theme.palette.surface_alt),
         };
         if let Some(path) = rounded_rect_path(area, 0) {
             paint_fill(canvas, &path, bg);
