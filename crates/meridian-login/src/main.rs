@@ -135,6 +135,66 @@ impl AsFd for Card {
 impl DrmDevice for Card {}
 impl ControlDevice for Card {}
 
+/// True if any connector on this card reports a connected display.
+fn card_drives_a_display(card: &Card) -> bool {
+    let Ok(res) = card.resource_handles() else {
+        return false;
+    };
+    res.connectors().iter().any(|&h| {
+        matches!(
+            card.get_connector(h, false),
+            Ok(c) if c.state() == connector::State::Connected
+        )
+    })
+}
+
+/// Pick the DRM card that actually drives a display, and return its path plus
+/// the opened handle. An explicit `MERIDIAN_LOGIN_DRM_CARD` wins; otherwise we
+/// probe every `/dev/dri/cardN` and take the first whose connectors include a
+/// connected display.
+///
+/// This must auto-detect rather than trust a fixed node: the kernel's `cardN`
+/// numbering is NOT stable across boots. On a hybrid-GPU laptop (Intel iGPU +
+/// discrete GPU) the two can swap card numbers from one boot to the next — and
+/// only the GPU wired to the panel has a connected connector — so a hardcoded
+/// `/dev/dri/card0` points at the headless GPU on the unlucky boot and the
+/// login screen never appears. The compositor's `select_gpu` already works this
+/// way; this gives the greeter the same robustness.
+fn open_display_card() -> Result<(String, Card), Box<dyn std::error::Error>> {
+    if let Ok(path) = std::env::var(LOGIN_DRM_CARD_ENV) {
+        let card = Card(OpenOptions::new().read(true).write(true).open(&path)?);
+        return Ok((path, card));
+    }
+
+    let mut cards: Vec<PathBuf> = fs::read_dir("/dev/dri")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("card"))
+        })
+        .collect();
+    cards.sort();
+
+    for path in &cards {
+        let Ok(file) = OpenOptions::new().read(true).write(true).open(path) else {
+            continue;
+        };
+        let card = Card(file);
+        if card_drives_a_display(&card) {
+            return Ok((path.display().to_string(), card));
+        }
+    }
+
+    // Last resort: keep behaviour defined if nothing reported a connected
+    // connector (e.g. a connector probe raced very early boot).
+    let card = Card(OpenOptions::new().read(true).write(true).open(DEFAULT_DRM_CARD)?);
+    Ok((DEFAULT_DRM_CARD.to_string(), card))
+}
+
 #[derive(Default)]
 struct LoginUiState {
     username: String,
@@ -597,10 +657,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(e) => warn!(error = %e, "bootsplash handover failed (not running?); proceeding"),
     }
 
-    let drm_card =
-        std::env::var(LOGIN_DRM_CARD_ENV).unwrap_or_else(|_| DEFAULT_DRM_CARD.to_string());
-    info!(path = %drm_card, "opening login DRM card");
-    let card = Card(OpenOptions::new().read(true).write(true).open(&drm_card)?);
+    let (drm_card, card) = open_display_card()?;
+    info!(path = %drm_card, "opening login DRM card (auto-selected display GPU)");
 
     let res = card.resource_handles()?;
     let conn_info = res
