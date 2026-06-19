@@ -2,18 +2,24 @@
 # Install Meridian's FreeBSD package dependencies via pkg(8). FreeBSD analogue of
 # scripts/install-deps.sh (which covers pacman/apt only).
 #
-# Usage: scripts/install-deps-freebsd.sh [all|build|runtime|hardware-test]
+# Usage: scripts/install-deps-freebsd.sh [all|build|runtime|apps|hardware-test]
+#
+#   all            build + runtime + apps (default; everything for a desktop)
+#   build          toolchain + headers to compile the workspace
+#   runtime        libraries, KMS driver, session bus, icons, cursor, fonts
+#   apps           the bundled default apps (terminal, file manager, browser)
+#   hardware-test  extras for DRM/PCI/USB inspection on real hardware
 set -eu
 
 MODE="${1:-all}"
 
 case "${MODE}" in
-	all|build|runtime|hardware-test) ;;
+	all|build|runtime|apps|hardware-test) ;;
 	-h|--help)
-		echo "Usage: $0 [all|build|runtime|hardware-test]"; exit 0 ;;
+		echo "Usage: $0 [all|build|runtime|apps|hardware-test]"; exit 0 ;;
 	*)
 		echo "install-deps-freebsd: invalid mode: ${MODE}" >&2
-		echo "Usage: $0 [all|build|runtime|hardware-test]" >&2
+		echo "Usage: $0 [all|build|runtime|apps|hardware-test]" >&2
 		exit 2 ;;
 esac
 
@@ -32,18 +38,35 @@ fi
 build_pkgs="rust pkgconf seatd libudev-devd mesa-libs mesa-dri libdrm wayland \
 	libxkbcommon libinput pixman freetype2 fontconfig libglvnd"
 
-# Runtime: D-Bus, the Intel/AMD KMS modules (drm-kmod), an Xcursor theme (Breeze
-# is not packaged on FreeBSD), fonts, and Xwayland for X11 clients.
-runtime_pkgs="dbus drm-kmod bibata-cursor-theme dejavu noto-basic xwayland"
+# Runtime libraries and assets:
+#   dbus               session bus (FreeBSD has no systemd user bus; GTK/Qt apps
+#                      and Meridian's own notification services need one)
+#   drm-kmod           Intel/AMD KMS modules (i915kms / amdgpu / radeonkms)
+#   seatd              libseat — the compositor seats itself without logind
+#   papirus-icon-theme matches Meridian's default icon theme (Papirus-Dark)
+#   plasma6-breeze     provides the Breeze_Light Xcursor (Meridian's default
+#                      cursor); pulls KDE deps — drop it for a lean install and
+#                      Meridian falls back to its embedded cursor
+#   xwayland           run X11 clients under the Wayland compositor
+#   dejavu/noto-basic  baseline UI + fallback fonts
+#   xdg-utils          xdg-open, used to resolve default-app handlers
+runtime_pkgs="dbus drm-kmod seatd papirus-icon-theme plasma6-breeze xwayland \
+	dejavu noto-basic xdg-utils"
+
+# The default apps Meridian's launcher/panel expect (terminal, file manager,
+# browser). chromium is intentionally omitted: its sandbox/GPU broker does not
+# work on FreeBSD yet — firefox is the working default browser.
+apps_pkgs="foot pcmanfm firefox"
 
 # Hardware-test extras for DRM/PCI/USB inspection.
-hardware_pkgs="drm-kmod libinput"
+hardware_pkgs="drm-kmod libinput usbutils pciutils"
 
 case "${MODE}" in
 	build)         pkgs="${build_pkgs}" ;;
 	runtime)       pkgs="${runtime_pkgs}" ;;
+	apps)          pkgs="${apps_pkgs}" ;;
 	hardware-test) pkgs="${hardware_pkgs}" ;;
-	all)           pkgs="${build_pkgs} ${runtime_pkgs} ${hardware_pkgs}" ;;
+	all)           pkgs="${build_pkgs} ${runtime_pkgs} ${apps_pkgs}" ;;
 esac
 
 echo "install-deps-freebsd: installing (${MODE}) via pkg"
@@ -53,10 +76,9 @@ ${SUDO} pkg install -y ${pkgs}
 cat <<'EOF'
 
 install-deps-freebsd: done.
-Set the default Rust toolchain if you use rustup instead of the pkg rust:
-  (the pkg 'rust' already provides a stable rustc/cargo)
 
-Graphics: load the KMS driver and persist it across reboots, e.g. Intel:
-  sysrc kld_list+=i915kms && kldload i915kms
-(AMD: amdgpu / radeonkms; older Intel: i915kms covers gen4+)
+Next: build and install Meridian (sets up services + config in one step):
+  scripts/install-freebsd.sh --build --enable-boot --user <youruser>
+
+The pkg 'rust' already provides a stable rustc/cargo — no rustup needed.
 EOF

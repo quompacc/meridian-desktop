@@ -4,6 +4,9 @@ This guide targets Arch Linux and Arch-based systemd systems first. Debian/apt
 is still supported by the same dependency helper, but Arch is the reference path
 for a fresh hardware install.
 
+> **FreeBSD?** FreeBSD has no systemd/logind and uses its own turnkey installer —
+> see [docs/FREEBSD.md](docs/FREEBSD.md). The steps below do not apply there.
+
 For the full boot experience keep the sibling checkouts next to each other:
 
 ```text

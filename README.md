@@ -23,6 +23,9 @@ Long-term, Meridian targets a polished Linux desktop that feels coherent out of 
 Meridian is active and moving fast, but still experimental.
 It is not yet ready as a daily driver for most users.
 
+Primary target is Linux (Arch reference). FreeBSD is supported via a turnkey
+installer with a logind-free boot path — see [docs/FREEBSD.md](docs/FREEBSD.md).
+
 ### Working now
 
 - Wayland compositor core
