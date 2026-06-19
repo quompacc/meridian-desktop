@@ -49,6 +49,7 @@ impl Fonts<'static> {
 #[derive(Debug)]
 pub enum BuildError {
     SansFontInvalid,
+    SansRegularFontInvalid,
     ScriptFontInvalid,
 }
 
@@ -56,6 +57,7 @@ impl std::fmt::Display for BuildError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::SansFontInvalid => write!(f, "sans_bold font failed to parse"),
+            Self::SansRegularFontInvalid => write!(f, "sans_regular font failed to parse"),
             Self::ScriptFontInvalid => write!(f, "script font failed to parse"),
         }
     }
@@ -69,6 +71,8 @@ impl std::error::Error for BuildError {}
 pub enum TextStyle {
     /// DejaVu Sans Bold — functional labels (cardinals N/O/S/W, UI labels).
     SansBold(f32),
+    /// Adwaita Sans Regular — calm UI labels and display text.
+    SansRegular(f32),
     /// Italianno Regular — calligraphic accents (the QuompaCC wordmark).
     Script(f32),
 }
@@ -198,6 +202,7 @@ impl Style {
 /// can be reused across frames at any resolution.
 pub struct CompassPainter<'a> {
     sans_bold: FontRef<'a>,
+    sans_regular: FontRef<'static>,
     script: FontRef<'a>,
     style: Style,
 }
@@ -207,6 +212,8 @@ impl<'a> CompassPainter<'a> {
         Ok(Self {
             sans_bold: FontRef::try_from_slice(fonts.sans_bold)
                 .map_err(|_| BuildError::SansFontInvalid)?,
+            sans_regular: FontRef::try_from_slice(assets::ADWAITA_SANS_REGULAR)
+                .map_err(|_| BuildError::SansRegularFontInvalid)?,
             script: FontRef::try_from_slice(fonts.script)
                 .map_err(|_| BuildError::ScriptFontInvalid)?,
             style: Style::default(),
@@ -347,6 +354,7 @@ impl<'a> CompassPainter<'a> {
     fn text_font_and_size(&self, style: TextStyle) -> (&FontRef<'a>, f32) {
         match style {
             TextStyle::SansBold(size) => (&self.sans_bold, size),
+            TextStyle::SansRegular(size) => (&self.sans_regular, size),
             TextStyle::Script(size) => (&self.script, size),
         }
     }

@@ -3,3 +3,5 @@
 
 pub(crate) static DEJAVU_SANS_BOLD: &[u8] = include_bytes!("../assets/DejaVuSans-Bold.ttf");
 pub(crate) static ITALIANNO_REGULAR: &[u8] = include_bytes!("../assets/Italianno-Regular.ttf");
+pub(crate) static ADWAITA_SANS_REGULAR: &[u8] =
+    include_bytes!("../../meridian-tokens/assets/fonts/AdwaitaSans-Regular.ttf");

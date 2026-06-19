@@ -14,6 +14,7 @@
 mod auth;
 mod input;
 mod session;
+mod visual;
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -29,9 +30,12 @@ use drm::buffer::DrmFourcc;
 use drm::control::{connector, ClipRect, Device as ControlDevice};
 use drm::Device as DrmDevice;
 
-use meridian_compass_render::{CompassPainter, Fonts, FrameOpts, Style, TextStyle, SETTLE_T};
+use meridian_compass_render::{CompassPainter, Fonts, Style, TextStyle};
 use meridian_config::{ThemeConfig, ThemeManager, ThemeSurface};
-use tiny_skia::{Color, FillRule, Paint, PathBuilder, PixmapMut, Stroke, Transform};
+use tiny_skia::{
+    Color, FillRule, GradientStop, LinearGradient, Paint, PathBuilder, PixmapMut, Point, Shader,
+    SpreadMode, Stroke, Transform,
+};
 use tracing::{info, warn};
 use zeroize::Zeroizing;
 
@@ -44,6 +48,7 @@ use meridian_boot_common::{
     cleanup_socket_path, read_appearance, secure_socket_permissions, select_boot_mode, Appearance,
     SocketIdentity,
 };
+use visual::LoginBackdrop;
 
 const BOOTSPLASH_SOCKET_ENV: &str = "BOOTSPLASH_SOCKET";
 const BOOTSPLASH_SOCKET: &str = "/run/bootsplash.sock";
@@ -65,16 +70,10 @@ const LOGIN_SOCKET: &str = "/run/meridian-login.sock";
 const HANDOVER_DEADLINE: Duration = Duration::from_secs(5);
 
 // Animation parameters
-const WATERMARK_START_MS: u64 = 200;
-const WATERMARK_END_MS: u64 = 1400;
-const WATERMARK_FINAL_ALPHA: u8 = 180;
-const FALL_END_MS: u64 = 1400;
 const CARD_FADE_START_MS: u64 = 1400;
 const CARD_FADE_END_MS: u64 = 1700;
 const UI_FADE_START_MS: u64 = 1700;
 const UI_FADE_END_MS: u64 = 2000;
-const GLOW_HIDE_MS: u64 = 1700;
-const GLOW_FINAL_SCALE: f32 = 4.0;
 const MAX_FIELD_LEN: usize = 64;
 const POWER_CONFIRM_WINDOW: Duration = Duration::from_secs(3);
 const SECURITY_KEY_POLL_INTERVAL: Duration = Duration::from_secs(1);
@@ -84,37 +83,36 @@ const SMARTCARD_AUTHFILE: &str = "/etc/Yubico/u2f_keys";
 type Rect = (f32, f32, f32, f32);
 type PowerButtonRects = (Rect, Rect);
 
-const CARD_PAD: f32 = 32.0;
-const METRO_STRIPE_HEIGHT: f32 = 2.0;
+const CARD_PAD: f32 = 48.0;
+const LOGIN_CARD_RADIUS: f32 = 18.0;
+const LOGIN_CONTROL_RADIUS: f32 = 8.0;
 fn card_radius() -> f32 {
-    login_theme()
-        .decorations
-        .surface_radius(ThemeSurface::Modal)
+    LOGIN_CARD_RADIUS
 }
 
 fn control_radius() -> f32 {
-    login_theme()
-        .decorations
-        .surface_radius(ThemeSurface::Control)
+    LOGIN_CONTROL_RADIUS
 }
 const CARD_SHADOW_BLUR: f32 = meridian_tokens::Elevation::LAUNCHER.blur;
 const CARD_SHADOW_ALPHA: f32 = meridian_tokens::Elevation::LAUNCHER.alpha;
 const CARD_SHADOW_OFFSET_Y: f32 = meridian_tokens::Elevation::LAUNCHER.offset_y as f32;
-const TITLE_OFFSET_Y: f32 = 31.0;
-const USER_BOX_OFFSET_Y: f32 = 88.0;
-const PASSWORD_BOX_OFFSET_Y: f32 = 150.0;
-const SMARTCARD_ICON_TOP: f32 = 68.0;
-const SMARTCARD_PIN_LABEL_OFFSET_Y: f32 = 166.0;
-const SMARTCARD_PIN_BOX_OFFSET_Y: f32 = 178.0;
+const BRAND_MARK_OFFSET_Y: f32 = 20.0;
+const TITLE_OFFSET_Y: f32 = 90.0;
+const SUBTITLE_OFFSET_Y: f32 = 124.0;
+const USER_BOX_OFFSET_Y: f32 = 164.0;
+const PASSWORD_BOX_OFFSET_Y: f32 = 234.0;
+const LOGIN_BUTTON_OFFSET_Y: f32 = 309.0;
+const SMARTCARD_PIN_BOX_OFFSET_Y: f32 = 244.0;
 const SMARTCARD_PIN_WIDTH: f32 = 168.0;
-const INPUT_BOX_HEIGHT: f32 = 36.0;
-const INPUT_TEXT_PAD_X: f32 = 12.0;
-const INPUT_BASELINE_PAD_BOTTOM: f32 = 12.0;
-const POWER_BUTTON_WIDTH: f32 = 116.0;
-const POWER_BUTTON_HEIGHT: f32 = 34.0;
-const POWER_BUTTON_GAP: f32 = 12.0;
-const POWER_BUTTON_BOTTOM_PAD: f32 = 32.0;
-const HINT_POWER_GAP: f32 = 16.0;
+const INPUT_BOX_HEIGHT: f32 = 52.0;
+const INPUT_TEXT_PAD_X: f32 = 50.0;
+const INPUT_BASELINE_PAD_BOTTOM: f32 = 17.0;
+const LOGIN_BUTTON_HEIGHT: f32 = 50.0;
+const POWER_BUTTON_WIDTH: f32 = 96.0;
+const POWER_BUTTON_HEIGHT: f32 = 32.0;
+const POWER_BUTTON_GAP: f32 = 10.0;
+const POWER_BUTTON_EDGE_PAD: f32 = 24.0;
+const HINT_OFFSET_Y: f32 = 24.0;
 
 // Card shake animation on auth failure (classic "wrong password" feedback)
 const FAILED_DURATION_MS: u64 = 600;
@@ -190,6 +188,7 @@ enum ControlFlow {
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum ClickTarget {
     Field(Field),
+    Submit,
     PowerOff,
     Reboot,
 }
@@ -631,6 +630,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         CompassPainter::new(Fonts::quompacc())?
     };
+    let backdrop = LoginBackdrop::new(w, h)?;
 
     // Pre-fill the dumb buffer with the settle frame BEFORE set_crtc so
     // the kernel never scans out a zeroed (black) buffer. Without this,
@@ -639,21 +639,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mut mapping = card.map_dumb_buffer(&mut db)?;
         let buf = mapping.as_mut();
-        let mut pm = PixmapMut::from_bytes(buf, w, h).ok_or("pixmap bind failed")?;
-        // force_needle_north matches bootsplash's final handover frame
-        // (also rendered with force_needle_north=true), so the visual
-        // transition has the needle at exactly the same angle across the
-        // process boundary.
-        painter.render(
-            &mut pm,
-            w as f32,
-            h as f32,
-            SETTLE_T,
-            &FrameOpts {
-                force_needle_north: true,
-                ..Default::default()
-            },
-        );
+        backdrop.copy_rgba_to(buf)?;
         for px in buf.chunks_exact_mut(4) {
             px.swap(0, 2);
         }
@@ -682,6 +668,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut db,
         fb,
         &painter,
+        &backdrop,
         w,
         h,
         mode.vrefresh().max(60),
@@ -924,65 +911,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 struct AnimFrame {
-    watermark_alpha: u8,
-    glow_visible: bool,
-    glow_pos: (f32, f32),
-    glow_scale: f32,
     card_alpha: f32,
     ui_alpha: f32,
 }
 
-fn compute_anim_frame(t_anim_secs: f32, painter: &CompassPainter, w: f32, h: f32) -> AnimFrame {
+fn compute_anim_frame(t_anim_secs: f32) -> AnimFrame {
     let t_ms = (t_anim_secs * 1000.0) as u64;
-
-    let watermark_alpha = ramp_u8(
-        t_ms,
-        WATERMARK_START_MS,
-        WATERMARK_END_MS,
-        0,
-        WATERMARK_FINAL_ALPHA,
-    );
-
-    let origin = painter.north_glow_position(w, h, SETTLE_T);
-    let target = (w / 2.0, h / 2.0);
-    let p_fall = (t_ms as f32 / FALL_END_MS as f32).clamp(0.0, 1.0);
-    let p_eased = p_fall * p_fall;
-    let glow_pos = (
-        origin.0 + (target.0 - origin.0) * p_eased,
-        origin.1 + (target.1 - origin.1) * p_eased,
-    );
-    let glow_scale = 1.0 + (GLOW_FINAL_SCALE - 1.0) * p_eased;
-    let glow_visible = t_ms < GLOW_HIDE_MS;
 
     let card_alpha = ramp_f32(t_ms, CARD_FADE_START_MS, CARD_FADE_END_MS, 0.0, 1.0);
     let ui_alpha = ramp_f32(t_ms, UI_FADE_START_MS, UI_FADE_END_MS, 0.0, 1.0);
 
     AnimFrame {
-        watermark_alpha,
-        glow_visible,
-        glow_pos,
-        glow_scale,
         card_alpha,
         ui_alpha,
     }
 }
 
 fn anim_frame_is_steady(af: &AnimFrame) -> bool {
-    af.watermark_alpha == WATERMARK_FINAL_ALPHA
-        && !af.glow_visible
-        && (af.card_alpha - 1.0).abs() < f32::EPSILON
-        && (af.ui_alpha - 1.0).abs() < f32::EPSILON
-}
-
-fn ramp_u8(t: u64, start: u64, end: u64, from: u8, to: u8) -> u8 {
-    if t <= start {
-        from
-    } else if t >= end {
-        to
-    } else {
-        let p = (t - start) as f32 / (end - start) as f32;
-        (from as f32 + (to as f32 - from as f32) * p) as u8
-    }
+    (af.card_alpha - 1.0).abs() < f32::EPSILON && (af.ui_alpha - 1.0).abs() < f32::EPSILON
 }
 
 fn ramp_f32(t: u64, start: u64, end: u64, from: f32, to: f32) -> f32 {
@@ -1002,6 +948,7 @@ fn run_animation(
     db: &mut drm::control::dumbbuffer::DumbBuffer,
     fb: drm::control::framebuffer::Handle,
     painter: &CompassPainter,
+    backdrop: &LoginBackdrop,
     w: u32,
     h: u32,
     refresh_hz: u32,
@@ -1027,7 +974,7 @@ fn run_animation(
     while exit == ControlFlow::Continue {
         let t = anim_start.elapsed();
         let t_secs = t.as_secs_f32();
-        let af = compute_anim_frame(t_secs, painter, w as f32, h as f32);
+        let af = compute_anim_frame(t_secs);
         let animating = !anim_frame_is_steady(&af);
         let mut redraw = animating || !steady_frame_drawn;
 
@@ -1128,6 +1075,11 @@ fn run_animation(
                                 ui_state.pending_power = None;
                                 redraw = true;
                             }
+                            Some(ClickTarget::Submit) => {
+                                ui_state.pending_power = None;
+                                ui_state.start_auth();
+                                redraw = true;
+                            }
                             Some(ClickTarget::PowerOff) => {
                                 redraw = true;
                                 if let Some(flow) =
@@ -1171,26 +1123,8 @@ fn run_animation(
         }
 
         {
-            let mut pm =
-                PixmapMut::from_bytes(&mut frame_buf, w, h).ok_or("pixmap bind failed")?;
-
-            painter.render(
-                &mut pm,
-                w as f32,
-                h as f32,
-                SETTLE_T,
-                &FrameOpts {
-                    include_north_glow: false,
-                    watermark_alpha: af.watermark_alpha,
-                    force_needle_north: true,
-                    ..Default::default()
-                },
-            );
-
-            if af.glow_visible {
-                let r0 = painter.glow_base_radius(w as f32, h as f32);
-                painter.render_glow_at(&mut pm, af.glow_pos.0, af.glow_pos.1, r0 * af.glow_scale);
-            }
+            backdrop.copy_rgba_to(&mut frame_buf)?;
+            let mut pm = PixmapMut::from_bytes(&mut frame_buf, w, h).ok_or("pixmap bind failed")?;
 
             if af.card_alpha > 0.0 {
                 draw_card(
@@ -1270,6 +1204,11 @@ fn click_target_at(
         return Some(ClickTarget::Field(Field::Password));
     }
 
+    let login = login_button_rect(w, h, shake_dx);
+    if point_in_rect(x, y, login.0, login.1, login.2, login.3) {
+        return Some(ClickTarget::Submit);
+    }
+
     let (restart, poweroff) = power_button_rects(w, h, shake_dx);
     if point_in_rect(x, y, restart.0, restart.1, restart.2, restart.3) {
         Some(ClickTarget::Reboot)
@@ -1278,6 +1217,16 @@ fn click_target_at(
     } else {
         None
     }
+}
+
+fn login_button_rect(w: f32, h: f32, shake_dx: f32) -> Rect {
+    let (card_left, card_top, cw, _) = card_rect(w, h);
+    (
+        card_left + shake_dx + CARD_PAD,
+        card_top + CARD_PAD + LOGIN_BUTTON_OFFSET_Y,
+        cw - 2.0 * CARD_PAD,
+        LOGIN_BUTTON_HEIGHT,
+    )
 }
 
 fn smartcard_pin_rect(w: f32, h: f32, shake_dx: f32) -> Rect {
@@ -1293,11 +1242,10 @@ fn smartcard_pin_rect(w: f32, h: f32, shake_dx: f32) -> Rect {
 }
 
 fn power_button_rects(w: f32, h: f32, shake_dx: f32) -> PowerButtonRects {
-    let (card_left_raw, card_top, cw, ch) = card_rect(w, h);
-    let card_left = card_left_raw + shake_dx;
+    let _ = shake_dx;
     let total_w = POWER_BUTTON_WIDTH * 2.0 + POWER_BUTTON_GAP;
-    let x0 = card_left + cw / 2.0 - total_w / 2.0;
-    let y = card_top + ch - POWER_BUTTON_BOTTOM_PAD - POWER_BUTTON_HEIGHT;
+    let x0 = w - POWER_BUTTON_EDGE_PAD - total_w;
+    let y = h - POWER_BUTTON_EDGE_PAD - POWER_BUTTON_HEIGHT;
     (
         (x0, y, POWER_BUTTON_WIDTH, POWER_BUTTON_HEIGHT),
         (
@@ -1366,14 +1314,6 @@ fn modal_frame_alpha(scale: f32) -> f32 {
 
 fn metro_surface(alpha: f32) -> Color {
     theme_color(alpha, login_theme().colors.surface, modal_fill_alpha(0.75))
-}
-
-fn metro_surface_alt(alpha: f32) -> Color {
-    theme_color(
-        alpha,
-        login_theme().colors.surface_alt,
-        modal_fill_alpha(0.92),
-    )
 }
 
 fn metro_background(alpha: f32) -> Color {
@@ -1450,23 +1390,6 @@ fn draw_card_stroke(pm: &mut PixmapMut, path: &tiny_skia::Path, color: Color, wi
     pm.stroke_path(path, &paint, &stroke, Transform::identity(), None);
 }
 
-fn draw_card_highlight(pm: &mut PixmapMut, left: f32, top: f32, w: f32, alpha: f32) {
-    let mut pb = PathBuilder::new();
-    pb.move_to(left, top + METRO_STRIPE_HEIGHT + 1.0);
-    pb.line_to(left + w, top + METRO_STRIPE_HEIGHT + 1.0);
-    let Some(path) = pb.finish() else {
-        return;
-    };
-    let mut paint = Paint::default();
-    paint.set_color(Color::from_rgba8(255, 255, 255, alpha_byte(alpha, 24.0)));
-    paint.anti_alias = true;
-    let stroke = Stroke {
-        width: 1.0,
-        ..Default::default()
-    };
-    pm.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
-}
-
 fn draw_login_button(
     pm: &mut PixmapMut,
     painter: &CompassPainter,
@@ -1477,12 +1400,7 @@ fn draw_login_button(
     selected: bool,
 ) {
     let path = rounded_rect_path(rect.0, rect.1, rect.2, rect.3, control_radius());
-    let fill = mix_color(
-        metro_surface(1.0),
-        accent,
-        if selected { 0.26 } else { 0.08 },
-        alpha_byte(alpha, if selected { 142.0 } else { 88.0 }),
-    );
+    let fill = Color::from_rgba8(13, 27, 43, alpha_byte(alpha, 176.0));
     let mut fill_paint = Paint::default();
     fill_paint.set_color(fill);
     fill_paint.anti_alias = true;
@@ -1505,27 +1423,9 @@ fn draw_login_button(
         if selected { 2.0 } else { 1.0 },
     );
 
-    let stripe = rounded_rect_path(
-        rect.0 + control_radius(),
-        rect.1 + 1.0,
-        (rect.2 - 2.0 * control_radius()).max(1.0),
-        METRO_STRIPE_HEIGHT,
-        1.0,
-    );
-    let mut stripe_paint = Paint::default();
-    stripe_paint.set_color(color_with_alpha(accent, alpha_byte(alpha, 230.0)));
-    stripe_paint.anti_alias = true;
-    pm.fill_path(
-        &stripe,
-        &stripe_paint,
-        FillRule::Winding,
-        Transform::identity(),
-        None,
-    );
-
     painter.render_text_centered(
         pm,
-        TextStyle::SansBold(13.0),
+        TextStyle::SansRegular(13.0),
         label,
         rect.0 + rect.2 / 2.0,
         rect.1 + rect.3 / 2.0,
@@ -1587,54 +1487,31 @@ fn draw_card(
     let left = left + shake_dx;
     let path = rounded_rect_path(left, top, cw, ch, card_radius());
     draw_soft_card_shadow(pm, left, top, cw, ch, alpha);
-    let key_accent = if security_key_present {
-        metro_success(alpha)
-    } else {
-        metro_accent(alpha)
-    };
-
     let mut fill = Paint::default();
-    fill.set_color(if security_key_present {
-        mix_color(
-            metro_surface_alt(1.0),
-            metro_success(1.0),
-            0.08,
-            alpha_byte(alpha, if light_appearance() { 86.0 } else { 128.0 }),
-        )
-    } else {
-        metro_surface_alt(alpha)
-    });
+    fill.set_color(Color::from_rgba8(20, 25, 31, alpha_byte(alpha, 222.0)));
     fill.anti_alias = true;
     pm.fill_path(&path, &fill, FillRule::Winding, Transform::identity(), None);
 
-    let stripe = rounded_rect_path(
-        left + card_radius(),
-        top + 1.0,
-        (cw - 2.0 * card_radius()).max(1.0),
-        METRO_STRIPE_HEIGHT,
-        1.0,
-    );
-    let mut stripe_paint = Paint::default();
-    stripe_paint.set_color(key_accent);
-    stripe_paint.anti_alias = true;
-    pm.fill_path(
-        &stripe,
-        &stripe_paint,
-        FillRule::Winding,
-        Transform::identity(),
-        None,
-    );
-
     let border = if security_key_present {
-        color_with_alpha(
-            metro_success(1.0),
-            alpha_byte(alpha, if light_appearance() { 150.0 } else { 220.0 }),
-        )
+        color_with_alpha(metro_success(1.0), alpha_byte(alpha, 132.0))
     } else {
-        metro_border(alpha)
+        Color::from_rgba8(154, 166, 178, alpha_byte(alpha, 72.0))
     };
     draw_card_stroke(pm, &path, border, 1.0);
-    draw_card_highlight(pm, left, top, cw, alpha);
+
+    let inner = rounded_rect_path(
+        left + 1.5,
+        top + 1.5,
+        cw - 3.0,
+        ch - 3.0,
+        card_radius() - 1.5,
+    );
+    draw_card_stroke(
+        pm,
+        &inner,
+        Color::from_rgba8(235, 244, 252, alpha_byte(alpha, 18.0)),
+        1.0,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1648,7 +1525,7 @@ fn draw_login_ui(
     caret_on: bool,
     shake_dx: f32,
 ) {
-    let (card_left_raw, card_top, cw, _ch) = card_rect(w, h);
+    let (card_left_raw, card_top, cw, ch) = card_rect(w, h);
     let card_left = card_left_raw + shake_dx;
     let inner_top = card_top + CARD_PAD;
     let cx = card_left + cw / 2.0;
@@ -1656,40 +1533,38 @@ fn draw_login_ui(
     let text_color = metro_text(alpha);
     let label_color = metro_text_dim(alpha);
     let hint_color = metro_text_dim(alpha * 0.92);
-    let title_color = metro_accent(alpha);
     let caret_color = metro_accent(alpha);
-    let box_fill = metro_background(alpha);
-    let box_outline = metro_border(alpha);
+    let box_fill = Color::from_rgba8(12, 17, 23, alpha_byte(alpha, 176.0));
+    let box_outline = Color::from_rgba8(151, 163, 176, alpha_byte(alpha, 62.0));
     let smartcard_ready = ui.smartcard_login_ready();
 
-    let text_size = 22.0;
+    draw_brand_mark(pm, cx, inner_top + BRAND_MARK_OFFSET_Y, alpha);
+    painter.render_text_centered(
+        pm,
+        TextStyle::SansRegular(28.0),
+        "M E R I D I A N",
+        cx,
+        inner_top + TITLE_OFFSET_Y,
+        Color::from_rgba8(225, 233, 242, alpha_byte(alpha, 238.0)),
+    );
+    painter.render_text_centered(
+        pm,
+        TextStyle::SansRegular(13.0),
+        "B S D   D E S K T O P",
+        cx,
+        inner_top + SUBTITLE_OFFSET_Y,
+        Color::from_rgba8(91, 145, 197, alpha_byte(alpha, 220.0)),
+    );
 
     if smartcard_ready {
-        painter.render_text_centered(
-            pm,
-            TextStyle::SansBold(20.0),
-            "Smartcard",
-            cx,
-            inner_top + TITLE_OFFSET_Y,
-            title_color,
-        );
-
         draw_yubikey_icon(
             pm,
             cx,
-            inner_top + SMARTCARD_ICON_TOP,
+            inner_top + USER_BOX_OFFSET_Y - 18.0,
             alpha,
             ui.security_key_present,
         );
 
-        painter.render_text_centered(
-            pm,
-            TextStyle::SansBold(13.0),
-            "PIN",
-            cx,
-            inner_top + SMARTCARD_PIN_LABEL_OFFSET_Y,
-            label_color,
-        );
         let pin_rect = smartcard_pin_rect(w, h, shake_dx);
         draw_input_box(
             pm,
@@ -1702,19 +1577,35 @@ fn draw_login_ui(
             true,
             alpha,
         );
+        draw_lock_icon(pm, pin_rect.0 + 26.0, pin_rect.1 + pin_rect.3 / 2.0, alpha);
         let pwd_text_x = pin_rect.0 + INPUT_TEXT_PAD_X;
         let pwd_baseline = pin_rect.1 + INPUT_BOX_HEIGHT - INPUT_BASELINE_PAD_BOTTOM;
         let dots = "•".repeat(ui.password.chars().count());
+        let display = if dots.is_empty() {
+            "Smartcard-PIN"
+        } else {
+            &dots
+        };
         let after_pwd = painter.render_text_left(
             pm,
-            TextStyle::SansBold(text_size),
-            &dots,
+            TextStyle::SansRegular(17.0),
+            display,
             pwd_text_x,
             pwd_baseline,
-            text_color,
+            if dots.is_empty() {
+                label_color
+            } else {
+                text_color
+            },
         );
         if caret_on {
-            draw_caret(pm, after_pwd, pwd_baseline, text_size, caret_color);
+            draw_caret(
+                pm,
+                caret_x(dots.is_empty(), pwd_text_x, after_pwd),
+                pwd_baseline,
+                17.0,
+                caret_color,
+            );
         }
     } else {
         let inner_left = card_left + CARD_PAD;
@@ -1722,23 +1613,6 @@ fn draw_login_ui(
         let user_box_top = inner_top + USER_BOX_OFFSET_Y;
         let pwd_box_top = inner_top + PASSWORD_BOX_OFFSET_Y;
 
-        painter.render_text_centered(
-            pm,
-            TextStyle::SansBold(20.0),
-            "Meridian",
-            cx,
-            inner_top + TITLE_OFFSET_Y,
-            title_color,
-        );
-
-        painter.render_text_left(
-            pm,
-            TextStyle::SansBold(13.0),
-            "Benutzer",
-            inner_left,
-            user_box_top - 12.0,
-            label_color,
-        );
         draw_input_box(
             pm,
             inner_left,
@@ -1750,28 +1624,41 @@ fn draw_login_ui(
             ui.focus == Field::Username,
             alpha,
         );
+        draw_user_icon(
+            pm,
+            inner_left + 26.0,
+            user_box_top + INPUT_BOX_HEIGHT / 2.0,
+            alpha,
+        );
         let user_text_x = inner_left + INPUT_TEXT_PAD_X;
         let user_baseline = user_box_top + INPUT_BOX_HEIGHT - INPUT_BASELINE_PAD_BOTTOM;
+        let user_display = if ui.username.is_empty() {
+            "Benutzername"
+        } else {
+            &ui.username
+        };
         let after_user = painter.render_text_left(
             pm,
-            TextStyle::SansBold(text_size),
-            &ui.username,
+            TextStyle::SansRegular(17.0),
+            user_display,
             user_text_x,
             user_baseline,
-            text_color,
+            if ui.username.is_empty() {
+                label_color
+            } else {
+                text_color
+            },
         );
         if caret_on && ui.focus == Field::Username {
-            draw_caret(pm, after_user, user_baseline, text_size, caret_color);
+            draw_caret(
+                pm,
+                caret_x(ui.username.is_empty(), user_text_x, after_user),
+                user_baseline,
+                17.0,
+                caret_color,
+            );
         }
 
-        painter.render_text_left(
-            pm,
-            TextStyle::SansBold(13.0),
-            "Passwort",
-            inner_left,
-            pwd_box_top - 12.0,
-            label_color,
-        );
         draw_input_box(
             pm,
             inner_left,
@@ -1783,25 +1670,47 @@ fn draw_login_ui(
             ui.focus == Field::Password,
             alpha,
         );
+        draw_lock_icon(
+            pm,
+            inner_left + 26.0,
+            pwd_box_top + INPUT_BOX_HEIGHT / 2.0,
+            alpha,
+        );
         let pwd_text_x = inner_left + INPUT_TEXT_PAD_X;
         let pwd_baseline = pwd_box_top + INPUT_BOX_HEIGHT - INPUT_BASELINE_PAD_BOTTOM;
         let dots = "•".repeat(ui.password.chars().count());
+        let pwd_display = if dots.is_empty() { "Passwort" } else { &dots };
         let after_pwd = painter.render_text_left(
             pm,
-            TextStyle::SansBold(text_size),
-            &dots,
+            TextStyle::SansRegular(17.0),
+            pwd_display,
             pwd_text_x,
             pwd_baseline,
-            text_color,
+            if dots.is_empty() {
+                label_color
+            } else {
+                text_color
+            },
         );
         if caret_on && ui.focus == Field::Password {
-            draw_caret(pm, after_pwd, pwd_baseline, text_size, caret_color);
+            draw_caret(
+                pm,
+                caret_x(dots.is_empty(), pwd_text_x, after_pwd),
+                pwd_baseline,
+                17.0,
+                caret_color,
+            );
         }
     }
 
-    // Bottom hint — text depends on phase (Editing vs Failed)
-    let (restart_rect, _) = power_button_rects(w, h, shake_dx);
-    let hint_y = restart_rect.1 - HINT_POWER_GAP;
+    let submit_rect = login_button_rect(w, h, shake_dx);
+    let submit_label = match ui.phase {
+        InputPhase::Authenticating => "Anmelden …",
+        InputPhase::Failed(_) => "Erneut versuchen",
+        InputPhase::Editing => "Anmelden",
+    };
+    draw_submit_button(pm, painter, submit_rect, submit_label, alpha);
+
     let hint_text = ui.hint();
     let hint_color_phase = match ui.phase {
         InputPhase::Failed(_) => metro_error(alpha),
@@ -1809,10 +1718,10 @@ fn draw_login_ui(
     };
     painter.render_text_centered(
         pm,
-        TextStyle::SansBold(13.0),
+        TextStyle::SansRegular(12.0),
         &hint_text,
         cx,
-        hint_y,
+        card_top + ch + HINT_OFFSET_Y,
         hint_color_phase,
     );
     draw_power_buttons(
@@ -1824,6 +1733,161 @@ fn draw_login_ui(
         shake_dx,
         ui.pending_power_action(),
     );
+}
+
+fn caret_x(is_empty: bool, text_x: f32, after_text_x: f32) -> f32 {
+    if is_empty {
+        text_x
+    } else {
+        after_text_x
+    }
+}
+
+fn draw_submit_button(
+    pm: &mut PixmapMut,
+    painter: &CompassPainter,
+    rect: Rect,
+    label: &str,
+    alpha: f32,
+) {
+    let path = rounded_rect_path(rect.0, rect.1, rect.2, rect.3, control_radius());
+    let shader = LinearGradient::new(
+        Point::from_xy(rect.0, rect.1),
+        Point::from_xy(rect.0 + rect.2, rect.1 + rect.3),
+        vec![
+            GradientStop::new(
+                0.0,
+                Color::from_rgba8(65, 111, 166, alpha_byte(alpha, 244.0)),
+            ),
+            GradientStop::new(
+                1.0,
+                Color::from_rgba8(74, 121, 180, alpha_byte(alpha, 244.0)),
+            ),
+        ],
+        SpreadMode::Pad,
+        Transform::identity(),
+    )
+    .unwrap_or(Shader::SolidColor(Color::from_rgba8(
+        70,
+        116,
+        174,
+        alpha_byte(alpha, 244.0),
+    )));
+    let paint = Paint {
+        shader,
+        anti_alias: true,
+        ..Default::default()
+    };
+    pm.fill_path(
+        &path,
+        &paint,
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
+    draw_card_stroke(
+        pm,
+        &path,
+        Color::from_rgba8(137, 180, 224, alpha_byte(alpha, 72.0)),
+        1.0,
+    );
+    painter.render_text_centered(
+        pm,
+        TextStyle::SansRegular(17.0),
+        label,
+        rect.0 + rect.2 / 2.0,
+        rect.1 + rect.3 / 2.0,
+        Color::from_rgba8(237, 243, 250, alpha_byte(alpha, 250.0)),
+    );
+}
+
+fn draw_brand_mark(pm: &mut PixmapMut, cx: f32, cy: f32, alpha: f32) {
+    let line = Color::from_rgba8(137, 174, 210, alpha_byte(alpha, 104.0));
+    for radius in [18.0_f32, 27.0, 36.0] {
+        if let Some(circle) = PathBuilder::from_circle(cx, cy, radius) {
+            draw_card_stroke(pm, &circle, line, 1.0);
+        }
+    }
+
+    let mut axes = PathBuilder::new();
+    axes.move_to(cx, cy - 38.0);
+    axes.line_to(cx, cy + 38.0);
+    axes.move_to(cx - 38.0, cy);
+    axes.line_to(cx + 38.0, cy);
+    if let Some(path) = axes.finish() {
+        draw_card_stroke(pm, &path, line, 1.0);
+    }
+
+    let mut rose = PathBuilder::new();
+    rose.move_to(cx, cy - 26.0);
+    rose.line_to(cx - 4.0, cy - 4.0);
+    rose.line_to(cx, cy);
+    rose.line_to(cx + 4.0, cy - 4.0);
+    rose.close();
+    rose.move_to(cx + 26.0, cy);
+    rose.line_to(cx + 4.0, cy - 4.0);
+    rose.line_to(cx, cy);
+    rose.line_to(cx + 4.0, cy + 4.0);
+    rose.close();
+    rose.move_to(cx, cy + 26.0);
+    rose.line_to(cx + 4.0, cy + 4.0);
+    rose.line_to(cx, cy);
+    rose.line_to(cx - 4.0, cy + 4.0);
+    rose.close();
+    rose.move_to(cx - 26.0, cy);
+    rose.line_to(cx - 4.0, cy + 4.0);
+    rose.line_to(cx, cy);
+    rose.line_to(cx - 4.0, cy - 4.0);
+    rose.close();
+    if let Some(path) = rose.finish() {
+        let mut paint = Paint::default();
+        paint.set_color(Color::from_rgba8(176, 205, 230, alpha_byte(alpha, 150.0)));
+        paint.anti_alias = true;
+        pm.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+
+    if let Some(dot) = PathBuilder::from_circle(cx, cy, 3.2) {
+        let mut paint = Paint::default();
+        paint.set_color(Color::from_rgba8(91, 166, 232, alpha_byte(alpha, 245.0)));
+        paint.anti_alias = true;
+        pm.fill_path(&dot, &paint, FillRule::Winding, Transform::identity(), None);
+    }
+}
+
+fn draw_user_icon(pm: &mut PixmapMut, cx: f32, cy: f32, alpha: f32) {
+    let color = Color::from_rgba8(190, 202, 214, alpha_byte(alpha, 205.0));
+    if let Some(head) = PathBuilder::from_circle(cx, cy - 7.0, 5.5) {
+        draw_card_stroke(pm, &head, color, 1.4);
+    }
+    let mut body = PathBuilder::new();
+    body.move_to(cx - 9.0, cy + 10.0);
+    body.quad_to(cx - 8.0, cy + 1.0, cx, cy + 1.0);
+    body.quad_to(cx + 8.0, cy + 1.0, cx + 9.0, cy + 10.0);
+    body.close();
+    if let Some(path) = body.finish() {
+        draw_card_stroke(pm, &path, color, 1.4);
+    }
+}
+
+fn draw_lock_icon(pm: &mut PixmapMut, cx: f32, cy: f32, alpha: f32) {
+    let color = Color::from_rgba8(190, 202, 214, alpha_byte(alpha, 205.0));
+    let body = rounded_rect_path(cx - 7.0, cy - 1.0, 14.0, 12.0, 2.0);
+    draw_card_stroke(pm, &body, color, 1.4);
+    let mut shackle = PathBuilder::new();
+    shackle.move_to(cx - 4.5, cy - 1.0);
+    shackle.line_to(cx - 4.5, cy - 5.0);
+    shackle.quad_to(cx - 4.5, cy - 10.0, cx, cy - 10.0);
+    shackle.quad_to(cx + 4.5, cy - 10.0, cx + 4.5, cy - 5.0);
+    shackle.line_to(cx + 4.5, cy - 1.0);
+    if let Some(path) = shackle.finish() {
+        draw_card_stroke(pm, &path, color, 1.4);
+    }
 }
 
 fn draw_yubikey_icon(pm: &mut PixmapMut, cx: f32, y: f32, alpha: f32, present: bool) {
@@ -1962,36 +2026,21 @@ fn draw_input_box(
     );
 
     let mut stroke_paint = Paint::default();
-    stroke_paint.set_color(if focused {
-        metro_accent(alpha)
-    } else {
-        outline
-    });
+    stroke_paint.set_color(outline);
     stroke_paint.anti_alias = true;
     let stroke = Stroke {
-        width: if focused { 2.0 } else { 1.0 },
+        width: 1.0,
         ..Default::default()
     };
     pm.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
 
     if focused {
-        let accent = rounded_rect_path(
-            x,
-            y + control_radius(),
-            3.0,
-            (h - 2.0 * control_radius()).max(1.0),
-            1.5,
-        );
-        let mut accent_paint = Paint::default();
-        accent_paint.set_color(metro_accent(alpha));
-        accent_paint.anti_alias = true;
-        pm.fill_path(
-            &accent,
-            &accent_paint,
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
+        let mut underline = PathBuilder::new();
+        underline.move_to(x + INPUT_TEXT_PAD_X, y + h - 0.5);
+        underline.line_to((x + INPUT_TEXT_PAD_X + 86.0).min(x + w - 12.0), y + h - 0.5);
+        if let Some(path) = underline.finish() {
+            draw_card_stroke(pm, &path, metro_accent(alpha), 1.5);
+        }
     }
 }
 
@@ -2043,8 +2092,8 @@ fn draw_pointer_cursor(pm: &mut PixmapMut, x: f32, y: f32, alpha: f32) {
 }
 
 fn card_rect(w: f32, h: f32) -> (f32, f32, f32, f32) {
-    let cw = (w * 0.32).clamp(360.0, 720.0);
-    let ch = (h * 0.28).clamp(340.0, 420.0);
+    let cw = (w * 0.31).clamp(500.0, 640.0);
+    let ch = (h * 0.46).clamp(460.0, 520.0);
     let left = w / 2.0 - cw / 2.0;
     let top = h / 2.0 - ch / 2.0;
     (left, top, cw, ch)
@@ -2197,10 +2246,6 @@ fn handle_login_ipc_client(mut stream: UnixStream, tx: mpsc::Sender<IpcEvent>) {
 mod tests {
     use super::*;
 
-    fn p() -> CompassPainter<'static> {
-        CompassPainter::new(Fonts::quompacc()).unwrap()
-    }
-
     fn smartcard_ready_state() -> LoginUiState {
         LoginUiState {
             security_key_present: true,
@@ -2212,46 +2257,31 @@ mod tests {
 
     #[test]
     fn anim_frame_at_t0_matches_settle_state() {
-        let painter = p();
-        let af = compute_anim_frame(0.0, &painter, 1920.0, 1080.0);
-        assert_eq!(af.watermark_alpha, 0);
-        assert!(af.glow_visible);
-        assert!((af.glow_scale - 1.0).abs() < 1e-3);
+        let af = compute_anim_frame(0.0);
         assert_eq!(af.card_alpha, 0.0);
         assert_eq!(af.ui_alpha, 0.0);
     }
 
     #[test]
     fn anim_frame_at_ui_fade_end_is_full() {
-        let painter = p();
         let t = UI_FADE_END_MS as f32 / 1000.0;
-        let af = compute_anim_frame(t, &painter, 1920.0, 1080.0);
+        let af = compute_anim_frame(t);
         assert!((af.card_alpha - 1.0).abs() < 1e-3);
         assert!((af.ui_alpha - 1.0).abs() < 1e-3);
-        assert_eq!(af.watermark_alpha, WATERMARK_FINAL_ALPHA);
-        assert!(!af.glow_visible);
     }
 
     #[test]
     fn anim_frame_reports_steady_after_intro() {
-        let painter = p();
         let t = (UI_FADE_END_MS + 100) as f32 / 1000.0;
-        let af = compute_anim_frame(t, &painter, 1920.0, 1080.0);
+        let af = compute_anim_frame(t);
         assert!(anim_frame_is_steady(&af));
-    }
-
-    #[test]
-    fn ramp_u8_clamps_outside_window() {
-        assert_eq!(ramp_u8(50, 100, 200, 10, 90), 10);
-        assert_eq!(ramp_u8(150, 100, 200, 10, 90), 50);
-        assert_eq!(ramp_u8(300, 100, 200, 10, 90), 90);
     }
 
     #[test]
     fn card_rect_clamped_dimensions() {
         let (_, _, cw, ch) = card_rect(1920.0, 1440.0);
-        assert!((360.0..=720.0).contains(&cw));
-        assert!((340.0..=420.0).contains(&ch));
+        assert!((500.0..=640.0).contains(&cw));
+        assert!((460.0..=520.0).contains(&ch));
     }
 
     #[test]
@@ -2391,6 +2421,28 @@ mod tests {
             ),
             Some(ClickTarget::PowerOff)
         );
+    }
+
+    #[test]
+    fn login_button_is_submit_target() {
+        let login = login_button_rect(1920.0, 1080.0, 0.0);
+        assert_eq!(
+            click_target_at(
+                1920.0,
+                1080.0,
+                login.0 + login.2 / 2.0,
+                login.1 + login.3 / 2.0,
+                0.0,
+                false,
+            ),
+            Some(ClickTarget::Submit)
+        );
+    }
+
+    #[test]
+    fn empty_placeholder_keeps_caret_at_text_start() {
+        assert_eq!(caret_x(true, 120.0, 230.0), 120.0);
+        assert_eq!(caret_x(false, 120.0, 230.0), 230.0);
     }
 
     #[test]
