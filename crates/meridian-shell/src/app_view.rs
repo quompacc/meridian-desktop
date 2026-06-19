@@ -62,7 +62,6 @@ const POWER_IDS: [&str; 5] = [
     "power-off",
 ];
 
-const LAUNCHER_GLASS_ALPHA: u8 = 0;
 const LAUNCHER_BAND_ALPHA: u8 = 0;
 const LAUNCHER_CELL_ALPHA: u8 = 0;
 const LAUNCHER_HOVER_ALPHA: u8 = 42;
@@ -271,10 +270,15 @@ pub(crate) fn draw_command_palette(
 
     let theme = glass_theme_from_config(theme_config);
     let pal = theme.palette;
-    pixmap.fill(to_tiny_skia_color(with_alpha(
-        pal.surface_alt,
-        LAUNCHER_GLASS_ALPHA,
-    )));
+    // Launcher body opacity follows the theme's glass fill (glass_alpha) so the
+    // command palette honours the same "less transparent" knob as the panel and
+    // window glass. Previously the body was painted fully transparent, leaving
+    // only the compositor blur/tint visible regardless of the theme.
+    let body_alpha = theme_config
+        .decorations
+        .surface_treatment(meridian_config::ThemeSurface::Launcher)
+        .fill_alpha;
+    pixmap.fill(to_tiny_skia_color(with_alpha(pal.surface_alt, body_alpha)));
 
     {
         let mut pm = pixmap.as_mut();

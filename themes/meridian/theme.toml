@@ -1,12 +1,12 @@
 [colors]
-background = "#10161b"
-surface = "#1b242d"
-surface_alt = "#161e25"
+background = "#14171b"
+surface = "#20252b"
+surface_alt = "#1b1f24"
 accent = "#4e99f3"
 accent_alt = "#4383ce"
 text = "#dcdee1"
-text_dim = "#828990"
-border = "#303740"
+text_dim = "#888d93"
+border = "#353a40"
 error = "#b5685c"
 warning = "#b89a6a"
 success = "#6fa08c"
@@ -26,7 +26,7 @@ glass_blur_radius = 10
 glass_tint = 0.5
 glass_frame_alpha = 0.4
 glass_button_alpha = 0.45
-glass_alpha = 0.55
+glass_alpha = 0.75
 glass_specular = 0.6
 
 [fonts]
