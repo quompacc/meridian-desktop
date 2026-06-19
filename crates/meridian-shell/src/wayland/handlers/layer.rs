@@ -323,6 +323,21 @@ impl LayerShellHandler for MeridianShell {
                 self.draw_status_notifier_menu(qh, RepaintReason::LayerConfigure);
                 return;
             }
+            if self.volume_osd_open {
+                self.network_layer.set_anchor(Anchor::BOTTOM);
+                self.network_layer
+                    .set_margin(0, 0, crate::VOLUME_OSD_BOTTOM_MARGIN, 0);
+                self.network_layer.set_exclusive_zone(0);
+                self.network_layer.set_size(
+                    crate::popup_surface_w(crate::VOLUME_OSD_WIDTH),
+                    crate::popup_surface_h(crate::VOLUME_OSD_HEIGHT),
+                );
+                self.network_configured = true;
+                self.volume_osd_width = crate::popup_surface_w(crate::VOLUME_OSD_WIDTH);
+                self.volume_osd_height = crate::popup_surface_h(crate::VOLUME_OSD_HEIGHT);
+                self.draw_volume_osd(qh, RepaintReason::LayerConfigure);
+                return;
+            }
             if self.audio_popup_open {
                 let requested_w = if configure.new_size.0 > 0 {
                     configure.new_size.0

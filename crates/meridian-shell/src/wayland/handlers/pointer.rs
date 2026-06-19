@@ -840,15 +840,23 @@ impl PointerHandler for MeridianShell {
                 }
             }
 
-            // Volume bar drag: while the left button is held on the audio popup,
-            // motion keeps re-setting the level; release ends the drag. The
-            // snapshot is updated optimistically so the bar tracks the pointer
-            // without re-polling the mixer on every motion event.
-            if self.audio_popup_open && self.pointer_surface == SurfaceKind::NetworkPopup {
+            // Volume OSD: its slider is draggable. Press jumps to the position and
+            // starts a drag; motion tracks the pointer; release ends it. Every
+            // change resets the auto-hide timer. These events are fully handled
+            // here and `continue`d so the popup-close machinery below never sees
+            // them — the OSD stays put while you drag it.
+            if self.volume_osd_open && self.pointer_surface == SurfaceKind::NetworkPopup {
+                let pad = crate::POPUP_SHADOW_PAD as f64;
+                let px = event.position.0 - pad;
                 match event.kind {
+                    PointerEventKind::Press { button: 0x110, .. } => {
+                        if let Some(percent) = audio_popup::volume_from_x(px) {
+                            self.audio_volume_dragging = true;
+                            self.apply_osd_volume(qh, percent);
+                        }
+                        continue;
+                    }
                     PointerEventKind::Motion { .. } if self.audio_volume_dragging => {
-                        let pad = crate::POPUP_SHADOW_PAD as f64;
-                        let px = event.position.0 - pad;
                         if let Some(percent) = audio_popup::volume_from_x(px) {
                             let current = self
                                 .audio_snapshot
@@ -856,16 +864,14 @@ impl PointerHandler for MeridianShell {
                                 .as_ref()
                                 .and_then(|device| device.volume_percent);
                             if current != Some(percent) {
-                                crate::audio::set_default_sink_volume(percent);
-                                if let Some(device) = self.audio_snapshot.default_output.as_mut() {
-                                    device.volume_percent = Some(percent);
-                                }
-                                self.draw_audio_popup(qh, RepaintReason::Pointer);
+                                self.apply_osd_volume(qh, percent);
                             }
                         }
+                        continue;
                     }
                     PointerEventKind::Release { button: 0x110, .. } => {
                         self.audio_volume_dragging = false;
+                        continue;
                     }
                     _ => {}
                 }
@@ -938,19 +944,16 @@ impl PointerHandler for MeridianShell {
                                 }
                             }
                         } else if self.audio_popup_open {
+                            // The corner audio popup is display-only; the volume
+                            // slider lives in the OSD. Clicking the body keeps it
+                            // open; only the settings link and a click outside act.
                             let card_w = self.audio_width.saturating_sub(pad2);
                             let card_h = self.audio_height.saturating_sub(pad2);
                             match audio_popup::popup_hit_test(card_w, card_h, px, py) {
                                 Some(audio_popup::AudioPopupHit::SettingsLink) => {
                                     Some(crate::wayland::ClickAction::OpenSoundSettings)
                                 }
-                                Some(audio_popup::AudioPopupHit::Volume(percent)) => {
-                                    // Begin a drag: subsequent motion keeps
-                                    // updating the level until button release.
-                                    self.audio_volume_dragging = true;
-                                    Some(crate::wayland::ClickAction::SetAudioVolume(percent))
-                                }
-                                Some(audio_popup::AudioPopupHit::Card) => None,
+                                Some(_) => None,
                                 None => Some(crate::wayland::ClickAction::ToggleAudioPopup),
                             }
                         } else {

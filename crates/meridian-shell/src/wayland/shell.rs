@@ -307,9 +307,19 @@ pub(crate) struct MeridianShell {
     pub(crate) network_height: u32,
     pub(crate) audio_width: u32,
     pub(crate) audio_height: u32,
-    /// True while the pointer is dragging the volume bar in the audio popup, so
+    /// True while the pointer is dragging the volume slider in the volume OSD, so
     /// motion events keep updating the level until the button is released.
     pub(crate) audio_volume_dragging: bool,
+    /// Compact volume OSD (centred, bottom) shown on volume-key activity. Shares
+    /// the network_layer surface with the network/audio popups.
+    pub(crate) volume_osd_open: bool,
+    /// Set by the IPC handler when a volume key arrives; the redraw pass (which
+    /// has a QueueHandle) opens/refreshes the OSD surface.
+    pub(crate) volume_osd_pending: bool,
+    /// When the OSD should auto-hide; reset on every volume change.
+    pub(crate) volume_osd_hide_at: Option<Instant>,
+    pub(crate) volume_osd_width: u32,
+    pub(crate) volume_osd_height: u32,
     pub(crate) status_notifier_menu_width: u32,
     pub(crate) status_notifier_menu_height: u32,
     pub(crate) notification_width: u32,

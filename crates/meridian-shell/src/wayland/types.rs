@@ -29,7 +29,6 @@ pub enum ClickAction {
     ToggleWorkspacePopup,
     ToggleNetworkPopup,
     ToggleAudioPopup,
-    SetAudioVolume(u8),
     OpenSoundSettings,
     OpenNetworkSettings,
     ActivateStatusNotifierItem(usize),
@@ -49,7 +48,6 @@ impl ClickAction {
             ClickAction::ToggleWorkspacePopup => "toggle-workspace-popup".to_string(),
             ClickAction::ToggleNetworkPopup => "toggle-network-popup".to_string(),
             ClickAction::ToggleAudioPopup => "toggle-audio-popup".to_string(),
-            ClickAction::SetAudioVolume(percent) => format!("set-audio-volume-{percent}"),
             ClickAction::OpenSoundSettings => "open-sound-settings".to_string(),
             ClickAction::OpenNetworkSettings => "open-network-settings".to_string(),
             ClickAction::ActivateStatusNotifierItem(idx) => {

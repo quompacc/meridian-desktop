@@ -417,6 +417,13 @@ impl MeridianShell {
 
     pub(crate) fn tick(&mut self, qh: &QueueHandle<Self>) {
         let now = Instant::now();
+        if self.volume_osd_open && !self.audio_volume_dragging {
+            if let Some(hide_at) = self.volume_osd_hide_at {
+                if now >= hide_at {
+                    self.close_volume_osd(CommitReason::EventLoopTick);
+                }
+            }
+        }
         if now.duration_since(self.last_tick) >= Duration::from_secs(1) {
             self.last_tick = now;
             let clock = time::formatted_time();
@@ -880,13 +887,13 @@ impl MeridianShell {
                 crate::audio::set_default_sink_volume(next);
                 self.audio_snapshot = crate::audio::AudioSnapshot::poll();
                 self.panel_dirty = true;
-                self.audio_dirty = true;
+                self.volume_osd_pending = true;
             }
             ShellEvent::AudioMuteToggle => {
                 crate::audio::toggle_default_sink_mute();
                 self.audio_snapshot = crate::audio::AudioSnapshot::poll();
                 self.panel_dirty = true;
-                self.audio_dirty = true;
+                self.volume_osd_pending = true;
             }
             ShellEvent::DesktopContextMenu { x, y } => {
                 self.open_desktop_context_menu_from_ipc(x, y);
@@ -1270,6 +1277,9 @@ impl MeridianShell {
             self.close_network_popup(reason);
             return;
         }
+        if self.volume_osd_open {
+            self.close_volume_osd(reason);
+        }
 
         if self.launcher_state.open {
             self.launcher_state.close();
@@ -1345,6 +1355,9 @@ impl MeridianShell {
             self.close_audio_popup(reason);
             return;
         }
+        if self.volume_osd_open {
+            self.close_volume_osd(reason);
+        }
 
         if self.launcher_state.open {
             self.launcher_state.close();
@@ -1411,6 +1424,73 @@ impl MeridianShell {
             self.keyboard_focus
         );
         true
+    }
+
+    /// Show (or refresh) the compact volume OSD: centred above the panel,
+    /// auto-hiding after VOLUME_OSD_VISIBLE_MS. Shares the network_layer surface,
+    /// so any network/audio popup is closed first. Never grabs keyboard focus.
+    pub(crate) fn show_volume_osd(&mut self, qh: &QueueHandle<Self>) {
+        if self.audio_popup_open {
+            self.close_audio_popup(CommitReason::Input);
+        }
+        if self.network_popup_open {
+            self.close_network_popup(CommitReason::Input);
+        }
+        self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+        self.volume_osd_hide_at = Some(
+            std::time::Instant::now()
+                + std::time::Duration::from_millis(crate::VOLUME_OSD_VISIBLE_MS),
+        );
+        if self.volume_osd_open {
+            // Already mapped: just refresh the level and the timer.
+            self.draw_volume_osd(qh, RepaintReason::Pointer);
+            return;
+        }
+        self.volume_osd_open = true;
+        self.network_layer.set_anchor(Anchor::BOTTOM);
+        self.network_layer
+            .set_margin(0, 0, crate::VOLUME_OSD_BOTTOM_MARGIN, 0);
+        self.network_layer.set_exclusive_zone(0);
+        self.network_layer.set_size(
+            crate::popup_surface_w(crate::VOLUME_OSD_WIDTH),
+            crate::popup_surface_h(crate::VOLUME_OSD_HEIGHT),
+        );
+        self.network_layer
+            .set_keyboard_interactivity(KeyboardInteractivity::None);
+        self.volume_osd_width = crate::popup_surface_w(crate::VOLUME_OSD_WIDTH);
+        self.volume_osd_height = crate::popup_surface_h(crate::VOLUME_OSD_HEIGHT);
+        if !self.network_configured {
+            self.network_layer.commit();
+        }
+        self.draw_volume_osd(qh, RepaintReason::Pointer);
+    }
+
+    pub(crate) fn close_volume_osd(&mut self, reason: CommitReason) {
+        if !self.volume_osd_open {
+            return;
+        }
+        self.volume_osd_open = false;
+        self.volume_osd_hide_at = None;
+        self.audio_volume_dragging = false;
+        self.network_layer.wl_surface().attach(None, 0, 0);
+        self.network_layer.commit();
+        self.network_configured = false;
+        let _ = reason;
+    }
+
+    /// Apply a volume picked by dragging the OSD slider: set the mixer, update
+    /// the snapshot optimistically, reset the auto-hide timer, and redraw.
+    pub(crate) fn apply_osd_volume(&mut self, qh: &QueueHandle<Self>, percent: u8) {
+        crate::audio::set_default_sink_volume(percent);
+        if let Some(device) = self.audio_snapshot.default_output.as_mut() {
+            device.volume_percent = Some(percent);
+        }
+        self.volume_osd_hide_at = Some(
+            std::time::Instant::now()
+                + std::time::Duration::from_millis(crate::VOLUME_OSD_VISIBLE_MS),
+        );
+        self.draw_volume_osd(qh, RepaintReason::Pointer);
+        self.draw_panel(qh, RepaintReason::Pointer);
     }
 
     pub(crate) fn open_status_notifier_menu(
@@ -1831,17 +1911,6 @@ impl MeridianShell {
                     self.draw_audio_popup(qh, RepaintReason::Pointer);
                 }
             }
-            ClickAction::SetAudioVolume(percent) => {
-                // System state, not Meridian config: drive the mixer/wpctl
-                // backend directly, then re-poll so the popup reflects the real
-                // new level. The popup surface stays open for further dragging.
-                crate::audio::set_default_sink_volume(percent);
-                self.audio_snapshot = crate::audio::AudioSnapshot::poll();
-                self.draw_panel(qh, RepaintReason::Pointer);
-                if self.audio_popup_open {
-                    self.draw_audio_popup(qh, RepaintReason::Pointer);
-                }
-            }
             ClickAction::OpenSoundSettings => {
                 self.open_sound_settings_from_tray(CommitReason::Input);
                 self.draw_panel(qh, RepaintReason::Pointer);
@@ -1975,7 +2044,6 @@ impl MeridianShell {
             ClickAction::ToggleWorkspacePopup => {}
             ClickAction::ToggleNetworkPopup => {}
             ClickAction::ToggleAudioPopup => {}
-            ClickAction::SetAudioVolume(_) => {}
             ClickAction::OpenSoundSettings => {}
             ClickAction::OpenNetworkSettings => {}
             ClickAction::ActivateStatusNotifierItem(_) => {}

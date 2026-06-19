@@ -87,6 +87,30 @@ pub fn draw_audio_popup(
     SETTINGS_LINK_RECT.with(|r| r.set(link_rect));
 }
 
+/// Compact volume OSD: a single centred volume row (label + draggable bar + %).
+/// Shown on volume-key activity. Stores the bar rect for drag hit-testing.
+pub fn draw_volume_osd(
+    painter: &mut Painter<'_>,
+    font: &RefCell<Option<TextRenderer>>,
+    theme: &ThemeConfig,
+    snapshot: &AudioSnapshot,
+) {
+    draw_card_body(painter, theme);
+    let percent = snapshot
+        .default_output
+        .as_ref()
+        .and_then(|device| device.volume_percent)
+        .map(u32::from);
+    let muted = snapshot
+        .default_output
+        .as_ref()
+        .map(|device| device.muted)
+        .unwrap_or(false);
+    let row_y = (crate::VOLUME_OSD_HEIGHT as i32 - ROW_HEIGHT) / 2;
+    let bar = draw_volume_row(painter, font, theme, "Lautstärke", percent, muted, row_y);
+    VOLUME_BAR_RECT.with(|r| r.set(bar));
+}
+
 fn fit_text(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
         return text.to_string();

@@ -77,6 +77,13 @@ pub const NETWORK_POPUP_HEIGHT: u32 = 200;
 pub const AUDIO_POPUP_WIDTH: u32 = 280;
 pub const AUDIO_POPUP_HEIGHT: u32 = 200;
 pub const AUDIO_POPUP_RIGHT_MARGIN: i32 = 126;
+/// Compact volume OSD shown (centred, bottom) when the volume keys are pressed
+/// or while dragging the volume slider.
+pub const VOLUME_OSD_WIDTH: u32 = 280;
+pub const VOLUME_OSD_HEIGHT: u32 = 64;
+/// How far above the panel the OSD floats, and how long it stays before fading.
+pub const VOLUME_OSD_BOTTOM_MARGIN: i32 = 96;
+pub const VOLUME_OSD_VISIBLE_MS: u64 = 1800;
 pub const SNI_MENU_RIGHT_MARGIN: i32 = 8;
 pub const SHELL_POPUP_BOTTOM_MARGIN: i32 = 2;
 /// Padding around every tray popup that holds room for the soft drop
@@ -210,6 +217,10 @@ fn redraw_after_ipc(
     shell: &mut wayland::MeridianShell,
     qh: &wayland_client::QueueHandle<wayland::MeridianShell>,
 ) {
+    if shell.volume_osd_pending {
+        shell.show_volume_osd(qh);
+        shell.volume_osd_pending = false;
+    }
     shell.draw_panel(qh, RepaintReason::Ipc);
     if shell.launcher_state.open {
         shell.draw_launcher(qh, RepaintReason::Ipc);
