@@ -10,6 +10,17 @@ single version.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-06-19
+
+### Changed
+
+- **Neutral desktop palette:** the shipped `meridian` default theme moves off
+  the cool Tokyo-Night blues to a neutral, slightly-cool grey ramp with a single
+  blue accent (`#4e99f3`), matching the desktop mockup. Only `[colors]` changed —
+  glass, blur, shadow, corner radius, fonts, icons, and cursor are untouched.
+- **Desktop wallpaper:** the default theme now ships the same alpine-lake
+  wallpaper as the login greeter (`bsd_wallpaper.png`).
+
 ## [0.5.0] - 2026-06-19
 
 ### Added
@@ -270,7 +281,8 @@ shared compass renderer.
   running fmt/clippy/test, and unit tests for `meridian-lock` and
   `meridian-polkit`.
 
-[Unreleased]: https://github.com/quompacc/meridian-desktop/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/quompacc/meridian-desktop/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/quompacc/meridian-desktop/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/quompacc/meridian-desktop/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/quompacc/meridian-desktop/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/quompacc/meridian-desktop/compare/v0.3.0...v0.4.0
