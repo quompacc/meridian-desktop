@@ -330,62 +330,6 @@ impl MeridianShell {
         }
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn draw_desktop(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
-        debug!(
-            "draw_desktop: reason={:?} configured={} size={}x{}",
-            reason, self.desktop_configured, self.desktop_width, self.desktop_height
-        );
-        if !self.desktop_configured || self.desktop_width == 0 || self.desktop_height == 0 {
-            return;
-        }
-
-        let width = self.desktop_width;
-        let height = self.desktop_height;
-        let stride = buffer::shm_buffer_stride(width);
-        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
-            let buf = buffer::buffer_for(
-                &mut self.pool,
-                &mut self.desktop_buffer,
-                width,
-                height,
-                stride,
-            );
-            let Some(buf) = buf else {
-                warn!(
-                    "desktop buffer unavailable: reason={:?} width={} height={}",
-                    reason, width, height
-                );
-                return;
-            };
-            let Some(canvas) = buf.canvas(&mut self.pool) else {
-                self.desktop_buffer = None;
-                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
-                    continue;
-                }
-                warn!(
-                    "desktop canvas unavailable after retry: reason={:?} width={} height={}",
-                    reason, width, height
-                );
-                return;
-            };
-
-            canvas.fill(0);
-            if let Err(err) = buf.attach_to(self.desktop_layer.wl_surface()) {
-                warn!(
-                    "desktop buffer attach failed: reason={:?} width={} height={} error={}",
-                    reason, width, height, err
-                );
-                return;
-            }
-            self.desktop_layer
-                .wl_surface()
-                .damage_buffer(0, 0, width as i32, height as i32);
-            self.desktop_layer.commit();
-            return;
-        }
-    }
-
     /// Resize the desktop-menu surface to match whether the settings flyout is open.
     /// Must be called whenever `desktop_context_menu.submenu_open` changes.
     pub(crate) fn resize_desktop_menu_surface(&mut self, submenu_open: bool) {

@@ -440,7 +440,10 @@ pub(crate) fn initialize(
     // icons are warmed lazily on first open (see warm_launcher_icons) to keep
     // startup fast.
     let printer_snapshot = crate::printers::PrinterSnapshot::poll();
+    // Single startup audio poll. On a fast login PipeWire/WirePlumber may not be
+    // up yet, so this can be Unavailable; `tick()` re-polls until it settles.
     let audio_snapshot = crate::audio::AudioSnapshot::poll();
+    let audio_settled = audio_snapshot.is_settled();
     let power_profile_init = crate::power_profile::current();
     let available_wallpapers = meridian_config::MeridianConfig::scan_wallpaper_dirs();
     let network_profiles = crate::network::list_saved_connections();
@@ -526,7 +529,6 @@ pub(crate) fn initialize(
         volume_osd_height: 0,
         osd_power_profile: None,
         panel_buffer: None,
-        desktop_buffer: None,
         desktop_menu_buffer: None,
         launcher_buffer: None,
         calendar_buffer: None,
@@ -577,6 +579,8 @@ pub(crate) fn initialize(
         settings_pinned_adding: false,
         printer_snapshot,
         audio_snapshot,
+        audio_settled,
+        audio_poll_until: std::time::Instant::now() + std::time::Duration::from_secs(60),
         battery_snapshot: crate::battery::BatterySnapshot::poll(),
         power_profile: power_profile_init,
         launcher_icons_warmed: false,
@@ -618,6 +622,7 @@ pub(crate) fn initialize(
         panel_state: panel::PanelState::new(),
         pinned_apps,
         launcher_state: launcher::LauncherState::new_with_apps(launcher_apps),
+        launcher_apps_rx: None,
         workspace_state: crate::workspaces::WorkspacePopupState::new(),
         workspace_hover_idx: None,
         focused_window_id: None,

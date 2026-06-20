@@ -441,7 +441,26 @@ impl MeridianShell {
                 self.battery_snapshot = battery;
                 self.draw_panel(qh, RepaintReason::Clock);
             }
+            // AUDIO-1: the user-session PipeWire/WirePlumber stack can come up
+            // AFTER the shell's one-shot startup poll, leaving the panel showing
+            // a stale muted icon until the user clicks the tray. Re-poll here
+            // until the stack settles (running + a default sink), then stop — so
+            // the panel self-heals within ~1s of PipeWire becoming ready without
+            // spawning wpctl forever. Bounded by audio_poll_until for machines
+            // that never expose a sink.
+            if !self.audio_settled && now < self.audio_poll_until {
+                let audio = crate::audio::AudioSnapshot::poll();
+                self.audio_settled = audio.is_settled();
+                if audio != self.audio_snapshot {
+                    self.audio_snapshot = audio;
+                    self.draw_panel(qh, RepaintReason::Clock);
+                }
+            }
         }
+        // Swap in a finished background app-list rescan (LAUNCH-2). Cheap
+        // try_recv every tick so a fresh list appears promptly after open.
+        self.poll_launcher_apps_refresh(qh);
+
         self.maybe_log_repaint_stats(now);
         self.maybe_log_commit_stats(now);
         self.maybe_log_render_stats(now);
@@ -1113,6 +1132,45 @@ impl MeridianShell {
         self.launcher_icons_warmed = true;
     }
 
+    /// Kick a background rescan of the desktop-entry app list (LAUNCH-2).
+    /// Scanning every applications dir is hundreds of fs reads + TryExec stats;
+    /// doing it on the event-loop thread froze the UI on every launcher open.
+    /// The worker thread posts the fresh list to `launcher_apps_rx`, which
+    /// `tick()` swaps in. No-op if a rescan is already in flight.
+    pub(crate) fn request_launcher_apps_refresh(&mut self) {
+        if self.launcher_apps_rx.is_some() {
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::launcher::DesktopApp::load_system());
+        });
+        self.launcher_apps_rx = Some(rx);
+    }
+
+    /// Apply a finished background app-list rescan, if one has arrived. Called
+    /// from `tick()`; cheap `try_recv`, never blocks.
+    fn poll_launcher_apps_refresh(&mut self, qh: &QueueHandle<Self>) {
+        let Some(rx) = self.launcher_apps_rx.as_ref() else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(apps) => {
+                self.launcher_apps_rx = None;
+                self.launcher_state.apps = apps;
+                self.launcher_icons_warmed = false;
+                if self.launcher_state.open {
+                    self.warm_launcher_icons();
+                    self.draw_launcher(qh, RepaintReason::Ipc);
+                }
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.launcher_apps_rx = None;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
+    }
+
     fn toggle_launcher(&mut self) {
         let open_before = self.launcher_state.open;
         if !open_before && self.calendar_popup_open {
@@ -1132,6 +1190,10 @@ impl MeridianShell {
         if self.launcher_state.open {
             // Warm the grid app-icons on first open (deferred from startup).
             self.warm_launcher_icons();
+            // Refresh the app list off-thread so newly-installed apps show up
+            // without ever blocking the open (LAUNCH-2). The cached list renders
+            // now; the fresh one swaps in within a tick.
+            self.request_launcher_apps_refresh();
             // Fullscreen layer surface, transparent except for the launcher card.
             // This gives the software shadow room to render around the card
             // without moving the visible launcher away from the panel.
@@ -1976,6 +2038,12 @@ impl MeridianShell {
         );
         self.launcher_icons_warmed = false;
         meridian_config::MeridianConfig::save_theme(&name);
+        // THEME-1: KDE/Qt (Breeze/KColorScheme) and GTK apps read legacy config
+        // files (kdeglobals / gtk settings.ini / gsettings), not the appearance
+        // portal. Re-export them so a live theme switch reaches those apps too.
+        // (Already-running KColorScheme apps only re-read kdeglobals at startup,
+        // so this mainly affects apps launched after the switch.)
+        crate::theme_export::export_theme(&self.theme);
         self.ipc.send(&ShellCommand::ReloadConfig);
         tracing::info!("Theme applied: {}", name);
         self.panel_dirty = true;

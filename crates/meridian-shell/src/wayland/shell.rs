@@ -288,8 +288,6 @@ pub(crate) struct MeridianShell {
     pub(crate) default_apps_picker_open: Option<crate::default_apps::DefaultAppCategory>,
     pub(crate) default_apps_loaded: bool,
     pub(crate) panel_buffer: Option<Buffer>,
-    #[allow(dead_code)]
-    pub(crate) desktop_buffer: Option<Buffer>,
     pub(crate) desktop_menu_buffer: Option<Buffer>,
     pub(crate) launcher_buffer: Option<Buffer>,
     pub(crate) calendar_buffer: Option<Buffer>,
@@ -364,6 +362,13 @@ pub(crate) struct MeridianShell {
     pub(crate) settings_pinned_adding: bool,
     pub(crate) printer_snapshot: crate::printers::PrinterSnapshot,
     pub(crate) audio_snapshot: crate::audio::AudioSnapshot,
+    /// Once true, the audio stack has settled (running + default sink) and the
+    /// startup re-poll stops. Until then `tick()` re-polls audio every second so
+    /// a late PipeWire/WirePlumber no longer leaves a stale muted icon (AUDIO-1).
+    pub(crate) audio_settled: bool,
+    /// Deadline after which the startup audio re-poll gives up, bounding `wpctl`
+    /// spawns on machines that never expose a sink (e.g. no audio hardware).
+    pub(crate) audio_poll_until: Instant,
     pub(crate) battery_snapshot: crate::battery::BatterySnapshot,
     /// Active power profile (Eco/Standard/Full), used to tint the battery icon.
     pub(crate) power_profile: Option<crate::power_profile::PowerProfile>,
@@ -404,6 +409,9 @@ pub(crate) struct MeridianShell {
     pub(crate) panel_state: panel::PanelState,
     pub(crate) pinned_apps: Vec<PinnedApp>,
     pub(crate) launcher_state: launcher::LauncherState,
+    /// In-flight background rescan of the desktop-entry app list (LAUNCH-2). The
+    /// worker thread sends the freshly-scanned apps here; `tick()` swaps them in.
+    pub(crate) launcher_apps_rx: Option<std::sync::mpsc::Receiver<Vec<launcher::DesktopApp>>>,
     pub(crate) workspace_state: WorkspacePopupState,
     pub(crate) workspace_hover_idx: Option<usize>,
     pub(crate) focused_window_id: Option<String>,

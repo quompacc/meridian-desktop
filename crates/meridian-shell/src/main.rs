@@ -38,9 +38,9 @@ mod soft_shadow;
 mod status_notifier;
 mod status_notifier_popup;
 mod sysinfo;
+mod theme_export;
 mod thumbnail_popup;
 mod ui;
-mod ui_preview;
 mod updates;
 mod users;
 mod wayland;
@@ -202,6 +202,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut event_loop = EventLoop::try_new()?;
     let (mut shell, qh) = wayland::initialize(&mut event_loop)?;
+    // THEME-1: write the legacy theme files (kdeglobals / gtk settings.ini /
+    // gsettings) that KDE/GTK apps read at startup, BEFORE any app launches.
+    // The appearance portal alone does not make Breeze/KColorScheme apps (e.g.
+    // Gwenview) follow the dark theme; they need kdeglobals at their own start.
+    theme_export::export_theme(&shell.theme);
     // After the panel/launcher surfaces exist: wire up the user session so the
     // portals start. Must NOT block the panel — uses --no-block (see fn).
     activate_user_session();

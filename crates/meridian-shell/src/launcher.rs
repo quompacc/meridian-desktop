@@ -201,11 +201,13 @@ impl LauncherState {
         Self { open: false, apps }
     }
 
+    /// Flip the launcher open/closed. Does NOT rescan the desktop entries:
+    /// scanning every applications dir (hundreds of fs reads + TryExec stats) is
+    /// done off the event-loop thread via `MeridianShell::request_launcher_apps_refresh`
+    /// so opening the launcher never blocks the UI (LAUNCH-2). The grid renders
+    /// immediately from the cached `apps`; a fresh list swaps in within a tick.
     pub fn toggle(&mut self) -> bool {
         self.open = !self.open;
-        if self.open {
-            self.apps = DesktopApp::load_system();
-        }
         self.open
     }
 

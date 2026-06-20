@@ -49,6 +49,14 @@ impl AudioSnapshot {
         }
     }
 
+    /// True once the audio stack is up *and* a default sink is known — i.e. the
+    /// snapshot reflects real device state rather than a startup race. The panel
+    /// re-polls on each tick until this holds (see `MeridianShell::tick`), so a
+    /// late-starting PipeWire/WirePlumber no longer leaves a stale muted icon.
+    pub(crate) fn is_settled(&self) -> bool {
+        self.service == AudioServiceState::Running && self.default_output.is_some()
+    }
+
     pub(crate) fn panel_label(&self) -> String {
         let Some(output) = self.default_output.as_ref() else {
             return "AUD".to_string();
@@ -139,5 +147,43 @@ mod tests {
         assert_eq!(snapshot.service, AudioServiceState::Unavailable);
         assert_eq!(snapshot.panel_label(), "AUD");
         assert_eq!(snapshot.icon_name(), "audio-volume-muted-symbolic");
+    }
+
+    #[test]
+    fn unavailable_snapshot_is_not_settled() {
+        // The startup-race state: stack down / no default sink -> keep re-polling.
+        assert!(!AudioSnapshot::unavailable().is_settled());
+    }
+
+    #[test]
+    fn running_with_default_output_is_settled() {
+        use super::{AudioDevice, AudioServiceState};
+        let snapshot = AudioSnapshot {
+            service: AudioServiceState::Running,
+            default_output: Some(AudioDevice {
+                id: 1,
+                name: "Speakers".to_string(),
+                volume_percent: Some(65),
+                muted: false,
+                is_default: true,
+            }),
+            default_input: None,
+            outputs: Vec::new(),
+            inputs: Vec::new(),
+        };
+        assert!(snapshot.is_settled());
+    }
+
+    #[test]
+    fn running_without_default_output_is_not_settled() {
+        // PipeWire up but WirePlumber hasn't selected a sink yet -> not settled.
+        let snapshot = AudioSnapshot {
+            service: AudioServiceState::Running,
+            default_output: None,
+            default_input: None,
+            outputs: Vec::new(),
+            inputs: Vec::new(),
+        };
+        assert!(!snapshot.is_settled());
     }
 }
