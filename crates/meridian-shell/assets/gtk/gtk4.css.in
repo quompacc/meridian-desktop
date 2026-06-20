@@ -1,0 +1,100 @@
+/*
+ * Meridian GTK4 / libadwaita theme — GENERATED from meridian-tokens by
+ * theme_export.rs. The double-at colour placeholders are substituted with the
+ * active ThemeColors. Edit the template, not the installed copy.
+ *
+ * libadwaita apps ignore a custom widget theme but DO honour the named colours
+ * below (the supported recolouring API), so defining them from the Meridian
+ * tokens is what makes GNOME/libadwaita apps follow the palette. The widget
+ * rules afterwards cover plain (non-libadwaita) GTK4 apps.
+ */
+
+/* libadwaita named colours — the supported recolour surface. */
+@define-color window_bg_color @@BG@@;
+@define-color window_fg_color @@TEXT@@;
+@define-color view_bg_color @@SURFACE@@;
+@define-color view_fg_color @@TEXT@@;
+@define-color headerbar_bg_color @@SURFACE@@;
+@define-color headerbar_fg_color @@TEXT@@;
+@define-color headerbar_border_color @@BORDER@@;
+@define-color headerbar_backdrop_color @@BG@@;
+@define-color headerbar_shade_color @@BG@@;
+@define-color card_bg_color @@SURFACE@@;
+@define-color card_fg_color @@TEXT@@;
+@define-color popover_bg_color @@SURFACE@@;
+@define-color popover_fg_color @@TEXT@@;
+@define-color dialog_bg_color @@SURFACE@@;
+@define-color dialog_fg_color @@TEXT@@;
+@define-color sidebar_bg_color @@SURFACE_ALT@@;
+@define-color sidebar_fg_color @@TEXT@@;
+@define-color sidebar_backdrop_color @@BG@@;
+@define-color sidebar_border_color @@BORDER@@;
+@define-color secondary_sidebar_bg_color @@SURFACE_ALT@@;
+@define-color secondary_sidebar_fg_color @@TEXT@@;
+@define-color accent_bg_color @@ACCENT@@;
+@define-color accent_fg_color @@SEL_FG@@;
+@define-color accent_color @@ACCENT@@;
+@define-color destructive_bg_color @@ERROR@@;
+@define-color destructive_fg_color @@SEL_FG@@;
+@define-color destructive_color @@ERROR@@;
+@define-color success_bg_color @@SUCCESS@@;
+@define-color success_color @@SUCCESS@@;
+@define-color warning_bg_color @@WARNING@@;
+@define-color warning_color @@WARNING@@;
+@define-color error_bg_color @@ERROR@@;
+@define-color error_color @@ERROR@@;
+@define-color borders @@BORDER@@;
+
+/* Legacy aliases for plain GTK4 widgets. */
+@define-color theme_bg_color @@BG@@;
+@define-color theme_fg_color @@TEXT@@;
+@define-color theme_base_color @@SURFACE@@;
+@define-color theme_text_color @@TEXT@@;
+@define-color theme_selected_bg_color @@ACCENT@@;
+@define-color theme_selected_fg_color @@SEL_FG@@;
+
+/* Widget rules for non-libadwaita GTK4 apps. */
+window, .background { background-color: @@BG@@; color: @@TEXT@@; }
+headerbar, .titlebar { background-color: @@SURFACE@@; color: @@TEXT@@; border-bottom: 1px solid @@BORDER@@; }
+label { color: @@TEXT@@; }
+.dim-label, *:disabled { color: @@TEXT_DIM@@; }
+
+button {
+  background-color: @@SURFACE_ALT@@;
+  color: @@TEXT@@;
+  border: 1px solid @@BORDER@@;
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+button.flat { background-color: transparent; border-color: transparent; }
+button:hover { background-color: @@SURFACE@@; }
+button:active, button:checked { background-color: @@ACCENT@@; color: @@SEL_FG@@; }
+button.suggested-action { background-color: @@ACCENT@@; color: @@SEL_FG@@; }
+
+entry, text {
+  background-color: @@SURFACE@@;
+  color: @@TEXT@@;
+  border: 1px solid @@BORDER@@;
+  border-radius: 6px;
+  caret-color: @@TEXT@@;
+}
+entry:focus-within { border-color: @@ACCENT@@; }
+
+listview, columnview, treeview, .view, textview text {
+  background-color: @@SURFACE@@;
+  color: @@TEXT@@;
+}
+row:selected, *:selected { background-color: @@ACCENT@@; color: @@SEL_FG@@; }
+row:hover { background-color: @@SURFACE_ALT@@; }
+
+popover > contents, popover > arrow {
+  background-color: @@SURFACE@@;
+  color: @@TEXT@@;
+  border: 1px solid @@BORDER@@;
+}
+
+scrollbar slider { background-color: @@BORDER@@; border-radius: 8px; min-width: 8px; min-height: 8px; }
+scrollbar slider:hover { background-color: @@TEXT_DIM@@; }
+separator { background-color: @@BORDER@@; }
+tooltip { background-color: @@SURFACE_ALT@@; color: @@TEXT@@; border: 1px solid @@BORDER@@; }
+*:link { color: @@ACCENT@@; }

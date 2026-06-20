@@ -1,0 +1,154 @@
+/*
+ * Meridian GTK3 theme — GENERATED from meridian-tokens by theme_export.rs.
+ * The double-at colour placeholders are substituted with the active ThemeColors
+ * at session start / theme switch. Do not hand-edit the installed copy; edit this
+ * template (crates/meridian-shell/assets/gtk/gtk3.css.in) instead.
+ *
+ * Baseline coverage: window/headerbar/button/entry/views/lists/menus/popovers/
+ * sidebar/scrollbars/tabs/tooltips/switches/checks/progress. Not pixel-perfect
+ * vs Adwaita, but every visible surface follows the Meridian palette with zero
+ * third-party theme dependency.
+ */
+
+/* Legacy named colours many GTK3 apps still read. */
+@define-color bg_color @@BG@@;
+@define-color fg_color @@TEXT@@;
+@define-color base_color @@SURFACE@@;
+@define-color text_color @@TEXT@@;
+@define-color selected_bg_color @@ACCENT@@;
+@define-color selected_fg_color @@SEL_FG@@;
+@define-color theme_bg_color @@BG@@;
+@define-color theme_fg_color @@TEXT@@;
+@define-color theme_base_color @@SURFACE@@;
+@define-color theme_text_color @@TEXT@@;
+@define-color theme_selected_bg_color @@ACCENT@@;
+@define-color theme_selected_fg_color @@SEL_FG@@;
+@define-color insensitive_fg_color @@TEXT_DIM@@;
+@define-color borders @@BORDER@@;
+@define-color warning_color @@WARNING@@;
+@define-color error_color @@ERROR@@;
+@define-color success_color @@SUCCESS@@;
+@define-color accent_color @@ACCENT@@;
+
+window, .background, dialog, assistant, messagedialog {
+  background-color: @@BG@@;
+  color: @@TEXT@@;
+}
+
+headerbar, .titlebar, .csd .titlebar {
+  background-color: @@SURFACE@@;
+  color: @@TEXT@@;
+  border-bottom: 1px solid @@BORDER@@;
+}
+headerbar:backdrop, .titlebar:backdrop { background-color: @@BG@@; }
+
+label { color: @@TEXT@@; }
+.dim-label { color: @@TEXT_DIM@@; }
+*:disabled, *:disabled label { color: @@TEXT_DIM@@; }
+
+button, .button, button.flat:hover, spinbutton button {
+  background-color: @@SURFACE_ALT@@;
+  color: @@TEXT@@;
+  border: 1px solid @@BORDER@@;
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+button.flat { background-color: transparent; border-color: transparent; }
+button:hover { background-color: @@SURFACE@@; }
+button:active, button:checked { background-color: @@ACCENT@@; color: @@SEL_FG@@; border-color: @@ACCENT@@; }
+button:disabled { background-color: @@SURFACE@@; color: @@TEXT_DIM@@; }
+button.suggested-action { background-color: @@ACCENT@@; color: @@SEL_FG@@; border-color: @@ACCENT@@; }
+button.destructive-action { background-color: @@ERROR@@; color: @@SEL_FG@@; border-color: @@ERROR@@; }
+
+entry, .entry, spinbutton, searchentry {
+  background-color: @@SURFACE@@;
+  color: @@TEXT@@;
+  border: 1px solid @@BORDER@@;
+  border-radius: 6px;
+  padding: 4px 6px;
+  caret-color: @@TEXT@@;
+}
+entry:focus, entry:focus-within { border-color: @@ACCENT@@; }
+entry:disabled { color: @@TEXT_DIM@@; }
+entry selection { background-color: @@ACCENT@@; color: @@SEL_FG@@; }
+
+textview, textview text, .view, treeview.view, iconview, list, columnview, gridview {
+  background-color: @@SURFACE@@;
+  color: @@TEXT@@;
+}
+textview text { background-color: @@BG@@; }
+treeview.view:hover, row:hover, list row:hover { background-color: @@SURFACE_ALT@@; }
+*:selected, *:selected label, row:selected, list row:selected,
+treeview.view:selected, iconview:selected, menuitem:hover, menuitem:hover label {
+  background-color: @@ACCENT@@;
+  color: @@SEL_FG@@;
+}
+
+.sidebar, placessidebar, placessidebar list, stacksidebar, .sidebar list {
+  background-color: @@SURFACE_ALT@@;
+  color: @@TEXT@@;
+}
+
+menu, .menu, .context-menu, popover, popover.background, .popup, combobox window {
+  background-color: @@SURFACE@@;
+  color: @@TEXT@@;
+  border: 1px solid @@BORDER@@;
+}
+menuitem, .menuitem { color: @@TEXT@@; padding: 4px 8px; }
+
+toolbar, .toolbar, actionbar, searchbar, .inline-toolbar {
+  background-color: @@SURFACE@@;
+  color: @@TEXT@@;
+}
+
+notebook, notebook > header, notebook > header > tabs > tab {
+  background-color: @@SURFACE@@;
+  color: @@TEXT_DIM@@;
+}
+notebook > header > tabs > tab:checked { color: @@TEXT@@; box-shadow: inset 0 -2px @@ACCENT@@; }
+notebook > stack { background-color: @@BG@@; }
+
+scrollbar { background-color: transparent; }
+scrollbar slider {
+  background-color: @@BORDER@@;
+  border-radius: 8px;
+  min-width: 8px;
+  min-height: 8px;
+}
+scrollbar slider:hover { background-color: @@TEXT_DIM@@; }
+
+separator { background-color: @@BORDER@@; min-width: 1px; min-height: 1px; }
+
+tooltip, tooltip.background {
+  background-color: @@SURFACE_ALT@@;
+  color: @@TEXT@@;
+  border: 1px solid @@BORDER@@;
+}
+
+switch { background-color: @@SURFACE_ALT@@; border: 1px solid @@BORDER@@; border-radius: 14px; }
+switch:checked { background-color: @@ACCENT@@; border-color: @@ACCENT@@; }
+switch slider { background-color: @@TEXT@@; border-radius: 50%; min-width: 16px; min-height: 16px; }
+
+check, radio {
+  background-color: @@SURFACE@@;
+  border: 1px solid @@BORDER@@;
+}
+check:checked, radio:checked, check:indeterminate {
+  background-color: @@ACCENT@@;
+  color: @@SEL_FG@@;
+  border-color: @@ACCENT@@;
+}
+
+progressbar > trough, scale > trough, levelbar trough {
+  background-color: @@SURFACE_ALT@@;
+  border-radius: 6px;
+}
+progressbar > trough > progress, scale > trough > highlight, levelbar block.filled {
+  background-color: @@ACCENT@@;
+  border-radius: 6px;
+}
+scale > trough > slider { background-color: @@TEXT@@; border-radius: 50%; }
+
+spinner { color: @@ACCENT@@; }
+*:link, *:visited { color: @@ACCENT@@; }
+infobar { background-color: @@SURFACE@@; color: @@TEXT@@; }

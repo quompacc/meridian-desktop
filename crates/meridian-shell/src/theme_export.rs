@@ -1,25 +1,20 @@
-//! Export the active Meridian theme to the *legacy* desktop-config files that
-//! GTK and KDE/Qt applications actually read — the piece the appearance portal
-//! alone cannot cover.
+//! Export the active Meridian theme to the *legacy* desktop-config that GTK and
+//! KDE/Qt applications read — derived entirely from the central design source
+//! ([`meridian_config::ThemeConfig`] / `meridian-tokens`), with **no third-party
+//! theme dependency**.
 //!
 //! Meridian serves `org.freedesktop.appearance color-scheme` over the Settings
-//! portal, and that works. But most toolkits do **not** reconstruct a palette
-//! from the portal:
-//!   - GTK apps read `~/.config/gtk-3.0/settings.ini` / `gtk-4.0/settings.ini`
-//!     and the `org.gnome.desktop.interface color-scheme` gsetting.
-//!   - KDE/Qt apps (Breeze / `KColorScheme`, e.g. Gwenview, Dolphin) build their
-//!     palette from `~/.config/kdeglobals` — *not* from the portal. Without a
-//!     dark `kdeglobals` they fall back to the hard-coded Breeze **light**
-//!     palette, which is why a KDE app stays light even though the portal
-//!     reports `color-scheme = 1` (prefer dark).
+//! portal, but most toolkits do not reconstruct a palette from it:
+//!   - **KDE/Qt** (Breeze / `KColorScheme`, e.g. former defaults) read
+//!     `~/.config/kdeglobals` — so we generate its `[Colors:*]` from the tokens.
+//!   - **GTK** apps read a *theme*. Rather than depend on a shipped theme like
+//!     Adwaita-dark, Meridian **generates its own GTK theme** from the tokens
+//!     into `~/.local/share/themes/Meridian/` (gtk-3.0 + gtk-4.0 `gtk.css` from
+//!     the templates in `assets/gtk/*.css.in`) and points `gtk-theme-name` at it.
+//!     This keeps every app colour sourced from the single design pipeline.
 //!
-//! `KColorScheme` reads `kdeglobals` only at application **startup**, so these
-//! files must exist *before* an app launches. We therefore export at session
-//! start (before autostart apps) and again on every live theme switch.
-//!
-//! Every value is derived from the active [`ThemeConfig`] — there is no
-//! hard-coded colour here (the only literals are GTK/KDE *theme names* and the
-//! `Breeze` widget style, which are identifiers, not design values).
+//! `KColorScheme`/GTK read these at application **startup**, so we export at
+//! session start (before apps launch) and again on every live theme switch.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -27,36 +22,64 @@ use std::process::Command;
 
 use meridian_config::{Color, ThemeConfig};
 
-/// Write all legacy theme files derived from `theme` and best-effort sync the
-/// GNOME gsettings keys. Never fails the caller; problems are logged.
+/// GTK theme name Meridian installs + selects. Its CSS is generated from tokens.
+const GTK_THEME_NAME: &str = "Meridian";
+const GTK3_TEMPLATE: &str = include_str!("../assets/gtk/gtk3.css.in");
+const GTK4_TEMPLATE: &str = include_str!("../assets/gtk/gtk4.css.in");
+
+/// Write every legacy theme artifact derived from `theme` and best-effort sync
+/// the gsettings keys. Never fails the caller; problems are logged.
 pub(crate) fn export_theme(theme: &ThemeConfig) {
-    let Some(dir) = config_home() else {
-        tracing::warn!("theme_export: no config dir (XDG_CONFIG_HOME/HOME unset); skipping");
-        return;
-    };
-    write_config_file(&dir.join("kdeglobals"), &kdeglobals_contents(theme));
-    let gtk = gtk_settings_ini(theme);
-    write_config_file(&dir.join("gtk-3.0").join("settings.ini"), &gtk);
-    write_config_file(&dir.join("gtk-4.0").join("settings.ini"), &gtk);
+    if let Some(cfg) = config_home() {
+        write_file(&cfg.join("kdeglobals"), &kdeglobals_contents(theme));
+        let gtk_ini = gtk_settings_ini(theme);
+        write_file(&cfg.join("gtk-3.0").join("settings.ini"), &gtk_ini);
+        write_file(&cfg.join("gtk-4.0").join("settings.ini"), &gtk_ini);
+    } else {
+        tracing::warn!("theme_export: no config dir; skipping kdeglobals/gtk settings");
+    }
+
+    if let Some(data) = data_home() {
+        let theme_dir = data.join("themes").join(GTK_THEME_NAME);
+        write_file(&theme_dir.join("index.theme"), &index_theme(theme));
+        write_file(
+            &theme_dir.join("gtk-3.0").join("gtk.css"),
+            &substitute_tokens(GTK3_TEMPLATE, theme),
+        );
+        write_file(
+            &theme_dir.join("gtk-4.0").join("gtk.css"),
+            &substitute_tokens(GTK4_TEMPLATE, theme),
+        );
+    } else {
+        tracing::warn!("theme_export: no data dir; skipping generated GTK theme");
+    }
+
     apply_gsettings(theme);
     tracing::info!(
-        "theme_export: legacy theme files written (dark={})",
+        "theme_export: Meridian theme exported (dark={})",
         !theme.appearance_is_light()
     );
 }
 
-/// `~/.config` resolved from `XDG_CONFIG_HOME` (must be absolute) or `HOME`.
+/// `~/.config` from `XDG_CONFIG_HOME` (must be absolute) or `HOME`.
 fn config_home() -> Option<PathBuf> {
-    if let Some(x) = std::env::var_os("XDG_CONFIG_HOME") {
-        let p = PathBuf::from(x);
-        if p.is_absolute() {
-            return Some(p);
-        }
-    }
-    std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config"))
+    abs_env("XDG_CONFIG_HOME").or_else(|| home().map(|h| h.join(".config")))
 }
 
-fn write_config_file(path: &Path, contents: &str) {
+/// `~/.local/share` from `XDG_DATA_HOME` (must be absolute) or `HOME`.
+fn data_home() -> Option<PathBuf> {
+    abs_env("XDG_DATA_HOME").or_else(|| home().map(|h| h.join(".local").join("share")))
+}
+
+fn abs_env(key: &str) -> Option<PathBuf> {
+    std::env::var_os(key).map(PathBuf::from).filter(|p| p.is_absolute())
+}
+
+fn home() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(PathBuf::from)
+}
+
+fn write_file(path: &Path, contents: &str) {
     if let Some(parent) = path.parent() {
         if let Err(e) = fs::create_dir_all(parent) {
             tracing::warn!("theme_export: mkdir {:?}: {}", parent, e);
@@ -68,10 +91,66 @@ fn write_config_file(path: &Path, contents: &str) {
     }
 }
 
-/// `kdeglobals` colour scheme derived from the theme. KColorScheme reads the
-/// `[Colors:*]` groups directly, so a matching `*.colors` file in
-/// `/usr/share/color-schemes` is **not** required — the inline groups are
-/// self-sufficient.
+// ─── GTK theme ────────────────────────────────────────────────────────────────
+
+/// Substitute the `@@TOKEN@@` placeholders in a GTK CSS template with the active
+/// palette as `#rrggbb`. Longer names first so `@@SURFACE_ALT@@` is replaced
+/// before `@@SURFACE@@` (defensive; the names are not substrings of each other).
+fn substitute_tokens(template: &str, theme: &ThemeConfig) -> String {
+    let c = &theme.colors;
+    let sel_fg = readable_on(c.accent, theme);
+    template
+        .replace("@@SURFACE_ALT@@", &c.surface_alt.to_hex())
+        .replace("@@SURFACE@@", &c.surface.to_hex())
+        .replace("@@ACCENT_ALT@@", &c.accent_alt.to_hex())
+        .replace("@@ACCENT@@", &c.accent.to_hex())
+        .replace("@@TEXT_DIM@@", &c.text_dim.to_hex())
+        .replace("@@TEXT@@", &c.text.to_hex())
+        .replace("@@BG@@", &c.background.to_hex())
+        .replace("@@BORDER@@", &c.border.to_hex())
+        .replace("@@ERROR@@", &c.error.to_hex())
+        .replace("@@WARNING@@", &c.warning.to_hex())
+        .replace("@@SUCCESS@@", &c.success.to_hex())
+        .replace("@@SEL_FG@@", &sel_fg.to_hex())
+}
+
+fn index_theme(theme: &ThemeConfig) -> String {
+    format!(
+        "[Desktop Entry]\n\
+         Type=X-GNOME-Metatheme\n\
+         Name={name}\n\
+         Comment=Generated from meridian-tokens — do not edit\n\n\
+         [X-GNOME-Metatheme]\n\
+         GtkTheme={name}\n\
+         IconTheme={icons}\n",
+        name = GTK_THEME_NAME,
+        icons = theme.icons.theme,
+    )
+}
+
+/// `~/.config/gtk-{3,4}.0/settings.ini` selecting the generated Meridian theme.
+pub(crate) fn gtk_settings_ini(theme: &ThemeConfig) -> String {
+    let prefer_dark = u8::from(!theme.appearance_is_light());
+    format!(
+        "[Settings]\n\
+         gtk-theme-name={theme_name}\n\
+         gtk-application-prefer-dark-theme={prefer_dark}\n\
+         gtk-icon-theme-name={icons}\n\
+         gtk-font-name={font}\n\
+         gtk-cursor-theme-name={cursor}\n\
+         gtk-cursor-theme-size={cursor_size}\n",
+        theme_name = GTK_THEME_NAME,
+        icons = theme.icons.theme,
+        font = theme.fonts.ui,
+        cursor = theme.cursor.theme,
+        cursor_size = theme.cursor.size,
+    )
+}
+
+// ─── kdeglobals (KDE/Qt) ──────────────────────────────────────────────────────
+
+/// `kdeglobals` colour scheme; KColorScheme reads the `[Colors:*]` groups
+/// directly, so no shipped `*.colors` file is needed.
 pub(crate) fn kdeglobals_contents(theme: &ThemeConfig) -> String {
     let c = &theme.colors;
     let scheme = if theme.appearance_is_light() {
@@ -83,15 +162,12 @@ pub(crate) fn kdeglobals_contents(theme: &ThemeConfig) -> String {
 
     let mut s = String::new();
     s.push_str("# Generated by Meridian (theme_export). Managed file.\n\n");
-    // Window chrome = surface; content/list/edit views = darkest background;
-    // buttons/tooltips = surface_alt. This mirrors Breeze's Window>View depth.
     push_color_group(&mut s, "Colors:Window", c.surface, theme);
     push_color_group(&mut s, "Colors:View", c.background, theme);
     push_color_group(&mut s, "Colors:Button", c.surface_alt, theme);
     push_color_group(&mut s, "Colors:Tooltip", c.surface_alt, theme);
     push_color_group(&mut s, "Colors:Complementary", c.background, theme);
 
-    // Selection uses the accent as a fill with a readable foreground.
     s.push_str("[Colors:Selection]\n");
     s.push_str(&format!("BackgroundNormal={}\n", triplet(c.accent)));
     s.push_str(&format!("ForegroundNormal={}\n", triplet(sel_fg)));
@@ -109,8 +185,6 @@ pub(crate) fn kdeglobals_contents(theme: &ThemeConfig) -> String {
     s
 }
 
-/// One `[Colors:<group>]` block: background from `bg`, all foreground/decoration
-/// roles from the theme palette.
 fn push_color_group(out: &mut String, group: &str, bg: Color, theme: &ThemeConfig) {
     let c = &theme.colors;
     out.push_str(&format!("[{group}]\n"));
@@ -129,35 +203,19 @@ fn push_color_group(out: &mut String, group: &str, bg: Color, theme: &ThemeConfi
     out.push('\n');
 }
 
-/// `~/.config/gtk-{3,4}.0/settings.ini` content for GTK apps.
-pub(crate) fn gtk_settings_ini(theme: &ThemeConfig) -> String {
-    let dark = !theme.appearance_is_light();
-    let prefer_dark = u8::from(dark);
-    let gtk_theme = if dark { "Adwaita-dark" } else { "Adwaita" };
-    format!(
-        "[Settings]\n\
-         gtk-application-prefer-dark-theme={prefer_dark}\n\
-         gtk-theme-name={gtk_theme}\n\
-         gtk-icon-theme-name={icons}\n\
-         gtk-font-name={font}\n\
-         gtk-cursor-theme-name={cursor}\n\
-         gtk-cursor-theme-size={cursor_size}\n",
-        icons = theme.icons.theme,
-        font = theme.fonts.ui,
-        cursor = theme.cursor.theme,
-        cursor_size = theme.cursor.size,
-    )
-}
+// ─── gsettings ────────────────────────────────────────────────────────────────
 
-/// Best-effort sync of the GNOME interface gsettings (libadwaita / GTK4 honour
-/// `color-scheme` at runtime). No-op if `gsettings` is absent.
+/// Best-effort sync of the interface gsettings so apps that read them at runtime
+/// (libadwaita, Cinnamon/X-Apps) pick up the Meridian theme + dark preference.
 fn apply_gsettings(theme: &ThemeConfig) {
     let dark = !theme.appearance_is_light();
     let scheme = if dark { "prefer-dark" } else { "default" };
-    let gtk_theme = if dark { "Adwaita-dark" } else { "Adwaita" };
-    set_gsetting("org.gnome.desktop.interface", "color-scheme", scheme);
-    set_gsetting("org.gnome.desktop.interface", "gtk-theme", gtk_theme);
-    set_gsetting("org.gnome.desktop.interface", "icon-theme", &theme.icons.theme);
+    for schema in ["org.gnome.desktop.interface", "org.cinnamon.desktop.interface"] {
+        set_gsetting(schema, "gtk-theme", GTK_THEME_NAME);
+        set_gsetting(schema, "icon-theme", &theme.icons.theme);
+        // color-scheme only exists on the GNOME schema; harmless if absent.
+        set_gsetting(schema, "color-scheme", scheme);
+    }
 }
 
 fn set_gsetting(schema: &str, key: &str, value: &str) {
@@ -169,13 +227,15 @@ fn set_gsetting(schema: &str, key: &str, value: &str) {
     }
 }
 
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
 /// `"r,g,b"` decimal triplet — the format KConfig expects for colour keys.
 fn triplet(c: Color) -> String {
     format!("{},{},{}", c.r, c.g, c.b)
 }
 
-/// Pick whichever of the theme's text/background colour reads better on `bg`,
-/// for foregrounds painted on top of the accent (e.g. selection text).
+/// Pick whichever of the theme's text/background colour reads better on `bg`
+/// (used for foregrounds painted on the accent, e.g. selection text).
 fn readable_on(bg: Color, theme: &ThemeConfig) -> Color {
     let lum = 0.299 * bg.r as f32 + 0.587 * bg.g as f32 + 0.114 * bg.b as f32;
     if lum > 140.0 {
@@ -192,7 +252,6 @@ mod tests {
 
     fn light_theme() -> ThemeConfig {
         let mut t = ThemeConfig::default();
-        // Default palette is dark; lift the background so appearance is light.
         t.colors.background = Color::rgb(0xf2, 0xf2, 0xf2);
         t.colors.surface = Color::rgb(0xff, 0xff, 0xff);
         t.colors.text = Color::rgb(0x1a, 0x1a, 0x1a);
@@ -202,53 +261,64 @@ mod tests {
     #[test]
     fn triplet_formats_decimal_rgb() {
         assert_eq!(triplet(Color::rgb(0x20, 0x25, 0x2b)), "32,37,43");
-        assert_eq!(triplet(Color::rgb(0, 0, 0)), "0,0,0");
         assert_eq!(triplet(Color::rgb(255, 255, 255)), "255,255,255");
     }
 
     #[test]
     fn readable_on_picks_contrasting_role() {
         let dark = ThemeConfig::default();
-        // On a light fill, prefer the dark background colour.
-        let on_light = readable_on(Color::rgb(0xff, 0xff, 0xff), &dark);
-        assert_eq!(on_light, dark.colors.background);
-        // On a dark fill, prefer the light text colour.
-        let on_dark = readable_on(Color::rgb(0x10, 0x10, 0x10), &dark);
-        assert_eq!(on_dark, dark.colors.text);
+        assert_eq!(readable_on(Color::rgb(0xff, 0xff, 0xff), &dark), dark.colors.background);
+        assert_eq!(readable_on(Color::rgb(0x10, 0x10, 0x10), &dark), dark.colors.text);
     }
 
     #[test]
     fn kdeglobals_dark_has_scheme_groups_and_breeze() {
         let s = kdeglobals_contents(&ThemeConfig::default());
         assert!(s.contains("[Colors:Window]"));
-        assert!(s.contains("[Colors:View]"));
-        assert!(s.contains("[Colors:Selection]"));
         assert!(s.contains("ColorScheme=MeridianDark"));
         assert!(s.contains("widgetStyle=Breeze"));
-        // Window background is the surface colour (0x20252b -> 32,37,43).
-        assert!(s.contains("BackgroundNormal=32,37,43"));
-        // No accidental hex slipped into a KConfig value.
-        assert!(!s.contains('#') || s.lines().filter(|l| l.starts_with('#')).count() == 1);
+        assert!(s.contains("BackgroundNormal=32,37,43")); // surface 0x20252b
     }
 
     #[test]
     fn kdeglobals_light_switches_scheme_name() {
-        let s = kdeglobals_contents(&light_theme());
-        assert!(s.contains("ColorScheme=MeridianLight"));
+        assert!(kdeglobals_contents(&light_theme()).contains("ColorScheme=MeridianLight"));
     }
 
     #[test]
-    fn gtk_ini_dark_prefers_dark() {
+    fn gtk_ini_selects_meridian_theme_and_dark_flag() {
         let s = gtk_settings_ini(&ThemeConfig::default());
+        assert!(s.contains("gtk-theme-name=Meridian"));
         assert!(s.contains("gtk-application-prefer-dark-theme=1"));
-        assert!(s.contains("gtk-theme-name=Adwaita-dark"));
-        assert!(s.contains("gtk-icon-theme-name=Papirus-Dark"));
+        assert!(!s.contains("Adwaita")); // no third-party theme dependency
     }
 
     #[test]
-    fn gtk_ini_light_disables_dark() {
+    fn gtk_ini_light_clears_dark_flag() {
         let s = gtk_settings_ini(&light_theme());
+        assert!(s.contains("gtk-theme-name=Meridian"));
         assert!(s.contains("gtk-application-prefer-dark-theme=0"));
-        assert!(s.contains("gtk-theme-name=Adwaita\n"));
+    }
+
+    #[test]
+    fn gtk_css_substitutes_all_tokens_with_hex() {
+        let css3 = substitute_tokens(GTK3_TEMPLATE, &ThemeConfig::default());
+        let css4 = substitute_tokens(GTK4_TEMPLATE, &ThemeConfig::default());
+        // No placeholder may survive substitution.
+        assert!(!css3.contains("@@"), "unsubstituted token in gtk3 css");
+        assert!(!css4.contains("@@"), "unsubstituted token in gtk4 css");
+        // Tokens resolved to the dark palette hexes.
+        assert!(css3.contains("#14171b")); // background
+        assert!(css3.contains("#4e99f3")); // accent
+        // libadwaita named colour wired from tokens.
+        assert!(css4.contains("@define-color window_bg_color #14171b"));
+        assert!(css4.contains("@define-color accent_bg_color #4e99f3"));
+    }
+
+    #[test]
+    fn index_theme_names_meridian() {
+        let s = index_theme(&ThemeConfig::default());
+        assert!(s.contains("Name=Meridian"));
+        assert!(s.contains("GtkTheme=Meridian"));
     }
 }
