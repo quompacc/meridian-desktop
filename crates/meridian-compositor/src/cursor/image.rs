@@ -46,8 +46,10 @@ impl CursorImage {
     }
 
     pub fn load_theme_icon(theme_name: &str, requested_size: u32, icon_names: &[&str]) -> Self {
+        // GTK-native first; KDE Breeze only as a last resort (the desktop is
+        // GTK/Cinnamon-based, see Cursor::default = "Adwaita").
         #[cfg(feature = "xcursor-themes")]
-        const FALLBACK_THEMES: &[&str] = &["Breeze_Light", "breeze_cursors", "Adwaita", "default"];
+        const FALLBACK_THEMES: &[&str] = &["Adwaita", "default", "breeze_cursors", "Breeze_Light"];
 
         if theme_name.is_empty() {
             info!(

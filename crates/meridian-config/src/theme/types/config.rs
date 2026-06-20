@@ -243,7 +243,9 @@ pub struct Cursor {
 impl Default for Cursor {
     fn default() -> Self {
         Self {
-            theme: "Breeze_Light".to_string(),
+            // GTK-native cursor (adwaita-cursors), not the KDE Breeze set — the
+            // desktop is GTK/Cinnamon-based, so nothing should pull in Breeze.
+            theme: "Adwaita".to_string(),
             size: 24,
         }
     }
@@ -470,7 +472,7 @@ mod tests {
     #[test]
     fn test_cursor_default_uses_installed_theme() {
         let cursor = Cursor::default();
-        assert_eq!(cursor.theme, "Breeze_Light");
+        assert_eq!(cursor.theme, "Adwaita");
         assert_eq!(cursor.size, 24);
     }
 }

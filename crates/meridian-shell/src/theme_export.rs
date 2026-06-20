@@ -124,7 +124,7 @@ fn index_theme(theme: &ThemeConfig) -> String {
          GtkTheme={name}\n\
          IconTheme={icons}\n",
         name = GTK_THEME_NAME,
-        icons = theme.icons.theme,
+        icons = app_icon_theme(theme),
     )
 }
 
@@ -140,7 +140,7 @@ pub(crate) fn gtk_settings_ini(theme: &ThemeConfig) -> String {
          gtk-cursor-theme-name={cursor}\n\
          gtk-cursor-theme-size={cursor_size}\n",
         theme_name = GTK_THEME_NAME,
-        icons = theme.icons.theme,
+        icons = app_icon_theme(theme),
         font = theme.fonts.ui,
         cursor = theme.cursor.theme,
         cursor_size = theme.cursor.size,
@@ -179,7 +179,7 @@ pub(crate) fn kdeglobals_contents(theme: &ThemeConfig) -> String {
     s.push_str("[General]\n");
     s.push_str(&format!("ColorScheme={scheme}\n\n"));
     s.push_str("[Icons]\n");
-    s.push_str(&format!("Theme={}\n\n", theme.icons.theme));
+    s.push_str(&format!("Theme={}\n\n", app_icon_theme(theme)));
     s.push_str("[KDE]\n");
     s.push_str("widgetStyle=Breeze\n");
     s
@@ -210,9 +210,10 @@ fn push_color_group(out: &mut String, group: &str, bg: Color, theme: &ThemeConfi
 fn apply_gsettings(theme: &ThemeConfig) {
     let dark = !theme.appearance_is_light();
     let scheme = if dark { "prefer-dark" } else { "default" };
+    let icons = app_icon_theme(theme);
     for schema in ["org.gnome.desktop.interface", "org.cinnamon.desktop.interface"] {
         set_gsetting(schema, "gtk-theme", GTK_THEME_NAME);
-        set_gsetting(schema, "icon-theme", &theme.icons.theme);
+        set_gsetting(schema, "icon-theme", &icons);
         // color-scheme only exists on the GNOME schema; harmless if absent.
         set_gsetting(schema, "color-scheme", scheme);
     }
@@ -228,6 +229,24 @@ fn set_gsetting(schema: &str, key: &str, value: &str) {
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
+
+/// The icon theme exported to OTHER apps (GTK / Qt / gsettings). Meridian's own
+/// panel uses `theme.icons.theme` directly because it needs the recolourable
+/// `-symbolic` set ("Papirus") — the Papirus-Dark/-Light variants lack those.
+/// Apps want the full-colour dark/light variant instead, so map the base set to
+/// it. Non-Papirus themes are exported unchanged.
+fn app_icon_theme(theme: &ThemeConfig) -> String {
+    let base = theme.icons.theme.trim();
+    if base.eq_ignore_ascii_case("Papirus") {
+        if theme.appearance_is_light() {
+            "Papirus-Light".to_string()
+        } else {
+            "Papirus-Dark".to_string()
+        }
+    } else {
+        base.to_string()
+    }
+}
 
 /// `"r,g,b"` decimal triplet — the format KConfig expects for colour keys.
 fn triplet(c: Color) -> String {
@@ -290,7 +309,10 @@ mod tests {
         let s = gtk_settings_ini(&ThemeConfig::default());
         assert!(s.contains("gtk-theme-name=Meridian"));
         assert!(s.contains("gtk-application-prefer-dark-theme=1"));
-        assert!(!s.contains("Adwaita")); // no third-party theme dependency
+        // No third-party GTK *theme* dependency. (The Adwaita *cursor* is fine
+        // and expected via gtk-cursor-theme-name.)
+        assert!(!s.contains("Adwaita-dark"));
+        assert!(s.contains("gtk-cursor-theme-name=Adwaita"));
     }
 
     #[test]
@@ -320,5 +342,22 @@ mod tests {
         let s = index_theme(&ThemeConfig::default());
         assert!(s.contains("Name=Meridian"));
         assert!(s.contains("GtkTheme=Meridian"));
+    }
+
+    #[test]
+    fn app_icon_theme_maps_papirus_to_dark_light_variant() {
+        // Panel keeps "Papirus" (symbolic); apps get the full-colour variant.
+        let mut dark = ThemeConfig::default();
+        dark.icons.theme = "Papirus".to_string();
+        assert_eq!(app_icon_theme(&dark), "Papirus-Dark");
+
+        let mut light = light_theme();
+        light.icons.theme = "Papirus".to_string();
+        assert_eq!(app_icon_theme(&light), "Papirus-Light");
+
+        // Non-Papirus themes pass through unchanged.
+        let mut custom = ThemeConfig::default();
+        custom.icons.theme = "Adwaita".to_string();
+        assert_eq!(app_icon_theme(&custom), "Adwaita");
     }
 }
