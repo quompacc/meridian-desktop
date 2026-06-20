@@ -41,10 +41,7 @@ impl LockStyle {
     fn from_theme(theme: &meridian_config::ThemeConfig) -> Self {
         let c = &theme.colors;
         let argb = |col: meridian_config::Color| -> u32 {
-            ((col.a as u32) << 24)
-                | ((col.r as u32) << 16)
-                | ((col.g as u32) << 8)
-                | (col.b as u32)
+            ((col.a as u32) << 24) | ((col.r as u32) << 16) | ((col.g as u32) << 8) | (col.b as u32)
         };
         Self {
             bg: argb(c.background),

@@ -710,6 +710,8 @@ impl PointerHandler for MeridianShell {
                         &self.status_notifier_items,
                         self.network_popup_open,
                         self.audio_popup_open,
+                        &self.battery_snapshot,
+                        self.power_profile,
                         self.panel_active_workspace(),
                         9,
                         &self.last_clock,

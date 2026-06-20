@@ -1,5 +1,11 @@
 # Meridian Desktop – Design Manifest
 
+> **STATUS: VERBINDLICH.** Dies ist die maßgebliche Design-Spezifikation für
+> Meridian. Jede UI-/Render-Änderung muss ihr entsprechen; bei Konflikt schlägt
+> dieses Manifest jede andere Quelle (Audits, Altcode). Verankert als Regel in
+> `AGENTS.md` und `CLAUDE.md`. Zentralität wird durch den Guard-Test
+> `cargo test -p meridian-tokens --test design_guard` erzwungen.
+
 ## 1. Grundidee
 
 **Meridian Desktop** steht für:

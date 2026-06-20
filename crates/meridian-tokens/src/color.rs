@@ -3,6 +3,9 @@
 //! This is the single source of truth: `meridian-config` (theme deserialization)
 //! and `meridian-ui` (render tokens) both re-export `Color`/`Palette` from here.
 //! There is no second copy to hand-sync — see the design-tokens audit (2026-06-04).
+//!
+//! guard:allow-file: kanonische Single-Source der Palette; die rohen Hex-Farben
+//! der Themes (DARK/LIGHT/default) werden hier *definiert*.
 
 use std::{fmt, str::FromStr};
 
@@ -174,6 +177,32 @@ impl Palette {
         warning: Color::rgb(0xe0, 0xaf, 0x68),
         success: Color::rgb(0x9e, 0xce, 0x6a),
     };
+
+    /// Near-black foreground for placing text/icons on a LIGHT background or
+    /// accent. Named once so the contrast pair isn't a magic value per call site.
+    pub const TEXT_ON_LIGHT: Color = Color::rgb(0x05, 0x08, 0x0c);
+    /// Near-white foreground for placing text/icons on a DARK background/accent.
+    pub const TEXT_ON_DARK: Color = Color::rgb(0xf6, 0xf9, 0xff);
+}
+
+/// Perceived luminance (0..=255) via the Rec.601 weights. The ONE formula for
+/// the whole codebase — `meridian-config` (`appearance_is_light`) and the shell
+/// (`accent_foreground`) both used to hand-roll this.
+pub fn relative_luminance(c: Color) -> f32 {
+    0.299 * c.r as f32 + 0.587 * c.g as f32 + 0.114 * c.b as f32
+}
+
+/// Luminance above which a colour reads as "light" and wants dark foreground.
+pub const LIGHT_LUMINANCE_THRESHOLD: f32 = 150.0;
+
+/// The contrast foreground ([`Palette::TEXT_ON_LIGHT`]/[`Palette::TEXT_ON_DARK`])
+/// for text/icons drawn on top of `bg`.
+pub fn contrast_text(bg: Color) -> Color {
+    if relative_luminance(bg) > LIGHT_LUMINANCE_THRESHOLD {
+        Palette::TEXT_ON_LIGHT
+    } else {
+        Palette::TEXT_ON_DARK
+    }
 }
 
 impl Default for Palette {
@@ -197,6 +226,27 @@ mod tests {
     #[test]
     fn rgba_preserves_alpha() {
         assert_eq!(Color::rgba(0, 0, 0, 0x80).a, 0x80);
+    }
+
+    #[test]
+    fn luminance_orders_dark_below_light() {
+        assert!(
+            relative_luminance(Color::rgb(0, 0, 0)) < relative_luminance(Color::rgb(255, 255, 255))
+        );
+        assert!(relative_luminance(Palette::DARK.background) < LIGHT_LUMINANCE_THRESHOLD);
+        assert!(relative_luminance(Palette::LIGHT.background) > LIGHT_LUMINANCE_THRESHOLD);
+    }
+
+    #[test]
+    fn contrast_text_picks_dark_on_light_and_white_on_dark() {
+        assert_eq!(
+            contrast_text(Color::rgb(0xff, 0xff, 0xff)),
+            Palette::TEXT_ON_LIGHT
+        );
+        assert_eq!(
+            contrast_text(Color::rgb(0x00, 0x00, 0x00)),
+            Palette::TEXT_ON_DARK
+        );
     }
 
     #[test]

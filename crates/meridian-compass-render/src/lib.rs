@@ -1,5 +1,13 @@
 //! Compass renderer for the QuompaCC / Meridian visual identity.
 //!
+//! guard:allow-file: Marken-/Brand-Asset (Kompassrose). Laut Design-Manifest §11
+//! (Login) und §12 (Bootsplash) ist die Kompass-Illustration dort ausdrücklich
+//! erlaubt; sie ist eine in sich geschlossene Grafik mit eigenen hell/dunkel-
+//! Paletten (`Style::default()` dunkel, `Style::chart()` hell), die der Aufrufer
+//! per Theme-Erscheinung wählt. KEINE Alltags-UI — nur Login/Boot. Deshalb sind
+//! die rohen Illustrationsfarben hier zulässig (Manifest §3.4/§9/§14: kein
+//! Kompass in der Taskbar/Alltags-UI bleibt durch den Guard erzwungen).
+//!
 //! This crate is the single source of truth for the compass mark used by the
 //! bootsplash (animated, full duration) and meridian-login (static settle
 //! frame today, Phase 4 fall-and-morph animation later). It performs no I/O

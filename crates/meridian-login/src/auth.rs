@@ -375,13 +375,7 @@ fn run_pam_session(
     // Seat-binding: pam_systemd derives seat=seat0, vtnr=1 from PAM_TTY="tty1".
     // Without this the new logind session has SEAT="" and libseat-logind
     // refuses to hand over DRM, breaking the compositor launch.
-    let rc = unsafe {
-        pam_set_item(
-            guard.pamh,
-            PAM_TTY,
-            tty_c.as_ptr() as *const c_void,
-        )
-    };
+    let rc = unsafe { pam_set_item(guard.pamh, PAM_TTY, tty_c.as_ptr() as *const c_void) };
     if rc != PAM_SUCCESS {
         // Non-fatal: log and continue. Auth may still succeed, but the
         // resulting session will lack a seat and the compositor spawn

@@ -121,6 +121,61 @@ pub(crate) fn apply_config_overrides(
     }
 }
 
+/// Read the system keyboard layout settings, returning
+/// `(model, layout, variant, options)`. Reads `/etc/vconsole.conf` (Arch /
+/// systemd-localed) first, then `/etc/default/keyboard` (Debian). Any field that
+/// cannot be found is returned empty, which lets libxkbcommon use its default.
+pub(crate) fn system_xkb_settings() -> (String, String, String, String) {
+    for path in ["/etc/vconsole.conf", "/etc/default/keyboard"] {
+        if let Ok(contents) = std::fs::read_to_string(path) {
+            let layout = xkb_value(&contents, "XKBLAYOUT");
+            if !layout.is_empty() {
+                return (
+                    xkb_value(&contents, "XKBMODEL"),
+                    layout,
+                    xkb_value(&contents, "XKBVARIANT"),
+                    xkb_value(&contents, "XKBOPTIONS"),
+                );
+            }
+        }
+    }
+    (String::new(), String::new(), String::new(), String::new())
+}
+
+/// Extract `KEY=value` (optionally quoted) from a shell-style config file,
+/// ignoring comments. Returns "" if the key is absent.
+fn xkb_value(contents: &str, key: &str) -> String {
+    contents
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.starts_with('#'))
+        .find_map(|l| {
+            let rest = l.strip_prefix(key)?.trim_start().strip_prefix('=')?;
+            Some(rest.trim().trim_matches('"').trim().to_string())
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod xkb_tests {
+    use super::xkb_value;
+
+    #[test]
+    fn parses_vconsole_layout_and_options() {
+        let c = "# comment\nKEYMAP=de\nXKBLAYOUT=de\nXKBMODEL=pc105\nXKBOPTIONS=terminate:ctrl_alt_bksp\n";
+        assert_eq!(xkb_value(c, "XKBLAYOUT"), "de");
+        assert_eq!(xkb_value(c, "XKBMODEL"), "pc105");
+        assert_eq!(xkb_value(c, "XKBOPTIONS"), "terminate:ctrl_alt_bksp");
+        assert_eq!(xkb_value(c, "XKBVARIANT"), "");
+    }
+
+    #[test]
+    fn handles_quotes_and_ignores_comments() {
+        let c = "#XKBLAYOUT=us\nXKBLAYOUT=\"de\"\n";
+        assert_eq!(xkb_value(c, "XKBLAYOUT"), "de");
+    }
+}
+
 /// Map a theme to light/dark by background luminance for the persisted boot-chain appearance.
 pub(crate) fn theme_appearance(theme: &meridian_config::Theme) -> meridian_boot_common::Appearance {
     let bg = theme.config.colors.background;
@@ -672,7 +727,24 @@ impl MeridianState {
 
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&display_handle, "seat-0");
-        seat.add_keyboard(Default::default(), 200, 25).unwrap();
+        // Respect the system keyboard layout (e.g. German). Smithay's default
+        // XkbConfig is empty, which makes libxkbcommon fall back to "us"; the
+        // session env carries no XKB_DEFAULT_LAYOUT, so read it from the system
+        // config (Arch: /etc/vconsole.conf, Debian: /etc/default/keyboard).
+        let (xkb_model, xkb_layout, xkb_variant, xkb_options) = system_xkb_settings();
+        let xkb_config = smithay::input::keyboard::XkbConfig {
+            model: &xkb_model,
+            layout: &xkb_layout,
+            variant: &xkb_variant,
+            options: if xkb_options.is_empty() {
+                None
+            } else {
+                Some(xkb_options.clone())
+            },
+            ..Default::default()
+        };
+        tracing::info!(layout = %xkb_layout, model = %xkb_model, "seat keyboard xkb layout");
+        seat.add_keyboard(xkb_config, 200, 25).unwrap();
         seat.add_pointer();
 
         let loop_handle = event_loop.handle();

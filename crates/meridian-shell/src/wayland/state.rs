@@ -434,6 +434,13 @@ impl MeridianShell {
                     self.draw_calendar_popup(qh, RepaintReason::Clock);
                 }
             }
+            // Battery changes slowly; poll on the 1s tick and only repaint the
+            // panel when the snapshot actually changed.
+            let battery = crate::battery::BatterySnapshot::poll();
+            if battery != self.battery_snapshot {
+                self.battery_snapshot = battery;
+                self.draw_panel(qh, RepaintReason::Clock);
+            }
         }
         self.maybe_log_repaint_stats(now);
         self.maybe_log_commit_stats(now);
@@ -1059,6 +1066,7 @@ impl MeridianShell {
                     &self.launcher_state.apps,
                     &self.pinned_apps,
                 );
+                self.launcher_icons_warmed = false;
                 self.panel_dirty = true;
                 self.launcher_dirty = true;
                 self.calendar_dirty = true;
@@ -1085,6 +1093,26 @@ impl MeridianShell {
             .map(|w| w.title.clone());
     }
 
+    /// Warm the launcher grid's app icons (deferred from startup so the panel
+    /// appears immediately). Runs once per cache build; the first launcher open
+    /// pays the decode cost instead of every login.
+    fn warm_launcher_icons(&mut self) {
+        if self.launcher_icons_warmed {
+            return;
+        }
+        let names: Vec<String> = self
+            .launcher_state
+            .apps
+            .iter()
+            .filter_map(|app| app.icon_name.clone())
+            .filter(|name| !name.is_empty())
+            .collect();
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        self.icon_cache.warm(&refs, 22);
+        self.icon_cache.warm(&refs, 24);
+        self.launcher_icons_warmed = true;
+    }
+
     fn toggle_launcher(&mut self) {
         let open_before = self.launcher_state.open;
         if !open_before && self.calendar_popup_open {
@@ -1102,6 +1130,8 @@ impl MeridianShell {
         self.launcher_state.toggle();
         let open_after = self.launcher_state.open;
         if self.launcher_state.open {
+            // Warm the grid app-icons on first open (deferred from startup).
+            self.warm_launcher_icons();
             // Fullscreen layer surface, transparent except for the launcher card.
             // This gives the software shadow room to render around the card
             // without moving the visible launcher away from the panel.
@@ -1525,6 +1555,7 @@ impl MeridianShell {
             self.close_network_popup(CommitReason::Input);
         }
         self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+        self.osd_power_profile = None;
         self.volume_osd_hide_at = Some(
             std::time::Instant::now()
                 + std::time::Duration::from_millis(crate::VOLUME_OSD_VISIBLE_MS),
@@ -1553,11 +1584,50 @@ impl MeridianShell {
         self.draw_volume_osd(qh, RepaintReason::Pointer);
     }
 
+    /// Show the OSD with a power-profile name (Eco/Standard/Full). Reuses the
+    /// volume OSD surface + auto-hide timer; the renderer picks text vs volume
+    /// based on `osd_power_profile`.
+    pub(crate) fn show_power_profile_osd(&mut self, qh: &QueueHandle<Self>, label: String) {
+        if self.audio_popup_open {
+            self.close_audio_popup(CommitReason::Input);
+        }
+        if self.network_popup_open {
+            self.close_network_popup(CommitReason::Input);
+        }
+        self.osd_power_profile = Some(label);
+        self.volume_osd_hide_at = Some(
+            std::time::Instant::now()
+                + std::time::Duration::from_millis(crate::VOLUME_OSD_VISIBLE_MS),
+        );
+        if self.volume_osd_open {
+            self.draw_volume_osd(qh, RepaintReason::Pointer);
+            return;
+        }
+        self.volume_osd_open = true;
+        self.network_layer.set_anchor(Anchor::BOTTOM);
+        self.network_layer
+            .set_margin(0, 0, crate::VOLUME_OSD_BOTTOM_MARGIN, 0);
+        self.network_layer.set_exclusive_zone(0);
+        self.network_layer.set_size(
+            crate::popup_surface_w(crate::VOLUME_OSD_WIDTH),
+            crate::popup_surface_h(crate::VOLUME_OSD_HEIGHT),
+        );
+        self.network_layer
+            .set_keyboard_interactivity(KeyboardInteractivity::None);
+        self.volume_osd_width = crate::popup_surface_w(crate::VOLUME_OSD_WIDTH);
+        self.volume_osd_height = crate::popup_surface_h(crate::VOLUME_OSD_HEIGHT);
+        if !self.network_configured {
+            self.network_layer.commit();
+        }
+        self.draw_volume_osd(qh, RepaintReason::Pointer);
+    }
+
     pub(crate) fn close_volume_osd(&mut self, reason: CommitReason) {
         if !self.volume_osd_open {
             return;
         }
         self.volume_osd_open = false;
+        self.osd_power_profile = None;
         self.volume_osd_hide_at = None;
         self.audio_volume_dragging = false;
         self.network_layer.wl_surface().attach(None, 0, 0);
@@ -1904,6 +1974,7 @@ impl MeridianShell {
             &self.launcher_state.apps,
             &self.pinned_apps,
         );
+        self.launcher_icons_warmed = false;
         meridian_config::MeridianConfig::save_theme(&name);
         self.ipc.send(&ShellCommand::ReloadConfig);
         tracing::info!("Theme applied: {}", name);
@@ -1998,6 +2069,16 @@ impl MeridianShell {
                 if self.audio_popup_open {
                     self.draw_audio_popup(qh, RepaintReason::Pointer);
                 }
+            }
+            ClickAction::CyclePowerProfile => {
+                use crate::power_profile::{self, PowerProfile};
+                let order = PowerProfile::ALL;
+                let current = power_profile::current().unwrap_or(PowerProfile::Standard);
+                let idx = order.iter().position(|&p| p == current).unwrap_or(0);
+                let next = order[(idx + 1) % order.len()];
+                let applied = if power_profile::set(next) { next } else { current };
+                self.power_profile = Some(applied);
+                self.show_power_profile_osd(qh, applied.label().to_string());
             }
             ClickAction::OpenSoundSettings => {
                 self.open_sound_settings_from_tray(CommitReason::Input);
@@ -2138,6 +2219,7 @@ impl MeridianShell {
             ClickAction::CloseStatusNotifierMenu => {}
             ClickAction::Clock => {}
             ClickAction::TakeScreenshot => {}
+            ClickAction::CyclePowerProfile => {}
             ClickAction::ToggleSettings => {
                 self.launcher_settings_open = true;
                 self.draw_launcher(qh, RepaintReason::Pointer);

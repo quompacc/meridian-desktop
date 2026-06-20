@@ -32,11 +32,13 @@ const LAUNCHER_W: i32 = 40;
 const PINNED_W: i32 = 30;
 const TRAY_W: i32 = 30;
 const AUDIO_W: i32 = TRAY_W;
+// Battery chip needs room for the icon plus a "100%" label.
+const BATTERY_W: i32 = 52;
 const SNI_W: i32 = 30;
 const SCREENSHOT_W: i32 = 30;
-// Launcher gets its own larger compass-rose icon that sits visually
-// raised above the chip outline (no bg fill, no accent strip) so it
-// reads as the entry point rather than just another tile.
+// Launcher gets a reduced, themed Meridian start symbol that sits visually
+// raised above the chip outline (no bg fill, no accent strip) so it reads as
+// the entry point rather than just another tile (manifest §9).
 const LAUNCHER_ICON_SIZE: u32 = 36;
 const WS_W: i32 = 56;
 const CLOCK_PAD: i32 = 8;
@@ -47,6 +49,16 @@ const LEFT_PADDING: i32 = 8;
 const RIGHT_PADDING: i32 = 10;
 // Soft rounded highlight behind active/hovered chips (matches the island/launcher).
 const CHIP_HL_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.md;
+
+// Panel taskbar-indicator opacities. The colour is ALWAYS a theme colour; only
+// these fixed contrast values live here (the taskbar's "active app" design
+// language, manifest §9). Named once instead of inline magic.
+/// Segment divider hairline (over the theme text colour).
+const SEGMENT_DIVIDER_OPACITY: u8 = 38;
+/// Idle (no running window) accent indicator line.
+const IDLE_INDICATOR_OPACITY: u8 = 55;
+/// Focused single-window indicator dot (over the theme text colour).
+const FOCUSED_DOT_OPACITY: u8 = 220;
 const GAP: i32 = 4;
 
 // Floating island
@@ -63,9 +75,10 @@ const PANEL_NOISE_STRENGTH: i32 = 0;
 const FONT_SIZE: f32 = 14.0;
 const ACCENT_LINE_H: i32 = 2;
 
-/// Faceted compass launcher badge. The icon is still rendered in-house so it
-/// matches the boot/login compass language, but it uses layered shadow,
-/// bevel and needle facets instead of the old flat 2D disc.
+/// Reduced Meridian start-symbol: a calm accent ring with a single north
+/// pointer and a centre navigation dot. Per the design manifest §9 the start
+/// button is "kein buntes Logo" — an abstract, themed mark (not the old faceted
+/// compass badge); every colour comes from the theme so it flips with light/dark.
 fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
     use tiny_skia::{FillRule, Paint, PathBuilder, Stroke, Transform};
     let size = LAUNCHER_ICON_SIZE;
@@ -73,14 +86,8 @@ fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
     let cy = (size as f32) / 2.0;
     let mut pm = Pixmap::new(size, size)?;
     let palette = &theme.palette;
-    let outer_r = (size as f32) / 2.0 - 2.0;
-    let inner_r = outer_r - 3.0;
-    let tip_inset = 5.2_f32;
-    let tip_n = tip_inset;
-    let tip_s = size as f32 - tip_inset - 1.0;
-    let tip_e = size as f32 - tip_inset - 1.0;
-    let tip_w = tip_inset;
-    let waist = 3.4_f32;
+    let ring_r = (size as f32) / 2.0 - 3.0;
+    let waist = 2.6_f32;
 
     let paint_for = |color: Color| {
         let mut p = Paint {
@@ -90,53 +97,29 @@ fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
         p.set_color_rgba8(color.r, color.g, color.b, color.a);
         p
     };
-    let paint_rgba = |r: u8, g: u8, b: u8, a: u8| {
-        let mut p = Paint {
-            anti_alias: true,
-            ..Paint::default()
+
+    // Calm accent ring — the "reduzierter Meridian-Kreis".
+    if let Some(ref path) = PathBuilder::from_circle(cx, cy, ring_r) {
+        let stroke = Stroke {
+            width: 2.0,
+            ..Stroke::default()
         };
-        p.set_color_rgba8(r, g, b, a);
-        p
-    };
-
-    let circle = |x: f32, y: f32, r: f32| {
-        let mut pb = PathBuilder::new();
-        pb.push_circle(x, y, r);
-        pb.finish()
-    };
-
-    // Ground shadow.
-    if let Some(ref path) = circle(cx, cy + 2.4, outer_r - 1.0) {
-        pm.as_mut().fill_path(
+        pm.as_mut().stroke_path(
             path,
-            &paint_rgba(0, 0, 0, 92),
-            FillRule::Winding,
+            &paint_for(palette.accent),
+            &stroke,
             Transform::identity(),
             None,
         );
     }
 
-    // Outer metal rim, then inner accent glass. Several circles are cheaper
-    // than a gradient and still create enough dimensionality at 36px.
-    if let Some(ref path) = circle(cx, cy, outer_r) {
-        pm.as_mut().fill_path(
-            path,
-            &paint_rgba(18, 22, 34, 255),
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
-    }
-    if let Some(ref path) = circle(cx - 0.4, cy - 0.8, outer_r - 1.2) {
-        pm.as_mut().fill_path(
-            path,
-            &paint_for(palette.border),
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
-    }
-    if let Some(ref path) = circle(cx, cy, inner_r) {
+    // Single north pointer — the clear axis / navigation direction (abstract).
+    let mut needle = PathBuilder::new();
+    needle.move_to(cx, cy - ring_r + 1.0);
+    needle.line_to(cx - waist, cy);
+    needle.line_to(cx + waist, cy);
+    needle.close();
+    if let Some(ref path) = needle.finish() {
         pm.as_mut().fill_path(
             path,
             &paint_for(palette.accent),
@@ -145,146 +128,12 @@ fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
             None,
         );
     }
-    if let Some(ref path) = circle(cx - 3.2, cy - 4.4, inner_r * 0.62) {
-        pm.as_mut().fill_path(
-            path,
-            &paint_rgba(255, 255, 255, 36),
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
-    }
-    if let Some(ref path) = circle(cx + 3.0, cy + 4.0, inner_r * 0.76) {
-        pm.as_mut().fill_path(
-            path,
-            &paint_rgba(0, 0, 0, 42),
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
-    }
-    if let Some(ref path) = circle(cx, cy, inner_r - 1.0) {
-        let stroke = Stroke {
-            width: 0.9,
-            ..Stroke::default()
-        };
-        pm.as_mut().stroke_path(
-            path,
-            &paint_for(palette.accent_alt),
-            &stroke,
-            Transform::identity(),
-            None,
-        );
-    }
 
-    let triangle = |x0: f32, y0: f32, ax: f32, ay: f32, bx: f32, by: f32| {
-        let mut pb = PathBuilder::new();
-        pb.move_to(x0, y0);
-        pb.line_to(ax, ay);
-        pb.line_to(bx, by);
-        pb.close();
-        pb.finish()
-    };
-
-    // Needle shadow.
-    for path in [
-        triangle(
-            cx + 0.8,
-            tip_n + 1.2,
-            cx - waist + 0.8,
-            cy + 1.2,
-            cx + waist + 0.8,
-            cy + 1.2,
-        ),
-        triangle(
-            cx + 0.8,
-            tip_s + 1.2,
-            cx - waist + 0.8,
-            cy + 1.2,
-            cx + waist + 0.8,
-            cy + 1.2,
-        ),
-        triangle(
-            tip_e + 0.8,
-            cy + 1.2,
-            cx + 0.8,
-            cy - waist + 1.2,
-            cx + 0.8,
-            cy + waist + 1.2,
-        ),
-        triangle(
-            tip_w + 0.8,
-            cy + 1.2,
-            cx + 0.8,
-            cy - waist + 1.2,
-            cx + 0.8,
-            cy + waist + 1.2,
-        ),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        pm.as_mut().fill_path(
-            &path,
-            &paint_rgba(0, 0, 0, 66),
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
-    }
-
-    // Faceted rose. North is bright, the other arms are shaded so the
-    // direction reads immediately without becoming a flat star.
-    if let Some(ref path) = triangle(cx, tip_n, cx - waist, cy, cx + waist, cy) {
+    // Centre navigation dot.
+    if let Some(ref path) = PathBuilder::from_circle(cx, cy, 2.2) {
         pm.as_mut().fill_path(
             path,
-            &paint_rgba(246, 249, 255, 255),
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
-    }
-    for (shape, color) in [
-        (
-            triangle(cx, tip_s, cx - waist, cy, cx + waist, cy),
-            palette.text_dim,
-        ),
-        (
-            triangle(tip_e, cy, cx, cy - waist, cx, cy + waist),
-            palette.surface,
-        ),
-        (
-            triangle(tip_w, cy, cx, cy - waist, cx, cy + waist),
-            palette.text_dim,
-        ),
-    ]
-    .into_iter()
-    {
-        if let Some(ref path) = shape {
-            pm.as_mut().fill_path(
-                path,
-                &paint_for(color),
-                FillRule::Winding,
-                Transform::identity(),
-                None,
-            );
-        }
-    }
-
-    // Hub and specular dot.
-    if let Some(ref path) = circle(cx, cy, 3.4) {
-        pm.as_mut().fill_path(
-            path,
-            &paint_rgba(18, 22, 34, 230),
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
-    }
-    if let Some(ref path) = circle(cx - 0.9, cy - 1.1, 1.45) {
-        pm.as_mut().fill_path(
-            path,
-            &paint_rgba(255, 255, 255, 210),
+            &paint_for(palette.accent),
             FillRule::Winding,
             Transform::identity(),
             None,
@@ -393,6 +242,7 @@ fn action_for_id_as_click(id: &str) -> Option<ClickAction> {
         "panel-launcher" => Some(ClickAction::ToggleLauncher),
         "panel-network" => Some(ClickAction::ToggleNetworkPopup),
         "panel-sound" => Some(ClickAction::ToggleAudioPopup),
+        "panel-battery" => Some(ClickAction::CyclePowerProfile),
         "panel-workspace" => Some(ClickAction::ToggleWorkspacePopup),
         "panel-screenshot" => Some(ClickAction::TakeScreenshot),
         "panel-clock" => Some(ClickAction::Clock),
@@ -455,7 +305,7 @@ impl Widget for PanelDivider {
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
         let pal = theme.palette;
-        let col = Color::rgba(pal.text.r, pal.text.g, pal.text.b, 38);
+        let col = Color::rgba(pal.text.r, pal.text.g, pal.text.b, SEGMENT_DIVIDER_OPACITY);
         let line = Rect {
             x: area.x + DIVIDER_W / 2,
             y: area.y + 6,
@@ -697,7 +547,7 @@ impl Widget for PanelPinnedChip {
                     theme.palette.accent.r,
                     theme.palette.accent.g,
                     theme.palette.accent.b,
-                    55,
+                    IDLE_INDICATOR_OPACITY,
                 );
                 let line = Rect {
                     x: area.x + 4,
@@ -716,7 +566,7 @@ impl Widget for PanelPinnedChip {
                         theme.palette.text.r,
                         theme.palette.text.g,
                         theme.palette.text.b,
-                        220,
+                        FOCUSED_DOT_OPACITY,
                     )
                 } else {
                     theme.palette.accent
@@ -903,6 +753,18 @@ fn windows_for_pinned_app(app: &PinnedApp, windows: &[PanelWindowEntry]) -> (usi
 // ── build_panel_widget_tree ─────────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
+/// Recolour a premultiplied-RGBA pixmap to `color`, keeping its alpha (shape).
+/// Used to tint the symbolic battery icon to the active power-profile colour.
+fn tint_pixmap_premul(pm: &mut Pixmap, color: Color) {
+    for px in pm.data_mut().chunks_exact_mut(4) {
+        let a = px[3] as u16;
+        px[0] = ((color.r as u16 * a) / 255) as u8;
+        px[1] = ((color.g as u16 * a) / 255) as u8;
+        px[2] = ((color.b as u16 * a) / 255) as u8;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn build_panel_widget_tree(
     width: u32,
     pinned_apps: &[PinnedApp],
@@ -912,6 +774,8 @@ pub(crate) fn build_panel_widget_tree(
     status_notifier_items: &[StatusNotifierItem],
     network_popup_open: bool,
     audio_popup_open: bool,
+    battery: &crate::battery::BatterySnapshot,
+    power_profile: Option<crate::power_profile::PowerProfile>,
     active_workspace: u8,
     total_workspaces: u8,
     clock: &str,
@@ -926,6 +790,24 @@ pub(crate) fn build_panel_widget_tree(
         .lookup(audio_snapshot.icon_name(), ICON_SIZE)
         .and_then(icon_image_to_pixmap)
         .or_else(|| build_audio_icon(audio_snapshot, theme));
+    // Battery icon, tinted by the active power profile so the choice is visible
+    // at a glance: Eco = green, Performance = amber, Standard = neutral (default
+    // text tint). Colours come from the theme palette (centralised).
+    let battery_icon = icon_cache
+        .lookup(battery.icon_name(), ICON_SIZE)
+        .and_then(icon_image_to_pixmap)
+        .map(|mut pm| {
+            use crate::power_profile::PowerProfile;
+            let tint = match power_profile {
+                Some(PowerProfile::Eco) => Some(theme.palette.success),
+                Some(PowerProfile::Performance) => Some(theme.palette.warning),
+                _ => None,
+            };
+            if let Some(c) = tint {
+                tint_pixmap_premul(&mut pm, c);
+            }
+            pm
+        });
 
     // Left cluster
     let mut left_children: Vec<Box<dyn Widget>> = Vec::new();
@@ -1038,6 +920,17 @@ pub(crate) fn build_panel_widget_tree(
             AUDIO_W,
             audio_popup_open,
         )),
+    ]);
+    if battery.present {
+        right_children.push(Box::new(PanelChip::new(
+            "panel-battery",
+            battery.label().into_boxed_str(),
+            battery_icon,
+            BATTERY_W,
+            false,
+        )));
+    }
+    right_children.extend([
         Box::new(PanelDivider) as Box<dyn Widget>,
         Box::new(PanelChip::new(
             "panel-workspace",
@@ -1204,6 +1097,8 @@ pub(crate) fn draw_panel_ui(
     status_notifier_items: &[StatusNotifierItem],
     network_popup_open: bool,
     audio_popup_open: bool,
+    battery: &crate::battery::BatterySnapshot,
+    power_profile: Option<crate::power_profile::PowerProfile>,
     active_workspace: u8,
     total_workspaces: u8,
     clock: &str,
@@ -1240,6 +1135,8 @@ pub(crate) fn draw_panel_ui(
         status_notifier_items,
         network_popup_open,
         audio_popup_open,
+        battery,
+        power_profile,
         active_workspace,
         total_workspaces,
         clock,
@@ -1259,11 +1156,17 @@ pub(crate) fn draw_panel_ui(
     // wallpaper shows through the side margins and the bottom gap.
     pixmap.fill(tiny_skia::Color::TRANSPARENT);
 
-    // Frosted-glass island. The compositor owns the live blurred backdrop;
-    // the shell only adds translucent tint/chrome and then the widgets.
+    // Frosted-glass island. The compositor owns the live blurred backdrop AND
+    // renders it at the theme's fill_alpha; so when glass is on the shell must
+    // NOT paint an opaque body on top (that would double the opacity and hide
+    // the blur — the panel would read as solid). Keep the body transparent and
+    // let the compositor glass show, exactly like the popups. The non-glass
+    // fallback still paints a solid island so it stays legible.
     let inner_w = (width as i32 - 2 * SIDE_MARGIN).max(0);
     let base = theme.palette.surface_alt;
-    let body_col = Color::rgba(base.r, base.g, base.b, treatment.fill_alpha);
+    let glass = theme_config.decorations.glass && theme_config.decorations.glass_blur;
+    let body_alpha = if glass { 0 } else { treatment.fill_alpha };
+    let body_col = Color::rgba(base.r, base.g, base.b, body_alpha);
     let outline = Rect {
         x: SIDE_MARGIN,
         y: ISLAND_TOP,
@@ -1297,6 +1200,9 @@ pub(crate) fn draw_panel_ui(
             paint_fill(&mut pc, &path, body_col);
         }
         let frost_alpha = ((treatment.frame_alpha as f32) * 0.10).round() as u8;
+        // guard:allow: glass specular frost — white sheen is a material highlight
+        // (manifest §7.1 "leichte Innenaufhellung"), theme-independent; its
+        // strength is already theme-driven via `treatment.frame_alpha`.
         let frost = Color::rgba(0xFF, 0xFF, 0xFF, frost_alpha);
         if let Some(path) = rounded_rect_path(body, island_radius.saturating_sub(1)) {
             paint_fill(&mut pc, &path, frost);
@@ -1313,6 +1219,8 @@ pub(crate) fn draw_panel_ui(
     );
     {
         let mut pc = pixmap.as_mut();
+        // guard:allow: glass specular top-edge highlight — white sheen (material,
+        // not a theme colour); strength is theme-driven via `treatment.frame_alpha`.
         let hl = Color::rgba(0xFF, 0xFF, 0xFF, treatment.frame_alpha / 4);
         let highlight = Rect {
             x: SIDE_MARGIN + island_radius,
@@ -1439,6 +1347,8 @@ mod tests {
             &[],
             false,
             false,
+            &crate::battery::BatterySnapshot::default(),
+            None,
             1,
             9,
             "12:34",
@@ -1477,6 +1387,8 @@ mod tests {
             &[],
             false,
             false,
+            &crate::battery::BatterySnapshot::default(),
+            None,
             1,
             9,
             "12:34",

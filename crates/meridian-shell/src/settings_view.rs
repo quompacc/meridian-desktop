@@ -1,5 +1,6 @@
 // settings_view.rs — widget-based settings sub-page for the launcher.
 
+use meridian_tokens::Interaction;
 use meridian_ui::{
     effect::{paint_fill, paint_text, rounded_rect_path},
     style::Color,
@@ -8,7 +9,6 @@ use meridian_ui::{
     AlignItems, FlexDirection, JustifyContent, Rect, TaffyRect, Theme, UiSize, WidgetState,
     WidgetStyle,
 };
-use meridian_tokens::Interaction;
 use tiny_skia::{Pixmap, PixmapMut, PixmapPaint, PixmapRef, Transform};
 
 use crate::audio::{AudioDevice, AudioServiceState, AudioSnapshot};
@@ -24,6 +24,15 @@ use meridian_config::{ThemeConfig, WallpaperEntry, WallpaperMode};
 use meridian_ipc::{OutputModeState, OutputWorkspaceState};
 
 use crate::ui::tokens::glass_theme_from_config;
+
+// Settings-local design constants. Shared design values live in `meridian_tokens`;
+// these are single-purpose to this view (named once instead of inline magic).
+/// Tint pulling the "not set" handler label toward the theme error colour.
+const NOT_SET_ERROR_TINT: f32 = 0.15;
+/// Blend of the per-monitor preview colour into the display-preview body.
+const MONITOR_PREVIEW_MIX: f32 = 0.18;
+/// Opacity of the settings section divider (drawn over the accent colour).
+const SETTINGS_DIVIDER_OPACITY: u8 = 140;
 
 // ─── SettingsCategory ────────────────────────────────────────────────────────
 
@@ -972,7 +981,9 @@ impl Widget for SettingsSidebarRow {
         // selected row gets a subtle accent tint + left bar.
         let base = theme.palette.surface_alt;
         let bg = match state {
-            WidgetState::Idle if self.is_selected => base.lerp(self.accent, 0.16),
+            WidgetState::Idle if self.is_selected => {
+                Interaction::DEFAULT.selection(base, self.accent, Interaction::SELECTION_HOVER)
+            }
             WidgetState::Idle => base,
             WidgetState::Hovered => Interaction::DEFAULT.hover(base),
             WidgetState::Pressed => Interaction::DEFAULT.pressed(base),
@@ -1057,10 +1068,7 @@ impl Widget for ThemeRow {
         let bg = match state {
             WidgetState::Idle => {
                 if self.is_selected {
-                    theme
-                        .palette
-                        .surface
-                        .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.08)
+                    Interaction::DEFAULT.selected_tint(theme.palette.surface)
                 } else {
                     theme.palette.surface
                 }
@@ -1130,10 +1138,7 @@ impl Widget for CursorThemeRow {
         let bg = match state {
             WidgetState::Idle => {
                 if self.is_selected {
-                    theme
-                        .palette
-                        .surface
-                        .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.08)
+                    Interaction::DEFAULT.selected_tint(theme.palette.surface)
                 } else {
                     theme.palette.surface
                 }
@@ -1204,10 +1209,7 @@ impl Widget for WallpaperRow {
         let bg = match state {
             WidgetState::Idle => {
                 if self.is_selected {
-                    theme
-                        .palette
-                        .surface
-                        .lerp(Color::rgb(0xFF, 0xFF, 0xFF), 0.08)
+                    Interaction::DEFAULT.selected_tint(theme.palette.surface)
                 } else {
                     theme.palette.surface
                 }
@@ -1309,7 +1311,11 @@ impl Widget for WallpaperBrowseRow {
             height: WALLPAPER_THUMB_H as i32,
         };
         if let Some(path) = rounded_rect_path(icon, 4) {
-            paint_fill(canvas, &path, self.accent.lerp(Color::rgb(0, 0, 0), 0.55));
+            paint_fill(
+                canvas,
+                &path,
+                Interaction::DEFAULT.darken(self.accent, 0.55),
+            );
         }
         paint_text(
             canvas,
@@ -1834,7 +1840,7 @@ impl Widget for DefaultAppCategoryRow {
             theme
                 .palette
                 .text_dim
-                .lerp(Color::rgb(0xFF, 0x00, 0x00), 0.15)
+                .lerp(theme.palette.error, NOT_SET_ERROR_TINT)
         };
         paint_text(
             canvas,
@@ -2319,7 +2325,11 @@ impl Widget for DisplayOutputRow {
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
         let bg = if self.focused {
-            theme.palette.surface.lerp(self.accent, 0.08)
+            Interaction::DEFAULT.selection(
+                theme.palette.surface,
+                self.accent,
+                Interaction::SELECTION_FOCUSED,
+            )
         } else {
             theme.palette.surface
         };
@@ -2357,7 +2367,7 @@ impl Widget for DisplayOutputRow {
             height: inner.height - 12,
         };
         if let Some(path) = rounded_rect_path(preview, 1) {
-            paint_fill(canvas, &path, bg.lerp(monitor_color, 0.18));
+            paint_fill(canvas, &path, bg.lerp(monitor_color, MONITOR_PREVIEW_MIX));
         }
         let stand = Rect {
             x: screen.x + 34,
@@ -2518,7 +2528,11 @@ impl Widget for DisplayModeComboButton {
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
         let base = if self.expanded {
-            theme.palette.surface_alt.lerp(self.accent, 0.10)
+            Interaction::DEFAULT.selection(
+                theme.palette.surface_alt,
+                self.accent,
+                Interaction::SELECTION_EXPANDED,
+            )
         } else if self.enabled {
             theme.palette.surface_alt
         } else {
@@ -2598,7 +2612,11 @@ impl Widget for DisplayModeOptionRow {
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
         let base = if self.selected {
-            theme.palette.surface_alt.lerp(self.accent, 0.14)
+            Interaction::DEFAULT.selection(
+                theme.palette.surface_alt,
+                self.accent,
+                Interaction::SELECTION_SELECTED,
+            )
         } else {
             theme.palette.surface_alt
         };
@@ -2660,7 +2678,11 @@ impl Widget for DisplayPrimaryButton {
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
         let base = if self.active {
-            theme.palette.surface_alt.lerp(self.accent, 0.12)
+            Interaction::DEFAULT.selection(
+                theme.palette.surface_alt,
+                self.accent,
+                Interaction::SELECTION_ACTIVE,
+            )
         } else {
             theme.palette.surface_alt
         };
@@ -2902,7 +2924,12 @@ pub(crate) fn build_settings_widget_tree(
         ],
     }) as Box<dyn Widget>;
 
-    let divider_color = Color::rgba(pal.accent.r, pal.accent.g, pal.accent.b, 140);
+    let divider_color = Color::rgba(
+        pal.accent.r,
+        pal.accent.g,
+        pal.accent.b,
+        SETTINGS_DIVIDER_OPACITY,
+    );
     // No root tabs anymore — the two groups live as labelled sections inside
     // one full-height sidebar.
     let content_h = height.saturating_sub(HEADER_HEIGHT + DIVIDER_HEIGHT);

@@ -41,7 +41,12 @@ fn scan_file(path: &Path, hits: &mut Vec<String>) {
         let is_state_arm = trimmed.starts_with("WidgetState::Hovered")
             || trimmed.starts_with("WidgetState::Pressed");
         if is_state_arm && line.contains("=>") && arm_text(&lines, i).contains(".lerp(") {
-            hits.push(format!("{}:{}: {}", path.display(), i + 1, trimmed.trim_end()));
+            hits.push(format!(
+                "{}:{}: {}",
+                path.display(),
+                i + 1,
+                trimmed.trim_end()
+            ));
         }
     }
 }

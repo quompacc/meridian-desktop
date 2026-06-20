@@ -179,7 +179,12 @@ impl IconLoader {
             let Some(bytes) = source.archive.read_file(&selected.path) else {
                 continue;
             };
-            return self.decode_icon_bytes(&selected.extension, &bytes, requested_size);
+            return self.decode_icon_bytes(
+                &selected.extension,
+                &bytes,
+                requested_size,
+                name.contains("-symbolic"),
+            );
         }
         None
     }
@@ -260,7 +265,10 @@ impl IconLoader {
 
     fn decode_svg_file(&self, path: &Path, requested_size: u32) -> Option<IconImage> {
         let data = fs::read(path).ok()?;
-        decode_svg_with_symbolic_color(&data, requested_size, &self.symbolic_color)
+        // Symbolic icons live under a `symbolic` directory and/or carry the
+        // `-symbolic` filename suffix; those get recoloured to the theme colour.
+        let symbolic = path.to_string_lossy().contains("symbolic");
+        decode_svg_with_symbolic_color(&data, requested_size, &self.symbolic_color, symbolic)
     }
 
     fn decode_png_file(&self, path: &Path, requested_size: u32) -> Option<IconImage> {
@@ -273,9 +281,12 @@ impl IconLoader {
         extension: &str,
         bytes: &[u8],
         requested_size: u32,
+        symbolic: bool,
     ) -> Option<IconImage> {
         match extension {
-            "svg" => decode_svg_with_symbolic_color(bytes, requested_size, &self.symbolic_color),
+            "svg" => {
+                decode_svg_with_symbolic_color(bytes, requested_size, &self.symbolic_color, symbolic)
+            }
             "png" => self.decode_png_bytes(bytes, requested_size),
             _ => None,
         }

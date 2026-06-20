@@ -191,7 +191,12 @@ fn open_display_card() -> Result<(String, Card), Box<dyn std::error::Error>> {
 
     // Last resort: keep behaviour defined if nothing reported a connected
     // connector (e.g. a connector probe raced very early boot).
-    let card = Card(OpenOptions::new().read(true).write(true).open(DEFAULT_DRM_CARD)?);
+    let card = Card(
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(DEFAULT_DRM_CARD)?,
+    );
     Ok((DEFAULT_DRM_CARD.to_string(), card))
 }
 
@@ -1431,6 +1436,7 @@ fn draw_soft_card_shadow(pm: &mut PixmapMut, left: f32, top: f32, w: f32, h: f32
             card_radius() + spread * 0.45,
         );
         let mut paint = Paint::default();
+        // guard:allow: card drop shadow — black is depth/materiality, not a theme colour.
         paint.set_color(Color::from_rgba8(0, 0, 0, opacity.clamp(0.0, 255.0) as u8));
         paint.anti_alias = true;
         pm.fill_path(
@@ -1464,7 +1470,7 @@ fn draw_login_button(
     selected: bool,
 ) {
     let path = rounded_rect_path(rect.0, rect.1, rect.2, rect.3, control_radius());
-    let fill = Color::from_rgba8(13, 27, 43, alpha_byte(alpha, 176.0));
+    let fill = theme_color(alpha, login_theme().colors.background, 176.0);
     let mut fill_paint = Paint::default();
     fill_paint.set_color(fill);
     fill_paint.anti_alias = true;
@@ -1552,14 +1558,14 @@ fn draw_card(
     let path = rounded_rect_path(left, top, cw, ch, card_radius());
     draw_soft_card_shadow(pm, left, top, cw, ch, alpha);
     let mut fill = Paint::default();
-    fill.set_color(Color::from_rgba8(20, 25, 31, alpha_byte(alpha, 222.0)));
+    fill.set_color(theme_color(alpha, login_theme().colors.surface, 222.0));
     fill.anti_alias = true;
     pm.fill_path(&path, &fill, FillRule::Winding, Transform::identity(), None);
 
     let border = if security_key_present {
         color_with_alpha(metro_success(1.0), alpha_byte(alpha, 132.0))
     } else {
-        Color::from_rgba8(154, 166, 178, alpha_byte(alpha, 72.0))
+        theme_color(alpha, login_theme().colors.border, 72.0)
     };
     draw_card_stroke(pm, &path, border, 1.0);
 
@@ -1573,7 +1579,7 @@ fn draw_card(
     draw_card_stroke(
         pm,
         &inner,
-        Color::from_rgba8(235, 244, 252, alpha_byte(alpha, 18.0)),
+        theme_color(alpha, login_theme().colors.text, 18.0),
         1.0,
     );
 }
@@ -1598,8 +1604,8 @@ fn draw_login_ui(
     let label_color = metro_text_dim(alpha);
     let hint_color = metro_text_dim(alpha * 0.92);
     let caret_color = metro_accent(alpha);
-    let box_fill = Color::from_rgba8(12, 17, 23, alpha_byte(alpha, 176.0));
-    let box_outline = Color::from_rgba8(151, 163, 176, alpha_byte(alpha, 62.0));
+    let box_fill = theme_color(alpha, login_theme().colors.background, 176.0);
+    let box_outline = theme_color(alpha, login_theme().colors.border, 62.0);
     let smartcard_ready = ui.smartcard_login_ready();
 
     draw_brand_mark(pm, cx, inner_top + BRAND_MARK_OFFSET_Y, alpha);
@@ -1609,7 +1615,7 @@ fn draw_login_ui(
         "M E R I D I A N",
         cx,
         inner_top + TITLE_OFFSET_Y,
-        Color::from_rgba8(225, 233, 242, alpha_byte(alpha, 238.0)),
+        theme_color(alpha, login_theme().colors.text, 238.0),
     );
     painter.render_text_centered(
         pm,
@@ -1617,7 +1623,7 @@ fn draw_login_ui(
         "B S D   D E S K T O P",
         cx,
         inner_top + SUBTITLE_OFFSET_Y,
-        Color::from_rgba8(91, 145, 197, alpha_byte(alpha, 220.0)),
+        theme_color(alpha, login_theme().colors.accent, 220.0),
     );
 
     if smartcard_ready {
@@ -1821,21 +1827,17 @@ fn draw_submit_button(
         vec![
             GradientStop::new(
                 0.0,
-                Color::from_rgba8(65, 111, 166, alpha_byte(alpha, 244.0)),
+                theme_color(alpha, login_theme().colors.accent_alt, 244.0),
             ),
-            GradientStop::new(
-                1.0,
-                Color::from_rgba8(74, 121, 180, alpha_byte(alpha, 244.0)),
-            ),
+            GradientStop::new(1.0, theme_color(alpha, login_theme().colors.accent, 244.0)),
         ],
         SpreadMode::Pad,
         Transform::identity(),
     )
-    .unwrap_or(Shader::SolidColor(Color::from_rgba8(
-        70,
-        116,
-        174,
-        alpha_byte(alpha, 244.0),
+    .unwrap_or(Shader::SolidColor(theme_color(
+        alpha,
+        login_theme().colors.accent,
+        244.0,
     )));
     let paint = Paint {
         shader,
@@ -1852,7 +1854,7 @@ fn draw_submit_button(
     draw_card_stroke(
         pm,
         &path,
-        Color::from_rgba8(137, 180, 224, alpha_byte(alpha, 72.0)),
+        theme_color(alpha, login_theme().colors.accent, 72.0),
         1.0,
     );
     painter.render_text_centered(
@@ -1861,12 +1863,12 @@ fn draw_submit_button(
         label,
         rect.0 + rect.2 / 2.0,
         rect.1 + rect.3 / 2.0,
-        Color::from_rgba8(237, 243, 250, alpha_byte(alpha, 250.0)),
+        theme_color(alpha, login_theme().colors.text, 250.0),
     );
 }
 
 fn draw_brand_mark(pm: &mut PixmapMut, cx: f32, cy: f32, alpha: f32) {
-    let line = Color::from_rgba8(137, 174, 210, alpha_byte(alpha, 104.0));
+    let line = theme_color(alpha, login_theme().colors.accent, 104.0);
     for radius in [18.0_f32, 27.0, 36.0] {
         if let Some(circle) = PathBuilder::from_circle(cx, cy, radius) {
             draw_card_stroke(pm, &circle, line, 1.0);
@@ -1905,7 +1907,7 @@ fn draw_brand_mark(pm: &mut PixmapMut, cx: f32, cy: f32, alpha: f32) {
     rose.close();
     if let Some(path) = rose.finish() {
         let mut paint = Paint::default();
-        paint.set_color(Color::from_rgba8(176, 205, 230, alpha_byte(alpha, 150.0)));
+        paint.set_color(theme_color(alpha, login_theme().colors.accent, 150.0));
         paint.anti_alias = true;
         pm.fill_path(
             &path,
@@ -1918,14 +1920,14 @@ fn draw_brand_mark(pm: &mut PixmapMut, cx: f32, cy: f32, alpha: f32) {
 
     if let Some(dot) = PathBuilder::from_circle(cx, cy, 3.2) {
         let mut paint = Paint::default();
-        paint.set_color(Color::from_rgba8(91, 166, 232, alpha_byte(alpha, 245.0)));
+        paint.set_color(theme_color(alpha, login_theme().colors.accent, 245.0));
         paint.anti_alias = true;
         pm.fill_path(&dot, &paint, FillRule::Winding, Transform::identity(), None);
     }
 }
 
 fn draw_user_icon(pm: &mut PixmapMut, cx: f32, cy: f32, alpha: f32) {
-    let color = Color::from_rgba8(190, 202, 214, alpha_byte(alpha, 205.0));
+    let color = theme_color(alpha, login_theme().colors.text_dim, 205.0);
     if let Some(head) = PathBuilder::from_circle(cx, cy - 7.0, 5.5) {
         draw_card_stroke(pm, &head, color, 1.4);
     }
@@ -1940,7 +1942,7 @@ fn draw_user_icon(pm: &mut PixmapMut, cx: f32, cy: f32, alpha: f32) {
 }
 
 fn draw_lock_icon(pm: &mut PixmapMut, cx: f32, cy: f32, alpha: f32) {
-    let color = Color::from_rgba8(190, 202, 214, alpha_byte(alpha, 205.0));
+    let color = theme_color(alpha, login_theme().colors.text_dim, 205.0);
     let body = rounded_rect_path(cx - 7.0, cy - 1.0, 14.0, 12.0, 2.0);
     draw_card_stroke(pm, &body, color, 1.4);
     let mut shackle = PathBuilder::new();
@@ -2141,11 +2143,14 @@ fn draw_pointer_cursor(pm: &mut PixmapMut, x: f32, y: f32, alpha: f32) {
     };
 
     let mut fill = Paint::default();
+    // guard:allow: fallback pointer cursor — white fill + near-black outline must
+    // stay theme-independent so the cursor is visible on ANY background.
     fill.set_color(Color::from_rgba8(235, 241, 252, alpha));
     fill.anti_alias = true;
     pm.fill_path(&path, &fill, FillRule::Winding, Transform::identity(), None);
 
     let mut stroke_paint = Paint::default();
+    // guard:allow: see above — pointer cursor outline, theme-independent.
     stroke_paint.set_color(Color::from_rgba8(5, 8, 14, alpha));
     stroke_paint.anti_alias = true;
     let stroke = Stroke {

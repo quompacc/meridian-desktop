@@ -33,7 +33,7 @@ const STATUS_Y: i32 = 28;
 /// 160/255 ≈ 63% opacity — strong enough that the picker is unmistakable
 /// as a modal overlay (the previous 96/255 was easy to miss on a
 /// uniformly dark desktop background).
-const DIM_ALPHA: u8 = 160;
+const DIM_ALPHA: u8 = meridian_tokens::Mask::DEFAULT.dim_alpha;
 
 /// Border color + thickness for the selection rectangle. 3 px makes the
 /// selection rectangle obvious against any desktop background.

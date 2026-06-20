@@ -44,8 +44,8 @@ fn blur_cached_wallpaper(target: &mut Pixmap) -> Result<(), &'static str> {
     let small_w = (target.width() / 10).max(1);
     let small_h = (target.height() / 10).max(1);
     let mut small = Pixmap::new(small_w, small_h).ok_or("blur allocation failed")?;
-    let downscale = (small_w as f32 / target.width() as f32)
-        .min(small_h as f32 / target.height() as f32);
+    let downscale =
+        (small_w as f32 / target.width() as f32).min(small_h as f32 / target.height() as f32);
     let quality = PixmapPaint {
         quality: FilterQuality::Bicubic,
         ..Default::default()
@@ -130,6 +130,8 @@ fn draw_compass_guides(target: &mut Pixmap, width: f32, height: f32) {
     // drawing's contrast profile — are fixed. Dark theme ≈ the former greys.
     let text = crate::login_theme().colors.text;
     let accent = crate::login_theme().colors.accent;
+    // guard:allow: fixed guide opacity (the colour already follows the theme; only
+    // the contrast profile of the backdrop illustration is constant — see above).
     let line_color = Color::from_rgba8(text.r, text.g, text.b, 30);
 
     for factor in [0.48_f32, 0.68, 0.82, 1.0] {
@@ -145,7 +147,9 @@ fn draw_compass_guides(target: &mut Pixmap, width: f32, height: f32) {
     axes.move_to(cx - radius, cy);
     axes.line_to(cx + radius, cy);
     if let Some(path) = axes.finish() {
-        stroke(target, &path, Color::from_rgba8(text.r, text.g, text.b, 38), 1.0);
+        // fixed axis-guide opacity; colour is theme-driven.
+        let axis = Color::from_rgba8(text.r, text.g, text.b, 38); // guard:allow
+        stroke(target, &path, axis, 1.0);
     }
 
     let mut needle = PathBuilder::new();
@@ -156,6 +160,7 @@ fn draw_compass_guides(target: &mut Pixmap, width: f32, height: f32) {
     needle.close();
     if let Some(path) = needle.finish() {
         let mut paint = Paint::default();
+        // guard:allow: fixed needle opacity; colour is theme-driven.
         paint.set_color(Color::from_rgba8(text.r, text.g, text.b, 50));
         paint.anti_alias = true;
         target.fill_path(
@@ -170,6 +175,7 @@ fn draw_compass_guides(target: &mut Pixmap, width: f32, height: f32) {
     let marker = PathBuilder::from_circle(cx, cy - radius, 2.4);
     if let Some(marker) = marker {
         let mut paint = Paint::default();
+        // guard:allow: fixed north-marker opacity; colour is the theme accent.
         paint.set_color(Color::from_rgba8(accent.r, accent.g, accent.b, 190));
         paint.anti_alias = true;
         target.fill_path(

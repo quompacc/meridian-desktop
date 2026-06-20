@@ -36,6 +36,7 @@ pub enum ClickAction {
     Clock,
     TakeScreenshot,
     ToggleSettings,
+    CyclePowerProfile,
 }
 
 impl ClickAction {
@@ -57,6 +58,7 @@ impl ClickAction {
             ClickAction::Clock => "clock".to_string(),
             ClickAction::TakeScreenshot => "take-screenshot".to_string(),
             ClickAction::ToggleSettings => "toggle-settings".to_string(),
+            ClickAction::CyclePowerProfile => "cycle-power-profile".to_string(),
         }
     }
 }

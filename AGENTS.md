@@ -3,6 +3,28 @@
 ## Projekt (Kurz)
 Meridian ist ein Wayland-Compositor mit separatem Shell-Prozess. Workspace ist Rust-Multi-Crate mit `meridian-compositor`, `meridian-shell`, `meridian-config`, `meridian-ipc`, `meridian-wm`, `meridian-portal`.
 
+## Design – VERBINDLICHE Vorgabe (gilt für jede UI-/Render-Änderung)
+Die Datei **`docs/meridian_design_manifest.md` ist die maßgebliche Design-Spezifikation.**
+Jede Änderung an Aussehen, Farben, Geometrie oder Effekten MUSS ihr entsprechen.
+Bei Konflikt schlägt das Manifest jede andere Quelle (Audits, Altcode).
+
+Daraus abgeleitete, nicht verhandelbare Invarianten:
+- **Eine** zentrale Design-Quelle: `meridian-tokens` (`Palette`, `Interaction`,
+  `Elevation`, `Radius`) + `meridian-config` (`Decorations`). Jedes UI-Element
+  zieht Farbe/Alpha/Geometrie/Radius/Effekt **ausschließlich** daraus.
+- **Kein hartverdrahteter Farb-/Alpha-/Radius-/Mix-Wert im Render-Code** außerhalb
+  dieser Quelle. Ausnahmen nur für Marken-Assets/Icons und Tests, und nur explizit
+  via `// guard:allow: <grund>` bzw. `guard:allow-file` begründet.
+- Genau **2 Themes (hell/dunkel)**, identisch bis auf Farben (Layout, Geometrie,
+  Radien, Glas/Blur/Schatten gleich). Theme-Wechsel = nur Farbtabelle tauschen.
+- **Branding (Kompass/Meridian-Grafik) nur subtil in Login + Bootsplash**
+  (Manifest §11/§12). NICHT in der Alltags-UI/Taskbar/Startbutton
+  (Manifest §3.4 „kein Kompass-Theater", §9 „kein buntes Logo", §14 „Kompass überall").
+- **Guard-Test muss grün bleiben:** `cargo test -p meridian-tokens --test design_guard`
+  schlägt bei neuen Hardcodes fehl. Roten Guard nie ignorieren — entweder
+  zentralisieren oder bewusst mit `// guard:allow: <grund>` freigeben.
+- Definition of Done für Zentralität: `docs/GUI_CENTRALIZATION_PLAN.md` §9.
+
 ## Harte Regeln für Codex
 1. Keine Feature-Änderung ohne expliziten Auftrag.
 2. Bestehende Architekturpfade respektieren (`main -> backend -> state -> handlers/render`).

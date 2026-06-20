@@ -111,6 +111,20 @@ pub fn draw_volume_osd(
     VOLUME_BAR_RECT.with(|r| r.set(bar));
 }
 
+/// Compact text OSD: a single centred key/value row. Reuses the volume OSD
+/// surface to flash e.g. the active power profile ("Energieprofil → Standard").
+pub fn draw_text_osd(
+    painter: &mut Painter<'_>,
+    font: &RefCell<Option<TextRenderer>>,
+    theme: &ThemeConfig,
+    key: &str,
+    value: &str,
+) {
+    draw_card_body(painter, theme);
+    let row_y = (crate::VOLUME_OSD_HEIGHT as i32 - ROW_HEIGHT) / 2;
+    draw_kv_row(painter, font, theme, key, value, row_y);
+}
+
 fn fit_text(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
         return text.to_string();

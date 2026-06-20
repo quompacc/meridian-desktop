@@ -86,7 +86,15 @@ fn draw_status_tab(
         NetworkState::Disconnected => ("Aus", colors.error),
         NetworkState::Offline => ("Nicht verfügbar", colors.text_dim),
     };
-    draw_status_row(painter, font, theme, "Status", status_text, dot_color, row_y);
+    draw_status_row(
+        painter,
+        font,
+        theme,
+        "Status",
+        status_text,
+        dot_color,
+        row_y,
+    );
     row_y += ROW_HEIGHT;
 
     if let NetworkState::Connected {
@@ -281,11 +289,9 @@ pub fn popup_hit_test(width: u32, height: u32, x: f64, y: f64) -> Option<Network
     if TAB_WIFI_RECT.with(|r| r.get()).contains(x, y) {
         return Some(NetworkPopupHit::Tab(NetworkTab::Wifi));
     }
-    if let Some(idx) = WIFI_ROW_RECTS.with(|r| {
-        r.borrow()
-            .iter()
-            .position(|rect| rect.contains(x, y))
-    }) {
+    if let Some(idx) =
+        WIFI_ROW_RECTS.with(|r| r.borrow().iter().position(|rect| rect.contains(x, y)))
+    {
         return Some(NetworkPopupHit::WifiNetwork(idx));
     }
     let link = SETTINGS_LINK_RECT.with(|r| r.get());

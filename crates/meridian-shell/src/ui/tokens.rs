@@ -26,13 +26,8 @@ pub(crate) fn glass_border_from_config(config: &ThemeConfig) -> Color {
 }
 
 pub(crate) fn accent_foreground_from_config(config: &ThemeConfig) -> Color {
-    let accent = config.colors.accent;
-    let lum = 0.299 * accent.r as f32 + 0.587 * accent.g as f32 + 0.114 * accent.b as f32;
-    if lum > 150.0 {
-        Color::rgb(0x05, 0x08, 0x0c)
-    } else {
-        Color::rgb(0xf6, 0xf9, 0xff)
-    }
+    // One central formula + named contrast pair (Palette::TEXT_ON_LIGHT/DARK).
+    meridian_tokens::contrast_text(config.colors.accent)
 }
 
 pub(crate) fn surface_radius_from_config(config: &ThemeConfig, surface: ThemeSurface) -> i32 {

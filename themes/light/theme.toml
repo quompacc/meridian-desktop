@@ -1,7 +1,7 @@
 # Meridian — LIGHT theme.
 #
 # Per the GUI centralization model this file carries ONLY the colour table
-# (plus icon set + wallpaper). All geometry, radii, shadows and glass treatment
+# (plus the icon set). All geometry, radii, shadows and glass treatment
 # come from the central Rust defaults in `meridian-config` (Decorations::default)
 # so dark and light stay identical in everything but colour.
 #
@@ -21,8 +21,12 @@ warning = "#8a6a30"
 success = "#3f7d5e"
 
 [icons]
+# Both themes use "Papirus": it is the only installed set that ships the
+# `-symbolic` status icons, and the shell recolours those to the theme text
+# colour at load time (see icons/svg.rs). So contrast is automatic — dark theme
+# → light icons, light theme → dark icons — from ONE icon set. Papirus-Dark /
+# Papirus-Light LACK the symbolic icons and must not be used here.
 theme = "Papirus"
 
-[wallpaper]
-path = "assets/wallpaper.png"
-mode = "fill"
+# NOTE: no [wallpaper] here on purpose — see the dark theme file. Wallpaper is a
+# user setting, never carried by the theme.

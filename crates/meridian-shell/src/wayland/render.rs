@@ -285,6 +285,8 @@ impl MeridianShell {
                 &self.status_notifier_items,
                 self.network_popup_open,
                 self.audio_popup_open,
+                &self.battery_snapshot,
+                self.power_profile,
                 panel_active_w,
                 9,
                 &clock,
@@ -1453,7 +1455,22 @@ impl MeridianShell {
         let mut card_buf = vec![0u8; (card_w as usize) * (card_h as usize) * 4];
         {
             let mut painter = Painter::new(&mut card_buf, card_w as i32, card_h as i32);
-            audio_popup::draw_volume_osd(&mut painter, &self.font, &self.theme, &self.audio_snapshot);
+            if let Some(ref label) = self.osd_power_profile {
+                audio_popup::draw_text_osd(
+                    &mut painter,
+                    &self.font,
+                    &self.theme,
+                    "Energieprofil",
+                    label,
+                );
+            } else {
+                audio_popup::draw_volume_osd(
+                    &mut painter,
+                    &self.font,
+                    &self.theme,
+                    &self.audio_snapshot,
+                );
+            }
         }
         round_buffer_corners(
             &mut card_buf,

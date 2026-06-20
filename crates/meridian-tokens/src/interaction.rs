@@ -3,11 +3,16 @@
 //! and overlay alpha (white@30, black@56, lerp 0.10/0.14/0.16/0.18 …); they
 //! now route through one `Interaction` so a state treatment is tuned in one
 //! place. See the design-tokens audit (2026-06-04).
+//!
+//! guard:allow-file: kanonische Single-Source der Interaction-Tokens; die rohen
+//! Hover/Pressed-Alphas und Schwarz/Weiß werden hier *definiert*.
 
 use crate::Color;
 
 const WHITE: Color = Color::rgb(0xff, 0xff, 0xff);
 const BLACK: Color = Color::rgb(0x00, 0x00, 0x00);
+/// Near-black used to darken accents while keeping a touch of warmth (vs pure black).
+const NEAR_BLACK: Color = Color::rgb(0x10, 0x10, 0x10);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Interaction {
@@ -55,6 +60,42 @@ impl Interaction {
     pub fn accent_hover(&self, accent: Color) -> Color {
         Color::rgba(accent.r, accent.g, accent.b, self.accent_hover_alpha)
     }
+
+    /// Selection-cushion factors: blend a base surface toward the accent for a
+    /// control drawn over glass. Naming the level keeps every selected look in
+    /// ONE place — replaces the scattered `surface.lerp(accent, 0.08..0.16)`
+    /// that used to live in `settings_view`/`app_view`.
+    pub const SELECTION_FOCUSED: f32 = 0.08;
+    pub const SELECTION_EXPANDED: f32 = 0.10;
+    pub const SELECTION_ACTIVE: f32 = 0.12;
+    pub const SELECTION_SELECTED: f32 = 0.14;
+    pub const SELECTION_HOVER: f32 = 0.16;
+
+    /// Blend `base` toward `accent` by one of the `SELECTION_*` levels.
+    pub fn selection(&self, base: Color, accent: Color, level: f32) -> Color {
+        base.lerp(accent, level)
+    }
+
+    /// Strong darken for an "armed" control (e.g. a two-step commit button):
+    /// shift the accent toward near-black so the hot state reads with contrast.
+    pub const ARMED_DARKEN: f32 = 0.40;
+    pub fn armed(&self, accent: Color) -> Color {
+        accent.lerp(NEAR_BLACK, Self::ARMED_DARKEN)
+    }
+
+    /// Subtle lighten for a "selected" neutral row/card (toward white). Kept
+    /// distinct from `hover_lighten` so a selected element does not read exactly
+    /// like a hovered one.
+    pub const SELECTED_LIGHTEN: f32 = 0.08;
+    pub fn selected_tint(&self, base: Color) -> Color {
+        base.lerp(WHITE, Self::SELECTED_LIGHTEN)
+    }
+
+    /// Darken `base` toward black by `level` (0..1). Central black so call sites
+    /// never hand-roll `Color::rgb(0, 0, 0)` as a lerp target.
+    pub fn darken(&self, base: Color, level: f32) -> Color {
+        base.lerp(BLACK, level)
+    }
 }
 
 impl Default for Interaction {
@@ -81,6 +122,34 @@ mod tests {
         assert_eq!((idle.r, idle.g, idle.b), (0x7a, 0xa2, 0xf7));
         assert_eq!(idle.a, 54);
         assert_eq!(Interaction::DEFAULT.accent_hover(accent).a, 80);
+    }
+
+    #[test]
+    fn selection_blends_base_toward_accent() {
+        let base = Color::rgb(0x20, 0x25, 0x2b);
+        let accent = Color::rgb(0x4e, 0x99, 0xf3);
+        let weak = Interaction::DEFAULT.selection(base, accent, Interaction::SELECTION_FOCUSED);
+        let strong = Interaction::DEFAULT.selection(base, accent, Interaction::SELECTION_HOVER);
+        // Moves toward the (brighter) accent but is not the accent itself.
+        assert!(weak.b > base.b && strong.b < accent.b);
+        // A stronger level lands closer to the accent than a weaker one.
+        assert!(strong.b > weak.b);
+    }
+
+    #[test]
+    fn armed_darkens_the_accent() {
+        let accent = Color::rgb(0x4e, 0x99, 0xf3);
+        let armed = Interaction::DEFAULT.armed(accent);
+        assert!(armed.r < accent.r && armed.g < accent.g && armed.b < accent.b);
+    }
+
+    #[test]
+    fn selected_tint_lightens_and_darken_darkens() {
+        let base = Color::rgb(0x20, 0x25, 0x2b);
+        let lit = Interaction::DEFAULT.selected_tint(base);
+        assert!(lit.r > base.r && lit.g > base.g && lit.b > base.b);
+        let dark = Interaction::DEFAULT.darken(base, 0.5);
+        assert!(dark.r < base.r && dark.g < base.g && dark.b < base.b);
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashSet, time::Instant};
+use std::{cell::RefCell, time::Instant};
 
 use meridian_config::{MeridianConfig, ThemeConfig, ThemeManager};
 use smithay_client_toolkit::{
@@ -36,7 +36,7 @@ use super::{
 
 pub(crate) fn build_icon_cache(
     theme: &ThemeConfig,
-    launcher_apps: &[launcher::DesktopApp],
+    _launcher_apps: &[launcher::DesktopApp],
     pinned_apps: &[panel::PinnedApp],
 ) -> IconCache {
     let mut icon_cache = IconCache::new_for_theme(&theme.icons.theme, &theme.colors.text.to_hex());
@@ -71,6 +71,7 @@ pub(crate) fn build_icon_cache(
         ],
         22,
     );
+    icon_cache.warm(crate::battery::ICON_NAMES, 22);
     icon_cache.warm(
         &[
             "thunderbird",
@@ -98,25 +99,11 @@ pub(crate) fn build_icon_cache(
         32,
     );
 
-    let mut seen_icons = HashSet::new();
-    let mut launcher_icons = Vec::new();
-    for app in launcher_apps {
-        if let Some(icon_name) = app.icon_name.as_deref() {
-            if !icon_name.is_empty() && seen_icons.insert(icon_name.to_string()) {
-                launcher_icons.push(icon_name.to_string());
-            }
-        }
-    }
-    if !launcher_icons.is_empty() {
-        let icon_refs = launcher_icons
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>();
-        icon_cache.warm(&icon_refs, 22);
-        icon_cache.warm(&icon_refs, 24);
-        icon_cache.warm(&icon_refs, 96);
-        icon_cache.warm(&icon_refs, 192);
-    }
+    // Launcher GRID app icons (all installed apps) are NOT warmed here: decoding
+    // dozens of SVGs blocked the panel from appearing for several seconds at
+    // login. The panel only needs the pinned + tray icons warmed above. The grid
+    // icons are warmed lazily on the first launcher open (see
+    // `warm_launcher_icons`), so startup is fast.
 
     let pinned_icons: Vec<&str> = pinned_apps
         .iter()
@@ -448,6 +435,16 @@ pub(crate) fn initialize(
     let icon_cache = build_icon_cache(&theme, &launcher_apps, &pinned_apps);
     let mut network_controller = NetworkController::new();
     network_controller.poll();
+    // These were extracted from the state literal so each runs (and could be
+    // profiled) explicitly; all are sub-100ms in practice. The launcher grid
+    // icons are warmed lazily on first open (see warm_launcher_icons) to keep
+    // startup fast.
+    let printer_snapshot = crate::printers::PrinterSnapshot::poll();
+    let audio_snapshot = crate::audio::AudioSnapshot::poll();
+    let power_profile_init = crate::power_profile::current();
+    let available_wallpapers = meridian_config::MeridianConfig::scan_wallpaper_dirs();
+    let network_profiles = crate::network::list_saved_connections();
+    let ipc_client = IpcClient::connect();
 
     let commit_stats_enabled = std::env::var("MERIDIAN_SHELL_COMMIT_STATS")
         .map(|value| {
@@ -527,6 +524,7 @@ pub(crate) fn initialize(
         volume_osd_hide_at: None,
         volume_osd_width: 0,
         volume_osd_height: 0,
+        osd_power_profile: None,
         panel_buffer: None,
         desktop_buffer: None,
         desktop_menu_buffer: None,
@@ -577,8 +575,11 @@ pub(crate) fn initialize(
         status_notifier_menu_entries: Vec::new(),
         settings_category: crate::settings_view::SettingsCategory::default(),
         settings_pinned_adding: false,
-        printer_snapshot: crate::printers::PrinterSnapshot::poll(),
-        audio_snapshot: crate::audio::AudioSnapshot::poll(),
+        printer_snapshot,
+        audio_snapshot,
+        battery_snapshot: crate::battery::BatterySnapshot::poll(),
+        power_profile: power_profile_init,
+        launcher_icons_warmed: false,
         keyboard: None,
         keyboard_focus: SurfaceKind::None,
         pointer: None,
@@ -586,7 +587,7 @@ pub(crate) fn initialize(
         pointer_surface: SurfaceKind::None,
         available_themes,
         theme_name: theme_manager.current().name.clone(),
-        available_wallpapers: meridian_config::MeridianConfig::scan_wallpaper_dirs(),
+        available_wallpapers,
         wallpaper_thumbnails: Vec::new(),
         wallpaper_picker_rx: None,
         wallpaper_path: meridian_config.wallpaper.as_ref().map(|w| w.path.clone()),
@@ -607,13 +608,13 @@ pub(crate) fn initialize(
         font: RefCell::new(font),
         icon_cache,
         network_controller,
-        network_profiles: crate::network::list_saved_connections(),
+        network_profiles,
         wifi_networks: Vec::new(),
         wifi_password_prompt: None,
         wifi_password_input: String::new(),
         network_popup_tab: crate::network_popup::NetworkTab::Status,
         bluetooth_snapshot: crate::bluetooth::BluetoothSnapshot::default(),
-        ipc: IpcClient::connect(),
+        ipc: ipc_client,
         panel_state: panel::PanelState::new(),
         pinned_apps,
         launcher_state: launcher::LauncherState::new_with_apps(launcher_apps),

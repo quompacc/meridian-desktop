@@ -31,10 +31,13 @@ Stand: 2026-06-19 · Branch `freebsd-port` · letzter Commit-Stand siehe `git lo
 
 - Mockup Dunkel: `assets/bsd_desktop_mockup.png` · Wallpaper: `assets/bsd_wallpaper.png`.
 - Mockup Hell: `assets/bsd_desktop_mockup_hell.png` (vom Nutzer geliefert).
-- Test-Hardware: FreeBSD 15.1, `ssh meridian-bsd` (passwortlos root, Checkout
-  `/root/meridian-desktop`). Build nur dort (Windows baut `wayland-sys` nicht).
-  Build-Befehl: `LIBRARY_PATH=/usr/local/lib cargo build --release …`.
-  **Release** deployen (Debug-CPU-Rendering ist unbrauchbar langsam).
+- Test-Hardware: **Arch Linux** (Acer Kaby Lake, Intel HD 620), `ssh meridian-arch`
+  (passwortlos root, aktuell WLAN **192.168.1.190**, Checkout `/root/meridian-desktop`).
+  Build der Wayland-Crates nur dort (Windows baut `wayland-sys` nicht); auf Linux
+  findet pkg-config die Libs, **kein `LIBRARY_PATH` nötig**: `cargo build --release`.
+  **Release** deployen (Debug-CPU-Rendering ist unbrauchbar langsam). Hinweis: die
+  Crates `meridian-tokens`/`-config`/`-ui`/`-compass-render` bauen auch auf Windows
+  (inkl. dem Guard-Test `cargo test -p meridian-tokens --test design_guard`).
 
 ## 3. Architektur heute (Single-Source existiert, wird aber umgangen)
 

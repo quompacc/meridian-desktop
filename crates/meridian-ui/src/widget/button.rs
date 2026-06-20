@@ -136,9 +136,9 @@ impl Widget for Button {
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
         let body_color = if self.armed_progress.is_some() {
             // Armed: shift the body toward the accent so the button reads as
-            // "hot — second click commits". Mix with black to keep contrast
-            // against the icon.
-            self.accent.lerp(Color::rgb(0x10, 0x10, 0x10), 0.40)
+            // "hot — second click commits". The darken keeps contrast against
+            // the icon — central treatment, see `Interaction::armed`.
+            Interaction::DEFAULT.armed(self.accent)
         } else {
             match state {
                 WidgetState::Idle => theme.palette.surface,

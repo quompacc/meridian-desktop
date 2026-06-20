@@ -62,22 +62,21 @@ const POWER_IDS: [&str; 5] = [
     "power-off",
 ];
 
-const LAUNCHER_BAND_ALPHA: u8 = 0;
-const LAUNCHER_CELL_ALPHA: u8 = 0;
-const LAUNCHER_HOVER_ALPHA: u8 = 42;
-const LAUNCHER_SELECTED_ALPHA: u8 = 56;
+// Launcher overlay opacities now live centrally in `meridian_tokens::Launcher`
+// / `Scrollbar` so a global look change touches one place (GUI-centralization
+// plan §6, DoD §9). These aliases keep the call sites readable.
+const LAUNCHER_BAND_ALPHA: u8 = meridian_tokens::Launcher::DEFAULT.band_alpha;
+const LAUNCHER_CELL_ALPHA: u8 = meridian_tokens::Launcher::DEFAULT.cell_alpha;
+const LAUNCHER_HOVER_ALPHA: u8 = meridian_tokens::Launcher::DEFAULT.hover_alpha;
+const LAUNCHER_SELECTED_ALPHA: u8 = meridian_tokens::Launcher::DEFAULT.selected_alpha;
 const LAUNCHER_TILE_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.md;
 
-// Translucency of launcher sub-elements over the compositor glass. Named here
-// (not inline) so the launcher's opacity story lives in one place — see the
-// GUI-centralization plan. Hover/selected cushions and the body fill already
-// route through `Interaction` / `surface_treatment`.
-const LAUNCHER_SEARCH_FIELD_ALPHA: u8 = 24;
-const LAUNCHER_BENTO_ACCENT_ALPHA: u8 = 105;
-const LAUNCHER_POWER_ARMED_ALPHA: u8 = 46;
-const LAUNCHER_SCROLLBAR_TRACK_ALPHA: u8 = 25;
-const LAUNCHER_SCROLLBAR_THUMB_ALPHA: u8 = 180;
-const LAUNCHER_DIVIDER_ALPHA: u8 = 44;
+const LAUNCHER_SEARCH_FIELD_ALPHA: u8 = meridian_tokens::Launcher::DEFAULT.search_field_alpha;
+const LAUNCHER_BENTO_ACCENT_ALPHA: u8 = meridian_tokens::Launcher::DEFAULT.bento_accent_alpha;
+const LAUNCHER_POWER_ARMED_ALPHA: u8 = meridian_tokens::Launcher::DEFAULT.power_armed_alpha;
+const LAUNCHER_SCROLLBAR_TRACK_ALPHA: u8 = meridian_tokens::Scrollbar::DEFAULT.track_alpha;
+const LAUNCHER_SCROLLBAR_THUMB_ALPHA: u8 = meridian_tokens::Scrollbar::DEFAULT.thumb_alpha;
+const LAUNCHER_DIVIDER_ALPHA: u8 = meridian_tokens::Launcher::DEFAULT.divider_alpha;
 
 // ─── Hit testing ──────────────────────────────────────────────────────────────
 
@@ -281,14 +280,21 @@ pub(crate) fn draw_command_palette(
 
     let theme = glass_theme_from_config(theme_config);
     let pal = theme.palette;
-    // Launcher body opacity follows the theme's glass fill (glass_alpha) so the
-    // command palette honours the same "less transparent" knob as the panel and
-    // window glass. Previously the body was painted fully transparent, leaving
-    // only the compositor blur/tint visible regardless of the theme.
-    let body_alpha = theme_config
-        .decorations
-        .surface_treatment(meridian_config::ThemeSurface::Launcher)
-        .fill_alpha;
+    // The compositor renders the launcher's glass backdrop at the theme's
+    // fill_alpha (see `themed_layer_glass_info`). When glass is on, painting an
+    // opaque body here too would DOUBLE the opacity and hide the blur — so keep
+    // the body transparent and let the compositor glass provide the translucency,
+    // exactly like the popups and the launcher's own settings page. Only the
+    // non-glass fallback paints a solid body so the launcher stays legible.
+    let glass = theme_config.decorations.glass && theme_config.decorations.glass_blur;
+    let body_alpha = if glass {
+        0
+    } else {
+        theme_config
+            .decorations
+            .surface_treatment(meridian_config::ThemeSurface::Launcher)
+            .fill_alpha
+    };
     pixmap.fill(to_tiny_skia_color(with_alpha(pal.surface_alt, body_alpha)));
 
     {
@@ -531,7 +537,11 @@ fn draw_app_grid(
 
             if is_sel || is_hov {
                 let bg = if is_sel {
-                    with_alpha(pal.surface.lerp(pal.accent, 0.14), LAUNCHER_SELECTED_ALPHA)
+                    with_alpha(
+                        pal.surface
+                            .lerp(pal.accent, meridian_tokens::Interaction::SELECTION_SELECTED),
+                        LAUNCHER_SELECTED_ALPHA,
+                    )
                 } else {
                     with_alpha(pal.surface, LAUNCHER_HOVER_ALPHA)
                 };
@@ -616,7 +626,11 @@ fn draw_search_results(
 
             if is_sel || is_hov {
                 let bg = if is_sel {
-                    with_alpha(pal.surface.lerp(pal.accent, 0.14), LAUNCHER_SELECTED_ALPHA)
+                    with_alpha(
+                        pal.surface
+                            .lerp(pal.accent, meridian_tokens::Interaction::SELECTION_SELECTED),
+                        LAUNCHER_SELECTED_ALPHA,
+                    )
                 } else {
                     with_alpha(pal.surface, LAUNCHER_HOVER_ALPHA)
                 };

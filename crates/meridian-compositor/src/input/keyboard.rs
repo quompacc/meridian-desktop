@@ -285,7 +285,10 @@ mod audio_key_tests {
             audio_key_event(0x1008_FF11),
             Some(ShellEvent::AudioVolumeStep { delta: -5 })
         );
-        assert_eq!(audio_key_event(0x1008_FF12), Some(ShellEvent::AudioMuteToggle));
+        assert_eq!(
+            audio_key_event(0x1008_FF12),
+            Some(ShellEvent::AudioMuteToggle)
+        );
         assert_eq!(audio_key_event(0x41), None);
         assert!(is_audio_key(0x1008_FF13));
         assert!(!is_audio_key(0x41));

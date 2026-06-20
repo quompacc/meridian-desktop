@@ -129,7 +129,10 @@ mod tests {
     #[test]
     fn effective_shadow_alpha_drops_to_inactive_when_unfocused() {
         // Inactive shadow is now a fraction of the theme's focused alpha.
-        assert_eq!(effective_shadow_alpha(0.5, false), 0.5 * super::INACTIVE_SHADOW_FACTOR);
+        assert_eq!(
+            effective_shadow_alpha(0.5, false),
+            0.5 * super::INACTIVE_SHADOW_FACTOR
+        );
         // ...and always lighter than the focused shadow.
         assert!(effective_shadow_alpha(0.5, false) < effective_shadow_alpha(0.5, true));
     }

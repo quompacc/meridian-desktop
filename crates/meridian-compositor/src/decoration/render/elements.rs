@@ -27,8 +27,8 @@ mod glass_buttons {
     /// Frosted-button tint pull = `glass_button_alpha * FACTOR`, capped.
     pub const TINT_FACTOR: f32 = 0.75;
     pub const TINT_CAP: f32 = 0.55;
-    /// Hairline opacity of the two dividers splitting the three button zones.
-    pub const DIVIDER_ALPHA: f32 = 0.30;
+    // Hairline opacity of the two dividers splitting the three button zones now
+    // comes from the theme (`Decorations::glass_divider_alpha`), not a hardcode.
 }
 
 use super::{
@@ -535,7 +535,7 @@ impl DecorationManager {
                             [br, bg, bb],
                             (0.0, 0.0, 0.0, 0.0),
                             0.0,
-                            glass_buttons::DIVIDER_ALPHA,
+                            theme.glass_divider_alpha,
                             psf,
                         )));
                     }

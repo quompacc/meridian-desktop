@@ -70,6 +70,9 @@ pub struct Decorations {
     pub glass_frame_alpha: f32,
     /// Base opacity of the colour veil on the glass window buttons (0.0..1.0).
     pub glass_button_alpha: f32,
+    /// Opacity of the hairline dividers between the glass-titlebar button zones
+    /// (0.0..1.0). Central so the compositor no longer hardcodes it.
+    pub glass_divider_alpha: f32,
     /// Optional explicit tint colour for the frosted glass — the "blur
     /// accent". When `None` the glass tints toward the surface colour as
     /// before; when set, this colour drives the tint on every glass surface
@@ -124,6 +127,7 @@ impl Default for Decorations {
             glass_blur_radius: 20.0,
             glass_frame_alpha: 0.4,
             glass_button_alpha: 0.45,
+            glass_divider_alpha: 0.30,
             glass_tint_color: None,
         }
     }
@@ -335,6 +339,7 @@ mod tests {
         assert!(decorations.glass);
         assert_eq!(decorations.glass_alpha, 0.92);
         assert_eq!(decorations.glass_blur_radius, 20.0);
+        assert_eq!(decorations.glass_divider_alpha, 0.30);
     }
 
     #[test]

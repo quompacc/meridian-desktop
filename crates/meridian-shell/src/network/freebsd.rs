@@ -197,7 +197,11 @@ fn parse_ssid_line(line: &str) -> Option<String> {
             None => after_quote.to_string(),
         }
     } else {
-        rest.split(" channel").next().unwrap_or(rest).trim().to_string()
+        rest.split(" channel")
+            .next()
+            .unwrap_or(rest)
+            .trim()
+            .to_string()
     };
     if ssid.is_empty() {
         None
@@ -500,7 +504,10 @@ lo0: flags=1008049<UP,LOOPBACK,RUNNING,MULTICAST> metric 0 mtu 16384
             parse_ssid_line("ssid \"Cafe Guest\" channel 6"),
             Some("Cafe Guest".to_string())
         );
-        assert_eq!(parse_ssid_line("ssid Home channel 11"), Some("Home".to_string()));
+        assert_eq!(
+            parse_ssid_line("ssid Home channel 11"),
+            Some("Home".to_string())
+        );
         assert_eq!(parse_ssid_line("ssid \"\""), None);
     }
 
@@ -542,7 +549,10 @@ HomeNet                          00:11:22:33:44:66    6   54M  -80:-95  100 EPS 
     #[test]
     fn classify_kind_maps_prefixes() {
         assert_eq!(classify_kind("re0"), ConnectionKind::Ethernet);
-        assert_eq!(classify_kind("wlan0"), ConnectionKind::Wifi { signal: None });
+        assert_eq!(
+            classify_kind("wlan0"),
+            ConnectionKind::Wifi { signal: None }
+        );
         assert_eq!(classify_kind("tun0"), ConnectionKind::Vpn);
         assert_eq!(classify_kind("wg0"), ConnectionKind::Vpn);
         assert_eq!(classify_kind("bridge0"), ConnectionKind::Other);

@@ -329,6 +329,9 @@ pub(crate) struct MeridianShell {
     pub(crate) volume_osd_hide_at: Option<Instant>,
     pub(crate) volume_osd_width: u32,
     pub(crate) volume_osd_height: u32,
+    /// When set, the OSD shows this power-profile name (Eco/Standard/Full)
+    /// instead of the volume row — reuses the same OSD surface.
+    pub(crate) osd_power_profile: Option<String>,
     pub(crate) status_notifier_menu_width: u32,
     pub(crate) status_notifier_menu_height: u32,
     pub(crate) notification_width: u32,
@@ -361,6 +364,12 @@ pub(crate) struct MeridianShell {
     pub(crate) settings_pinned_adding: bool,
     pub(crate) printer_snapshot: crate::printers::PrinterSnapshot,
     pub(crate) audio_snapshot: crate::audio::AudioSnapshot,
+    pub(crate) battery_snapshot: crate::battery::BatterySnapshot,
+    /// Active power profile (Eco/Standard/Full), used to tint the battery icon.
+    pub(crate) power_profile: Option<crate::power_profile::PowerProfile>,
+    /// Launcher grid app-icons are warmed lazily on first open (keeps startup
+    /// fast); this flips true once they have been warmed.
+    pub(crate) launcher_icons_warmed: bool,
     pub(crate) keyboard: Option<wl_keyboard::WlKeyboard>,
     pub(crate) keyboard_focus: SurfaceKind,
     pub(crate) pointer: Option<wl_pointer::WlPointer>,
