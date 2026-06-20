@@ -1,23 +1,42 @@
 # Project Status
 
-Stand: 2026-05-25, auditiert gegen `master` nach Theme-/Icon-Patch auf Basis von `0b6166f`.
+Stand: 2026-06-20, auditiert gegen `master` == `freebsd-port` == `b1c5d1b`
+(GUI-Zentralisierung + Icon-Pipeline + Power + App-Theming + Live-Theme-Switch).
 
 Dieses Dokument ist der kompakte Ist-Stand. Aeltere Phasenlisten in anderen
 Dokumenten koennen historischen Kontext enthalten; bei Widerspruch gilt hier
-der Code-Stand plus `AGENTS.md`.
+der Code-Stand plus `AGENTS.md` bzw. `CLAUDE.md`.
 
 ## Validierter Basisstand
-- Git-Stand: Theme-/Icon-Patch als Nachfolger von `0b6166f`.
-- Audit-Report: `docs/AUDIT_2026-05-25.md`.
-- `cargo fmt --all`: gruen.
-- `cargo check --workspace`: gruen.
-- `cargo test --workspace`: gruen.
-- `cargo build --release -p meridian-shell`: gruen.
-- `git diff --check`: gruen.
-- Live-DRM-Session: Release-`meridian-shell` nach `/usr/local/bin` installiert
-  und vom Compositor-Watchdog neu gestartet; zuletzt PID `36430`.
-- Theme-Assets wurden systemweit nach `/usr/local/share/meridian/themes`
-  gespiegelt; der Repo-Stand liegt unter `themes/`.
+- Git-Stand: `master` == `freebsd-port` == `b1c5d1b`, beide nach Codeberg
+  gepusht. Letzte relevante Commits: `9aa2bc3` (GUI-Zentralisierung, Icon-
+  Pipeline, Power, Tastatur, Startup), `2641a29` (App-Theming via Portal),
+  `b1c5d1b` (Live-Theme-Switch).
+- Audit-Reports: `docs/AUDIT_2026-06-20.md` (GLM, gegen Code geprueft: bis auf
+  eine falsche Pfadangabe in §3.6 korrekt), `docs/AUDIT_2026-05-25.md` (aelter).
+- `cargo test --workspace`: gruen (zuletzt auf der Arch-Box).
+- `cargo clippy --workspace -- -D warnings`: gruen.
+- `cargo test -p meridian-tokens --test design_guard`: gruen (0 Findings,
+  erzwingt zentrale Design-Quelle).
+- Hardware-Testbox ist jetzt **Arch Linux** (nicht mehr FreeBSD), per WLAN
+  unter `192.168.1.190` erreichbar (`ssh meridian-arch`). FreeBSD-Pfad bleibt
+  gepflegt, ist aber nicht die primaere Live-Box.
+- Theme-Assets liegen im Repo unter `themes/` und werden via
+  `scripts/install-local.sh` nach `/usr/local/share/meridian/themes` installiert.
+
+## Design-Zentralisierung (verbindlich)
+- `docs/meridian_design_manifest.md` ist die massgebliche, **verbindliche**
+  Design-Spezifikation (in `AGENTS.md` + `CLAUDE.md` als feste Regel verankert).
+  Bei Konflikt schlaegt das Manifest jede andere Quelle.
+- Eine zentrale Design-Quelle: `meridian-tokens` + `meridian-config`. Kein
+  hartverdrahteter Farb-/Alpha-/Radius-/Mix-Wert im Render-Code ausserhalb davon
+  (Ausnahmen nur via `// guard:allow: <grund>` bzw. `guard:allow-file`).
+- Erzwungen durch `design_guard` (meridian-tokens): scannt `crates/*/src` auf
+  hartverdrahtete Farb-/Alpha-/lerp-/ALPHA-Const-Werte; 112 -> 0 Findings.
+  Definition of Done: `docs/GUI_CENTRALIZATION_PLAN.md` §9.
+- Genau 2 Themes (hell/dunkel), identisch bis auf Farben. Branding (Kompass) nur
+  subtil in Login/Bootsplash, nie in Alltags-UI; der Panel-Startbutton ist ein
+  reduziertes, getheemtes Meridian-Symbol, nicht das alte Kompass-Badge.
 
 ## Aktueller Ist-Stand
 
@@ -36,6 +55,9 @@ der Code-Stand plus `AGENTS.md`.
 - Shell-Launches werden im aktuellen Arbeitsbaum nach `spawn()` durch einen
   kleinen Reaper-Thread gewartet, damit gestartete Apps nach Exit nicht als
   Zombies am Compositor haengen bleiben.
+- Tastatur-Layout wird aus der System-Konfiguration gelesen
+  (`/etc/vconsole.conf` `XKBLAYOUT`) statt hart auf `us` zu defaulten; greift
+  beim `seat.add_keyboard`.
 
 ### Shell
 - `meridian-shell` ist ein eigener Layer-Shell-Client mit Panel, Launcher,
@@ -87,9 +109,20 @@ der Code-Stand plus `AGENTS.md`.
   `/usr/local/share/meridian/themes`, `/usr/share/meridian/themes` und den
   Dev-Repo-Pfad. Runtime-Themewechsel baut den Shell-IconCache neu auf,
   aktualisiert `available_themes` und markiert Panel/Launcher/Popups dirty.
-- Icons: Theme-SVGs koennen symbolisch mit Theme-Textfarbe eingefarbt werden.
+- Icons: symbolische Icons werden ueber einen Alpha-Mask-Recolour
+  (`icons/svg.rs`) auf die Theme-Textfarbe gefaerbt - icon-set-unabhaengig
+  (der alte per-Farbstring-Hack matchte nur Breeze, Papirus-Icons trafen
+  vorher nur zufaellig). Beide Themes nutzen Papirus (liefert `-symbolic`).
   Der Loader nutzt das konfigurierte Icon-Theme, faellt danach auf Breeze und
   `hicolor` zurueck und hat Aliase fuer XTerm/UXTerm auf `utilities-terminal`.
+- Glass: Panel und Launcher-Hauptseite uebermalen die Compositor-Glasflaeche
+  nicht mehr mit einem opaken Body; die Transluzenz ist jetzt konsistent mit
+  den Popups (`Decorations.glass_divider_alpha` zentral im Theme).
+- Power-Management: Tray zeigt einen Akku-Chip (Icon + %) aus
+  `/sys/class/power_supply` (`battery.rs`). Klick schaltet das Power-Profil
+  zyklisch Eco/Standard/Volle Leistung via `powerprofilesctl` (`power_profile.rs`)
+  mit OSD-Einblendung; das Akku-Icon wird pro Profil eingefaerbt (Eco gruen,
+  Standard neutral, Performance amber) als sichtbares Feedback.
 - Screenshots: Panel-Screenshot nutzt clientseitig `ext-image-copy-capture`
   und schreibt PNGs in `~/Pictures/Screenshots`.
 - Window-Thumbnails: Shell fordert Thumbnails ueber IPC an, Compositor rendert
@@ -128,6 +161,8 @@ der Code-Stand plus `AGENTS.md`.
 ### Config
 - `~/.config/meridian/config.toml` unterstuetzt Keybinds, Theme, Cursor,
   Wallpaper, Output-Layout und Panel-Pinned-Apps.
+- Wallpaper ist eine reine User-Einstellung und wurde aus `theme.toml`
+  entfernt; ein Theme-Wechsel aendert das Wallpaper daher nicht mehr.
 - Runtime-Reload ist aktiv: Theme, Cursor, Wallpaper, Keybinds und Output-
   Layout werden ueber `ReloadConfig` neu angewendet; Shell erhaelt
   `ConfigReloaded`. Theme-Reload umfasst inzwischen auch IconCache-Rebuild und
@@ -172,8 +207,26 @@ der Code-Stand plus `AGENTS.md`.
   Compositor-Policy, Shell-Consent bzw. Region-Picker und DRM-PNG-Capture.
   Der installierte xdg-desktop-portal-E2E-Pfad muss noch real validiert werden;
   ScreenCast bleibt offen.
+- Settings (`org.freedesktop.impl.portal.Settings`) ist implementiert und
+  exponiert `org.freedesktop.appearance` -> `color-scheme` aus dem aktiven
+  Meridian-Theme (dunkel=1, hell=2). Damit folgen GTK4/libadwaita, Firefox und
+  (via `QT_QPA_PLATFORMTHEME=xdgdesktopportal`) Qt/KDE-Apps dem Theme.
+  Ein Watcher-Task pollt das color-scheme und feuert `SettingChanged`, sodass
+  bereits laufende Apps live dunkel<->hell umschalten (kein Neustart noetig).
+  Voraussetzung im Betrieb (auf der Box verdrahtet): die Session laeuft auf dem
+  systemd `--user`-Bus statt einer privaten `dbus-run-session` (FreeBSD-
+  Fallback bleibt), und `graphical-session.target` wird beim Login ueber
+  `meridian-session.target` hochgezogen, damit die Portal-Services starten.
+  Stolperfalle: eine veraltete `.portal`-Kopie unter `/usr/local/share` kann die
+  aktualisierte beschatten (xdg-desktop-portal nimmt die erste pro Quelle).
 
 ## Offene Risiken
+- Breiter Bug-Audit steht aus: Es ist eine relevante Zahl offener Bugs bekannt,
+  aber noch nicht systematisch katalogisiert. Naechster grosser Schritt ist ein
+  vollstaendiger Audit gegen `b1c5d1b` mit priorisierter Bug-Liste.
+- Live-Theme-Switch funktioniert via Portal-`SettingChanged`; der Watcher pollt
+  (ca. 2s Latenz). Auf inotify wurde bewusst verzichtet. Polling-Intervall und
+  ob es auf einen ereignisbasierten Pfad umgestellt werden soll, sind offen.
 - Shell-Idle-Last ist verbessert, aber noch nicht abgeschlossen; naechster
   sinnvoller Fokus sind laengere Burn-in-Messungen und die Frage, ob weitere
   Popup-/Notification-Pfade Signaturen statt Voll-Redraws brauchen.
@@ -192,16 +245,19 @@ der Code-Stand plus `AGENTS.md`.
   und Multi-Output-Politur bleiben offen.
 
 ## Naechste sinnvolle Arbeiten
-1. Runtime-Hotplug H5d auf echter DRM-Hardware erneut ausfuehren und
+1. Grosser Bug-Audit gegen `b1c5d1b`: Bugs systematisch erfassen, gegen den
+   echten Code verifizieren und priorisiert als neuen `docs/AUDIT_*`-Report
+   ablegen. Danach abarbeiten.
+2. Runtime-Hotplug H5d auf echter DRM-Hardware erneut ausfuehren und
    Ergebnisse in `docs/MULTI_MONITOR.md`/`docs/NVIDIA_PASSTHROUGH.md`
    eintragen.
-2. Theme-/Asset-Packaging definieren: installierbare Theme-Ziele,
+3. Theme-/Asset-Packaging definieren: installierbare Theme-Ziele,
    Dependency-Liste und Cross-Distro-Pfade dokumentieren.
-3. StatusNotifierItem-Tray weiter ausbauen: DBusMenu-Submenus, Scrollen,
+4. StatusNotifierItem-Tray weiter ausbauen: DBusMenu-Submenus, Scrollen,
    Hover-State und sauberere Positionierung pro Tray-Icon polieren.
-4. Portal-Scope entscheiden: FileChooser haerten oder Screenshot-Permission-
+5. Portal-Scope entscheiden: FileChooser haerten oder Screenshot-Permission-
    Pfad spezifizieren, nicht beides in einem Slice.
-5. Login-Installationspfad dokumentieren: PAM-Dateien und Host-/VM-USB-
+6. Login-Installationspfad dokumentieren: PAM-Dateien und Host-/VM-USB-
    Durchreichung fuer YubiKey stabil beschreiben.
 
 ## Manuelle Testhinweise
