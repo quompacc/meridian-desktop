@@ -229,21 +229,22 @@ impl XdgDecorationHandler for MeridianState {
     }
 
     fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
-        // Meridian owns the window frame for EVERY toplevel. We deliberately do
-        // NOT honor a client's ClientSide request: that is what made Firefox,
-        // Chromium and GTK header-bar apps draw their own titlebar (a second,
-        // non-Meridian frame). Forcing ServerSide gives one unified Meridian
-        // frame across all apps. (Apps that integrate controls into a CSD header
-        // may still draw that header inside our frame — handled per app class.)
+        // Honor the client's requested mode. Forcing ServerSide on a CSD client
+        // (e.g. Chromium) just produced a SECOND frame on top of the client's
+        // own, and GTK clients ignore a forced SSD anyway. Instead Meridian
+        // launches GTK apps with GTK_CSD=0 so they request ServerSide here and
+        // get the Meridian frame cleanly; toolkits that insist on CSD keep their
+        // own single frame.
         tracing::info!(
-            "xdg-decoration request_mode: surface={:?} requested={:?} -> forcing ServerSide",
+            "xdg-decoration request_mode: surface={:?} mode={:?}",
             toplevel.wl_surface().id(),
             mode
         );
+        let ssd = mode == DecorationMode::ServerSide;
         toplevel.with_pending_state(|state| {
-            state.decoration_mode = Some(DecorationMode::ServerSide);
+            state.decoration_mode = Some(mode);
         });
-        self.decoration_manager.set_ssd(toplevel.wl_surface(), true);
+        self.decoration_manager.set_ssd(toplevel.wl_surface(), ssd);
         reposition_xdg_window_for_visible_frame(self, &toplevel);
         toplevel.send_configure();
     }

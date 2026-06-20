@@ -98,8 +98,15 @@ fn write_file(path: &Path, contents: &str) {
 /// before `@@SURFACE@@` (defensive; the names are not substrings of each other).
 fn substitute_tokens(template: &str, theme: &ThemeConfig) -> String {
     let c = &theme.colors;
+    let d = &theme.decorations;
     let sel_fg = readable_on(c.accent, theme);
     template
+        // Geometry tokens for the GTK CSD frame (border-radius / drop shadow) so
+        // GTK apps render their OWN frame in the Meridian shape — we don't draw it.
+        .replace("@@RADIUS@@", &d.corner_radius.to_string())
+        .replace("@@SHADOW_RADIUS@@", &d.shadow_radius.to_string())
+        .replace("@@SHADOW_OFFSET@@", &d.shadow_offset_y.to_string())
+        .replace("@@SHADOW_ALPHA@@", &format!("{:.2}", d.shadow_alpha))
         .replace("@@SURFACE_ALT@@", &c.surface_alt.to_hex())
         .replace("@@SURFACE@@", &c.surface.to_hex())
         .replace("@@ACCENT_ALT@@", &c.accent_alt.to_hex())

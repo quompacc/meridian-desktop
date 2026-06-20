@@ -152,3 +152,40 @@ scale > trough > slider { background-color: @@TEXT@@; border-radius: 50%; }
 spinner { color: @@ACCENT@@; }
 *:link, *:visited { color: @@ACCENT@@; }
 infobar { background-color: @@SURFACE@@; color: @@TEXT@@; }
+
+/* --- CSD frame: GTK draws its own window frame; we only shape it to match the
+       Meridian SSD frame (same corner radius + drop shadow from the tokens), so
+       GTK apps look like Meridian without the compositor drawing anything. --- */
+window.csd,
+window.csd decoration {
+  border-radius: @@RADIUS@@px;
+}
+window.csd decoration {
+  box-shadow: 0 @@SHADOW_OFFSET@@px @@SHADOW_RADIUS@@px rgba(0, 0, 0, @@SHADOW_ALPHA@@);
+  margin: @@SHADOW_RADIUS@@px;
+}
+window.csd decoration:backdrop {
+  box-shadow: 0 0 @@SHADOW_RADIUS@@px rgba(0, 0, 0, @@SHADOW_ALPHA@@);
+}
+window.csd headerbar,
+window.csd .titlebar {
+  border-top-left-radius: @@RADIUS@@px;
+  border-top-right-radius: @@RADIUS@@px;
+}
+
+/* window-control buttons (close / minimise / maximise) */
+windowcontrols button,
+headerbar button.titlebutton,
+.titlebar button.titlebutton {
+  background-color: transparent;
+  color: @@TEXT@@;
+  border: none;
+  border-radius: 50%;
+  min-width: 22px;
+  min-height: 22px;
+  padding: 2px;
+}
+windowcontrols button:hover,
+headerbar button.titlebutton:hover { background-color: @@SURFACE_ALT@@; }
+windowcontrols button.close:hover,
+headerbar button.titlebutton.close:hover { background-color: @@ERROR@@; color: @@SEL_FG@@; }

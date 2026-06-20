@@ -98,3 +98,21 @@ scrollbar slider:hover { background-color: @@TEXT_DIM@@; }
 separator { background-color: @@BORDER@@; }
 tooltip { background-color: @@SURFACE_ALT@@; color: @@TEXT@@; border: 1px solid @@BORDER@@; }
 *:link { color: @@ACCENT@@; }
+
+/* CSD frame shaping for plain GTK4 apps (libadwaita manages its own shadow). */
+window.csd {
+  border-radius: @@RADIUS@@px;
+}
+window.csd > decoration {
+  border-radius: @@RADIUS@@px;
+  box-shadow: 0 @@SHADOW_OFFSET@@px @@SHADOW_RADIUS@@px rgba(0, 0, 0, @@SHADOW_ALPHA@@);
+}
+windowcontrols > button {
+  background-color: transparent;
+  color: @@TEXT@@;
+  border-radius: 50%;
+  min-width: 22px;
+  min-height: 22px;
+}
+windowcontrols > button:hover { background-color: @@SURFACE_ALT@@; }
+windowcontrols > button.close:hover { background-color: @@ERROR@@; color: @@SEL_FG@@; }
