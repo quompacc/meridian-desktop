@@ -649,6 +649,10 @@ impl MeridianShell {
         if tab == crate::network_popup::NetworkTab::Wifi {
             self.network_profiles = crate::network::list_saved_connections();
             self.wifi_networks = crate::network::scan_wifi_networks();
+        } else {
+            // Back to the Status tab: re-poll so it reflects the current primary
+            // connection (it may have changed while the WLAN tab was open).
+            self.network_controller.poll();
         }
         self.network_dirty = true;
         self.draw_network_popup(qh, crate::wayland::RepaintReason::Pointer);
@@ -1378,6 +1382,10 @@ impl MeridianShell {
         }
 
         self.network_popup_open = true;
+        // Refresh the live network state on open so the Status tab always shows
+        // the current primary connection (e.g. right after connecting Wi-Fi or
+        // unplugging the cable), not the last timer-polled snapshot.
+        self.network_controller.poll();
         self.network_layer
             .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
         self.network_layer.set_margin(
