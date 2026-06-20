@@ -53,11 +53,6 @@ struct RccCandidate {
 }
 
 impl IconLoader {
-    #[allow(dead_code)]
-    pub(crate) fn new(theme_name: &str) -> Self {
-        Self::new_with_symbolic_color(theme_name, "#c0caf5")
-    }
-
     pub(crate) fn new_with_symbolic_color(theme_name: &str, symbolic_color: &str) -> Self {
         let search_paths = standard_icon_search_paths();
         let (rcc_sources, total_files) = discover_rcc_sources(&search_paths);
