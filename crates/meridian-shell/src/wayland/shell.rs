@@ -255,6 +255,15 @@ pub(crate) struct MeridianShell {
     pub(crate) consent_request_id: Option<String>,
     pub(crate) consent_app_id: String,
     pub(crate) consent_hover: Option<crate::screenshot_consent::ConsentButton>,
+    // Wi-Fi password modal: centered overlay, mirrors the consent modal. Grabs
+    // the keyboard while shown so the typed password never leaks to type-to-
+    // search. The SSID + typed characters live in `wifi_password_prompt` /
+    // `wifi_password_input`.
+    pub(crate) wifi_modal_layer: LayerSurface,
+    pub(crate) wifi_modal_configured: bool,
+    pub(crate) wifi_modal_buffer: Option<Buffer>,
+    pub(crate) wifi_modal_open: bool,
+    pub(crate) wifi_modal_hover: Option<crate::wifi_password_modal::ModalButton>,
     // Screenshot region picker (interactive=true path).
     pub(crate) region_picker_layer: LayerSurface,
     pub(crate) region_picker_configured: bool,
@@ -375,10 +384,12 @@ pub(crate) struct MeridianShell {
     pub(crate) network_profiles: Vec<crate::network::ConnectionProfile>,
     pub(crate) wifi_networks: Vec<crate::network::WifiNetwork>,
     /// SSID currently awaiting a password entry, if the WLAN password prompt is
-    /// open; `None` otherwise.
+    /// open; `None` otherwise. Shared by the centered Wi-Fi password modal.
     pub(crate) wifi_password_prompt: Option<String>,
     /// Accumulated password characters for the open prompt.
     pub(crate) wifi_password_input: String,
+    /// Which tab the network tray popup is showing (Status / WLAN list).
+    pub(crate) network_popup_tab: crate::network_popup::NetworkTab,
     pub(crate) bluetooth_snapshot: crate::bluetooth::BluetoothSnapshot,
     pub(crate) ipc: IpcClient,
     pub(crate) panel_state: panel::PanelState,

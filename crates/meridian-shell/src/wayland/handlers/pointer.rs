@@ -63,6 +63,15 @@ impl PointerHandler for MeridianShell {
                 continue;
             }
 
+            // Wi-Fi password modal: same exclusive-overlay short-circuit as the
+            // consent modal.
+            if &event.surface == self.wifi_modal_layer.wl_surface() {
+                if self.wifi_modal_open {
+                    self.handle_wifi_modal_pointer(qh, event);
+                }
+                continue;
+            }
+
             if let PointerEventKind::Leave { .. } = event.kind {
                 self.pointer_position = (-1.0, -1.0);
                 match self.pointer_surface {
@@ -410,8 +419,6 @@ impl PointerHandler for MeridianShell {
                             self.network_profiles.as_slice(),
                             &self.bluetooth_snapshot,
                             self.wifi_networks.as_slice(),
-                            self.wifi_password_prompt.as_deref(),
-                            self.wifi_password_input.chars().count(),
                             self.settings_pinned_adding,
                             &self.launcher_state.apps,
                             &self.icon_cache,
@@ -617,8 +624,6 @@ impl PointerHandler for MeridianShell {
                                 self.network_profiles.as_slice(),
                                 &self.bluetooth_snapshot,
                                 self.wifi_networks.as_slice(),
-                                self.wifi_password_prompt.as_deref(),
-                                self.wifi_password_input.chars().count(),
                                 self.settings_pinned_adding,
                                 &self.launcher_state.apps,
                                 &self.icon_cache,
@@ -962,6 +967,18 @@ impl PointerHandler for MeridianShell {
                             match crate::network_popup::popup_hit_test(card_w, card_h, px, py) {
                                 Some(crate::network_popup::NetworkPopupHit::SettingsLink) => {
                                     Some(crate::wayland::ClickAction::OpenNetworkSettings)
+                                }
+                                // Tab switch / Wi-Fi row act in place and keep the
+                                // popup open, so they run here and yield no
+                                // ClickAction (which would route through the
+                                // panel-click close logic).
+                                Some(crate::network_popup::NetworkPopupHit::Tab(tab)) => {
+                                    self.switch_network_tab(qh, tab);
+                                    None
+                                }
+                                Some(crate::network_popup::NetworkPopupHit::WifiNetwork(idx)) => {
+                                    self.connect_wifi_from_popup(qh, idx);
+                                    None
                                 }
                                 Some(crate::network_popup::NetworkPopupHit::Card) => None,
                                 None => Some(crate::wayland::ClickAction::ToggleNetworkPopup),

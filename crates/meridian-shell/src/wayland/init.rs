@@ -203,6 +203,24 @@ pub(crate) fn initialize(
     consent_layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
     info!("Screenshot consent surface created");
 
+    // Wi-Fi password modal: centered overlay, same lifecycle as the consent
+    // modal. Mapped only while the user is entering a password.
+    let wifi_modal_surface = compositor.create_surface(&qh);
+    let wifi_modal_layer = layer_shell.create_layer_surface(
+        &qh,
+        wifi_modal_surface,
+        Layer::Overlay,
+        Some("meridian-wifi-password"),
+        None,
+    );
+    wifi_modal_layer.set_size(
+        crate::wifi_password_modal::MODAL_WIDTH as u32,
+        crate::wifi_password_modal::MODAL_HEIGHT as u32,
+    );
+    wifi_modal_layer.set_exclusive_zone(0);
+    wifi_modal_layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
+    info!("Wi-Fi password modal surface created");
+
     // Screenshot region picker: fullscreen overlay anchored on all four
     // sides so the compositor sizes it to the output. Keyboard-exclusive
     // while mapped (Enter confirms, Esc cancels). Stays unmapped (no buffer)
@@ -481,6 +499,11 @@ pub(crate) fn initialize(
         consent_request_id: None,
         consent_app_id: String::new(),
         consent_hover: None,
+        wifi_modal_layer,
+        wifi_modal_configured: false,
+        wifi_modal_buffer: None,
+        wifi_modal_open: false,
+        wifi_modal_hover: None,
         region_picker_layer,
         region_picker_configured: false,
         region_picker_buffer: None,
@@ -588,6 +611,7 @@ pub(crate) fn initialize(
         wifi_networks: Vec::new(),
         wifi_password_prompt: None,
         wifi_password_input: String::new(),
+        network_popup_tab: crate::network_popup::NetworkTab::Status,
         bluetooth_snapshot: crate::bluetooth::BluetoothSnapshot::default(),
         ipc: IpcClient::connect(),
         panel_state: panel::PanelState::new(),
@@ -685,6 +709,8 @@ pub(crate) fn initialize(
     shell.thumbnail_layer.commit();
     shell.consent_layer.commit();
     info!("Screenshot consent surface initial commit");
+    shell.wifi_modal_layer.commit();
+    info!("Wi-Fi password modal surface initial commit");
     shell.region_picker_layer.commit();
     info!("Screenshot region picker surface initial commit");
     Ok((shell, qh))

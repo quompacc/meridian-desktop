@@ -102,6 +102,33 @@ impl KeyboardHandler for MeridianShell {
             return;
         }
 
+        // ── Wi-Fi password modal: also grabs the keyboard. Enter connects, Esc
+        // cancels, BackSpace edits, printable keys append. All keys are
+        // swallowed so the password never leaks to the surface behind it.
+        if self.wifi_modal_open {
+            if is_escape {
+                self.close_wifi_password_modal();
+                self.draw_panel(qh, RepaintReason::Keyboard);
+                return;
+            }
+            let is_enter = event.keysym == Keysym::Return || event.keysym == Keysym::KP_Enter;
+            if is_enter {
+                self.submit_wifi_password_modal();
+                self.draw_panel(qh, RepaintReason::Keyboard);
+                return;
+            }
+            if event.keysym == Keysym::BackSpace {
+                self.wifi_password_input.pop();
+                self.draw_wifi_modal(qh, RepaintReason::Keyboard);
+                return;
+            }
+            if let Some(ch) = event.keysym.key_char().filter(|c| !c.is_control()) {
+                self.wifi_password_input.push(ch);
+                self.draw_wifi_modal(qh, RepaintReason::Keyboard);
+            }
+            return;
+        }
+
         // ── Popup / context-menu dismissals ──────────────────────────────────
         if is_escape && self.context_menu.is_some() {
             self.context_menu = None;
@@ -300,39 +327,8 @@ impl KeyboardHandler for MeridianShell {
             return;
         }
 
-        // ── WLAN password prompt: captures keys while open ────────────────────
-        // Takes precedence over type-to-search so the password is not echoed
-        // into the search field. Escape always cancels (so the user can never
-        // get stuck), Enter connects, BackSpace edits.
-        if self.launcher_settings_open && self.wifi_password_prompt.is_some() {
-            if is_escape {
-                self.wifi_password_prompt = None;
-                self.wifi_password_input.clear();
-                self.draw_launcher(qh, RepaintReason::Keyboard);
-                return;
-            }
-            let is_enter = event.keysym == Keysym::Return || event.keysym == Keysym::KP_Enter;
-            if is_enter {
-                if let Some(ssid) = self.wifi_password_prompt.take() {
-                    if !self.wifi_password_input.is_empty() {
-                        crate::network::connect_wifi(&ssid, Some(&self.wifi_password_input));
-                    }
-                }
-                self.wifi_password_input.clear();
-                self.draw_launcher(qh, RepaintReason::Keyboard);
-                return;
-            }
-            if event.keysym == Keysym::BackSpace {
-                self.wifi_password_input.pop();
-                self.draw_launcher(qh, RepaintReason::Keyboard);
-                return;
-            }
-            if let Some(ch) = event.keysym.key_char().filter(|c| !c.is_control()) {
-                self.wifi_password_input.push(ch);
-                self.draw_launcher(qh, RepaintReason::Keyboard);
-            }
-            return;
-        }
+        // (Wi-Fi password entry is handled by the centered modal above, which
+        // grabs the keyboard; the Settings page no longer captures it inline.)
 
         // ── Settings view: type-to-search; Escape clears then exits ───────────
         if self.launcher_settings_open {

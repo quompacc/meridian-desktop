@@ -44,6 +44,7 @@ mod users;
 mod wayland;
 mod widget_action;
 mod widget_traversal;
+mod wifi_password_modal;
 mod workspaces;
 
 use panel::PinnedApp;
@@ -73,7 +74,10 @@ pub const CALENDAR_POPUP_HEIGHT: u32 = 220;
 pub const WORKSPACE_POPUP_WIDTH: u32 = 280;
 pub const WORKSPACE_POPUP_HEIGHT: u32 = 184;
 pub const NETWORK_POPUP_WIDTH: u32 = 280;
-pub const NETWORK_POPUP_HEIGHT: u32 = 200;
+// Tall enough for the tab strip + up to 6 Wi-Fi rows + footer link; the Status
+// tab leaves the lower area empty. Both tabs share one fixed height so the
+// shared `network_layer` surface never has to be re-sized between tabs.
+pub const NETWORK_POPUP_HEIGHT: u32 = 320;
 pub const AUDIO_POPUP_WIDTH: u32 = 280;
 pub const AUDIO_POPUP_HEIGHT: u32 = 200;
 pub const AUDIO_POPUP_RIGHT_MARGIN: i32 = 126;

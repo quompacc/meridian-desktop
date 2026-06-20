@@ -660,6 +660,68 @@ impl MeridianShell {
         self.consent_layer.commit();
     }
 
+    pub(crate) fn draw_wifi_modal(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
+        if !self.wifi_modal_open || !self.wifi_modal_configured {
+            return;
+        }
+        let width = crate::wifi_password_modal::MODAL_WIDTH as u32;
+        let height = crate::wifi_password_modal::MODAL_HEIGHT as u32;
+        let ssid = self.wifi_password_prompt.clone().unwrap_or_default();
+        let pw_len = self.wifi_password_input.chars().count();
+        let stride = buffer::shm_buffer_stride(width);
+        for attempt in 0..CANVAS_RETRY_ATTEMPTS {
+            let buf = buffer::buffer_for(
+                &mut self.pool,
+                &mut self.wifi_modal_buffer,
+                width,
+                height,
+                stride,
+            );
+            let Some(buf) = buf else {
+                warn!("wifi modal buffer unavailable: reason={:?}", reason);
+                return;
+            };
+            let Some(canvas) = buf.canvas(&mut self.pool) else {
+                self.wifi_modal_buffer = None;
+                if attempt + 1 < CANVAS_RETRY_ATTEMPTS {
+                    continue;
+                }
+                warn!("wifi modal canvas unavailable after retry");
+                return;
+            };
+            canvas.fill(0);
+            crate::wifi_password_modal::draw_wifi_password_modal(
+                canvas,
+                width,
+                height,
+                &ssid,
+                pw_len,
+                self.wifi_modal_hover,
+                &self.theme,
+            );
+            if let Err(err) = buf.attach_to(self.wifi_modal_layer.wl_surface()) {
+                warn!("wifi modal buffer attach failed: {}", err);
+                return;
+            }
+            self.wifi_modal_layer
+                .wl_surface()
+                .damage_buffer(0, 0, width as i32, height as i32);
+            self.wifi_modal_layer.commit();
+            return;
+        }
+    }
+
+    pub(crate) fn unmap_wifi_modal(&mut self, _reason: CommitReason) {
+        // Keep a valid anchored size on the unmap commit (same protocol-safety
+        // reasoning as unmap_consent).
+        self.wifi_modal_layer.set_size(
+            crate::wifi_password_modal::MODAL_WIDTH as u32,
+            crate::wifi_password_modal::MODAL_HEIGHT as u32,
+        );
+        self.wifi_modal_layer.wl_surface().attach(None, 0, 0);
+        self.wifi_modal_layer.commit();
+    }
+
     pub(crate) fn draw_launcher(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
         debug!(
             "draw_launcher: reason={:?} open={} configured={} launcher_dirty={} commit_expected={}",
@@ -772,8 +834,6 @@ impl MeridianShell {
                     self.network_profiles.as_slice(),
                     &self.bluetooth_snapshot,
                     self.wifi_networks.as_slice(),
-                    self.wifi_password_prompt.as_deref(),
-                    self.wifi_password_input.chars().count(),
                     self.settings_pinned_adding,
                     &self.launcher_state.apps,
                     &self.icon_cache,
@@ -1231,6 +1291,8 @@ impl MeridianShell {
                 &self.font,
                 &self.theme,
                 self.network_controller.state(),
+                self.network_popup_tab,
+                &self.wifi_networks,
             );
         }
         round_buffer_corners(

@@ -591,6 +591,86 @@ impl MeridianShell {
         self.unmap_consent(crate::wayland::CommitReason::Input);
     }
 
+    /// Open the centered Wi-Fi password modal for `ssid`. Closes the network
+    /// tray popup first (both are Overlay layers; we never want two grabbing
+    /// the keyboard). Caller draws it (it has a QueueHandle).
+    pub(crate) fn open_wifi_password_modal(&mut self, ssid: String) {
+        if self.network_popup_open {
+            self.close_network_popup(crate::wayland::CommitReason::Input);
+        }
+        self.wifi_password_prompt = Some(ssid);
+        self.wifi_password_input.clear();
+        self.wifi_modal_open = true;
+        self.wifi_modal_hover = None;
+        // Re-assert geometry on every open: after a close+reopen cycle sctk's
+        // pending set_size is gone, so the next commit would attempt width=0 and
+        // wlr-layer-shell would kill the surface. Same guard as the consent modal.
+        self.wifi_modal_layer.set_size(
+            crate::wifi_password_modal::MODAL_WIDTH as u32,
+            crate::wifi_password_modal::MODAL_HEIGHT as u32,
+        );
+    }
+
+    /// Cancel the Wi-Fi password modal without connecting.
+    pub(crate) fn close_wifi_password_modal(&mut self) {
+        self.wifi_password_prompt = None;
+        self.wifi_password_input.clear();
+        self.wifi_modal_open = false;
+        self.wifi_modal_hover = None;
+        self.unmap_wifi_modal(crate::wayland::CommitReason::Input);
+    }
+
+    /// Connect to the modal's SSID with the typed password, then close. A blank
+    /// password is treated as cancel (nmcli would just fail on a secured net).
+    pub(crate) fn submit_wifi_password_modal(&mut self) {
+        if let Some(ssid) = self.wifi_password_prompt.take() {
+            if !self.wifi_password_input.is_empty() {
+                crate::network::connect_wifi(&ssid, Some(&self.wifi_password_input));
+            }
+        }
+        self.wifi_password_input.clear();
+        self.wifi_modal_open = false;
+        self.wifi_modal_hover = None;
+        self.unmap_wifi_modal(crate::wayland::CommitReason::Input);
+    }
+
+    /// Switch the network tray popup between the Status and WLAN tabs. Entering
+    /// the WLAN tab refreshes the (cached, fast) scan + saved-profile list so
+    /// the list and "secured/known" decisions are current.
+    pub(crate) fn switch_network_tab(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        tab: crate::network_popup::NetworkTab,
+    ) {
+        if self.network_popup_tab == tab {
+            return;
+        }
+        self.network_popup_tab = tab;
+        if tab == crate::network_popup::NetworkTab::Wifi {
+            self.network_profiles = crate::network::list_saved_connections();
+            self.wifi_networks = crate::network::scan_wifi_networks();
+        }
+        self.network_dirty = true;
+        self.draw_network_popup(qh, crate::wayland::RepaintReason::Pointer);
+    }
+
+    /// Act on a click of Wi-Fi list row `idx` in the tray popup: connect to an
+    /// open/known network straight away, or open the password modal for a
+    /// secured one. Mirrors the Settings page `WifiConnect` dispatch.
+    pub(crate) fn connect_wifi_from_popup(&mut self, qh: &QueueHandle<Self>, idx: usize) {
+        let Some(net) = self.wifi_networks.get(idx) else {
+            return;
+        };
+        let ssid = net.ssid.clone();
+        let known = self.network_profiles.iter().any(|p| p.name == ssid);
+        if net.secured && !known {
+            self.open_wifi_password_modal(ssid);
+            self.draw_wifi_modal(qh, crate::wayland::RepaintReason::Pointer);
+        } else {
+            crate::network::connect_wifi(&ssid, None);
+        }
+    }
+
     pub(crate) fn open_region_picker(&mut self, request_id: String, app_id: String) {
         self.region_picker_request_id = Some(request_id);
         self.region_picker_app_id = app_id;

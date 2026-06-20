@@ -114,6 +114,41 @@ impl MeridianShell {
             _ => {}
         }
     }
+
+    /// Handle pointer events on the Wi-Fi password modal: hover highlights a
+    /// button; a left-press on "Verbinden" connects, on "Abbrechen" cancels.
+    /// A press outside both buttons is ignored (the field is not editable by
+    /// mouse — typing goes through the keyboard grab).
+    pub(super) fn handle_wifi_modal_pointer(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        event: &PointerEvent,
+    ) {
+        let (px, py) = event.position;
+        match event.kind {
+            PointerEventKind::Motion { .. } => {
+                let hover = crate::wifi_password_modal::hit_button(px, py);
+                if hover != self.wifi_modal_hover {
+                    self.wifi_modal_hover = hover;
+                    self.draw_wifi_modal(qh, RepaintReason::Pointer);
+                }
+            }
+            PointerEventKind::Press { .. } => {
+                match crate::wifi_password_modal::hit_button(px, py) {
+                    Some(crate::wifi_password_modal::ModalButton::Connect) => {
+                        self.submit_wifi_password_modal();
+                        self.draw_panel(qh, RepaintReason::Pointer);
+                    }
+                    Some(crate::wifi_password_modal::ModalButton::Cancel) => {
+                        self.close_wifi_password_modal();
+                        self.draw_panel(qh, RepaintReason::Pointer);
+                    }
+                    None => {}
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 #[cfg(test)]

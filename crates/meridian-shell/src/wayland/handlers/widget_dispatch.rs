@@ -272,12 +272,13 @@ impl MeridianShell {
                 if let Some(net) = self.wifi_networks.get(idx) {
                     let ssid = net.ssid.clone();
                     // A secured network with no matching saved profile needs a
-                    // password: open the prompt and capture keys there. Open or
-                    // already-known networks connect straight away (off-thread).
+                    // password: open the centered password modal (the single,
+                    // unified password UI). Open or already-known networks
+                    // connect straight away (off-thread).
                     let known = self.network_profiles.iter().any(|p| p.name == ssid);
                     if net.secured && !known {
-                        self.wifi_password_prompt = Some(ssid);
-                        self.wifi_password_input.clear();
+                        self.open_wifi_password_modal(ssid);
+                        self.draw_wifi_modal(qh, RepaintReason::Pointer);
                     } else {
                         crate::network::connect_wifi(&ssid, None);
                     }

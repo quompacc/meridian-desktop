@@ -103,6 +103,16 @@ impl LayerShellHandler for MeridianShell {
             return;
         }
 
+        if self.wifi_modal_layer == *layer {
+            warn!("Wi-Fi password modal layer surface closed by compositor; clearing modal state");
+            self.wifi_modal_configured = false;
+            self.wifi_modal_open = false;
+            self.wifi_password_prompt = None;
+            self.wifi_password_input.clear();
+            self.wifi_modal_hover = None;
+            return;
+        }
+
         if self.region_picker_layer == *layer {
             warn!("Screenshot region picker layer surface closed by compositor; clearing picker state");
             self.region_picker_configured = false;
@@ -477,6 +487,17 @@ impl LayerShellHandler for MeridianShell {
             self.consent_configured = true;
             if self.consent_open {
                 self.draw_consent_modal(qh, RepaintReason::LayerConfigure);
+            }
+        } else if self.wifi_modal_layer == *layer {
+            // Same centering contract as the consent modal: anchor=None, so the
+            // compositor centers it, but it must carry a nonzero size on every
+            // commit. Re-assert on each configure (sctk drops it after unmap).
+            let desired_w = crate::wifi_password_modal::MODAL_WIDTH as u32;
+            let desired_h = crate::wifi_password_modal::MODAL_HEIGHT as u32;
+            self.wifi_modal_layer.set_size(desired_w, desired_h);
+            self.wifi_modal_configured = true;
+            if self.wifi_modal_open {
+                self.draw_wifi_modal(qh, RepaintReason::LayerConfigure);
             }
         } else if self.region_picker_layer == *layer {
             // Anchored to all four edges; size is dictated by the compositor.

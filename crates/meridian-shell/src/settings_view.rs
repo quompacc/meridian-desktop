@@ -2877,8 +2877,6 @@ pub(crate) fn build_settings_widget_tree(
     network_profiles: &[ConnectionProfile],
     bluetooth_snapshot: &BluetoothSnapshot,
     wifi_networks: &[WifiNetwork],
-    wifi_password_prompt: Option<&str>,
-    wifi_password_len: usize,
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
@@ -3535,24 +3533,14 @@ pub(crate) fn build_settings_widget_tree(
             }
 
             // WLAN: scanned networks. The in-use one is inert; others connect
-            // on click (secured-unknown opens the password prompt in dispatch).
+            // on click (a secured-unknown one opens the centered password modal
+            // in dispatch).
             rows.push(Box::new(SidebarSectionLabel {
                 text: "WLAN-NETZWERKE",
                 width: row_w,
                 pad_top: 12,
             }));
-            if let Some(ssid) = wifi_password_prompt {
-                // Active password entry for the chosen secured network.
-                rows.push(Box::new(SystemInfoRow {
-                    label: "Passwort".into(),
-                    value: format!("{}: {}", ssid, "*".repeat(wifi_password_len)).into(),
-                    row_width: row_w,
-                }));
-                rows.push(Box::new(SettingsPlaceholder {
-                    width: row_w,
-                    text: "Eingabe + Enter zum Verbinden, Esc zum Abbrechen",
-                }));
-            } else if wifi_networks.is_empty() {
+            if wifi_networks.is_empty() {
                 rows.push(Box::new(SettingsPlaceholder {
                     width: row_w,
                     text: "Keine WLAN-Netzwerke gefunden",
@@ -3997,8 +3985,6 @@ pub(crate) fn draw_settings_launcher(
     network_profiles: &[ConnectionProfile],
     bluetooth_snapshot: &BluetoothSnapshot,
     wifi_networks: &[WifiNetwork],
-    wifi_password_prompt: Option<&str>,
-    wifi_password_len: usize,
     pinned_adding: bool,
     all_apps: &[DesktopApp],
     icon_cache: &IconCache,
@@ -4048,8 +4034,6 @@ pub(crate) fn draw_settings_launcher(
         network_profiles,
         bluetooth_snapshot,
         wifi_networks,
-        wifi_password_prompt,
-        wifi_password_len,
         pinned_adding,
         all_apps,
         icon_cache,
