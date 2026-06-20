@@ -6,8 +6,8 @@
 //!
 //! The value is derived from the active Meridian theme's background luminance,
 //! so it is the SAME single source as the shell — switch the Meridian theme and
-//! newly launched apps match. (Live updates for already-running apps would need
-//! the `SettingChanged` signal — a follow-up.)
+//! apps match. A watcher task in `run()` polls this value and emits the
+//! `SettingChanged` signal so already-running apps update live (no relaunch).
 
 use std::collections::HashMap;
 
@@ -21,9 +21,12 @@ const COLOR_SCHEME: &str = "color-scheme";
 
 pub struct SettingsImpl;
 
+pub(crate) const APPEARANCE_NS: &str = APPEARANCE;
+pub(crate) const COLOR_SCHEME_KEY: &str = COLOR_SCHEME;
+
 impl SettingsImpl {
     /// 0 = no preference, 1 = prefer dark, 2 = prefer light.
-    fn color_scheme() -> u32 {
+    pub(crate) fn color_scheme() -> u32 {
         let mut config = meridian_config::MeridianConfig::default();
         let _ = config.reload();
         let name = config.general.theme.trim();
@@ -88,4 +91,14 @@ impl SettingsImpl {
     fn read(&self, namespace: &str, key: &str) -> zbus::fdo::Result<OwnedValue> {
         self.read_one(namespace, key)
     }
+
+    /// Emitted when a setting changes so already-running apps update live (e.g.
+    /// dark/light switch). Fired by the watcher task in `run()`.
+    #[zbus(signal)]
+    pub(crate) async fn setting_changed(
+        emitter: &zbus::object_server::SignalEmitter<'_>,
+        namespace: &str,
+        key: &str,
+        value: zbus::zvariant::Value<'_>,
+    ) -> zbus::Result<()>;
 }
