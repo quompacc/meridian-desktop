@@ -202,6 +202,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut event_loop = EventLoop::try_new()?;
     let (mut shell, qh) = wayland::initialize(&mut event_loop)?;
+    // After the panel/launcher surfaces exist: wire up the user session so the
+    // portals start. Must NOT block the panel — uses --no-block (see fn).
+    activate_user_session();
     autostart::launch_autostart_apps();
 
     insert_ipc_event_source(&mut event_loop, qh.clone(), &shell)?;
@@ -217,6 +220,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+/// Make the systemd --user manager and D-Bus activation aware of the Wayland
+/// session environment, then pull up `graphical-session.target` so user
+/// services (xdg-desktop-portal + the Meridian portal backend) start. Without
+/// this the portal never runs, so apps can't read the appearance/color-scheme
+/// and render un-themed. Best-effort: all commands no-op on systems without a
+/// systemd --user instance (e.g. FreeBSD).
+fn activate_user_session() {
+    use std::process::Command;
+    const VARS: &[&str] = &["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE"];
+    let _ = Command::new("systemctl")
+        .arg("--user")
+        .arg("import-environment")
+        .args(VARS)
+        .status();
+    let _ = Command::new("dbus-update-activation-environment")
+        .arg("--systemd")
+        .args(VARS)
+        .status();
+    // meridian-session.target Requires=graphical-session.target, which pulls the
+    // (RefuseManualStart) target up as a dependency. graphical-session.target
+    // then satisfies xdg-desktop-portal's Requisite and starts meridian-portal.
+    // --no-block: do NOT wait for the target's whole job (portal startup takes
+    // seconds) — that would stall the panel from appearing.
+    let _ = Command::new("systemctl")
+        .arg("--user")
+        .arg("start")
+        .arg("--no-block")
+        .arg("meridian-session.target")
+        .status();
 }
 
 fn redraw_after_ipc(

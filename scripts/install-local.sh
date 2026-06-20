@@ -129,6 +129,10 @@ install_template() {
 install_template packaging/xdg-autostart/meridian-polkit-agent.desktop /etc/xdg/autostart/meridian-polkit-agent.desktop
 install_template packaging/dbus-1/services/org.freedesktop.impl.portal.desktop.meridian.service "${datadir}/dbus-1/services/org.freedesktop.impl.portal.desktop.meridian.service"
 install_template packaging/systemd-user/meridian-portal.service "${libdir}/systemd/user/meridian-portal.service"
+# meridian-session.target pulls graphical-session.target up at login (started by
+# the shell) so xdg-desktop-portal + meridian-portal run and apps follow the
+# theme. Without it the portal services never start in a Meridian session.
+install_template packaging/systemd-user/meridian-session.target "${libdir}/systemd/user/meridian-session.target"
 "${SUDO[@]}" install -Dm644 packaging/xdg-desktop-portal/portals/meridian.portal "${datadir}/xdg-desktop-portal/portals/meridian.portal"
 "${SUDO[@]}" install -Dm644 packaging/xdg-desktop-portal/meridian-portals.conf "${datadir}/xdg-desktop-portal/meridian-portals.conf"
 

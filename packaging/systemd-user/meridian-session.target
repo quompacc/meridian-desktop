@@ -1,0 +1,10 @@
+[Unit]
+Description=Meridian graphical session
+# Pulls in graphical-session.target as a dependency. The target itself refuses
+# manual start, but a Requires from a unit the session DOES start manually is
+# allowed — so `systemctl --user start meridian-session.target` (run by the
+# shell at login) brings graphical-session.target up, which in turn satisfies
+# xdg-desktop-portal's Requisite and starts meridian-portal (WantedBy that
+# target). Tears down with the session.
+Requires=graphical-session.target
+After=graphical-session.target

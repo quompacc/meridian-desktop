@@ -1506,6 +1506,7 @@ dependencies = [
 name = "meridian-portal"
 version = "0.5.1"
 dependencies = [
+ "meridian-config",
  "meridian-ipc",
  "tokio",
  "tracing",

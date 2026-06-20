@@ -83,18 +83,25 @@ pub fn launch_compositor_for(
         "spawning compositor as user"
     );
 
-    // Provide a session D-Bus bus for the whole graphical session: GTK/Qt apps
-    // (and Meridian's own notification/status-notifier services) abort or run
-    // degraded without one, and FreeBSD has no systemd user bus to supply it.
-    // Wrap the compositor in dbus-run-session when it is available; it sets
-    // DBUS_SESSION_BUS_ADDRESS and execs the compositor, so everything the
-    // compositor spawns inherits the bus.
-    let dbus_run_session = [
-        "/usr/local/bin/dbus-run-session",
-        "/usr/bin/dbus-run-session",
-    ]
-    .into_iter()
-    .find(|p| std::path::Path::new(p).exists());
+    // The graphical session needs ONE session D-Bus bus shared by the apps,
+    // Meridian's own services AND the systemd --user services (xdg-desktop-portal
+    // etc.). On systemd systems the user bus already exists at
+    // /run/user/<uid>/bus — we MUST use it, otherwise dbus-run-session would
+    // spin up a private bus that is isolated from the portal, so apps never see
+    // the appearance/color-scheme and run un-themed (light). Only when no user
+    // bus exists (e.g. FreeBSD) do we fall back to dbus-run-session.
+    let user_bus = format!("/run/user/{}/bus", uid);
+    let use_systemd_user_bus = std::path::Path::new(&user_bus).exists();
+    let dbus_run_session = if use_systemd_user_bus {
+        None
+    } else {
+        [
+            "/usr/local/bin/dbus-run-session",
+            "/usr/bin/dbus-run-session",
+        ]
+        .into_iter()
+        .find(|p| std::path::Path::new(p).exists())
+    };
     let mut cmd = match dbus_run_session {
         Some(dbus) => {
             let mut c = Command::new(dbus);
@@ -121,6 +128,21 @@ pub fn launch_compositor_for(
     cmd.env("XDG_RUNTIME_DIR", runtime_dir);
     cmd.env("XDG_SESSION_TYPE", "wayland");
     cmd.env("XDG_CURRENT_DESKTOP", "Meridian");
+    // Point the session at the existing systemd --user bus so apps and the
+    // systemd portal services share one bus (see the dbus_run_session note
+    // above). When we fell back to dbus-run-session this is set by that wrapper.
+    if use_systemd_user_bus {
+        cmd.env(
+            "DBUS_SESSION_BUS_ADDRESS",
+            format!("unix:path={}", user_bus),
+        );
+    }
+    // Make Qt apps follow the desktop appearance via the xdg-desktop-portal
+    // platform theme (Qt6 reads org.freedesktop.appearance color-scheme through
+    // it). GTK4/libadwaita and Firefox already follow the portal directly, but
+    // Qt needs this hint — without it KDE apps (Dolphin/Kate) stay light even
+    // though the portal reports dark.
+    cmd.env("QT_QPA_PLATFORMTHEME", "xdgdesktopportal");
     // FreeBSD installs apps and icon themes under /usr/local/share; without this
     // the shell finds no .desktop files and no icon theme (so the launcher,
     // which hides icon-less apps, is empty). Forward an existing value or set a

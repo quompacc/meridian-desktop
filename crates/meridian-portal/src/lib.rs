@@ -1,6 +1,7 @@
 mod access;
 mod file_chooser;
 mod screenshot;
+mod settings;
 
 use tracing::info;
 use zbus::connection::Builder;
@@ -14,6 +15,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .serve_at(OBJECT_PATH, file_chooser::FileChooserImpl)?
         .serve_at(OBJECT_PATH, screenshot::ScreenshotImpl)?
         .serve_at(OBJECT_PATH, access::AccessImpl)?
+        .serve_at(OBJECT_PATH, settings::SettingsImpl)?
         .build()
         .await?;
 

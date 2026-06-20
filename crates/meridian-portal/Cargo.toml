@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 meridian-ipc = { path = "../meridian-ipc" }
+meridian-config = { path = "../meridian-config" }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 zbus = { version = "5", features = ["tokio"] }
