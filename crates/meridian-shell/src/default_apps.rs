@@ -417,8 +417,13 @@ fn desktop_app_dirs() -> Vec<PathBuf> {
         user.push(".local/share/applications");
         out.push(user);
     }
-    let data_dirs =
-        std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| XDG_DATA_DIRS_DEFAULT.to_string());
+    // Treat a present-but-EMPTY XDG_DATA_DIRS like an unset one: otherwise the
+    // system applications/ dirs are skipped, the app index is nearly empty, and
+    // every default renders as a raw `foo.desktop` string ("not recognized").
+    let data_dirs = std::env::var("XDG_DATA_DIRS")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| XDG_DATA_DIRS_DEFAULT.to_string());
     for dir in data_dirs.split(':').filter(|s| !s.is_empty()) {
         let mut path = PathBuf::from(dir);
         path.push("applications");
