@@ -61,7 +61,12 @@ fn parse_section_devices(output: &str, section: &str) -> Vec<AudioDevice> {
 }
 
 fn parse_device_line(line: &str) -> Option<AudioDevice> {
-    let trimmed = line.trim_start_matches(['|', '`', '-', ' ', '\t']).trim();
+    // `wpctl status` draws its tree with Unicode box characters (│ ├ └ ─,
+    // U+2500..U+2502) as well as the ASCII variants older builds used. Strip
+    // both so the leading marker collapses to the `*` default flag / numeric id.
+    let trimmed = line
+        .trim_start_matches(['|', '`', '-', ' ', '\t', '│', '├', '└', '─'])
+        .trim();
     let is_default = trimmed.starts_with('*');
     let trimmed = trimmed.trim_start_matches('*').trim();
     let (id_text, rest) = trimmed.split_once('.')?;
@@ -162,6 +167,29 @@ mod tests {
 
         let input = snapshot.default_input.as_ref().unwrap();
         assert_eq!(input.name, "Built-in Microphone");
+        assert_eq!(input.volume_percent, Some(100));
+    }
+
+    #[test]
+    fn parse_wpctl_status_handles_real_unicode_tree_output() {
+        // Verbatim shape of `wpctl status` (WirePlumber 1.x): the device tree is
+        // drawn with Unicode box characters (│ ├ └ ─) and a blank `│` separator
+        // line between each section. Earlier the leading `│` defeated id parsing,
+        // so every device dropped and the panel reported no audio.
+        let snapshot = parse_wpctl_status(
+            "Audio\n \u{251c}\u{2500} Devices:\n \u{2502}      42. Internes Audio  [alsa]\n \u{2502}  \n \u{251c}\u{2500} Sinks:\n \u{2502}  *   49. Internes Audio Analoges Stereo      [vol: 0.55]\n \u{2502}  \n \u{251c}\u{2500} Sources:\n \u{2502}  *   50. Internes Audio Analoges Stereo      [vol: 1.00]\n \u{2502}  \n \u{2514}\u{2500} Streams:\n",
+        );
+
+        let output = snapshot.default_output.as_ref().unwrap();
+        assert_eq!(output.id, 49);
+        assert_eq!(output.name, "Internes Audio Analoges Stereo");
+        assert_eq!(output.volume_percent, Some(55));
+        assert!(output.is_default);
+        assert!(!output.muted);
+        assert_eq!(snapshot.outputs.len(), 1);
+
+        let input = snapshot.default_input.as_ref().unwrap();
+        assert_eq!(input.id, 50);
         assert_eq!(input.volume_percent, Some(100));
     }
 
