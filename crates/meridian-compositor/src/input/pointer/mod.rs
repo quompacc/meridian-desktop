@@ -327,7 +327,13 @@ fn update_hover_cursor_feedback(state: &mut MeridianState, location: Point<f64, 
         Some(DecorationHit::MinimizeButton) => Some(HoveredButton::Minimize),
         _ => None,
     };
-    let mut hover_changed = state.decoration_manager.clear_hover_buttons();
+    // Clear hover on every OTHER decoration but leave the one under the pointer
+    // intact, then set it. This reports a change only on a real hover transition
+    // — not on every motion tick while resting on a button (LOG-1: that flooded
+    // journald at info! and forced a full-output repaint each frame).
+    let mut hover_changed = state
+        .decoration_manager
+        .clear_hover_buttons_except(hover_surface.as_ref());
     if let (Some(wl_surface), Some(hovered)) = (hover_surface, hovered_button) {
         if state
             .decoration_manager
@@ -338,7 +344,7 @@ fn update_hover_cursor_feedback(state: &mut MeridianState, location: Point<f64, 
     }
     if hover_changed {
         state.mark_all_outputs_dirty("decoration-button-hover-change");
-        tracing::info!(
+        tracing::trace!(
             "decoration hover change: hovered_button={:?}",
             hovered_button
         );

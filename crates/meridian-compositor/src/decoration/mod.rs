@@ -170,9 +170,22 @@ impl DecorationManager {
         Self::set_hover_and_mark_dirty(d, hovered)
     }
 
-    pub fn clear_hover_buttons(&mut self) -> bool {
+    /// Clear every decoration's hover EXCEPT `keep`'s, in one pass. Returns true
+    /// if any *other* decoration actually changed.
+    ///
+    /// Pairs with `update_hover_button(keep, ...)`: by leaving the hovered
+    /// surface untouched here, resting the pointer on a titlebar button is no
+    /// longer reported as a change on every motion tick. The previous
+    /// clear-ALL-then-set sequence flipped the hovered deco None<->Some each
+    /// frame, so `hover_changed` was always true — forcing a full-output repaint
+    /// and an `info!` log on every pointer motion over a button (LOG-1).
+    pub fn clear_hover_buttons_except(&mut self, keep: Option<&WlSurface>) -> bool {
+        let keep_key = keep.map(Self::key);
         let mut any_changed = false;
-        for deco in self.decorations.values_mut() {
+        for (id, deco) in self.decorations.iter_mut() {
+            if keep_key.as_ref() == Some(id) {
+                continue;
+            }
             if Self::set_hover_and_mark_dirty(deco, None) {
                 any_changed = true;
             }
