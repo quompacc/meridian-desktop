@@ -56,6 +56,51 @@ impl IconCache {
         }
     }
 
+    /// (theme_name, symbolic_color) for reconstructing an equivalent loader on
+    /// a worker thread (see `load_batch`). Cloned so nothing borrows the cache.
+    pub fn loader_config(&self) -> (String, String) {
+        let (theme, color) = self.loader.config();
+        (theme.to_string(), color.to_string())
+    }
+
+    /// Decode `names` at every `size` on the CALLING thread using a throwaway
+    /// loader — pure work, no shared state, so it runs off the event loop and
+    /// the results are fed back via `insert_loaded`. This is how the launcher
+    /// warms its grid icons without the ~0.5s synchronous freeze on open.
+    pub fn load_batch(
+        theme_name: &str,
+        symbolic_color: &str,
+        names: &[String],
+        sizes: &[u32],
+    ) -> Vec<(String, u32, Option<IconImage>)> {
+        let loader = IconLoader::new_with_symbolic_color(theme_name, symbolic_color);
+        let mut out = Vec::with_capacity(names.len() * sizes.len());
+        for name in names {
+            for &size in sizes {
+                let image = if name.starts_with('/') {
+                    loader.load_icon_from_absolute_path(name, size)
+                } else {
+                    loader.load_icon(name, size)
+                };
+                out.push((name.clone(), size, image));
+            }
+        }
+        out
+    }
+
+    /// Insert a pre-decoded result (from `load_batch`) into the cache. Cheap;
+    /// runs on the main thread. `None` records a miss so lookups don't retry.
+    pub fn insert_loaded(&mut self, name: String, size: u32, image: Option<IconImage>) {
+        let entries_for_size = self.entries.entry(size).or_default();
+        entries_for_size.insert(
+            name,
+            match image {
+                Some(image) => CacheEntry::Found(image),
+                None => CacheEntry::Missing,
+            },
+        );
+    }
+
     pub fn lookup(&self, name: &str, size: u32) -> Option<&IconImage> {
         let entries_for_size = self.entries.get(&size)?;
         match entries_for_size.get(name) {

@@ -460,6 +460,8 @@ impl MeridianShell {
         // Swap in a finished background app-list rescan (LAUNCH-2). Cheap
         // try_recv every tick so a fresh list appears promptly after open.
         self.poll_launcher_apps_refresh(qh);
+        // Apply a finished off-thread icon warm (LAUNCH-3). Cheap try_recv.
+        self.poll_launcher_icons_warm(qh);
 
         self.maybe_log_repaint_stats(now);
         self.maybe_log_commit_stats(now);
@@ -1115,8 +1117,15 @@ impl MeridianShell {
     /// Warm the launcher grid's app icons (deferred from startup so the panel
     /// appears immediately). Runs once per cache build; the first launcher open
     /// pays the decode cost instead of every login.
+    /// Kick an OFF-THREAD warm of the launcher grid icons (LAUNCH-3). Decoding
+    /// every app icon at two sizes on the event-loop thread froze the launcher
+    /// for ~0.5s on each open (and again after every background app refresh),
+    /// which showed up as input lag / bursty scrolling. The worker decodes with
+    /// a throwaway loader and posts ready buffers to `launcher_icons_rx`, which
+    /// `tick()` drains via `poll_launcher_icons_warm`. No-op if already warmed
+    /// or a warm is already in flight.
     fn warm_launcher_icons(&mut self) {
-        if self.launcher_icons_warmed {
+        if self.launcher_icons_warmed || self.launcher_icons_rx.is_some() {
             return;
         }
         let names: Vec<String> = self
@@ -1126,10 +1135,45 @@ impl MeridianShell {
             .filter_map(|app| app.icon_name.clone())
             .filter(|name| !name.is_empty())
             .collect();
-        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
-        self.icon_cache.warm(&refs, 22);
-        self.icon_cache.warm(&refs, 24);
+        if names.is_empty() {
+            self.launcher_icons_warmed = true;
+            return;
+        }
+        let (theme_name, symbolic_color) = self.icon_cache.loader_config();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let batch =
+                crate::icons::IconCache::load_batch(&theme_name, &symbolic_color, &names, &[22, 24]);
+            let _ = tx.send(batch);
+        });
+        self.launcher_icons_rx = Some(rx);
+        // Mark warmed now so re-opens before results arrive don't re-spawn; the
+        // results are applied when the worker finishes.
         self.launcher_icons_warmed = true;
+    }
+
+    /// Apply a finished off-thread icon warm, if one has arrived. Called from
+    /// `tick()`; cheap `try_recv`, never blocks. Redraws the launcher so the
+    /// freshly-decoded icons appear the moment they land.
+    fn poll_launcher_icons_warm(&mut self, qh: &QueueHandle<Self>) {
+        let Some(rx) = self.launcher_icons_rx.as_ref() else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(batch) => {
+                self.launcher_icons_rx = None;
+                for (name, size, image) in batch {
+                    self.icon_cache.insert_loaded(name, size, image);
+                }
+                if self.launcher_state.open {
+                    self.draw_launcher(qh, RepaintReason::Ipc);
+                }
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.launcher_icons_rx = None;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {}
+        }
     }
 
     /// Kick a background rescan of the desktop-entry app list (LAUNCH-2).
@@ -1158,7 +1202,10 @@ impl MeridianShell {
             Ok(apps) => {
                 self.launcher_apps_rx = None;
                 self.launcher_state.apps = apps;
+                // New app list → the old warm is stale. Cancel any in-flight
+                // warm and re-request so the fresh apps get their icons.
                 self.launcher_icons_warmed = false;
+                self.launcher_icons_rx = None;
                 if self.launcher_state.open {
                     self.warm_launcher_icons();
                     self.draw_launcher(qh, RepaintReason::Ipc);

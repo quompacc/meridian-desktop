@@ -623,6 +623,7 @@ pub(crate) fn initialize(
         pinned_apps,
         launcher_state: launcher::LauncherState::new_with_apps(launcher_apps),
         launcher_apps_rx: None,
+        launcher_icons_rx: None,
         workspace_state: crate::workspaces::WorkspacePopupState::new(),
         workspace_hover_idx: None,
         focused_window_id: None,

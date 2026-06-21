@@ -53,6 +53,13 @@ struct RccCandidate {
 }
 
 impl IconLoader {
+    /// The (theme_name, symbolic_color) this loader was built with, so an
+    /// equivalent loader can be reconstructed on a worker thread for off-loop
+    /// icon warming (the loader itself is not shared across threads).
+    pub(crate) fn config(&self) -> (&str, &str) {
+        (&self.theme_name, &self.symbolic_color)
+    }
+
     pub(crate) fn new_with_symbolic_color(theme_name: &str, symbolic_color: &str) -> Self {
         let search_paths = standard_icon_search_paths();
         let (rcc_sources, total_files) = discover_rcc_sources(&search_paths);

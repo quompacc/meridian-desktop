@@ -412,6 +412,12 @@ pub(crate) struct MeridianShell {
     /// In-flight background rescan of the desktop-entry app list (LAUNCH-2). The
     /// worker thread sends the freshly-scanned apps here; `tick()` swaps them in.
     pub(crate) launcher_apps_rx: Option<std::sync::mpsc::Receiver<Vec<launcher::DesktopApp>>>,
+    /// In-flight off-thread warm of the launcher grid icons (LAUNCH-3). The
+    /// worker decodes icons and posts ready buffers here; `tick()` inserts them
+    /// into the cache. Replaces the old synchronous warm that froze on open.
+    #[allow(clippy::type_complexity)]
+    pub(crate) launcher_icons_rx:
+        Option<std::sync::mpsc::Receiver<Vec<(String, u32, Option<crate::icons::IconImage>)>>>,
     pub(crate) workspace_state: WorkspacePopupState,
     pub(crate) workspace_hover_idx: Option<usize>,
     pub(crate) focused_window_id: Option<String>,
