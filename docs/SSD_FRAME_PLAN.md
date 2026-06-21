@@ -35,6 +35,40 @@ These were established empirically on the Arch box — **do not re-litigate**:
 
 ---
 
+## Progress — 2026-06-21 session 2 (Windows dev box, no live verify)
+
+Landed in the tree (uncommitted; the CLAUDE.md gate — `cargo test --workspace`,
+`clippy`, `design_guard` — must run on the **box**, as the wayland crates do not
+compile on Windows):
+
+- **Separate small win DONE.** `theme_export::export_theme` now also writes the
+  substituted GTK templates to `~/.config/gtk-{3,4}.0/gtk.css`, the per-user
+  override libadwaita actually loads — so libadwaita apps pick up Meridian's
+  `@define-color` palette instead of their default dark. Unit test added
+  (`config_gtk_css_carries_libadwaita_named_colours`). `design_guard` green.
+- **Step 1 buttons (first pass) DONE — needs on-box screenshot tuning.** The
+  glass window-control cluster (`decoration/render/elements.rs`) no longer paints
+  coloured zones (was close=red / max=accent / min=accent_alt). All three zones +
+  the frosted blur veils now use one neutral tone (`surface_alt`); hover lifts the
+  zone with a soft neutral `text` highlight (close **grey, not red**). Glass+blur
+  titlebar kept — per user: "Stil wie im Mockup, aber mit Glass und Blur, soll
+  zum Rest des Systems passen." Exact alphas/tone to be tuned against the mockup
+  on the box.
+
+**Step 2 — tested live 2026-06-21 and DROPPED.** Forcing ServerSide + `GTK_CSD=0`
+was built, installed and verified on the box. Result: it does **not** reach the
+modern app stack. Both Nemo (GTK3) and Ptyxis (GTK4/libadwaita) **never bind
+`xdg-decoration`** (compositor log: `new xdg toplevel` with no `request_mode`/
+`new_decoration`; `decoration render: skip … has_ssd=false`), and `GTK_CSD=0` is
+ignored once an app sets an explicit HeaderBar. The change was reverted.
+`APP_STACK.md` was right. The strategy going forward — two-track (full control for
+core apps via SSD/own-build, colour-only integration for the rest) — is in
+**[`FRAME_STRATEGY.md`](FRAME_STRATEGY.md)**.
+
+**Step 1 still applies:** the SSD frame styling (titlebar tone/height/rounded
+corners + exact button alphas vs the mockup) is the right work for the SSD apps
+of track A; remaining tuning needs on-box screenshots.
+
 ## Steps
 
 ### Step 1 — Style Meridian's SSD decoration to the mockup

@@ -235,10 +235,11 @@ impl XdgDecorationHandler for MeridianState {
     fn request_mode(&mut self, toplevel: ToplevelSurface, mode: DecorationMode) {
         // Honor the client's requested mode. Forcing ServerSide on a CSD client
         // (e.g. Chromium) just produced a SECOND frame on top of the client's
-        // own, and GTK clients ignore a forced SSD anyway. Instead Meridian
-        // launches GTK apps with GTK_CSD=0 so they request ServerSide here and
-        // get the Meridian frame cleanly; toolkits that insist on CSD keep their
-        // own single frame.
+        // own, and GTK/libadwaita clients ignore a forced SSD anyway (they don't
+        // even bind xdg-decoration — verified live, SSD frame plan Step 2 dropped;
+        // see docs/FRAME_STRATEGY.md). Apps that DO want SSD (terminals, Qt) get
+        // the Meridian frame cleanly via this path; toolkits that insist on CSD
+        // keep their own single frame.
         tracing::info!(
             "xdg-decoration request_mode: surface={:?} mode={:?}",
             toplevel.wl_surface().id(),
