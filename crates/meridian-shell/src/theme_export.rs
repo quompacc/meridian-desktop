@@ -35,6 +35,21 @@ pub(crate) fn export_theme(theme: &ThemeConfig) {
         let gtk_ini = gtk_settings_ini(theme);
         write_file(&cfg.join("gtk-3.0").join("settings.ini"), &gtk_ini);
         write_file(&cfg.join("gtk-4.0").join("settings.ini"), &gtk_ini);
+        // libadwaita ignores a custom GTK *theme* but loads the per-user
+        // `~/.config/gtk-{3,4}.0/gtk.css` as an override on top of its own
+        // styling, and there it honours the `@define-color` named colours. The
+        // generated theme dir alone therefore leaves libadwaita apps on their
+        // default dark — writing the SAME substituted template here is what
+        // pulls their whole palette onto the Meridian tokens. (Widget CSS in
+        // this file is still ignored by libadwaita; only the colours land.)
+        write_file(
+            &cfg.join("gtk-3.0").join("gtk.css"),
+            &substitute_tokens(GTK3_TEMPLATE, theme),
+        );
+        write_file(
+            &cfg.join("gtk-4.0").join("gtk.css"),
+            &substitute_tokens(GTK4_TEMPLATE, theme),
+        );
     } else {
         tracing::warn!("theme_export: no config dir; skipping kdeglobals/gtk settings");
     }
@@ -341,6 +356,17 @@ mod tests {
         assert!(css3.contains("#4e99f3")); // accent
         // libadwaita named colour wired from tokens.
         assert!(css4.contains("@define-color window_bg_color #14171b"));
+        assert!(css4.contains("@define-color accent_bg_color #4e99f3"));
+    }
+
+    #[test]
+    fn config_gtk_css_carries_libadwaita_named_colours() {
+        // The per-user override written to ~/.config/gtk-4.0/gtk.css must define
+        // the libadwaita named colours from the tokens (the recolour surface),
+        // otherwise libadwaita apps stay on their built-in dark.
+        let css4 = substitute_tokens(GTK4_TEMPLATE, &ThemeConfig::default());
+        assert!(css4.contains("@define-color window_bg_color #14171b"));
+        assert!(css4.contains("@define-color headerbar_bg_color"));
         assert!(css4.contains("@define-color accent_bg_color #4e99f3"));
     }
 

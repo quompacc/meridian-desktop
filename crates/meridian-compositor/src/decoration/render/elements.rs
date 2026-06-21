@@ -452,10 +452,14 @@ impl DecorationManager {
                 let pr = (pill.size.h as f32 / 2.0) * psf;
                 let docked_right_radius = rphys;
                 if theme.glass {
-                    // Full-height frosted colour zones: close=red,
-                    // maximize=accent, minimize=lighter blue. The frosted
-                    // titlebar shows through a translucent colour veil per
-                    // zone, stronger under the pointer. Rounded pill ends.
+                    // Mockup style: flat, minimal window controls — light-grey
+                    // glyphs over the frosted titlebar, NOT coloured (close is
+                    // grey, not red). The three zones share one neutral frosted
+                    // tone so the cluster reads as a subtle grey segment that
+                    // matches the rest of the glass system; the pointer lifts
+                    // the hovered zone with a soft neutral highlight, no colour.
+                    let zone_tone = colors.surface_alt;
+                    let hover_tone = colors.text;
                     let base = if theme.glass_blur {
                         (theme.glass_button_alpha * glass_buttons::BASE_FACTOR)
                             .min(glass_buttons::BASE_CAP)
@@ -471,15 +475,11 @@ impl DecorationManager {
                     let button_tint = (theme.glass_button_alpha * glass_buttons::TINT_FACTOR)
                         .min(glass_buttons::TINT_CAP);
                     let zones = [
-                        (
-                            buttons.minimize_rect,
-                            colors.accent_alt,
-                            (pr, 0.0, 0.0, 0.0),
-                        ),
-                        (buttons.maximize_rect, colors.accent, (0.0, 0.0, 0.0, 0.0)),
+                        (buttons.minimize_rect, zone_tone, (pr, 0.0, 0.0, 0.0)),
+                        (buttons.maximize_rect, zone_tone, (0.0, 0.0, 0.0, 0.0)),
                         (
                             buttons.close_rect,
-                            colors.error,
+                            zone_tone,
                             (0.0, docked_right_radius, 0.0, 0.0),
                         ),
                     ];
@@ -496,22 +496,18 @@ impl DecorationManager {
                         )));
                     }
                     if let Some(h) = hovered {
-                        let (rect, col, radii) = match h {
-                            HoveredButton::Close => (
-                                buttons.close_rect,
-                                colors.error,
-                                (0.0, docked_right_radius, 0.0, 0.0),
-                            ),
-                            HoveredButton::Maximize => {
-                                (buttons.maximize_rect, colors.accent, (0.0, 0.0, 0.0, 0.0))
+                        let (rect, radii) = match h {
+                            HoveredButton::Close => {
+                                (buttons.close_rect, (0.0, docked_right_radius, 0.0, 0.0))
                             }
-                            HoveredButton::Minimize => (
-                                buttons.minimize_rect,
-                                colors.accent_alt,
-                                (pr, 0.0, 0.0, 0.0),
-                            ),
+                            HoveredButton::Maximize => {
+                                (buttons.maximize_rect, (0.0, 0.0, 0.0, 0.0))
+                            }
+                            HoveredButton::Minimize => {
+                                (buttons.minimize_rect, (pr, 0.0, 0.0, 0.0))
+                            }
                         };
-                        let [zr, zg, zb, _] = col.as_f32_array();
+                        let [zr, zg, zb, _] = hover_tone.as_f32_array();
                         elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
                             prog,
                             rect,
@@ -555,28 +551,22 @@ impl DecorationManager {
                         }
                     }
                 } else {
+                    // Tint-only fallback (no blur): same minimal grey controls —
+                    // a soft neutral highlight on the hovered zone, close kept
+                    // grey (not red) like the mockup.
                     if let Some(h) = hovered {
-                        let (rect, col, alpha, radii) = match h {
-                            HoveredButton::Close => (
-                                buttons.close_rect,
-                                colors.error,
-                                0.55f32,
-                                (0.0, docked_right_radius, 0.0, 0.0),
-                            ),
-                            HoveredButton::Maximize => (
-                                buttons.maximize_rect,
-                                colors.accent,
-                                0.28f32,
-                                (0.0, 0.0, 0.0, 0.0),
-                            ),
-                            HoveredButton::Minimize => (
-                                buttons.minimize_rect,
-                                colors.accent,
-                                0.28f32,
-                                (pr, 0.0, 0.0, 0.0),
-                            ),
+                        let (rect, alpha, radii) = match h {
+                            HoveredButton::Close => {
+                                (buttons.close_rect, 0.30f32, (0.0, docked_right_radius, 0.0, 0.0))
+                            }
+                            HoveredButton::Maximize => {
+                                (buttons.maximize_rect, 0.22f32, (0.0, 0.0, 0.0, 0.0))
+                            }
+                            HoveredButton::Minimize => {
+                                (buttons.minimize_rect, 0.22f32, (pr, 0.0, 0.0, 0.0))
+                            }
                         };
-                        let [cr, cg, cb, _] = col.as_f32_array();
+                        let [cr, cg, cb, _] = colors.text.as_f32_array();
                         elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
                             prog,
                             rect,
