@@ -69,6 +69,33 @@ core apps via SSD/own-build, colour-only integration for the rest) — is in
 corners + exact button alphas vs the mockup) is the right work for the SSD apps
 of track A; remaining tuning needs on-box screenshots.
 
+## Progress — 2026-06-21 session 3 (Phase 1, Windows dev box → Arch box)
+
+- **Resting button chrome stripped to clean glyphs (DONE in tree, deployed).**
+  Per the mockup the window controls are flat grey `─□×` glyphs with NO resting
+  background. Removed from `decoration/render/elements.rs`: the three frosted
+  resting zone fills, the two hairline dividers, the resting frosted-blur veils,
+  and the tint-only fallback pill. Only the *hovered* control now lifts — a soft
+  neutral wash (frosted via `GlassTitlebarInfo` when `glass_blur` is on), close
+  kept grey. The glass+blur pane stays on the titlebar surface itself. The
+  `glass_buttons` tuning module lost its now-unused `BASE_FACTOR`/`BASE_CAP`
+  (kept `HOVER_*`/`TINT_*`). `glass_divider_alpha` remains a valid token, just
+  no longer consumed by the renderer.
+- **Default terminal = alacritty (SSD), no code change.** `terminal_program()`/
+  `prepare_launch()` already resolve `foot → alacritty → …`; foot isn't
+  installed, so alacritty (which live-verified as ServerSide/SSD) is the default.
+  foot stays an open option — installing it later auto-promotes it.
+- **Built + gated + deployed on the box.** `cargo build --release --workspace`
+  green; gate green (design_guard ok, clippy `-D warnings` clean, 29×
+  `test result: ok`). New `meridian`/`meridian-shell` installed to
+  `/usr/local/bin`, box rebooted.
+- **NOT yet visually verified.** The deployed binary that preceded this change
+  was stale — it rendered the window controls as a 2×2 grid + ⋮ + × (wrong icon
+  set), so the on-box screenshot must be re-taken against the *new* binary. The
+  box was at the greeter (no eduard login) when the session ended, so the
+  alacritty-vs-mockup screenshot + any height/radius/hover-alpha fine-tuning is
+  the **next on-box step**.
+
 ## Steps
 
 ### Step 1 — Style Meridian's SSD decoration to the mockup

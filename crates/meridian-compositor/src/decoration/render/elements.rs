@@ -12,23 +12,20 @@ use smithay::{
 
 use crate::backend::drm::glass::GlassTitlebarInfo;
 
-/// Tuning for the frosted window-button cluster on the glass titlebar. Kept in
-/// one named place instead of scattered literals in the render loop: the colour
-/// veils are fractions of the theme's `glass_button_alpha` (with caps), and the
-/// zone divider has its own hairline opacity. Final values are tuned on-screen
-/// against the reference mockup (GUI_CENTRALIZATION_PLAN §6 phase 1).
+/// Tuning for the hover wash on the glass-titlebar window controls. The mockup
+/// shows NO resting chrome — just clean grey ─□× glyphs — so the only per-button
+/// treatment is the hovered control's neutral wash (and its frosted veil when
+/// blur is on). Both are fractions of the theme's `glass_button_alpha` (capped),
+/// kept in one named place instead of scattered literals in the render loop.
+/// Final values are tuned on-screen against the reference mockup
+/// (GUI_CENTRALIZATION_PLAN §6 phase 1).
 mod glass_buttons {
-    /// Resting colour-veil opacity = `glass_button_alpha * FACTOR`, capped.
-    pub const BASE_FACTOR: f32 = 0.22;
-    pub const BASE_CAP: f32 = 0.16;
     /// Hovered colour-veil opacity = `glass_button_alpha * FACTOR`, capped.
     pub const HOVER_FACTOR: f32 = 0.70;
     pub const HOVER_CAP: f32 = 0.42;
-    /// Frosted-button tint pull = `glass_button_alpha * FACTOR`, capped.
+    /// Frosted-button tint pull on hover = `glass_button_alpha * FACTOR`, capped.
     pub const TINT_FACTOR: f32 = 0.75;
     pub const TINT_CAP: f32 = 0.55;
-    // Hairline opacity of the two dividers splitting the three button zones now
-    // comes from the theme (`Decorations::glass_divider_alpha`), not a hardcode.
 }
 
 use super::{
@@ -443,101 +440,44 @@ impl DecorationManager {
                 elements.push(DecorationRenderElement::Icon(icon));
             }
 
-            // Frosted "instrument" segment cluster behind the glyphs: one
-            // translucent rounded pill, hairline-split into three zones, with a
-            // soft accent wash on the hovered zone (close = muted matte red).
+            // Window-control chrome behind the glyphs. The mockup shows NO
+            // resting chrome — just clean grey ─□× glyphs — so at rest we draw
+            // nothing here; only the hovered control lifts with a soft neutral
+            // wash (frosted when glass_blur is on), close grey not red. The
+            // glass+blur pane itself stays on the titlebar (drawn below).
             if let Some(ref prog) = rounded_quad_shader {
                 let pill = buttons.pill_rect;
                 let psf = ps as f32;
                 let pr = (pill.size.h as f32 / 2.0) * psf;
                 let docked_right_radius = rphys;
+                // Hover rect + per-corner rounding for each control. The cluster
+                // is docked to the top-right window corner: minimize rounds its
+                // left edge, close follows the window's outer corner radius.
+                let hover_target = |h: HoveredButton| match h {
+                    HoveredButton::Close => {
+                        (buttons.close_rect, (0.0, docked_right_radius, 0.0, 0.0))
+                    }
+                    HoveredButton::Maximize => (buttons.maximize_rect, (0.0, 0.0, 0.0, 0.0)),
+                    HoveredButton::Minimize => (buttons.minimize_rect, (pr, 0.0, 0.0, 0.0)),
+                };
                 if theme.glass {
-                    // Mockup style: flat, minimal window controls — light-grey
-                    // glyphs over the frosted titlebar, NOT coloured (close is
-                    // grey, not red). The three zones share one neutral frosted
-                    // tone so the cluster reads as a subtle grey segment that
-                    // matches the rest of the glass system; the pointer lifts
-                    // the hovered zone with a soft neutral highlight, no colour.
-                    let zone_tone = colors.surface_alt;
                     let hover_tone = colors.text;
-                    let base = if theme.glass_blur {
-                        (theme.glass_button_alpha * glass_buttons::BASE_FACTOR)
-                            .min(glass_buttons::BASE_CAP)
-                    } else {
-                        theme.glass_button_alpha
-                    };
                     let hover_a = if theme.glass_blur {
                         (theme.glass_button_alpha * glass_buttons::HOVER_FACTOR)
                             .min(glass_buttons::HOVER_CAP)
                     } else {
                         (theme.glass_button_alpha + 0.25).min(0.95)
                     };
-                    let button_tint = (theme.glass_button_alpha * glass_buttons::TINT_FACTOR)
-                        .min(glass_buttons::TINT_CAP);
-                    let zones = [
-                        (buttons.minimize_rect, zone_tone, (pr, 0.0, 0.0, 0.0)),
-                        (buttons.maximize_rect, zone_tone, (0.0, 0.0, 0.0, 0.0)),
-                        (
-                            buttons.close_rect,
-                            zone_tone,
-                            (0.0, docked_right_radius, 0.0, 0.0),
-                        ),
-                    ];
-                    for (rect, col, radii) in zones {
-                        let [zr, zg, zb, _] = col.as_f32_array();
-                        elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
-                            prog,
-                            rect,
-                            [zr, zg, zb],
-                            radii,
-                            0.0,
-                            base,
-                            psf,
-                        )));
-                    }
                     if let Some(h) = hovered {
-                        let (rect, radii) = match h {
-                            HoveredButton::Close => {
-                                (buttons.close_rect, (0.0, docked_right_radius, 0.0, 0.0))
-                            }
-                            HoveredButton::Maximize => {
-                                (buttons.maximize_rect, (0.0, 0.0, 0.0, 0.0))
-                            }
-                            HoveredButton::Minimize => {
-                                (buttons.minimize_rect, (pr, 0.0, 0.0, 0.0))
-                            }
-                        };
+                        let (rect, radii) = hover_target(h);
                         let [zr, zg, zb, _] = hover_tone.as_f32_array();
                         elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
-                            prog,
-                            rect,
-                            [zr, zg, zb],
-                            radii,
-                            0.0,
-                            hover_a,
-                            psf,
+                            prog, rect, [zr, zg, zb], radii, 0.0, hover_a, psf,
                         )));
-                    }
-                    let [br, bg, bb, _] = colors.border.as_f32_array();
-                    for i in 1..3 {
-                        let dx = pill.loc.x + (pill.size.w / 3) * i;
-                        let divider = Rectangle::<i32, Logical>::new(
-                            Point::from((dx, pill.loc.y + 4)),
-                            Size::from((1, (pill.size.h - 8).max(1))),
-                        );
-                        elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
-                            prog,
-                            divider,
-                            [br, bg, bb],
-                            (0.0, 0.0, 0.0, 0.0),
-                            0.0,
-                            theme.glass_divider_alpha,
-                            psf,
-                        )));
-                    }
-                    if theme.glass_blur {
-                        for (rect, col, radii) in zones.iter().copied() {
-                            let [zr, zg, zb, _] = col.as_f32_array();
+                        if theme.glass_blur {
+                            let button_tint = (theme.glass_button_alpha
+                                * glass_buttons::TINT_FACTOR)
+                                .min(glass_buttons::TINT_CAP);
                             elements.push(DecorationRenderElement::Glass(GlassTitlebarInfo {
                                 rect,
                                 radius: [radii.0, radii.1, radii.2, radii.3],
@@ -552,69 +492,20 @@ impl DecorationManager {
                     }
                 } else {
                     // Tint-only fallback (no blur): same minimal grey controls —
-                    // a soft neutral highlight on the hovered zone, close kept
-                    // grey (not red) like the mockup.
+                    // a soft neutral highlight on the hovered zone only, no
+                    // resting pill or dividers; close kept grey like the mockup.
                     if let Some(h) = hovered {
-                        let (rect, alpha, radii) = match h {
-                            HoveredButton::Close => {
-                                (buttons.close_rect, 0.30f32, (0.0, docked_right_radius, 0.0, 0.0))
-                            }
-                            HoveredButton::Maximize => {
-                                (buttons.maximize_rect, 0.22f32, (0.0, 0.0, 0.0, 0.0))
-                            }
-                            HoveredButton::Minimize => {
-                                (buttons.minimize_rect, 0.22f32, (pr, 0.0, 0.0, 0.0))
-                            }
+                        let (rect, radii) = hover_target(h);
+                        let alpha = if matches!(h, HoveredButton::Close) {
+                            0.30f32
+                        } else {
+                            0.22f32
                         };
                         let [cr, cg, cb, _] = colors.text.as_f32_array();
                         elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
-                            prog,
-                            rect,
-                            [cr, cg, cb],
-                            radii,
-                            0.0,
-                            alpha,
-                            psf,
+                            prog, rect, [cr, cg, cb], radii, 0.0, alpha, psf,
                         )));
                     }
-
-                    let [br, bg, bb, _] = colors.border.as_f32_array();
-                    for i in 1..3 {
-                        let dx = pill.loc.x + (pill.size.w / 3) * i;
-                        let divider = Rectangle::<i32, Logical>::new(
-                            Point::from((dx, pill.loc.y + 4)),
-                            Size::from((1, (pill.size.h - 8).max(1))),
-                        );
-                        elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
-                            prog,
-                            divider,
-                            [br, bg, bb],
-                            (0.0, 0.0, 0.0, 0.0),
-                            0.0,
-                            0.5,
-                            psf,
-                        )));
-                    }
-
-                    elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
-                        prog,
-                        pill,
-                        [br, bg, bb],
-                        (pr, pr, pr, pr),
-                        psf,
-                        1.0,
-                        psf,
-                    )));
-                    let [sr, sg, sb, _] = colors.surface_alt.as_f32_array();
-                    elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
-                        prog,
-                        pill,
-                        [sr, sg, sb],
-                        (pr, pr, pr, pr),
-                        0.0,
-                        0.6,
-                        psf,
-                    )));
                 }
             }
 
