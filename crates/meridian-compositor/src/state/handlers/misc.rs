@@ -151,6 +151,10 @@ impl SeatHandler for MeridianState {
     }
 }
 
+// Required by cursor-shape-v1's device dispatch (it also covers tablet-tool
+// cursor shapes). Meridian has no tablet seat, so the default (no-op) is fine.
+impl smithay::wayland::tablet_manager::TabletSeatHandler for MeridianState {}
+
 impl OutputHandler for MeridianState {}
 
 impl SelectionHandler for MeridianState {

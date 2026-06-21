@@ -369,6 +369,9 @@ pub struct MeridianState {
     pub primary_selection_state: PrimarySelectionState,
     pub xwayland_shell_state: XWaylandShellState,
     pub text_input_manager_state: TextInputManagerState,
+    /// cursor-shape-v1: routes app cursor requests through the compositor's
+    /// Named cursor path (fixes huge/wrong-sized cursors inside apps).
+    pub cursor_shape_manager_state: smithay::wayland::cursor_shape::CursorShapeManagerState,
     pub input_method_manager_state: InputMethodManagerState,
     pub xdg_activation_state: XdgActivationState,
     // 2026-05-17: Option because the wp_presentation global is intentionally

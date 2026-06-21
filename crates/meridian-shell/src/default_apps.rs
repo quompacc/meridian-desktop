@@ -326,7 +326,9 @@ pub fn pick_file_manager() -> (String, Vec<String>) {
     // pkg installs to /usr/local/bin on FreeBSD; Linux distros use /usr/bin.
     // Probe both so the file manager is found regardless of prefix.
     let bindirs = ["/usr/local/bin", "/usr/bin"];
-    for fm in ["dolphin", "nautilus", "thunar", "pcmanfm", "nemo", "caja"] {
+    // GTK file managers only (the desktop is GTK-based); Nemo is the shipped
+    // default so it leads. No KDE/Dolphin — that pulls the whole KIO stack.
+    for fm in ["nemo", "nautilus", "thunar", "pcmanfm", "caja"] {
         if bindirs
             .iter()
             .any(|dir| std::path::Path::new(dir).join(fm).exists())

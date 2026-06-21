@@ -715,6 +715,12 @@ impl MeridianState {
         let primary_selection_state = PrimarySelectionState::new::<Self>(&display_handle);
         let xwayland_shell_state = XWaylandShellState::new::<Self>(&display_handle);
         let text_input_manager_state = TextInputManagerState::new::<Self>(&display_handle);
+        // cursor-shape-v1: GTK4/Qt6 apps request a NAMED cursor from the
+        // compositor (drawn via the Named path at our size) instead of each app
+        // uploading its own cursor buffer — which sized them wrong (huge in
+        // apps). Delegation is already covered by delegate_dispatch2!.
+        let cursor_shape_manager_state =
+            smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Self>(&display_handle);
         let input_method_manager_state =
             InputMethodManagerState::new::<Self, _>(&display_handle, |_client| true);
         let xdg_activation_state = XdgActivationState::new::<Self>(&display_handle);
@@ -810,6 +816,7 @@ impl MeridianState {
             primary_selection_state,
             xwayland_shell_state,
             text_input_manager_state,
+            cursor_shape_manager_state,
             input_method_manager_state,
             xdg_activation_state,
             presentation_state,
