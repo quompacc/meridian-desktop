@@ -506,14 +506,25 @@ impl PointerHandler for MeridianShell {
                         } else {
                             vertical.absolute as i32
                         };
+                        let max_scroll = crate::app_view::max_scroll_for_palette(
+                            &self.launcher_state.apps,
+                            &self.search_query,
+                            &self.icon_cache,
+                            &self.hidden_execs,
+                            crate::LAUNCHER_HEIGHT,
+                        );
+                        // info! (temp) — diagnosing "scroll unusable": shows
+                        // whether touchpad `absolute` truncates to ~0 via `as i32`,
+                        // or whether max_scroll is 0 (no scrollable range computed).
+                        tracing::info!(
+                            "launcher scroll: discrete={} absolute={:.3} delta_px={} cur={} max_scroll={}",
+                            vertical.discrete,
+                            vertical.absolute,
+                            delta_px,
+                            self.app_view_scroll_y,
+                            max_scroll
+                        );
                         if delta_px != 0 {
-                            let max_scroll = crate::app_view::max_scroll_for_palette(
-                                &self.launcher_state.apps,
-                                &self.search_query,
-                                &self.icon_cache,
-                                &self.hidden_execs,
-                                crate::LAUNCHER_HEIGHT,
-                            );
                             let new_scroll =
                                 (self.app_view_scroll_y + delta_px).clamp(0, max_scroll);
                             if new_scroll != self.app_view_scroll_y {

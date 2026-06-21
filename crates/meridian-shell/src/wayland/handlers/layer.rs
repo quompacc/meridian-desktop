@@ -216,14 +216,16 @@ impl LayerShellHandler for MeridianShell {
             };
             let clamped_w = requested_w.min(LAUNCHER_WIDTH);
             let clamped_h = requested_h.min(LAUNCHER_HEIGHT);
-            tracing::debug!(
-                "launcher configure: requested={}x{} clamped={}x{} desired={}x{}",
+            // info! (temp) — diagnosing "launcher won't open": confirms the layer
+            // configure actually reaches the shell (counterpart to draw skip).
+            tracing::info!(
+                "launcher configure: requested={}x{} clamped={}x{} open={} fullscreen={}",
                 requested_w,
                 requested_h,
                 clamped_w,
                 clamped_h,
-                LAUNCHER_WIDTH,
-                LAUNCHER_HEIGHT
+                self.launcher_state.open,
+                self.launcher_is_fullscreen
             );
             if self.launcher_is_fullscreen {
                 // Fullscreen mode: reassert all-edge anchors and zero size on

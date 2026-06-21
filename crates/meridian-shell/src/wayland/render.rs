@@ -678,7 +678,9 @@ impl MeridianShell {
             self.launcher_configured && self.launcher_state.open
         );
         if !self.launcher_configured || !self.launcher_state.open {
-            debug!(
+            // info! (temp) — diagnosing "launcher won't open": a skip with
+            // open=true configured=false means the layer configure never arrived.
+            info!(
                 "draw_launcher skipped: reason={:?} open={} configured={}",
                 reason, self.launcher_state.open, self.launcher_configured
             );

@@ -1223,7 +1223,9 @@ impl MeridianShell {
         self.panel_last_signature = None;
         self.launcher_dirty = true;
         self.panel_dirty = true;
-        tracing::debug!(
+        // Temporarily promoted to info! to diagnose the "launcher won't open"
+        // report on real hardware (debug logging is off in prod). Revert once fixed.
+        tracing::info!(
             "toggle_launcher: open_before={} open_after={} panel_configured={} launcher_configured={} launcher_size={}x{} panel_dirty={} launcher_dirty={} keyboard_focus={:?}",
             open_before,
             open_after,
@@ -2109,6 +2111,7 @@ impl MeridianShell {
                 }
             }
             ClickAction::ToggleLauncher => {
+                tracing::info!("panel click: ToggleLauncher (registered)");
                 self.toggle_launcher();
                 self.draw_panel(qh, RepaintReason::Pointer);
                 if self.launcher_state.open {

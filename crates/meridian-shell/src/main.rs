@@ -123,10 +123,13 @@ pub const POWER_ARM_TIMEOUT_MS: u128 = 4000;
 
 pub const THUMBNAIL_MAX_WINDOWS: usize = 3;
 pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
+    // Defaults must point at apps the Meridian app stack actually ships
+    // (Cinnamon/GTK + alacritty), NOT the old KDE set (konsole/dolphin were not
+    // installed → the panel buttons silently did nothing). See APP_STACK.md.
     vec![
         PinnedApp {
             label: "Term".to_string(),
-            program: "konsole".to_string(),
+            program: "alacritty".to_string(),
             args: vec![],
             terminal: false,
             icon_name: Some("utilities-terminal".to_string()),
@@ -140,10 +143,10 @@ pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
         },
         PinnedApp {
             label: "Files".to_string(),
-            program: "dolphin".to_string(),
+            program: "nemo".to_string(),
             args: vec![],
             terminal: false,
-            icon_name: Some("org.kde.dolphin".to_string()),
+            icon_name: Some("system-file-manager".to_string()),
         },
     ]
 }
@@ -537,13 +540,13 @@ mod tests {
         let pinned = default_pinned_apps();
         assert_eq!(pinned.len(), 3);
         assert_eq!(pinned[0].label, "Term");
-        assert_eq!(pinned[0].program, "konsole");
+        assert_eq!(pinned[0].program, "alacritty");
         assert_eq!(pinned[0].icon_name.as_deref(), Some("utilities-terminal"));
         assert_eq!(pinned[1].label, "Web");
         assert_eq!(pinned[1].program, "chromium");
         assert_eq!(pinned[1].icon_name.as_deref(), Some("chromium"));
         assert_eq!(pinned[2].label, "Files");
-        assert_eq!(pinned[2].program, "dolphin");
-        assert_eq!(pinned[2].icon_name.as_deref(), Some("org.kde.dolphin"));
+        assert_eq!(pinned[2].program, "nemo");
+        assert_eq!(pinned[2].icon_name.as_deref(), Some("system-file-manager"));
     }
 }
