@@ -52,12 +52,15 @@ hardware, OS, port/package, upstream protocol or Meridian issues.
 
 ## Phase 2 — Meridian core on OpenBSD
 
-Status: **native compositor compile path established.** Portable
+Status: **native compositor and input compile paths established.** Portable
 tokens/config/IPC/UI/portal/boot crates compile unchanged. The OpenBSD Smithay
 port disables only the unavailable `linux-drm-syncobj-v1` eventfd contract;
-DRM/KMS, GBM and EGL remain enabled. WM and compositor compile, and all 378
-compositor library tests pass on OpenBSD. The next compile boundary is shell
-shared memory (`memfd_create`), followed by BSD Authentication instead of PAM.
+DRM/KMS, GBM and EGL remain enabled. OpenBSD discovers DRM cards under
+`/dev/dri` and reads keyboard/pointer input directly from wscons, without the
+udev/libinput compatibility backends. WM and compositor compile, and all 380
+compositor library tests pass on OpenBSD. The next proof is a controlled native
+hardware session; the next compile boundary is shell shared memory
+(`memfd_create`), followed by BSD Authentication instead of PAM.
 
 Port or isolate Linux assumptions without weakening the existing architecture:
 

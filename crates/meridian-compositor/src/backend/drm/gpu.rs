@@ -4,11 +4,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(not(target_os = "openbsd"))]
+use smithay::backend::udev::{all_gpus, primary_gpu};
 use smithay::{
     backend::{
         drm::DrmDevice,
         session::{libseat::LibSeatSession, Session},
-        udev::{all_gpus, primary_gpu},
     },
     reexports::drm::control::{
         connector::{self, State as ConnState},
@@ -26,7 +27,7 @@ pub(super) fn select_gpu(
         return Ok(PathBuf::from(path));
     }
 
-    let gpus = all_gpus(seat_name).unwrap_or_default();
+    let gpus = gpu_candidates(seat_name);
     info!("Detected {} GPU(s): {:?}", gpus.len(), gpus);
 
     for path in &gpus {
@@ -40,7 +41,7 @@ pub(super) fn select_gpu(
         }
     }
 
-    if let Ok(Some(path)) = primary_gpu(seat_name) {
+    if let Some(path) = primary_gpu_candidate(seat_name) {
         warn!(
             "No GPU with connected outputs found, falling back to primary: {:?}",
             path
@@ -49,6 +50,43 @@ pub(super) fn select_gpu(
     }
 
     gpus.into_iter().next().ok_or_else(|| "no GPU found".into())
+}
+
+#[cfg(not(target_os = "openbsd"))]
+fn gpu_candidates(seat_name: &str) -> Vec<PathBuf> {
+    all_gpus(seat_name).unwrap_or_default()
+}
+
+#[cfg(not(target_os = "openbsd"))]
+fn primary_gpu_candidate(seat_name: &str) -> Option<PathBuf> {
+    primary_gpu(seat_name).ok().flatten()
+}
+
+#[cfg(target_os = "openbsd")]
+fn gpu_candidates(_seat_name: &str) -> Vec<PathBuf> {
+    let mut candidates = std::fs::read_dir("/dev/dri")
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    name.strip_prefix("card").is_some_and(|suffix| {
+                        !suffix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit())
+                    })
+                })
+        })
+        .collect::<Vec<_>>();
+    candidates.sort();
+    candidates
+}
+
+#[cfg(target_os = "openbsd")]
+fn primary_gpu_candidate(_seat_name: &str) -> Option<PathBuf> {
+    let card0 = PathBuf::from("/dev/dri/card0");
+    card0.exists().then_some(card0)
 }
 
 fn probe_gpu_connectors(

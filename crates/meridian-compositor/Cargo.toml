@@ -20,6 +20,9 @@ tracing = { workspace = true }
 wayland-protocols-wlr = { version = "0.3", features = ["server"] }
 xcursor = { version = "0.3", optional = true }
 
+[target.'cfg(not(target_os = "openbsd"))'.dependencies]
+smithay = { workspace = true, features = ["backend_libinput", "backend_udev"] }
+
 [features]
 default = ["xcursor-themes"]
 xcursor-themes = ["dep:xcursor"]

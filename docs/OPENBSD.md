@@ -2,8 +2,9 @@
 
 > **STATUS: BASE SYSTEM PATCHED, DEVELOPMENT STACK PROBED.** Hardware was
 > inventoried and the first native build matrix was run over SSH on 2026-08-19.
-> OpenBSD support is not yet claimed: the portable Meridian crates compile, but
-> compositor, shell and authentication paths have concrete OS/API blockers.
+> OpenBSD support is not yet claimed: the native compositor and wscons input
+> paths compile, but runtime graphics, shell and authentication still require
+> hardware proof or OS-specific work.
 
 ## Reference hardware
 
@@ -150,7 +151,7 @@ Native Meridian build matrix from Git revision `664b5ba`:
 | `meridian-boot-common` | pass | `cargo check` |
 | `meridian-compass-render` | pass | `cargo check` |
 | `meridian-freetype` / `meridian-ui` | pass | built directly and as shell dependencies |
-| `meridian-wm` / `meridian-compositor` | pass | native OpenBSD build succeeds; `linux-drm-syncobj-v1` is target-disabled while DRM/KMS, GBM and EGL remain enabled |
+| `meridian-wm` / `meridian-compositor` | pass | native OpenBSD build succeeds; DRM devices are enumerated from `/dev/dri`, keyboard/pointer input uses wscons directly, and `linux-drm-syncobj-v1` is target-disabled |
 | `meridian-shell` | blocked | screencopy uses Linux `libc::memfd_create` and `MFD_CLOEXEC` |
 | `meridian-login` / `meridian-lock` / `meridian-polkit` | blocked | `pam-sys` requires `security/pam_appl.h`; OpenBSD uses BSD Authentication rather than a native PAM base |
 
@@ -207,9 +208,14 @@ the more workable platform. The decision and blockers belong in this file.
    pinned Smithay port layer does not compile or advertise
    `linux-drm-syncobj-v1` on OpenBSD because its kernel contract requires
    Linux `eventfd`. DRM/KMS, GBM, EGL and implicit client synchronization remain
-   available. `meridian-wm` and `meridian-compositor` now pass `cargo check`,
-   and all 378 compositor library tests pass on OpenBSD. The boundary should be
-   proposed upstream and the vendored source removed when accepted.
+   available. `meridian-wm` and `meridian-compositor` now pass `cargo check`.
+   OpenBSD selects DRM card nodes directly and consumes `wskbd`/`wsmouse`
+   records through event-driven calloop sources, so the OpenBSD compositor no
+   longer links Smithay's udev or libinput backends. All 380 compositor library
+   tests pass. A controlled hardware run must still validate seatd device opens,
+   the XT-compatible keycode mapping, pointer direction and scrolling. The
+   Smithay boundary should be proposed upstream and the vendored source removed
+   when accepted.
 5. **Shell screencopy has a direct Linux memory-file assumption.** Replace or
    isolate `memfd_create` with an OpenBSD-capable shared-memory abstraction;
    do not merely remove the screencopy path silently.

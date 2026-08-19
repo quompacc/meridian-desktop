@@ -7,6 +7,11 @@ use std::{
 
 #[cfg(not(target_os = "openbsd"))]
 use smithay::wayland::drm_syncobj::{supports_syncobj_eventfd, DrmSyncobjState};
+#[cfg(not(target_os = "openbsd"))]
+use smithay::{
+    backend::libinput::{LibinputInputBackend, LibinputSessionInterface},
+    reexports::input::Libinput,
+};
 use smithay::{
     backend::{
         allocator::{
@@ -19,7 +24,6 @@ use smithay::{
             DrmDevice, DrmDeviceFd, DrmEvent,
         },
         egl::{EGLContext, EGLDisplay},
-        libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::ImportDma,
         session::{libseat::LibSeatSession, Event as SessionEvent, Session},
     },
@@ -31,7 +35,6 @@ use smithay::{
             EventLoop,
         },
         drm::control::Device as _,
-        input::Libinput,
     },
     utils::{DeviceFd, Transform},
     wayland::dmabuf::DmabufFeedbackBuilder,
@@ -941,6 +944,7 @@ fn register_repaint_timer_source(
     Ok(())
 }
 
+#[cfg(not(target_os = "openbsd"))]
 fn register_libinput_event_source(
     event_loop: &mut EventLoop<MeridianState>,
     libinput: Libinput,
@@ -1411,12 +1415,17 @@ pub fn init_drm(
     register_drm_event_source(event_loop, drm_notifier)?;
     register_repaint_timer_source(event_loop, repaint_interval)?;
 
-    let mut libinput = Libinput::new_with_udev(LibinputSessionInterface::from(session));
-    libinput
-        .udev_assign_seat(&seat_name)
-        .map_err(|_| "libinput seat assignment failed")?;
+    #[cfg(not(target_os = "openbsd"))]
+    {
+        let mut libinput = Libinput::new_with_udev(LibinputSessionInterface::from(session));
+        libinput
+            .udev_assign_seat(&seat_name)
+            .map_err(|_| "libinput seat assignment failed")?;
+        register_libinput_event_source(event_loop, libinput)?;
+    }
 
-    register_libinput_event_source(event_loop, libinput)?;
+    #[cfg(target_os = "openbsd")]
+    super::wscons::register_wscons_event_sources(event_loop, &mut session)?;
 
     Ok(())
 }

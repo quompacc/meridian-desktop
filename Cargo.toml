@@ -31,8 +31,6 @@ smithay = { path = "third_party/smithay", default-features = false, features = [
     "backend_gbm",
     "backend_egl",
     "backend_winit",
-    "backend_libinput",
-    "backend_udev",
     "backend_session_libseat",
     "renderer_gl",
     "wayland_frontend",

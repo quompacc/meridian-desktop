@@ -28,6 +28,8 @@ pub(crate) mod init_env;
 pub(super) mod login_ipc;
 pub(crate) mod mode_selection;
 mod render;
+#[cfg(target_os = "openbsd")]
+mod wscons;
 
 pub use init::init_drm;
 pub use render::{layer_role, render_stack_order, RenderStackRole};

@@ -38,8 +38,10 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
   `meridian-ui` bauen auf OpenBSD. Der Design-Guard ist gruen.
 - Die erste harte Portierungsgrenze ist geloest: Der gepinnte Smithay-Port
   kompiliert `linux-drm-syncobj-v1` auf OpenBSD nicht, behaelt aber DRM/KMS,
-  GBM und EGL. `meridian-wm` und `meridian-compositor` bauen nativ; alle 378
-  Compositor-Library-Tests sind auf OpenBSD gruen.
+  GBM und EGL. DRM-Nodes werden nativ unter `/dev/dri` gefunden; Eingaben kommen
+  direkt aus `wskbd`/`wsmouse`, ohne Smithays udev/libinput-Backends. `meridian-wm`
+  und `meridian-compositor` bauen nativ; alle 380 Compositor-Library-Tests sind
+  auf OpenBSD gruen. Der kontrollierte Hardwarelauf steht noch aus.
 - Verbleibende harte Portierungsgrenzen: Shell-Screencopy benoetigt
   `memfd_create`, und Login/Lock/Polkit benoetigen derzeit PAM statt OpenBSD
   BSD Authentication.
