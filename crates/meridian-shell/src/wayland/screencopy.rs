@@ -21,6 +21,43 @@ use wayland_protocols::ext::{
 
 use super::shell::MeridianShell;
 
+fn create_screenshot_shm() -> std::io::Result<OwnedFd> {
+    #[cfg(target_os = "openbsd")]
+    {
+        unsafe extern "C" {
+            fn shm_mkstemp(template: *mut libc::c_char) -> libc::c_int;
+        }
+
+        let mut template = *b"/meridian-screenshot.XXXXXXXXXX\0";
+        // SAFETY: `template` is writable, NUL-terminated and has more than the
+        // six trailing X characters required by OpenBSD's `shm_mkstemp(3)`.
+        let raw_fd = unsafe { shm_mkstemp(template.as_mut_ptr().cast()) };
+        if raw_fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: `shm_mkstemp` returned a new descriptor owned by this call.
+        let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
+        // `shm_mkstemp` creates an anonymous object safely, but does not accept
+        // flags. Set close-on-exec explicitly before handing it to Wayland.
+        if unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) } < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(fd)
+    }
+
+    #[cfg(not(target_os = "openbsd"))]
+    {
+        let c_name = std::ffi::CString::new("meridian-screenshot").expect("static name has no NUL");
+        // SAFETY: `c_name` is NUL-terminated and memfd returns an owned descriptor.
+        let raw_fd = unsafe { libc::memfd_create(c_name.as_ptr(), libc::MFD_CLOEXEC) };
+        if raw_fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: `memfd_create` returned a new descriptor owned by this call.
+        Ok(unsafe { OwnedFd::from_raw_fd(raw_fd) })
+    }
+}
+
 /// State for a single in-flight screenshot capture.
 pub(crate) struct ScreenshotCapture {
     pub session: ExtImageCopyCaptureSessionV1,
@@ -184,15 +221,14 @@ fn issue_frame_capture(state: &mut MeridianShell, qh: &QueueHandle<MeridianShell
         return;
     };
 
-    // Create anonymous file backed by memfd.
-    let c_name = std::ffi::CString::new("meridian-screenshot").unwrap();
-    let raw_fd = unsafe { libc::memfd_create(c_name.as_ptr(), libc::MFD_CLOEXEC) };
-    if raw_fd < 0 {
-        tracing::warn!("screenshot: memfd_create failed");
-        state.screenshot_capture = None;
-        return;
-    }
-    let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
+    let fd = match create_screenshot_shm() {
+        Ok(fd) => fd,
+        Err(err) => {
+            tracing::warn!(%err, "screenshot: shared-memory file creation failed");
+            state.screenshot_capture = None;
+            return;
+        }
+    };
     if unsafe { libc::ftruncate(fd.as_raw_fd(), size as libc::off_t) } < 0 {
         tracing::warn!("screenshot: ftruncate failed");
         state.screenshot_capture = None;
@@ -365,7 +401,9 @@ pub(crate) fn encode_screenshot_png(
 
 #[cfg(test)]
 mod tests {
-    use super::{encode_screenshot_png, screenshot_buffer_layout};
+    use super::{create_screenshot_shm, encode_screenshot_png, screenshot_buffer_layout};
+    #[cfg(target_os = "openbsd")]
+    use std::os::fd::AsRawFd;
 
     #[test]
     fn xrgb_to_rgb_channel_swap() {
@@ -392,5 +430,15 @@ mod tests {
             screenshot_buffer_layout(1920, 1080),
             Some((7680, 8_294_400))
         );
+    }
+
+    #[cfg(target_os = "openbsd")]
+    #[test]
+    fn openbsd_screenshot_shm_is_close_on_exec_and_resizable() {
+        let fd = create_screenshot_shm().expect("OpenBSD shm_mkstemp");
+        let flags = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFD) };
+        assert_ne!(flags, -1);
+        assert_ne!(flags & libc::FD_CLOEXEC, 0);
+        assert_eq!(unsafe { libc::ftruncate(fd.as_raw_fd(), 4096) }, 0);
     }
 }

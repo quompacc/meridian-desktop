@@ -4,8 +4,8 @@
 > inventoried and the first native build matrix was run over SSH on 2026-08-19.
 > OpenBSD support is not yet claimed: the native compositor now completes an
 > atomic KMS frame with Intel hardware acceleration and opens wscons input on
-> the reference laptop, but shell and authentication still require OS-specific
-> work.
+> the reference laptop. Native shell shared memory is also in place;
+> authentication and full interactive validation still require OS-specific work.
 
 ## Reference hardware
 
@@ -153,7 +153,7 @@ Native Meridian build matrix from Git revision `664b5ba`:
 | `meridian-compass-render` | pass | `cargo check` |
 | `meridian-freetype` / `meridian-ui` | pass | built directly and as shell dependencies |
 | `meridian-wm` / `meridian-compositor` | pass | native OpenBSD build succeeds; DRM devices are enumerated from `/dev/dri`, keyboard/pointer input uses wscons directly, and `linux-drm-syncobj-v1` is target-disabled |
-| `meridian-shell` | blocked | screencopy uses Linux `libc::memfd_create` and `MFD_CLOEXEC` |
+| `meridian-shell` | pass | OpenBSD screencopy uses native `shm_mkstemp(3)` with explicit `FD_CLOEXEC`; 310 unit tests and the centralization guard pass |
 | `meridian-login` / `meridian-lock` / `meridian-polkit` | blocked | `pam-sys` requires `security/pam_appl.h`; OpenBSD uses BSD Authentication rather than a native PAM base |
 
 LLVM/libclang was installed to distinguish a missing bindgen tool from the
@@ -224,9 +224,16 @@ the more workable platform. The decision and blockers belong in this file.
    direction and scrolling still need an interactive run. This proves the
    accelerated first frame, not sustained performance. The Smithay boundary
    should be proposed upstream and the vendored source removed when accepted.
-5. **Shell screencopy has a direct Linux memory-file assumption.** Replace or
-   isolate `memfd_create` with an OpenBSD-capable shared-memory abstraction;
-   do not merely remove the screencopy path silently.
+5. **The shell shared-memory compile blocker is resolved natively.** Linux and
+   existing targets keep `memfd_create`; OpenBSD uses its documented
+   `shm_mkstemp(3)` facility and sets `FD_CLOEXEC` before exposing the descriptor
+   to Wayland. The OpenBSD kernel test proves that the descriptor is resizable
+   and close-on-exec. A controlled 20-second full-session run started
+   `meridian-shell`, authenticated its IPC connection, mapped the desktop and
+   panel surfaces, and configured the 1920x66 panel plus 880x620 launcher. An
+   end-to-end screenshot still needs an interactive run. The same smoke also
+   exposed the next session-integration gap: no D-Bus session bus was present,
+   so notification and status-notifier services disabled themselves cleanly.
 6. **Authentication needs an OpenBSD adapter.** Login, lock and polkit currently
    depend on PAM/pam_systemd semantics. The OpenBSD path should be designed
    around BSD Authentication and native session/process handling.

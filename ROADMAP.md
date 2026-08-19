@@ -63,8 +63,12 @@ wscons, initializes EGL/GBM, completes the first 1920x1080 atomic KMS commit and
 starts XWayland. Meridian routes OpenBSD libdrm's privileged device-open hook
 through seatd, so the normal user now renders with Intel HD Graphics 620 and 99
 DMA-BUF formats instead of `llvmpipe`. Sustained performance remains unmeasured.
-The next compile boundary is shell shared memory (`memfd_create`), followed by
-BSD Authentication instead of PAM.
+The shell shared-memory boundary is also resolved: OpenBSD screencopy uses
+native `shm_mkstemp(3)` with close-on-exec semantics, while existing targets
+retain `memfd_create`; all 310 shell tests pass. A full-session smoke maps and
+configures the shell surfaces, with the missing D-Bus session bus now isolated
+as a runtime integration gap. The next hard compile boundary is BSD
+Authentication instead of PAM.
 
 Port or isolate Linux assumptions without weakening the existing architecture:
 

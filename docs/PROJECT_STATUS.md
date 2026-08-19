@@ -47,9 +47,14 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
   vermittelt; der normale Benutzer `eduard` erhaelt dadurch Intel-HD-620-
   Beschleunigung mit 99 DMA-BUF-Formaten, ohne Root-Compositor oder gelockerte
   Geraeterechte. XWayland wurde ebenfalls bereit.
-- Verbleibende harte Portierungsgrenzen: Shell-Screencopy benoetigt
-  `memfd_create`, und Login/Lock/Polkit benoetigen derzeit PAM statt OpenBSD
-  BSD Authentication.
+- Der Shell-Screencopy-Pfad baut ebenfalls nativ: OpenBSD verwendet
+  `shm_mkstemp(3)` plus `FD_CLOEXEC`, waehrend bestehende Targets bei
+  `memfd_create` bleiben. Alle 310 Shell-Tests sowie der Centralization-Guard
+  sind auf OpenBSD gruen. Ein voller Smoke startete die Shell, authentifizierte
+  IPC und konfigurierte Panel sowie Launcher; ohne gestarteten D-Bus-Session-Bus
+  deaktivieren sich Notifications und Status-Notifier derzeit kontrolliert.
+- Verbleibende harte Portierungsgrenze: Login/Lock/Polkit benoetigen derzeit
+  PAM statt OpenBSD BSD Authentication.
 - Vollständige Evidenz und offene Tests: `OPENBSD.md`.
 
 ## Validierter Basisstand
