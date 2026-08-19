@@ -53,8 +53,13 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
   sind auf OpenBSD gruen. Ein voller Smoke startete die Shell, authentifizierte
   IPC und konfigurierte Panel sowie Launcher; ohne gestarteten D-Bus-Session-Bus
   deaktivieren sich Notifications und Status-Notifier derzeit kontrolliert.
-- Verbleibende harte Portierungsgrenze: Login/Lock/Polkit benoetigen derzeit
-  PAM statt OpenBSD BSD Authentication.
+- Login und Lock nutzen auf OpenBSD nativ `auth_userokay(3)`; PAM bleibt fuer
+  andere Targets unveraendert erhalten. Polkit nutzt weiterhin seinen nativen
+  setuid-Helper und hat keine unbenutzte direkte PAM-Abhaengigkeit mehr. Der
+  gesamte Workspace besteht `cargo check`; 52 Login-, 9 Lock- und 11 Polkit-
+  Tests sind gruen. Ein echter erfolgreicher Passwort-Login/Unlock bleibt als
+  interaktiver Test offen. Der OpenBSD-Sessionstart nutzt ein besitzgeprueftes
+  `/tmp/meridian-runtime-<uid>` und findet XWayland ueber `/usr/X11R6/bin`.
 - Vollständige Evidenz und offene Tests: `OPENBSD.md`.
 
 ## Validierter Basisstand
@@ -270,10 +275,11 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
   aktualisierte beschatten (xdg-desktop-portal nimmt die erste pro Quelle).
 
 ## Offene Risiken
-- OpenBSD-Portierung hat noch zwei bekannte Compile-Architekturarbeiten:
-  portables Shared Memory statt `memfd_create` und BSD Authentication statt
-  PAM/pam_systemd. Danach folgen native Input-/Session- und Runtime-Smokes;
-  eine startbare Meridian-Session ist noch nicht bewiesen.
+- Die bekannten OpenBSD-Compile-Grenzen fuer Shared Memory und Authentifizierung
+  sind geloest. Offen sind interaktive Login-/Unlock-, Input-, D-Bus-Session-,
+  Screenshot- und laengere Runtime-/Performance-Smokes. Eine beschleunigte
+  Meridian-Session mit Shell ist startbar, aber noch kein validierter
+  Daily-Driver.
 - Breiter Bug-Audit steht aus: Es ist eine relevante Zahl offener Bugs bekannt,
   aber noch nicht systematisch katalogisiert. Naechster grosser Schritt ist ein
   vollstaendiger Audit gegen `b1c5d1b` mit priorisierter Bug-Liste.
@@ -298,13 +304,12 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
   und Multi-Output-Politur bleiben offen.
 
 ## Naechste sinnvolle Arbeiten
-1. Smithay-OpenBSD-Grenze upstream vorbereiten und parallel einen echten
-   DRM/GBM/EGL-Lauf auf dem Acer testen; `linux-drm-syncobj-v1` darf dabei nicht
-   beworben werden.
-2. Shell-Screencopy auf eine portable Shared-Memory-Abstraktion umstellen und
-   die Linux-Implementierung verhaltensgleich erhalten.
-3. OpenBSD-Authentifizierungsadapter fuer Login/Lock/Polkit auf Basis von BSD
-   Authentication und nativer Sessionverwaltung spezifizieren.
+1. Erfolgreichen Login, Sessionstart, Lock/Unlock und D-Bus-Session interaktiv
+   auf dem Acer testen, ohne Passwoerter in Logs oder Automatisierung zu geben.
+2. Tastatur, Touchpad, Cursor, Screenshot und XWayland in einer kontrollierten
+   OpenBSD-Sitzung interaktiv pruefen.
+3. Smithay-OpenBSD-Grenze upstream vorbereiten; `linux-drm-syncobj-v1` darf auf
+   OpenBSD nicht beworben werden.
 4. Grosser Bug-Audit gegen `b1c5d1b`: Bugs systematisch erfassen, gegen den
    echten Code verifizieren und priorisiert als neuen `docs/AUDIT_*`-Report
    ablegen. Danach abarbeiten.

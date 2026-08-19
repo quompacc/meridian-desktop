@@ -445,6 +445,35 @@ delegate_noop!(AppState: ignore wl_buffer::WlBuffer);
 
 // ── SHM buffer helpers ────────────────────────────────────────────────────────
 
+fn create_anonymous_shm() -> Option<libc::c_int> {
+    #[cfg(target_os = "openbsd")]
+    {
+        unsafe extern "C" {
+            fn shm_mkstemp(template: *mut libc::c_char) -> libc::c_int;
+        }
+
+        let mut template = *b"/meridian-lock.XXXXXXXXXX\0";
+        // SAFETY: the template is writable, NUL-terminated, and has the six
+        // trailing X characters required by OpenBSD's shm_mkstemp(3).
+        let fd = unsafe { shm_mkstemp(template.as_mut_ptr().cast()) };
+        if fd < 0 || unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) } < 0 {
+            if fd >= 0 {
+                unsafe { libc::close(fd) };
+            }
+            return None;
+        }
+        Some(fd)
+    }
+
+    #[cfg(not(target_os = "openbsd"))]
+    {
+        let name = b"meridian-lock-shm\0";
+        // SAFETY: name is a static NUL-terminated C string.
+        let fd = unsafe { libc::memfd_create(name.as_ptr().cast(), libc::MFD_CLOEXEC) };
+        (fd >= 0).then_some(fd)
+    }
+}
+
 fn create_shm_buffer(
     shm: &wl_shm::WlShm,
     width: u32,
@@ -454,13 +483,7 @@ fn create_shm_buffer(
     let stride = width * 4;
     let size = (stride * height) as usize;
 
-    let raw_fd = unsafe {
-        let name = b"meridian-lock-shm\0";
-        libc::memfd_create(name.as_ptr() as *const libc::c_char, libc::MFD_CLOEXEC)
-    };
-    if raw_fd < 0 {
-        return None;
-    }
+    let raw_fd = create_anonymous_shm()?;
     if unsafe { libc::ftruncate(raw_fd, size as libc::off_t) } != 0 {
         unsafe { libc::close(raw_fd) };
         return None;

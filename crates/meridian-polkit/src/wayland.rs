@@ -8,7 +8,7 @@
 // raw dispatch idiom is a smaller surface area and matches the rest of
 // the codebase.
 
-use std::os::fd::AsFd;
+use std::os::fd::{AsFd, FromRawFd, OwnedFd};
 use std::os::raw::c_void;
 use std::os::unix::io::AsRawFd;
 
@@ -29,6 +29,40 @@ use zeroize::Zeroizing;
 
 use crate::dbus::{AuthRequest, Identity, Outcome};
 use crate::ui;
+
+fn create_anonymous_shm() -> std::io::Result<OwnedFd> {
+    #[cfg(target_os = "openbsd")]
+    {
+        unsafe extern "C" {
+            fn shm_mkstemp(template: *mut libc::c_char) -> libc::c_int;
+        }
+
+        let mut template = *b"/meridian-polkit.XXXXXXXXXX\0";
+        // SAFETY: the template is writable, NUL-terminated, and has the six
+        // trailing X characters required by OpenBSD's shm_mkstemp(3).
+        let raw_fd = unsafe { shm_mkstemp(template.as_mut_ptr().cast()) };
+        if raw_fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: shm_mkstemp returned a new descriptor owned by this call.
+        let fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
+        if unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) } < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(fd)
+    }
+
+    #[cfg(not(target_os = "openbsd"))]
+    {
+        // SAFETY: the name is a static NUL-terminated C string.
+        let raw_fd = unsafe { libc::memfd_create(c"meridian-polkit".as_ptr(), libc::MFD_CLOEXEC) };
+        if raw_fd < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: memfd_create returned a new descriptor owned by this call.
+        Ok(unsafe { OwnedFd::from_raw_fd(raw_fd) })
+    }
+}
 
 pub struct PamResult {
     pub cookie: String,
@@ -280,13 +314,13 @@ impl AppState {
                     p.shm_size = 0;
                 }
             }
-            let fd = unsafe { libc::memfd_create(c"meridian-polkit".as_ptr(), 0) };
-            if fd < 0 {
-                warn!("memfd_create failed");
-                return;
-            }
-            use std::os::fd::FromRawFd;
-            let owned_fd = unsafe { std::os::fd::OwnedFd::from_raw_fd(fd) };
+            let owned_fd = match create_anonymous_shm() {
+                Ok(fd) => fd,
+                Err(err) => {
+                    warn!(%err, "shared-memory file creation failed");
+                    return;
+                }
+            };
             unsafe {
                 if libc::ftruncate(owned_fd.as_raw_fd(), size as i64) < 0 {
                     warn!("ftruncate failed");

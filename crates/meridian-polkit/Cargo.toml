@@ -13,7 +13,6 @@ meridian-ui = { path = "../meridian-ui" }
 libc = "0.2"
 meridian-config = { path = "../meridian-config" }
 nix = { version = "0.29", features = ["user"] }
-pam-sys = "1.0.0-alpha5"
 smithay-client-toolkit = "0.19"
 tiny-skia = { workspace = true }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }

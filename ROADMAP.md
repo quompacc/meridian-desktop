@@ -63,12 +63,17 @@ wscons, initializes EGL/GBM, completes the first 1920x1080 atomic KMS commit and
 starts XWayland. Meridian routes OpenBSD libdrm's privileged device-open hook
 through seatd, so the normal user now renders with Intel HD Graphics 620 and 99
 DMA-BUF formats instead of `llvmpipe`. Sustained performance remains unmeasured.
-The shell shared-memory boundary is also resolved: OpenBSD screencopy uses
-native `shm_mkstemp(3)` with close-on-exec semantics, while existing targets
-retain `memfd_create`; all 310 shell tests pass. A full-session smoke maps and
-configures the shell surfaces, with the missing D-Bus session bus now isolated
-as a runtime integration gap. The next hard compile boundary is BSD
-Authentication instead of PAM.
+The shared-memory boundary is also resolved: OpenBSD shell screencopy, lock and
+polkit surfaces use native `shm_mkstemp(3)` with close-on-exec semantics, while
+existing targets retain `memfd_create`; all 310 shell tests pass. Login and lock
+now use BSD Authentication through `auth_userokay(3)`, with PAM retained only on
+other targets; Polkit retains its native helper protocol without an unused PAM
+dependency. `cargo check --workspace` and all Meridian workspace tests pass on
+OpenBSD (the vendored Smithay example package is explicitly excluded). A
+full-session smoke maps and configures the shell surfaces. Interactive
+login/unlock and the D-Bus session lifecycle are the next runtime gaps; the
+native launcher path already supplies the OpenBSD runtime directory and X11R6
+binary search path required for that test.
 
 Port or isolate Linux assumptions without weakening the existing architecture:
 

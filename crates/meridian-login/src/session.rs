@@ -23,6 +23,7 @@ pub enum SessionError {
     HomeNotUtf8,
     UsernameNotCString,
     RuntimeDir(std::io::Error),
+    UnsafeRuntimeDir(PathBuf),
     Chown(nix::Error),
     Spawn(std::io::Error),
     Nix(nix::Error),
@@ -35,6 +36,11 @@ impl std::fmt::Display for SessionError {
             Self::HomeNotUtf8 => write!(f, "user home directory is not utf-8"),
             Self::UsernameNotCString => write!(f, "username contains NUL byte"),
             Self::RuntimeDir(e) => write!(f, "failed to prepare XDG_RUNTIME_DIR: {}", e),
+            Self::UnsafeRuntimeDir(path) => write!(
+                f,
+                "refusing unsafe pre-existing XDG_RUNTIME_DIR: {}",
+                path.display()
+            ),
             Self::Chown(e) => write!(f, "chown failed: {}", e),
             Self::Spawn(e) => write!(f, "spawn failed: {}", e),
             Self::Nix(e) => write!(f, "nix syscall failed: {}", e),
@@ -45,12 +51,12 @@ impl std::fmt::Display for SessionError {
 impl std::error::Error for SessionError {}
 
 /// Spawn the compositor binary as `username`, with a fresh Wayland-flavored
-/// environment. Returns the Child so the caller can wait on it (Phase 7b:
-/// the PAM session must stay open until the compositor has exited). The
+/// environment. Returns the Child so the caller can wait on it while the
+/// authentication session stays open until the compositor has exited. The
 /// child inherits stdio from the parent so its logs flow to the same journal.
 ///
-/// `pam_env` is the snapshot from pam_getenvlist (typically XDG_SESSION_ID,
-/// XDG_SEAT, XDG_VTNR set by pam_systemd). It is applied BEFORE the fixed
+/// `pam_env` is the optional platform session environment (on PAM systems this
+/// is the snapshot from pam_getenvlist). It is applied BEFORE the fixed
 /// XDG_RUNTIME_DIR / XDG_SESSION_TYPE / XDG_CURRENT_DESKTOP so the explicit
 /// settings always win on conflict.
 pub fn launch_compositor_for(
@@ -120,10 +126,7 @@ pub fn launch_compositor_for(
     cmd.env("HOME", &home);
     cmd.env("USER", username);
     cmd.env("LOGNAME", username);
-    cmd.env(
-        "PATH",
-        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-    );
+    cmd.env("PATH", session_path());
     cmd.env("SHELL", &shell);
     cmd.env("XDG_RUNTIME_DIR", runtime_dir);
     cmd.env("XDG_SESSION_TYPE", "wayland");
@@ -221,12 +224,32 @@ pub fn launch_compositor_for(
     Ok(child)
 }
 
-/// XDG_RUNTIME_DIR for a user is /run/user/<uid>. With Phase 7b's
-/// pam_systemd in the session stack this is normally created for us;
-/// we still fall back to creating it ourselves so the compositor has a
-/// working XDG_RUNTIME_DIR even if pam_systemd is missing or unhappy.
+#[cfg(target_os = "openbsd")]
+fn session_path() -> &'static str {
+    "/usr/local/sbin:/usr/local/bin:/usr/X11R6/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+}
+
+#[cfg(not(target_os = "openbsd"))]
+fn session_path() -> &'static str {
+    "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+}
+
+#[cfg(target_os = "openbsd")]
+fn runtime_dir_path(uid: u32) -> PathBuf {
+    PathBuf::from(format!("/tmp/meridian-runtime-{uid}"))
+}
+
+#[cfg(not(target_os = "openbsd"))]
+fn runtime_dir_path(uid: u32) -> PathBuf {
+    PathBuf::from(format!("/run/user/{uid}"))
+}
+
+/// Prepare a private XDG runtime directory. OpenBSD uses a Meridian-owned
+/// directory below `/tmp`; PAM/systemd targets retain `/run/user/<uid>`.
 fn ensure_runtime_dir(uid: u32, gid: u32) -> Result<PathBuf, SessionError> {
-    let path = PathBuf::from(format!("/run/user/{}", uid));
+    use std::os::unix::fs::MetadataExt;
+
+    let path = runtime_dir_path(uid);
     if !path.exists() {
         std::fs::create_dir_all(&path).map_err(SessionError::RuntimeDir)?;
         nix::unistd::chown(
@@ -235,6 +258,13 @@ fn ensure_runtime_dir(uid: u32, gid: u32) -> Result<PathBuf, SessionError> {
             Some(nix::unistd::Gid::from_raw(gid)),
         )
         .map_err(SessionError::Chown)?;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))
+            .map_err(SessionError::RuntimeDir)?;
+    } else {
+        let metadata = std::fs::symlink_metadata(&path).map_err(SessionError::RuntimeDir)?;
+        if !metadata.is_dir() || metadata.file_type().is_symlink() || metadata.uid() != uid {
+            return Err(SessionError::UnsafeRuntimeDir(path));
+        }
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))
             .map_err(SessionError::RuntimeDir)?;
     }
@@ -253,12 +283,22 @@ mod tests {
 
     #[test]
     fn runtime_dir_path_format() {
-        // ensure_runtime_dir is private but the path is deterministic; check via
-        // an indirect probe: existing dir for current uid (commonly /run/user/<uid>)
         let uid = nix::unistd::Uid::current().as_raw();
-        let expected = std::path::Path::new("/run/user").join(uid.to_string());
-        // We don't assert existence (test may run as a user without one) — only
-        // that the function's path scheme matches what XDG expects.
-        assert!(expected.starts_with("/run/user/"));
+        let expected = runtime_dir_path(uid);
+        #[cfg(target_os = "openbsd")]
+        assert_eq!(
+            expected,
+            PathBuf::from(format!("/tmp/meridian-runtime-{uid}"))
+        );
+        #[cfg(not(target_os = "openbsd"))]
+        assert_eq!(expected, PathBuf::from(format!("/run/user/{uid}")));
+    }
+
+    #[test]
+    fn openbsd_session_path_can_find_x11_binaries() {
+        #[cfg(target_os = "openbsd")]
+        assert!(session_path()
+            .split(':')
+            .any(|path| path == "/usr/X11R6/bin"));
     }
 }

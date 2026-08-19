@@ -4,8 +4,8 @@
 > inventoried and the first native build matrix was run over SSH on 2026-08-19.
 > OpenBSD support is not yet claimed: the native compositor now completes an
 > atomic KMS frame with Intel hardware acceleration and opens wscons input on
-> the reference laptop. Native shell shared memory is also in place;
-> authentication and full interactive validation still require OS-specific work.
+> the reference laptop. Native shared memory and BSD Authentication adapters
+> are in place; full interactive login and daily-driver validation remain.
 
 ## Reference hardware
 
@@ -141,7 +141,7 @@ The WebKit C smoke compiled, linked and returned version `2.52.5`. This proves
 headers, pkg-config metadata, linker and loader availability; it does not yet
 prove display creation, Wayland integration, GPU acceleration or performance.
 
-Native Meridian build matrix from Git revision `664b5ba`:
+Native Meridian build matrix on 2026-08-19:
 
 | Crate/path | Result | Evidence / first blocker |
 |---|---|---|
@@ -154,11 +154,15 @@ Native Meridian build matrix from Git revision `664b5ba`:
 | `meridian-freetype` / `meridian-ui` | pass | built directly and as shell dependencies |
 | `meridian-wm` / `meridian-compositor` | pass | native OpenBSD build succeeds; DRM devices are enumerated from `/dev/dri`, keyboard/pointer input uses wscons directly, and `linux-drm-syncobj-v1` is target-disabled |
 | `meridian-shell` | pass | OpenBSD screencopy uses native `shm_mkstemp(3)` with explicit `FD_CLOEXEC`; 310 unit tests and the centralization guard pass |
-| `meridian-login` / `meridian-lock` / `meridian-polkit` | blocked | `pam-sys` requires `security/pam_appl.h`; OpenBSD uses BSD Authentication rather than a native PAM base |
+| `meridian-login` / `meridian-lock` | pass | OpenBSD password authentication uses native `auth_userokay(3)`; PAM remains target-scoped to non-OpenBSD systems; 52 login and 9 lock tests pass |
+| `meridian-polkit` | pass | retains PolicyKit's native setuid helper protocol and no longer declares its unused PAM dependency; 11 tests pass |
 
-LLVM/libclang was installed to distinguish a missing bindgen tool from the
-actual authentication blocker. With `LIBCLANG_PATH` and `LD_LIBRARY_PATH` set,
-the PAM builds advance to the missing PAM header and fail there as expected.
+`cargo check --workspace` now passes on OpenBSD. The Meridian workspace tests
+also pass when the excluded vendored Smithay package is omitted explicitly with
+`--exclude smithay`. A plain `cargo test --workspace` still asks Cargo to build
+Smithay's feature-gated example programs and fails there because Vulkan and the
+example-only CLI/image dependencies are intentionally disabled; this is not a
+Meridian test failure.
 
 Do not paper over failures with broad `cfg` removal. Classify each dependency as
 portable core, Linux adapter, OpenBSD adapter or currently unsupported.
@@ -234,9 +238,17 @@ the more workable platform. The decision and blockers belong in this file.
    end-to-end screenshot still needs an interactive run. The same smoke also
    exposed the next session-integration gap: no D-Bus session bus was present,
    so notification and status-notifier services disabled themselves cleanly.
-6. **Authentication needs an OpenBSD adapter.** Login, lock and polkit currently
-   depend on PAM/pam_systemd semantics. The OpenBSD path should be designed
-   around BSD Authentication and native session/process handling.
+6. **The authentication compile boundary is resolved natively.** Login and lock
+   use OpenBSD `auth_userokay(3)` with the user's configured default BSD
+   Authentication style; their PAM implementation and dependency remain intact
+   on non-OpenBSD targets. Smartcard login reports an explicit unsupported
+   configuration on OpenBSD instead of silently falling back. Polkit already
+   delegates authorization to `polkit-agent-helper-1`, so its unused direct PAM
+   dependency was removed. The successful-password login/session lifecycle and
+   an actual unlock still require an interactive test; no password was supplied
+   to automated checks. The launcher uses a private, ownership-checked
+   `/tmp/meridian-runtime-<uid>` directory and includes `/usr/X11R6/bin` in the
+   sanitized OpenBSD session `PATH`, so XWayland remains discoverable.
 7. **Graphics/WebKit packaging is positive but runtime proof is incomplete.**
    EGL/GBM and WebKit compile/link successfully, and the compositor's Intel-
    accelerated first frame is proven. A real client surface, interactive
