@@ -1082,11 +1082,8 @@ impl MeridianShell {
                 }
 
                 self.launcher_state.apps = launcher::DesktopApp::load_system();
-                self.icon_cache = super::init::build_icon_cache(
-                    &self.theme,
-                    &self.launcher_state.apps,
-                    &self.pinned_apps,
-                );
+                self.icon_cache =
+                    super::init::assets::build_icon_cache(&self.theme, &self.pinned_apps);
                 self.launcher_icons_warmed = false;
                 self.panel_dirty = true;
                 self.launcher_dirty = true;
@@ -2080,11 +2077,7 @@ impl MeridianShell {
         self.theme = theme_manager.current().config.clone();
         self.theme_name = name.clone();
         self.available_themes = theme_manager.available_themes();
-        self.icon_cache = super::init::build_icon_cache(
-            &self.theme,
-            &self.launcher_state.apps,
-            &self.pinned_apps,
-        );
+        self.icon_cache = super::init::assets::build_icon_cache(&self.theme, &self.pinned_apps);
         self.launcher_icons_warmed = false;
         meridian_config::MeridianConfig::save_theme(&name);
         // THEME-1: KDE/Qt (Breeze/KColorScheme) and GTK apps read legacy config

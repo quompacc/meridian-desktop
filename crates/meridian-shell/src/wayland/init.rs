@@ -1,16 +1,17 @@
 use std::{cell::RefCell, time::Instant};
 
-use meridian_config::{MeridianConfig, ThemeConfig, ThemeManager};
+pub(super) mod assets;
+mod commit;
+mod flags;
+
+use meridian_config::{MeridianConfig, ThemeManager};
 use smithay_client_toolkit::{
     compositor::CompositorState,
     output::OutputState,
     reexports::{calloop::EventLoop, calloop_wayland_source::WaylandSource},
     registry::RegistryState,
     seat::SeatState,
-    shell::{
-        wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell},
-        WaylandSurface,
-    },
+    shell::wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell},
     shm::{slot::SlotPool, Shm},
 };
 use tracing::{debug, info, warn};
@@ -21,103 +22,14 @@ use wayland_protocols::ext::{
 };
 
 use crate::{
-    default_pinned_apps, icons::IconCache, launcher, network::NetworkController, panel,
-    TextRenderer, AUDIO_POPUP_HEIGHT, AUDIO_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT,
-    CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT,
-    NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, SHELL_POPUP_BOTTOM_MARGIN,
-    THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT,
-    WORKSPACE_POPUP_WIDTH,
+    default_pinned_apps, launcher, network::NetworkController, panel, TextRenderer,
+    AUDIO_POPUP_HEIGHT, AUDIO_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH,
+    LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT, NETWORK_POPUP_RIGHT_MARGIN,
+    NETWORK_POPUP_WIDTH, SHELL_POPUP_BOTTOM_MARGIN, THUMBNAIL_POPUP_HEIGHT,
+    THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
 };
 
-use super::{
-    calendar::CalendarDisplayPolicy, CommitReason, CommitStats, CommitSurfaceKind, IpcClient,
-    MeridianShell, SurfaceKind,
-};
-
-pub(crate) fn build_icon_cache(
-    theme: &ThemeConfig,
-    _launcher_apps: &[launcher::DesktopApp],
-    pinned_apps: &[panel::PinnedApp],
-) -> IconCache {
-    let mut icon_cache = IconCache::new_for_theme(&theme.icons.theme, &theme.colors.text.to_hex());
-    // Panel pinned-app icons at 22px. Includes both chromium (the new
-    // default Web entry) and firefox so users with the older custom
-    // config still get an icon. Without warming, IconCache::lookup
-    // returns None even if the file exists on disk.
-    icon_cache.warm(
-        &[
-            "utilities-terminal",
-            "chromium",
-            "firefox",
-            "org.kde.dolphin",
-        ],
-        22,
-    );
-    icon_cache.warm(
-        &[
-            "network-wired-symbolic",
-            "network-wired-disconnected-symbolic",
-            "network-wireless-signal-excellent-symbolic",
-            "network-wireless-signal-good-symbolic",
-            "network-wireless-signal-none-symbolic",
-            "network-wireless-disconnected-symbolic",
-            "network-vpn-symbolic",
-            "network-offline-symbolic",
-            "camera-photo-symbolic",
-            "audio-volume-high-symbolic",
-            "audio-volume-medium-symbolic",
-            "audio-volume-low-symbolic",
-            "audio-volume-muted-symbolic",
-        ],
-        22,
-    );
-    icon_cache.warm(crate::battery::ICON_NAMES, 22);
-    icon_cache.warm(
-        &[
-            "thunderbird",
-            "chromium",
-            "system-file-manager",
-            "gwenview",
-            "amarok",
-            "marble",
-            "akregator",
-            "org.kde.discover",
-            "org.kde.korganizer",
-            "org.kde.kweather",
-            "org.kde.knotes",
-        ],
-        64,
-    );
-    icon_cache.warm(
-        &[
-            "system-shutdown",
-            "system-reboot",
-            "system-suspend",
-            "system-lock-screen",
-            "system-log-out",
-        ],
-        32,
-    );
-
-    // Launcher GRID app icons (all installed apps) are NOT warmed here: decoding
-    // dozens of SVGs blocked the panel from appearing for several seconds at
-    // login. The panel only needs the pinned + tray icons warmed above. The grid
-    // icons are warmed lazily on the first launcher open (see
-    // `warm_launcher_icons`), so startup is fast.
-
-    let pinned_icons: Vec<&str> = pinned_apps
-        .iter()
-        .filter_map(|a| a.icon_name.as_deref())
-        .filter(|n| !n.is_empty())
-        .collect();
-    if !pinned_icons.is_empty() {
-        icon_cache.warm(&pinned_icons, 22);
-        icon_cache.warm(&pinned_icons, 24);
-        icon_cache.warm(&pinned_icons, 48);
-    }
-
-    icon_cache
-}
+use super::{calendar::CalendarDisplayPolicy, CommitStats, IpcClient, MeridianShell, SurfaceKind};
 
 pub(crate) fn initialize(
     event_loop: &mut EventLoop<'_, MeridianShell>,
@@ -432,7 +344,7 @@ pub(crate) fn initialize(
             })
             .collect()
     };
-    let icon_cache = build_icon_cache(&theme, &launcher_apps, &pinned_apps);
+    let icon_cache = assets::build_icon_cache(&theme, &pinned_apps);
     let mut network_controller = NetworkController::new();
     network_controller.poll();
     // These were extracted from the state literal so each runs (and could be
@@ -449,22 +361,8 @@ pub(crate) fn initialize(
     let network_profiles = crate::network::list_saved_connections();
     let ipc_client = IpcClient::connect();
 
-    let commit_stats_enabled = std::env::var("MERIDIAN_SHELL_COMMIT_STATS")
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false);
-    let render_stats_enabled = std::env::var("MERIDIAN_SHELL_RENDER_STATS")
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false);
+    let commit_stats_enabled = flags::enabled("MERIDIAN_SHELL_COMMIT_STATS");
+    let render_stats_enabled = flags::enabled("MERIDIAN_SHELL_RENDER_STATS");
 
     let mut shell = MeridianShell {
         registry_state: RegistryState::new(&globals),
@@ -668,14 +566,7 @@ pub(crate) fn initialize(
         panel_last_signature: None,
         panel_click_zones_snapshot: None,
         repaint_stats: Default::default(),
-        repaint_stats_enabled: std::env::var("MERIDIAN_SHELL_REPAINT_STATS")
-            .map(|value| {
-                matches!(
-                    value.trim().to_ascii_lowercase().as_str(),
-                    "1" | "true" | "yes" | "on"
-                )
-            })
-            .unwrap_or(false),
+        repaint_stats_enabled: flags::enabled("MERIDIAN_SHELL_REPAINT_STATS"),
         last_repaint_stats_log: Instant::now(),
         commit_stats: CommitStats::default(),
         commit_stats_enabled,
@@ -697,28 +588,6 @@ pub(crate) fn initialize(
         screenshot_capture: None,
     };
 
-    shell.desktop_layer.commit();
-    info!("Desktop background surface committed without input buffer");
-    shell.desktop_menu_layer.commit();
-    info!("Desktop menu surface created and committed");
-    shell.commit_surface(CommitSurfaceKind::Panel, CommitReason::InitialCreate);
-    info!("Panel surface created and committed");
-    shell.commit_surface(CommitSurfaceKind::Launcher, CommitReason::InitialCreate);
-    info!("Launcher surface created and committed");
-    shell.calendar_layer.commit();
-    info!("Calendar popup surface created and committed");
-    shell.workspace_layer.commit();
-    info!("Workspace popup surface created and committed");
-    shell.network_layer.commit();
-    info!("Network popup surface created and committed");
-    shell.notification_layer.commit();
-    info!("Notification surface created and committed");
-    shell.thumbnail_layer.commit();
-    shell.consent_layer.commit();
-    info!("Screenshot consent surface initial commit");
-    shell.wifi_modal_layer.commit();
-    info!("Wi-Fi password modal surface initial commit");
-    shell.region_picker_layer.commit();
-    info!("Screenshot region picker surface initial commit");
+    commit::commit_initial_surfaces(&mut shell);
     Ok((shell, qh))
 }

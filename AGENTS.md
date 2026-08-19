@@ -52,6 +52,9 @@ Daraus abgeleitete, nicht verhandelbare Invarianten:
 12. If tests were added or changed, run `cargo test --workspace`.
 13. For formatting-sensitive Rust changes, run `cargo fmt`.
 14. A task with Rust changes is not complete until the check/test results are reported.
+15. Rust source files must stay at or below 600 physical lines. Split by
+    responsibility before adding code to an oversized file; refactors must
+    remain behavior-preserving and be committed in small, tested steps.
 15. Plattformannahmen explizit kapseln; OpenBSD- und FreeBSD-Sicherheitsmodelle
     nicht künstlich gleichsetzen.
 
