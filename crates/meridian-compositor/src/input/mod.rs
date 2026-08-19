@@ -38,11 +38,9 @@ impl MeridianState {
             }
             InputEvent::PointerMotion { event, .. } => {
                 pointer::handle_pointer_motion_relative(self, &event);
-                self.mark_all_outputs_dirty("pointer-motion-input");
             }
             InputEvent::PointerMotionAbsolute { event, .. } => {
                 pointer::handle_pointer_motion_absolute(self, &event);
-                self.mark_all_outputs_dirty("pointer-motion-input");
             }
             InputEvent::PointerButton { event, .. } => {
                 pointer::handle_pointer_button(self, &event);

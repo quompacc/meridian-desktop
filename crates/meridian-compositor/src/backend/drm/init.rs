@@ -563,6 +563,7 @@ pub fn init_drm(
         disabled_outputs,
         cursor_image,
         cursor_buffer,
+        compositor_cursor_cache: std::collections::HashMap::new(),
         named_cursor_cache: std::collections::HashMap::new(),
         cursor_icon: super::DrmCursorIcon::Default,
         dirty_stats: super::DrmDirtyStats::new(dirty_stats_enabled),

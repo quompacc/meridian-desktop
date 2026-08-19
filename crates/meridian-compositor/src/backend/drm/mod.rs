@@ -89,7 +89,7 @@ pub struct DisabledDrmOutput {
     pub reserved_geometry_hint: OutputGeometry,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DrmCursorIcon {
     Default,
     EwResize,
@@ -109,6 +109,7 @@ pub struct DrmBackend {
     pub disabled_outputs: Vec<DisabledDrmOutput>,
     pub cursor_image: CursorImage,
     pub cursor_buffer: MemoryRenderBuffer,
+    pub compositor_cursor_cache: HashMap<DrmCursorIcon, (CursorImage, MemoryRenderBuffer)>,
     pub named_cursor_cache: HashMap<String, (MemoryRenderBuffer, Point<i32, Logical>)>,
     pub cursor_icon: DrmCursorIcon,
     pub dirty_stats: DrmDirtyStats,

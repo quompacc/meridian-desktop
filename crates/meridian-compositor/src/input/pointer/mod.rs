@@ -367,27 +367,18 @@ fn update_hover_cursor_feedback(state: &mut MeridianState, location: Point<f64, 
     let mut changed = false;
     if let Some(drm) = state.drm_backend.as_mut() {
         if drm.cursor_icon != desired_cursor {
-            let new_cursor = match desired_cursor {
-                DrmCursorIcon::Default => CursorImage::load_theme(&cursor_theme, cursor_size),
-                DrmCursorIcon::EwResize => {
-                    CursorImage::load_theme_icon(&cursor_theme, cursor_size, CURSOR_EW_RESIZE_NAMES)
-                }
-                DrmCursorIcon::NsResize => {
-                    CursorImage::load_theme_icon(&cursor_theme, cursor_size, CURSOR_NS_RESIZE_NAMES)
-                }
-                DrmCursorIcon::NeswResize => CursorImage::load_theme_icon(
-                    &cursor_theme,
-                    cursor_size,
-                    CURSOR_NESW_RESIZE_NAMES,
-                ),
-                DrmCursorIcon::NwseResize => CursorImage::load_theme_icon(
-                    &cursor_theme,
-                    cursor_size,
-                    CURSOR_NWSE_RESIZE_NAMES,
-                ),
-            };
-            drm.cursor_buffer = new_cursor.to_memory_buffer();
-            drm.cursor_image = new_cursor;
+            let (next_image, next_buffer) = drm
+                .compositor_cursor_cache
+                .remove(&desired_cursor)
+                .unwrap_or_else(|| {
+                    let image = load_compositor_cursor(desired_cursor, &cursor_theme, cursor_size);
+                    let buffer = image.to_memory_buffer();
+                    (image, buffer)
+                });
+            let previous_image = std::mem::replace(&mut drm.cursor_image, next_image);
+            let previous_buffer = std::mem::replace(&mut drm.cursor_buffer, next_buffer);
+            drm.compositor_cursor_cache
+                .insert(drm.cursor_icon, (previous_image, previous_buffer));
             drm.cursor_icon = desired_cursor;
             changed = true;
         }
@@ -395,6 +386,28 @@ fn update_hover_cursor_feedback(state: &mut MeridianState, location: Point<f64, 
 
     if changed {
         state.mark_all_outputs_dirty("pointer-cursor-icon-change");
+    }
+}
+
+fn load_compositor_cursor(
+    icon: DrmCursorIcon,
+    cursor_theme: &str,
+    cursor_size: u32,
+) -> CursorImage {
+    match icon {
+        DrmCursorIcon::Default => CursorImage::load_theme(cursor_theme, cursor_size),
+        DrmCursorIcon::EwResize => {
+            CursorImage::load_theme_icon(cursor_theme, cursor_size, CURSOR_EW_RESIZE_NAMES)
+        }
+        DrmCursorIcon::NsResize => {
+            CursorImage::load_theme_icon(cursor_theme, cursor_size, CURSOR_NS_RESIZE_NAMES)
+        }
+        DrmCursorIcon::NeswResize => {
+            CursorImage::load_theme_icon(cursor_theme, cursor_size, CURSOR_NESW_RESIZE_NAMES)
+        }
+        DrmCursorIcon::NwseResize => {
+            CursorImage::load_theme_icon(cursor_theme, cursor_size, CURSOR_NWSE_RESIZE_NAMES)
+        }
     }
 }
 
