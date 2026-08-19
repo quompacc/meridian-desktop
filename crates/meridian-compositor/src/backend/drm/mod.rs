@@ -56,7 +56,12 @@ pub(super) struct RenderPassMetrics {
     pub render_elements: u64,
     pub layer_surfaces: u64,
     pub output_pass_duration: Duration,
-    pub commit_duration: Duration,
+    pub wallpaper_duration: Duration,
+    pub scene_compose_duration: Duration,
+    pub capture_duration: Duration,
+    pub glass_duration: Duration,
+    pub render_frame_duration: Duration,
+    pub frame_feedback_duration: Duration,
     pub queue_duration: Duration,
 }
 

@@ -42,6 +42,12 @@ pub use stack::{layer_role, render_stack_order, RenderStackRole};
 
 use self::layers::{collect_layer_data, render_layer_elements, send_layer_frames};
 
+// Glass is sampled from a half-resolution scene. Three full-output offscreen
+// passes consumed nearly the complete 60 Hz frame budget on Intel HD 620;
+// bilinear upsampling preserves the deliberately soft material while reducing
+// processed pixels by 75 percent.
+const GLASS_SCENE_DOWNSAMPLE: u32 = 2;
+
 render_elements! {
     pub MeridianRenderElements<=GlesRenderer>;
     Cursor=MemoryRenderBufferRenderElement<GlesRenderer>,
@@ -227,6 +233,7 @@ fn render_outputs_for_crtc(
             .current_mode()
             .map(|m| (m.size.w as u32, m.size.h as u32))
             .unwrap_or((1920, 1080));
+        let wallpaper_started = Instant::now();
         WallpaperGpuCache::update(
             renderer,
             &mut out.wallpaper,
@@ -234,11 +241,13 @@ fn render_outputs_for_crtc(
             out_size.0,
             out_size.1,
         );
+        metrics.wallpaper_duration += wallpaper_started.elapsed();
 
         let space = state.workspaces.active_space();
         let theme = &state.theme_manager.current().config;
         let scale = Scale::from(1.0f64);
 
+        let scene_compose_started = Instant::now();
         out.scratch_normal.clear();
         out.scratch_cursor.clear();
         out.scratch_final.clear();
@@ -264,16 +273,20 @@ fn render_outputs_for_crtc(
             space_element_count,
             cursor_count
         );
+        metrics.scene_compose_duration += scene_compose_started.elapsed();
 
         // Serve screencopy BEFORE render_frame so all Wayland surface textures
         // are still fresh and not yet assigned to KMS hardware planes (which
         // bypasses the GLES import path and makes draw() silently skip them).
+        let capture_started = Instant::now();
         serve_screencopy_frames(state, renderer, out, out_size);
         process_thumbnail_requests(state, renderer, out, out_size);
         process_screenshot_requests(state, renderer, out, out_size);
+        metrics.capture_duration += capture_started.elapsed();
 
         // Liquid-glass: for each placeholder, render only the scene behind
         // that placeholder, blur it, and swap in a real sampling element.
+        let glass_started = Instant::now();
         if !state.idle_blanked
             && out
                 .scratch_final
@@ -313,15 +326,29 @@ fn render_outputs_for_crtc(
                 }
                 for batch in batches {
                     let blur = batch.items[0].1.blur;
+                    let glass_size = (
+                        out_size.0.div_ceil(GLASS_SCENE_DOWNSAMPLE),
+                        out_size.1.div_ceil(GLASS_SCENE_DOWNSAMPLE),
+                    );
+                    let glass_scale = (
+                        glass_size.0 as f64 / out_size.0.max(1) as f64,
+                        glass_size.1 as f64 / out_size.1.max(1) as f64,
+                    );
                     let Some(scene) = render_scene_for_blur(
                         renderer,
                         &out.scratch_final,
                         batch.first_behind,
-                        out_size,
+                        glass_size,
+                        glass_scale,
                     ) else {
                         continue;
                     };
-                    let Some(blurred) = blur_scene(renderer, scene, out_size, blur) else {
+                    let Some(blurred) = blur_scene(
+                        renderer,
+                        scene,
+                        glass_size,
+                        blur / GLASS_SCENE_DOWNSAMPLE as f32,
+                    ) else {
                         continue;
                     };
                     let buffer = TextureBuffer::from_texture(
@@ -337,6 +364,7 @@ fn render_outputs_for_crtc(
                             &buffer,
                             info,
                             (out_size.0 as i32, out_size.1 as i32),
+                            glass_scale,
                             scale,
                         );
                         if let Some(MeridianRenderElements::Glass(g)) =
@@ -348,6 +376,7 @@ fn render_outputs_for_crtc(
                 }
             }
         }
+        metrics.glass_duration += glass_started.elapsed();
 
         let elements: &[MeridianRenderElements] = if state.idle_blanked {
             &[]
@@ -396,7 +425,7 @@ fn render_outputs_for_crtc(
         } else {
             [0.0_f32; 4]
         };
-        let commit_started = Instant::now();
+        let render_frame_started = Instant::now();
         let mut frame_queued = false;
         match out
             .compositor
@@ -407,7 +436,7 @@ fn render_outputs_for_crtc(
                 smithay::backend::drm::compositor::FrameFlags::empty(),
             ) {
             Ok(frame) if !frame.is_empty => {
-                metrics.commit_duration += commit_started.elapsed();
+                metrics.render_frame_duration += render_frame_started.elapsed();
                 metrics.rendered_frames += 1;
                 metrics.render_elements += render_element_count as u64;
                 metrics.layer_surfaces += layer_surface_count as u64;
@@ -476,11 +505,11 @@ fn render_outputs_for_crtc(
             }
             Ok(_) => {
                 metrics.empty_frames += 1;
-                metrics.commit_duration += commit_started.elapsed();
+                metrics.render_frame_duration += render_frame_started.elapsed();
                 clear_output_dirty(out, dirty_stats, "empty_frame");
             }
             Err(err) => {
-                metrics.commit_duration += commit_started.elapsed();
+                metrics.render_frame_duration += render_frame_started.elapsed();
                 error!("DRM render error on {}: {}", out.output.name(), err);
                 if !kms_first_commit_verified {
                     panic!(
@@ -496,6 +525,7 @@ fn render_outputs_for_crtc(
         }
 
         if frame_queued {
+            let frame_feedback_started = Instant::now();
             let time = state.start_time.elapsed();
             let out_clone = out.output.clone();
             state.workspaces.active_space().elements().for_each(|w| {
@@ -509,6 +539,7 @@ fn render_outputs_for_crtc(
                 &out.scratch_lower_layer_data,
                 &out.scratch_upper_layer_data,
             );
+            metrics.frame_feedback_duration += frame_feedback_started.elapsed();
         }
         metrics.output_pass_duration += output_pass_started.elapsed();
     }

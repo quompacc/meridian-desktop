@@ -31,7 +31,8 @@ fn render_scene_for_blur(
     renderer: &mut GlesRenderer,
     elements: &[MeridianRenderElements],
     first_behind: usize,
-    out_size: (u32, u32),
+    render_size: (u32, u32),
+    source_scale: (f64, f64),
 ) -> Option<GlesTexture> {
     use smithay::backend::{
         allocator::Fourcc,
@@ -42,8 +43,8 @@ fn render_scene_for_blur(
     };
     use smithay::utils::{Buffer, Physical, Rectangle, Scale, Size, Transform};
 
-    let w = out_size.0 as i32;
-    let h = out_size.1 as i32;
+    let w = render_size.0 as i32;
+    let h = render_size.1 as i32;
     let buf_size = Size::<i32, Buffer>::from((w, h));
     let phys_size = Size::<i32, Physical>::from((w, h));
     let phys_region = Rectangle::from_size(phys_size);
@@ -65,7 +66,19 @@ fn render_scene_for_blur(
                 continue;
             }
             let src = element.src();
-            let dst = element.geometry(Scale::from(1.0f64));
+            let full_dst = element.geometry(Scale::from(1.0f64));
+            let dst = Rectangle::new(
+                (
+                    (full_dst.loc.x as f64 * source_scale.0).round() as i32,
+                    (full_dst.loc.y as f64 * source_scale.1).round() as i32,
+                )
+                    .into(),
+                (
+                    (full_dst.size.w as f64 * source_scale.0).ceil() as i32,
+                    (full_dst.size.h as f64 * source_scale.1).ceil() as i32,
+                )
+                    .into(),
+            );
             let dmg = [Rectangle::from_size(dst.size)];
             let _ = element.draw(&mut frame, src, dst, &dmg, &[], None);
         }

@@ -131,11 +131,23 @@ impl GlassTitlebarElement {
         texture: &TextureBuffer<GlesTexture>,
         info: GlassTitlebarInfo,
         out_size: (i32, i32),
+        texture_scale: (f64, f64),
         scale: Scale<f64>,
     ) -> Self {
         let loc_phys: Point<f64, Physical> = info.rect.loc.to_f64().to_physical(scale);
         let size_log: Size<i32, Logical> = info.rect.size;
-        let src: Rectangle<f64, Logical> = info.rect.to_f64();
+        let src: Rectangle<f64, Logical> = Rectangle::new(
+            (
+                info.rect.loc.x as f64 * texture_scale.0,
+                info.rect.loc.y as f64 * texture_scale.1,
+            )
+                .into(),
+            (
+                info.rect.size.w as f64 * texture_scale.0,
+                info.rect.size.h as f64 * texture_scale.1,
+            )
+                .into(),
+        );
 
         // The pane opacity (theme glass_alpha / surface fill_alpha) rides on the
         // renderer's standard `alpha` uniform, which the glass shader multiplies

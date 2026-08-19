@@ -72,7 +72,12 @@ pub struct DrmTimingStats {
     tick_interval: DurationStats,
     render_duration: DurationStats,
     output_pass_duration: DurationStats,
-    commit_duration: DurationStats,
+    wallpaper_duration: DurationStats,
+    scene_compose_duration: DurationStats,
+    capture_duration: DurationStats,
+    glass_duration: DurationStats,
+    render_frame_duration: DurationStats,
+    frame_feedback_duration: DurationStats,
     queue_duration: DurationStats,
     vblank_interval: DurationStats,
     vblank_handler_duration: DurationStats,
@@ -281,7 +286,12 @@ impl DrmTimingStats {
             tick_interval: DurationStats::default(),
             render_duration: DurationStats::default(),
             output_pass_duration: DurationStats::default(),
-            commit_duration: DurationStats::default(),
+            wallpaper_duration: DurationStats::default(),
+            scene_compose_duration: DurationStats::default(),
+            capture_duration: DurationStats::default(),
+            glass_duration: DurationStats::default(),
+            render_frame_duration: DurationStats::default(),
+            frame_feedback_duration: DurationStats::default(),
             queue_duration: DurationStats::default(),
             vblank_interval: DurationStats::default(),
             vblank_handler_duration: DurationStats::default(),
@@ -375,14 +385,29 @@ impl DrmTimingStats {
         self.layer_surfaces += metrics.layer_surfaces;
         self.render_duration.record(render_duration);
         if metrics.outputs_processed > 0 {
-            self.output_pass_duration.record(Duration::from_nanos(
-                (metrics.output_pass_duration.as_nanos() / metrics.outputs_processed as u128)
-                    as u64,
+            let output_count = metrics.outputs_processed;
+            self.output_pass_duration
+                .record(per_output_duration(metrics.output_pass_duration, output_count));
+            self.wallpaper_duration
+                .record(per_output_duration(metrics.wallpaper_duration, output_count));
+            self.scene_compose_duration.record(per_output_duration(
+                metrics.scene_compose_duration,
+                output_count,
             ));
-        }
-        if metrics.rendered_frames > 0 {
-            self.commit_duration.record(metrics.commit_duration);
-            self.queue_duration.record(metrics.queue_duration);
+            self.capture_duration
+                .record(per_output_duration(metrics.capture_duration, output_count));
+            self.glass_duration
+                .record(per_output_duration(metrics.glass_duration, output_count));
+            self.render_frame_duration.record(per_output_duration(
+                metrics.render_frame_duration,
+                output_count,
+            ));
+            self.frame_feedback_duration.record(per_output_duration(
+                metrics.frame_feedback_duration,
+                output_count,
+            ));
+            self.queue_duration
+                .record(per_output_duration(metrics.queue_duration, output_count));
         }
 
         self.report_if_due(tick_started);
@@ -432,7 +457,7 @@ impl DrmTimingStats {
         };
 
         tracing::info!(
-            "drm timing summary: ticks={} idle_repaint_ticks={} vblank_repaint_ticks={} frames={} empty_frames={} outputs_skipped_clean={} outputs_skipped_in_flight={} outputs_skipped_power_off={} vblank_events={} vblank_with_output={} queued_pending={} queue_failures={} timer_fire_ms(avg/min/max)={:.2}/{:.2}/{:.2} timer_lag_ms(avg/min/max)={:.2}/{:.2}/{:.2} tick_ms(avg/min/max)={:.2}/{:.2}/{:.2} render_ms(avg/min/max)={:.2}/{:.2}/{:.2} output_pass_ms(avg/min/max)={:.2}/{:.2}/{:.2} commit_ms(avg/min/max)={:.2}/{:.2}/{:.2} queue_ms(avg/min/max)={:.2}/{:.2}/{:.2} vblank_wait_ms(avg/min/max)={:.2}/{:.2}/{:.2} vblank_handler_ms(avg/min/max)={:.2}/{:.2}/{:.2} frame_submitted_ms(avg/min/max)={:.2}/{:.2}/{:.2} render_elements_per_frame_avg={:.1} layer_surfaces_per_frame_avg={:.1}",
+            "drm timing summary: ticks={} idle_repaint_ticks={} vblank_repaint_ticks={} frames={} empty_frames={} outputs_skipped_clean={} outputs_skipped_in_flight={} outputs_skipped_power_off={} vblank_events={} vblank_with_output={} queued_pending={} queue_failures={} timer_fire_ms(avg/min/max)={:.2}/{:.2}/{:.2} timer_lag_ms(avg/min/max)={:.2}/{:.2}/{:.2} tick_ms(avg/min/max)={:.2}/{:.2}/{:.2} render_ms(avg/min/max)={:.2}/{:.2}/{:.2} output_pass_ms(avg/min/max)={:.2}/{:.2}/{:.2} wallpaper_ms(avg/min/max)={:.2}/{:.2}/{:.2} scene_compose_ms(avg/min/max)={:.2}/{:.2}/{:.2} capture_ms(avg/min/max)={:.2}/{:.2}/{:.2} glass_ms(avg/min/max)={:.2}/{:.2}/{:.2} render_frame_ms(avg/min/max)={:.2}/{:.2}/{:.2} frame_feedback_ms(avg/min/max)={:.2}/{:.2}/{:.2} queue_ms(avg/min/max)={:.2}/{:.2}/{:.2} vblank_wait_ms(avg/min/max)={:.2}/{:.2}/{:.2} vblank_handler_ms(avg/min/max)={:.2}/{:.2}/{:.2} frame_submitted_ms(avg/min/max)={:.2}/{:.2}/{:.2} render_elements_per_frame_avg={:.1} layer_surfaces_per_frame_avg={:.1}",
             self.ticks,
             self.idle_repaint_ticks,
             self.vblank_repaint_ticks,
@@ -460,9 +485,24 @@ impl DrmTimingStats {
             self.output_pass_duration.avg_ms(),
             self.output_pass_duration.min_ms(),
             self.output_pass_duration.max_ms(),
-            self.commit_duration.avg_ms(),
-            self.commit_duration.min_ms(),
-            self.commit_duration.max_ms(),
+            self.wallpaper_duration.avg_ms(),
+            self.wallpaper_duration.min_ms(),
+            self.wallpaper_duration.max_ms(),
+            self.scene_compose_duration.avg_ms(),
+            self.scene_compose_duration.min_ms(),
+            self.scene_compose_duration.max_ms(),
+            self.capture_duration.avg_ms(),
+            self.capture_duration.min_ms(),
+            self.capture_duration.max_ms(),
+            self.glass_duration.avg_ms(),
+            self.glass_duration.min_ms(),
+            self.glass_duration.max_ms(),
+            self.render_frame_duration.avg_ms(),
+            self.render_frame_duration.min_ms(),
+            self.render_frame_duration.max_ms(),
+            self.frame_feedback_duration.avg_ms(),
+            self.frame_feedback_duration.min_ms(),
+            self.frame_feedback_duration.max_ms(),
             self.queue_duration.avg_ms(),
             self.queue_duration.min_ms(),
             self.queue_duration.max_ms(),
@@ -507,10 +547,19 @@ impl DrmTimingStats {
         self.tick_interval = DurationStats::default();
         self.render_duration = DurationStats::default();
         self.output_pass_duration = DurationStats::default();
-        self.commit_duration = DurationStats::default();
+        self.wallpaper_duration = DurationStats::default();
+        self.scene_compose_duration = DurationStats::default();
+        self.capture_duration = DurationStats::default();
+        self.glass_duration = DurationStats::default();
+        self.render_frame_duration = DurationStats::default();
+        self.frame_feedback_duration = DurationStats::default();
         self.queue_duration = DurationStats::default();
         self.vblank_interval = DurationStats::default();
         self.vblank_handler_duration = DurationStats::default();
         self.frame_submitted_duration = DurationStats::default();
     }
+}
+
+fn per_output_duration(total: Duration, output_count: u64) -> Duration {
+    Duration::from_nanos((total.as_nanos() / output_count as u128) as u64)
 }

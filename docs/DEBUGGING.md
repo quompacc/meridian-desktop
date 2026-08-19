@@ -162,8 +162,14 @@ Messbefund auf dem OpenBSD-Laptop (Intel HD 620, 1920x1080@60 Hz, 2026-08-19):
 - Timer-only vor dem Fix: Bewegung und Resize etwa 27-30 Frames/s.
 - Event-/VBlank-Pacing: Bewegung mit Shell etwa 40-48 Frames/s, ohne Shell bis
   etwa 54 Frames/s.
-- Resize bleibt bei etwa 30-34 Frames/s; das bleibt ein separater Engpass im
-  XWayland-/Vollframe-Pfad.
+- Die Subphasenmessung identifizierte den Vollauflösungs-Liquid-Glass-Pass als
+  Engpass: etwa 14,5-15 ms pro Bild, gegenüber unter 1 ms für Szenenaufbau und
+  etwa 0,3-0,4 ms für `render_frame`.
+- Seit der halbaufgelösten Glass-Hintergrundprobe (Blur-Radius, Tint, Alpha und
+  Geometrie bleiben unverändert) liegt der gesamte Output-Pass bei etwa
+  5,8-6,3 ms. Bewegung und Resize erreichen mit und ohne Shell 57-60 Frames/s.
+- Der Glass-Pass selbst liegt danach bei etwa 4,8-5,2 ms und lässt auf dem
+  60-Hz-Panel ungefähr 10 ms Reserve im 16,67-ms-Framebudget.
 - Hardwarebeschleunigung ist aktiv (`GL Vendor: Intel`, `GL Renderer: Mesa
   Intel(R) HD Graphics 620`); DRM-Commit und Queueing sind nicht der Engpass.
 
