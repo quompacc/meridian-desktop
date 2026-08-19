@@ -125,6 +125,36 @@ fn render_window_toplevel_elements<C>(
 }
 
 pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
+    render_outputs_for_crtc(state, None)
+}
+
+pub(crate) fn render_outputs_from_idle(state: &mut MeridianState) {
+    let tick_started = Instant::now();
+    let metrics = render_outputs(state);
+    if let Some(drm) = state.drm_backend.as_mut() {
+        drm.timing_stats
+            .record_idle_repaint(tick_started, tick_started.elapsed(), metrics);
+        drm.dirty_stats.report_if_due(tick_started);
+    }
+}
+
+pub(super) fn render_output_after_vblank(
+    state: &mut MeridianState,
+    crtc: smithay::reexports::drm::control::crtc::Handle,
+) {
+    let tick_started = Instant::now();
+    let metrics = render_outputs_for_crtc(state, Some(crtc));
+    if let Some(drm) = state.drm_backend.as_mut() {
+        drm.timing_stats
+            .record_vblank_repaint(tick_started, tick_started.elapsed(), metrics);
+        drm.dirty_stats.report_if_due(tick_started);
+    }
+}
+
+fn render_outputs_for_crtc(
+    state: &mut MeridianState,
+    target_crtc: Option<smithay::reexports::drm::control::crtc::Handle>,
+) -> RenderPassMetrics {
     let mut metrics = RenderPassMetrics::default();
     let mut drm = match state.drm_backend.take() {
         Some(d) => d,
@@ -168,6 +198,9 @@ pub(super) fn render_outputs(state: &mut MeridianState) -> RenderPassMetrics {
     *last_pointer_location = pointer_location;
 
     for out in outputs.iter_mut() {
+        if target_crtc.is_some_and(|crtc| out.crtc != crtc) {
+            continue;
+        }
         let output_name_for_power = out.output.name();
         if matches!(
             state.output_power_manager.mode_for(&output_name_for_power),

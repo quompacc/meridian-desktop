@@ -144,7 +144,8 @@ Der Harness baut einen kleinen nativen X11-Client und misst nacheinander:
 
 - `native_idle`: Meridian mit Shell im Leerlauf,
 - `compositor_idle`: Meridian ohne Shell im Leerlauf,
-- `x11_motion_resize`: kontrolliertes Bewegen und Resizen eines X11-Fensters.
+- `x11_motion_resize`: kontrolliertes Bewegen und Resizen eines X11-Fensters,
+- `x11_motion_resize_no_shell`: derselbe aktive Workload ohne Shell.
 
 Die Rohdaten landen unter `/tmp/meridian-perf-<UTC-Zeitstempel>`. Die
 `*.phases`-Datei enthält die Zeitgrenzen des Workloads, die zugehörige
@@ -155,6 +156,16 @@ Beim Interpretieren `frames` und `timer_fire_ms` gemeinsam betrachten: Ein
 60-Hz-Modus allein belegt noch keine 60 Bilder pro Sekunde. `output_pass_ms`
 beschreibt die Kosten eines tatsächlich bearbeiteten Outputs, während
 `render_ms` auch sehr kurze Clean-/In-flight-Durchläufe enthält.
+
+Messbefund auf dem OpenBSD-Laptop (Intel HD 620, 1920x1080@60 Hz, 2026-08-19):
+
+- Timer-only vor dem Fix: Bewegung und Resize etwa 27-30 Frames/s.
+- Event-/VBlank-Pacing: Bewegung mit Shell etwa 40-48 Frames/s, ohne Shell bis
+  etwa 54 Frames/s.
+- Resize bleibt bei etwa 30-34 Frames/s; das bleibt ein separater Engpass im
+  XWayland-/Vollframe-Pfad.
+- Hardwarebeschleunigung ist aktiv (`GL Vendor: Intel`, `GL Renderer: Mesa
+  Intel(R) HD Graphics 620`); DRM-Commit und Queueing sind nicht der Engpass.
 
 ### Messlauf 1 (Baseline, wenig Log-Overhead)
 - `RUST_LOG=warn cargo run`

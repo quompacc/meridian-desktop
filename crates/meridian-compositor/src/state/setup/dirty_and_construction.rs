@@ -4,11 +4,13 @@ impl MeridianState {
             return;
         };
         let mut marked = 0usize;
+        let mut schedule_immediately = false;
         for output in drm.outputs.iter_mut() {
             drm.dirty_stats
                 .record_dirty_mark_event(output.output_id, reason);
             if !output.needs_repaint {
                 output.needs_repaint = true;
+                schedule_immediately |= !output.frame_in_flight;
                 drm.dirty_stats.record_dirty_set(output.output_id);
                 marked += 1;
             }
@@ -19,6 +21,9 @@ impl MeridianState {
                 reason,
                 marked
             );
+            if schedule_immediately {
+                self.schedule_drm_repaint();
+            }
         }
     }
 
@@ -27,6 +32,7 @@ impl MeridianState {
             return;
         };
         drm.dirty_stats.record_dirty_mark_event(output_id, reason);
+        let mut schedule_immediately = false;
         if let Some(output) = drm
             .outputs
             .iter_mut()
@@ -34,6 +40,7 @@ impl MeridianState {
         {
             if !output.needs_repaint {
                 output.needs_repaint = true;
+                schedule_immediately = !output.frame_in_flight;
                 drm.dirty_stats.record_dirty_set(output_id);
                 tracing::trace!(
                     "marked output dirty: reason={} output_id={} output={}",
@@ -43,12 +50,16 @@ impl MeridianState {
                 );
             }
         }
+        if schedule_immediately {
+            self.schedule_drm_repaint();
+        }
     }
 
     pub fn mark_output_dirty_by_name(&mut self, output_name: &str, reason: &str) {
         let Some(drm) = self.drm_backend.as_mut() else {
             return;
         };
+        let mut schedule_immediately = false;
         if let Some(output) = drm
             .outputs
             .iter_mut()
@@ -58,6 +69,7 @@ impl MeridianState {
                 .record_dirty_mark_event(output.output_id, reason);
             if !output.needs_repaint {
                 output.needs_repaint = true;
+                schedule_immediately = !output.frame_in_flight;
                 drm.dirty_stats.record_dirty_set(output.output_id);
                 tracing::trace!(
                     "marked output dirty: reason={} output_id={} output={}",
@@ -67,6 +79,25 @@ impl MeridianState {
                 );
             }
         }
+        if schedule_immediately {
+            self.schedule_drm_repaint();
+        }
+    }
+
+    fn schedule_drm_repaint(&mut self) {
+        let Some(drm) = self.drm_backend.as_mut() else {
+            return;
+        };
+        if drm.repaint_idle_scheduled {
+            return;
+        }
+        drm.repaint_idle_scheduled = true;
+        self.loop_handle.insert_idle(|state| {
+            if let Some(drm) = state.drm_backend.as_mut() {
+                drm.repaint_idle_scheduled = false;
+            }
+            crate::backend::drm::render_outputs_from_idle(state);
+        });
     }
 
     pub fn new(

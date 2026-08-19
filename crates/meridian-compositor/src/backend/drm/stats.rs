@@ -51,6 +51,8 @@ pub struct DrmTimingStats {
     last_tick: Option<Instant>,
     last_vblank: Option<Instant>,
     ticks: u64,
+    idle_repaint_ticks: u64,
+    vblank_repaint_ticks: u64,
     frames: u64,
     empty_frames: u64,
     outputs_skipped_clean: u64,
@@ -258,6 +260,8 @@ impl DrmTimingStats {
             last_tick: None,
             last_vblank: None,
             ticks: 0,
+            idle_repaint_ticks: 0,
+            vblank_repaint_ticks: 0,
             frames: 0,
             empty_frames: 0,
             outputs_skipped_clean: 0,
@@ -289,7 +293,7 @@ impl DrmTimingStats {
                 stats.report_interval.as_millis()
             );
             tracing::info!(
-                "drm render schedule diagnostics enabled: timer-driven scheduling (interval configured in drm init)"
+                "drm render schedule diagnostics enabled: event/vblank-driven scheduling with timer fallback"
             );
         }
         stats
@@ -313,6 +317,42 @@ impl DrmTimingStats {
         self.last_timer_fire = Some(timer_fired_at);
         self.timer_fire_lag
             .record(tick_started.saturating_duration_since(timer_fired_at));
+
+        self.record_render_metrics(tick_started, render_duration, metrics);
+    }
+
+    pub(super) fn record_idle_repaint(
+        &mut self,
+        tick_started: Instant,
+        render_duration: Duration,
+        metrics: RenderPassMetrics,
+    ) {
+        if !self.enabled {
+            return;
+        }
+        self.idle_repaint_ticks += 1;
+        self.record_render_metrics(tick_started, render_duration, metrics);
+    }
+
+    pub(super) fn record_vblank_repaint(
+        &mut self,
+        tick_started: Instant,
+        render_duration: Duration,
+        metrics: RenderPassMetrics,
+    ) {
+        if !self.enabled {
+            return;
+        }
+        self.vblank_repaint_ticks += 1;
+        self.record_render_metrics(tick_started, render_duration, metrics);
+    }
+
+    fn record_render_metrics(
+        &mut self,
+        tick_started: Instant,
+        render_duration: Duration,
+        metrics: RenderPassMetrics,
+    ) {
 
         if let Some(last_tick) = self.last_tick {
             self.tick_interval
@@ -392,8 +432,10 @@ impl DrmTimingStats {
         };
 
         tracing::info!(
-            "drm timing summary: ticks={} frames={} empty_frames={} outputs_skipped_clean={} outputs_skipped_in_flight={} outputs_skipped_power_off={} vblank_events={} vblank_with_output={} queued_pending={} queue_failures={} timer_fire_ms(avg/min/max)={:.2}/{:.2}/{:.2} timer_lag_ms(avg/min/max)={:.2}/{:.2}/{:.2} tick_ms(avg/min/max)={:.2}/{:.2}/{:.2} render_ms(avg/min/max)={:.2}/{:.2}/{:.2} output_pass_ms(avg/min/max)={:.2}/{:.2}/{:.2} commit_ms(avg/min/max)={:.2}/{:.2}/{:.2} queue_ms(avg/min/max)={:.2}/{:.2}/{:.2} vblank_wait_ms(avg/min/max)={:.2}/{:.2}/{:.2} vblank_handler_ms(avg/min/max)={:.2}/{:.2}/{:.2} frame_submitted_ms(avg/min/max)={:.2}/{:.2}/{:.2} render_elements_per_frame_avg={:.1} layer_surfaces_per_frame_avg={:.1}",
+            "drm timing summary: ticks={} idle_repaint_ticks={} vblank_repaint_ticks={} frames={} empty_frames={} outputs_skipped_clean={} outputs_skipped_in_flight={} outputs_skipped_power_off={} vblank_events={} vblank_with_output={} queued_pending={} queue_failures={} timer_fire_ms(avg/min/max)={:.2}/{:.2}/{:.2} timer_lag_ms(avg/min/max)={:.2}/{:.2}/{:.2} tick_ms(avg/min/max)={:.2}/{:.2}/{:.2} render_ms(avg/min/max)={:.2}/{:.2}/{:.2} output_pass_ms(avg/min/max)={:.2}/{:.2}/{:.2} commit_ms(avg/min/max)={:.2}/{:.2}/{:.2} queue_ms(avg/min/max)={:.2}/{:.2}/{:.2} vblank_wait_ms(avg/min/max)={:.2}/{:.2}/{:.2} vblank_handler_ms(avg/min/max)={:.2}/{:.2}/{:.2} frame_submitted_ms(avg/min/max)={:.2}/{:.2}/{:.2} render_elements_per_frame_avg={:.1} layer_surfaces_per_frame_avg={:.1}",
             self.ticks,
+            self.idle_repaint_ticks,
+            self.vblank_repaint_ticks,
             self.frames,
             self.empty_frames,
             self.outputs_skipped_clean,
@@ -445,6 +487,8 @@ impl DrmTimingStats {
 
         self.last_report = now;
         self.ticks = 0;
+        self.idle_repaint_ticks = 0;
+        self.vblank_repaint_ticks = 0;
         self.frames = 0;
         self.empty_frames = 0;
         self.outputs_skipped_clean = 0;

@@ -63,7 +63,7 @@ use super::{
         forced_mode_index_from_env, forced_mode_size_from_env, mode_refresh_millihz_with_fallback,
         output_mode_infos, select_add_mode, select_mode_with_override,
     },
-    render::render_outputs,
+    render::{render_output_after_vblank, render_outputs},
     DisabledDrmOutput, DrmBackend, DrmOutput,
 };
 
@@ -569,6 +569,7 @@ pub fn init_drm(
         last_pointer_location: None,
         last_connector_scan: std::time::Instant::now(),
         timing_stats: super::DrmTimingStats::new(timing_enabled),
+        repaint_idle_scheduled: false,
     });
     if let Some(drm) = state.drm_backend.as_mut() {
         for output in &drm.outputs {

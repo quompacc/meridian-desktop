@@ -39,6 +39,7 @@ where
         .insert_source(drm_notifier, |event, _metadata, state| match event {
             DrmEvent::VBlank(crtc) => {
                 let vblank_event_at = std::time::Instant::now();
+                let mut repaint_after_vblank = false;
                 if let Some(drm) = &mut state.drm_backend {
                     let handler_started = std::time::Instant::now();
                     let mut frame_submitted_duration = Duration::ZERO;
@@ -56,6 +57,7 @@ where
                         } else {
                             out.frame_in_flight = false;
                         }
+                        repaint_after_vblank = out.needs_repaint;
                         frame_submitted_duration = frame_submitted_started.elapsed();
                     }
                     drm.timing_stats.record_vblank(
@@ -64,6 +66,9 @@ where
                         frame_submitted_duration,
                         matched_output,
                     );
+                }
+                if repaint_after_vblank {
+                    render_output_after_vblank(state, crtc);
                 }
                 tracing::trace!("drm vblank event received: crtc={:?}", crtc);
                 scan_drm_connectors_for_h5b(state, "vblank");

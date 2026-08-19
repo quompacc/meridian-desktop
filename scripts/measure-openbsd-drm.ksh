@@ -101,5 +101,6 @@ run_case() {
 run_case native_idle on idle
 run_case compositor_idle off idle
 run_case x11_motion_resize on x11
+run_case x11_motion_resize_no_shell off x11
 
 echo "[perf] results=${RESULT_DIR}"

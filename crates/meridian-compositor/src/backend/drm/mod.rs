@@ -34,6 +34,7 @@ mod render;
 mod wscons;
 
 pub use init::init_drm;
+pub(crate) use render::render_outputs_from_idle;
 pub use render::{layer_role, render_stack_order, RenderStackRole};
 
 pub type GbmDrmCompositor =
@@ -114,6 +115,7 @@ pub struct DrmBackend {
     pub last_pointer_location: Option<(f64, f64)>,
     pub last_connector_scan: Instant,
     pub timing_stats: DrmTimingStats,
+    pub repaint_idle_scheduled: bool,
 }
 
 impl DrmBackend {
