@@ -40,11 +40,13 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
   kompiliert `linux-drm-syncobj-v1` auf OpenBSD nicht, behaelt aber DRM/KMS,
   GBM und EGL. DRM-Nodes werden nativ unter `/dev/dri` gefunden; Eingaben kommen
   direkt aus `wskbd`/`wsmouse`, ohne Smithays udev/libinput-Backends. `meridian-wm`
-  und `meridian-compositor` bauen nativ; alle 380 Compositor-Library-Tests sind
+  und `meridian-compositor` bauen nativ; alle 381 Compositor-Library-Tests sind
   auf OpenBSD gruen. Ein kontrollierter Hardwarelauf hat EGL/GBM, den nativen
-  wscons-Open und den ersten atomaren 1920x1080-KMS-Commit bewiesen; XWayland
-  wurde auf `:0` bereit. Mesa fiel dabei noch auf `llvmpipe` zurueck, daher ist
-  echte Intel-Hardwarebeschleunigung der naechste Grafikblocker.
+  wscons-Open und den ersten atomaren 1920x1080-KMS-Commit bewiesen. OpenBSD
+  libdrms `priv_open_device` wird dabei eng ueber die bestehende seatd-Session
+  vermittelt; der normale Benutzer `eduard` erhaelt dadurch Intel-HD-620-
+  Beschleunigung mit 99 DMA-BUF-Formaten, ohne Root-Compositor oder gelockerte
+  Geraeterechte. XWayland wurde ebenfalls bereit.
 - Verbleibende harte Portierungsgrenzen: Shell-Screencopy benoetigt
   `memfd_create`, und Login/Lock/Polkit benoetigen derzeit PAM statt OpenBSD
   BSD Authentication.

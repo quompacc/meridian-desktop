@@ -27,6 +27,8 @@ mod init_diagnostics;
 pub(crate) mod init_env;
 pub(super) mod login_ipc;
 pub(crate) mod mode_selection;
+#[cfg(target_os = "openbsd")]
+mod openbsd_privsep;
 mod render;
 #[cfg(target_os = "openbsd")]
 mod wscons;

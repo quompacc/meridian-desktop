@@ -3,8 +3,9 @@
 > **STATUS: BASE SYSTEM PATCHED, DEVELOPMENT STACK PROBED.** Hardware was
 > inventoried and the first native build matrix was run over SSH on 2026-08-19.
 > OpenBSD support is not yet claimed: the native compositor now completes an
-> atomic KMS frame and opens wscons input on the reference laptop, but hardware
-> acceleration, shell and authentication still require OS-specific work.
+> atomic KMS frame with Intel hardware acceleration and opens wscons input on
+> the reference laptop, but shell and authentication still require OS-specific
+> work.
 
 ## Reference hardware
 
@@ -83,7 +84,7 @@ Use `pass`, `partial`, `fail`, `not available` or `not tested`, with evidence.
 | Area | Result | Evidence / blocker |
 |---|---|---|
 | Intel KMS / native panel | pass (detection/modeset) | `inteldrm0`, DRM/render nodes, 1920×1080 console |
-| accelerated graphics | partial | Intel DRM nodes and EGL/GBM 25.0.7 are present; native link probes pass, but no rendered frame/session yet |
+| accelerated graphics | pass (first frame) | EGL/GBM 25.0.7 selects Intel HD Graphics 620 as user `eduard`; 99 DMA-BUF formats and the first atomic KMS frame are proven |
 | hardware cursor | not tested | |
 | keyboard | partial | `pckbd0`/`wskbd0` attached; desktop interaction test pending |
 | touchpad move/click/scroll | partial | Elantech v4 attached as `pms0`/`wsmouse0`; gestures pending |
@@ -211,14 +212,18 @@ the more workable platform. The decision and blockers belong in this file.
    available. `meridian-wm` and `meridian-compositor` now pass `cargo check`.
    OpenBSD selects DRM card nodes directly and consumes `wskbd`/`wsmouse`
    records through event-driven calloop sources, so the OpenBSD compositor no
-   longer links Smithay's udev or libinput backends. All 380 compositor library
+   longer links Smithay's udev or libinput backends. OpenBSD libdrm's weak
+   `priv_open_device` hook is exported by the Meridian binary and routed through
+   the existing seatd session with a `/dev/dri/card*` and `/dev/dri/renderD*`
+   allowlist; neither a root compositor nor relaxed device permissions are
+   required. All 381 compositor library
    tests pass. A controlled 15-second hardware run opened both wscons devices,
-   initialized EGL 1.5/GBM at 1920x1080@60 Hz, completed the initial atomic KMS
-   commit and brought XWayland up on `:0`. Keyboard key mapping, pointer direction
-   and scrolling still need an interactive run. Mesa selected `llvmpipe`, so this
-   is a functional frame proof but not yet a hardware-accelerated performance
-   proof. The Smithay boundary should be proposed upstream and the vendored
-   source removed when accepted.
+   selected `Mesa Intel(R) HD Graphics 620 (KBL GT2)`, exposed 99 DMA-BUF
+   formats, initialized EGL 1.5/GBM at 1920x1080@60 Hz, completed the initial
+   atomic KMS commit and brought XWayland up. Keyboard key mapping, pointer
+   direction and scrolling still need an interactive run. This proves the
+   accelerated first frame, not sustained performance. The Smithay boundary
+   should be proposed upstream and the vendored source removed when accepted.
 5. **Shell screencopy has a direct Linux memory-file assumption.** Replace or
    isolate `memfd_create` with an OpenBSD-capable shared-memory abstraction;
    do not merely remove the screencopy path silently.
@@ -226,6 +231,6 @@ the more workable platform. The decision and blockers belong in this file.
    depend on PAM/pam_systemd semantics. The OpenBSD path should be designed
    around BSD Authentication and native session/process handling.
 7. **Graphics/WebKit packaging is positive but runtime proof is incomplete.**
-   EGL/GBM and WebKit compile/link successfully. A real Wayland surface,
-   accelerated frame, cursor/input path and WebKit render remain pending behind
-   the compositor/runtime work.
+   EGL/GBM and WebKit compile/link successfully, and the compositor's Intel-
+   accelerated first frame is proven. A real client surface, interactive
+   cursor/input test and WebKit render remain pending.

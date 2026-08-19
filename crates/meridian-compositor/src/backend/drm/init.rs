@@ -1030,6 +1030,8 @@ pub fn init_drm(
     let master_lock_ok = check_drm_master_lock(&device_fd, &gpu_path, &seat_name);
     let (mut drm, drm_notifier) = DrmDevice::new(device_fd.clone(), false)?;
 
+    #[cfg(target_os = "openbsd")]
+    super::openbsd_privsep::install(session.clone());
     let gbm: GbmDevice<DrmDeviceFd> = GbmDevice::new(device_fd.clone())?;
     // SAFETY: `gbm` is a live GBM device tied to the opened DRM fd.
     let egl_display = unsafe { EGLDisplay::new(gbm.clone())? };
