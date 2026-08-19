@@ -132,6 +132,30 @@ Immer in dieser Reihenfolge prüfen:
 ## DRM Render/Input Stutter (NVIDIA VM)
 Ziel: Render-/Event-Loop-Lag gegen Input-Lag trennen.
 
+### Reproduzierbare Messung auf OpenBSD
+
+Auf der realen OpenBSD-Maschine aus dem Repository-Root ausführen:
+
+```sh
+/bin/ksh scripts/measure-openbsd-drm.ksh
+```
+
+Der Harness baut einen kleinen nativen X11-Client und misst nacheinander:
+
+- `native_idle`: Meridian mit Shell im Leerlauf,
+- `compositor_idle`: Meridian ohne Shell im Leerlauf,
+- `x11_motion_resize`: kontrolliertes Bewegen und Resizen eines X11-Fensters.
+
+Die Rohdaten landen unter `/tmp/meridian-perf-<UTC-Zeitstempel>`. Die
+`*.phases`-Datei enthält die Zeitgrenzen des Workloads, die zugehörige
+`*.log`-Datei die sekündlichen DRM-Timing- und Dirty-Statistiken. Vor dem Lauf
+darf keine andere Meridian-Instanz aktiv sein.
+
+Beim Interpretieren `frames` und `timer_fire_ms` gemeinsam betrachten: Ein
+60-Hz-Modus allein belegt noch keine 60 Bilder pro Sekunde. `output_pass_ms`
+beschreibt die Kosten eines tatsächlich bearbeiteten Outputs, während
+`render_ms` auch sehr kurze Clean-/In-flight-Durchläufe enthält.
+
 ### Messlauf 1 (Baseline, wenig Log-Overhead)
 - `RUST_LOG=warn cargo run`
 - Erwartung: keine per-frame Render-Logs.
