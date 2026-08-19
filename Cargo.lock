@@ -1608,7 +1608,6 @@ dependencies = [
  "meridian-tokens",
  "meridian-ui",
  "nix",
- "pam-sys",
  "smithay-client-toolkit",
  "tiny-skia",
  "tokio",
