@@ -2,9 +2,9 @@
 
 > **STATUS: BASE SYSTEM PATCHED, DEVELOPMENT STACK PROBED.** Hardware was
 > inventoried and the first native build matrix was run over SSH on 2026-08-19.
-> OpenBSD support is not yet claimed: the native compositor and wscons input
-> paths compile, but runtime graphics, shell and authentication still require
-> hardware proof or OS-specific work.
+> OpenBSD support is not yet claimed: the native compositor now completes an
+> atomic KMS frame and opens wscons input on the reference laptop, but hardware
+> acceleration, shell and authentication still require OS-specific work.
 
 ## Reference hardware
 
@@ -212,10 +212,13 @@ the more workable platform. The decision and blockers belong in this file.
    OpenBSD selects DRM card nodes directly and consumes `wskbd`/`wsmouse`
    records through event-driven calloop sources, so the OpenBSD compositor no
    longer links Smithay's udev or libinput backends. All 380 compositor library
-   tests pass. A controlled hardware run must still validate seatd device opens,
-   the XT-compatible keycode mapping, pointer direction and scrolling. The
-   Smithay boundary should be proposed upstream and the vendored source removed
-   when accepted.
+   tests pass. A controlled 15-second hardware run opened both wscons devices,
+   initialized EGL 1.5/GBM at 1920x1080@60 Hz, completed the initial atomic KMS
+   commit and brought XWayland up on `:0`. Keyboard key mapping, pointer direction
+   and scrolling still need an interactive run. Mesa selected `llvmpipe`, so this
+   is a functional frame proof but not yet a hardware-accelerated performance
+   proof. The Smithay boundary should be proposed upstream and the vendored
+   source removed when accepted.
 5. **Shell screencopy has a direct Linux memory-file assumption.** Replace or
    isolate `memfd_create` with an OpenBSD-capable shared-memory abstraction;
    do not merely remove the screencopy path silently.

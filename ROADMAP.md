@@ -58,9 +58,11 @@ port disables only the unavailable `linux-drm-syncobj-v1` eventfd contract;
 DRM/KMS, GBM and EGL remain enabled. OpenBSD discovers DRM cards under
 `/dev/dri` and reads keyboard/pointer input directly from wscons, without the
 udev/libinput compatibility backends. WM and compositor compile, and all 380
-compositor library tests pass on OpenBSD. The next proof is a controlled native
-hardware session; the next compile boundary is shell shared memory
-(`memfd_create`), followed by BSD Authentication instead of PAM.
+compositor library tests pass on OpenBSD. A controlled native session now opens
+wscons, initializes EGL/GBM, completes the first 1920x1080 atomic KMS commit and
+starts XWayland. Mesa still selects `llvmpipe`; Intel hardware acceleration must
+be established before performance claims. The next compile boundary is shell
+shared memory (`memfd_create`), followed by BSD Authentication instead of PAM.
 
 Port or isolate Linux assumptions without weakening the existing architecture:
 

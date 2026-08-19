@@ -28,6 +28,10 @@ the native DRM rendering path and simply does not advertise the Linux explicit
 synchronization protocol. Clients must use the synchronization paths actually
 available on OpenBSD.
 
+OpenBSD exposes EGL as the ABI-versioned `libEGL.so.2.0`, while upstream
+Smithay loads the Linux soname `libEGL.so.1`. The port layer selects the native
+OpenBSD soname at compile time; it does not create compatibility symlinks.
+
 ## Updating
 
 When updating Smithay:
