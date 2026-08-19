@@ -90,6 +90,15 @@ macro_rules! xwm_window_lifecycle_methods {
             error!("map_window_request: set_mapped failed: {}", e);
             return;
         }
+        if let Some(wl_surface) = window.wl_surface() {
+            let is_maximized = window.is_maximized();
+            let is_fullscreen = window.is_fullscreen();
+            let mut decoration_target = SurfaceDecorationSyncTarget {
+                decoration_manager: &mut self.decoration_manager,
+                wl_surface: &wl_surface,
+            };
+            apply_managed_map_ssd(&mut decoration_target, is_maximized, is_fullscreen);
+        }
         let geo = window.geometry();
         // Place at a sensible default if the window hasn't reported a size yet.
         let loc = if geo.size.w > 0 && geo.size.h > 0 {
@@ -99,8 +108,23 @@ macro_rules! xwm_window_lifecycle_methods {
         };
         let requested_rect = Rectangle::new(loc, geo.size);
         let output_geometry = select_output_geometry_for_rect(self, requested_rect);
+        let frame_insets = window
+            .wl_surface()
+            .map(|surface| {
+                self.decoration_manager.decoration_inset(
+                    &surface,
+                    &self.theme_manager.current().config.decorations,
+                )
+            })
+            .unwrap_or((0, 0, 0, 0));
         let clamped_loc = output_geometry
-            .map(|geometry| panel_safe_normal_xwayland_rect(requested_rect, geometry))
+            .map(|geometry| {
+                panel_safe_normal_xwayland_rect_with_insets(
+                    requested_rect,
+                    geometry,
+                    frame_insets,
+                )
+            })
             .map(|rect| rect.loc)
             .unwrap_or(loc);
         debug!(
@@ -122,11 +146,6 @@ macro_rules! xwm_window_lifecycle_methods {
         if let Some(wl_surface) = window.wl_surface() {
             let is_maximized = window.is_maximized();
             let is_fullscreen = window.is_fullscreen();
-            let mut decoration_target = SurfaceDecorationSyncTarget {
-                decoration_manager: &mut self.decoration_manager,
-                wl_surface: &wl_surface,
-            };
-            apply_managed_map_ssd(&mut decoration_target, is_maximized, is_fullscreen);
             info!(
                 event = "xwayland.ssd.applied_at_map_request",
                 window_id,

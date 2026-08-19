@@ -73,6 +73,11 @@ pub fn handle_pointer_motion_absolute<I: InputBackend>(
         },
     );
     pointer.frame(state);
+    // The DRM backend composites the cursor in software. A pointer motion can
+    // also relocate a move grab without causing a client surface commit, so it
+    // must invalidate the output explicitly. The DRM in-flight guard still
+    // coalesces events to the display refresh rate.
+    state.mark_all_outputs_dirty("pointer-motion");
 }
 
 pub fn handle_pointer_motion_relative<I: InputBackend>(
@@ -138,6 +143,7 @@ pub fn handle_pointer_motion_relative<I: InputBackend>(
         },
     );
     pointer.frame(state);
+    state.mark_all_outputs_dirty("pointer-relative-motion");
 }
 
 const CURSOR_EW_RESIZE_NAMES: &[&str] = &[

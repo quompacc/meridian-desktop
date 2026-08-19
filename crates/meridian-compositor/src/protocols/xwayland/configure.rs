@@ -90,8 +90,28 @@ macro_rules! xwm_configure_methods {
             }
         }
         let output_geometry = select_output_geometry_for_rect(self, requested_rect);
-        let adjusted_rect =
-            adjusted_configure_request_rect(requested_rect, output_geometry, is_override_redirect);
+        let frame_insets = window
+            .wl_surface()
+            .map(|surface| {
+                self.decoration_manager.decoration_inset(
+                    &surface,
+                    &self.theme_manager.current().config.decorations,
+                )
+            })
+            .unwrap_or((0, 0, 0, 0));
+        let adjusted_rect = if is_override_redirect {
+            requested_rect
+        } else {
+            output_geometry
+                .map(|geometry| {
+                    panel_safe_normal_xwayland_rect_with_insets(
+                        requested_rect,
+                        geometry,
+                        frame_insets,
+                    )
+                })
+                .unwrap_or(requested_rect)
+        };
         let adjusted_geo = Rectangle::new(adjusted_rect.loc, adjusted_rect.size);
         let clamp_applied = !is_override_redirect && output_geometry.is_some();
         debug!(
@@ -228,12 +248,25 @@ macro_rules! xwm_configure_methods {
             } else {
                 select_output_geometry_for_rect(self, geometry)
             };
+            let frame_insets = window
+                .wl_surface()
+                .map(|surface| {
+                    self.decoration_manager.decoration_inset(
+                        &surface,
+                        &self.theme_manager.current().config.decorations,
+                    )
+                })
+                .unwrap_or((0, 0, 0, 0));
             let loc = if window.is_override_redirect() {
                 geometry.loc
             } else {
                 output_geometry
                     .map(|geometry_for_output| {
-                        panel_safe_normal_xwayland_rect(geometry, geometry_for_output)
+                        panel_safe_normal_xwayland_rect_with_insets(
+                            geometry,
+                            geometry_for_output,
+                            frame_insets,
+                        )
                     })
                     .map(|rect| rect.loc)
                     .unwrap_or(geometry.loc)

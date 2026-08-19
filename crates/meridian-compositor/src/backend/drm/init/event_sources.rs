@@ -117,10 +117,29 @@ fn register_repaint_timer_source(
                     }
                 }
             }
-            TimeoutAction::ToDuration(repaint_interval)
+            // Keep a fixed display cadence. Re-arming relative to the end of
+            // rendering would add render time to every interval (for example
+            // 16 ms render + 16 ms wait = about 30 fps on a 60 Hz output).
+            TimeoutAction::ToInstant(next_repaint_deadline(
+                timer_fired_at,
+                std::time::Instant::now(),
+                repaint_interval,
+            ))
         },
     )?;
     Ok(())
+}
+
+fn next_repaint_deadline(
+    previous_deadline: std::time::Instant,
+    now: std::time::Instant,
+    interval: Duration,
+) -> std::time::Instant {
+    let mut next = previous_deadline + interval;
+    while next <= now {
+        next += interval;
+    }
+    next
 }
 
 #[cfg(not(target_os = "openbsd"))]
@@ -134,4 +153,25 @@ fn register_libinput_event_source(
             state.process_input_event(event);
         })?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::next_repaint_deadline;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn repaint_deadline_does_not_add_render_time_to_the_interval() {
+        let fired = Instant::now();
+        let interval = Duration::from_millis(16);
+
+        assert_eq!(
+            next_repaint_deadline(fired, fired + Duration::from_millis(15), interval),
+            fired + interval
+        );
+        assert_eq!(
+            next_repaint_deadline(fired, fired + Duration::from_millis(17), interval),
+            fired + interval * 2
+        );
+    }
 }

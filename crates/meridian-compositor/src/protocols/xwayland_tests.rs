@@ -5,7 +5,8 @@ use crate::state::{OutputGeometry, NORMAL_WINDOW_BOTTOM_RESERVED_PX};
 use super::{
     adjusted_configure_request_rect, apply_managed_map_ssd, apply_override_redirect_ssd,
     classify_managed_configure_request, configure_request_rect, maximized_x11_content_size,
-    panel_safe_normal_xwayland_rect, DecorationSyncTarget, ManagedConfigureRequestAction,
+    panel_safe_normal_xwayland_rect, panel_safe_normal_xwayland_rect_with_insets,
+    DecorationSyncTarget, ManagedConfigureRequestAction,
 };
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +51,23 @@ fn normal_xwayland_rect_is_clamped_to_panel_safe_bottom() {
     );
     assert_eq!(adjusted.size.h, 300);
     assert_eq!(adjusted.loc.x, 100);
+}
+
+#[test]
+fn decorated_xwayland_rect_keeps_the_complete_frame_on_screen() {
+    let output = OutputGeometry {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+    };
+    let requested = Rectangle::new((0, 0).into(), (800, 600).into());
+    let adjusted = panel_safe_normal_xwayland_rect_with_insets(requested, output, (2, 34, 2, 2));
+
+    assert_eq!(adjusted.loc.x, 2);
+    assert_eq!(adjusted.loc.y, 34);
+    assert_eq!(adjusted.loc.x - 2, output.x);
+    assert_eq!(adjusted.loc.y - 34, output.y);
 }
 
 #[test]

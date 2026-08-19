@@ -20,28 +20,59 @@ fn rect_matches_output_fullscreen_shape(
         && rect.size.h == output_geometry.height
 }
 
+#[cfg(test)]
 fn panel_safe_normal_xwayland_rect(
     rect: Rectangle<i32, Logical>,
     output_geometry: crate::state::OutputGeometry,
+) -> Rectangle<i32, Logical> {
+    panel_safe_normal_xwayland_rect_with_insets(rect, output_geometry, (0, 0, 0, 0))
+}
+
+fn panel_safe_normal_xwayland_rect_with_insets(
+    rect: Rectangle<i32, Logical>,
+    output_geometry: crate::state::OutputGeometry,
+    frame_insets: (i32, i32, i32, i32),
 ) -> Rectangle<i32, Logical> {
     if rect_matches_output_fullscreen_shape(rect, output_geometry) {
         return rect;
     }
 
     let workarea = normal_window_workarea_from_output_geometry(output_geometry);
+    let (left, top, right, bottom) = frame_insets;
     let mut adjusted = rect;
-    adjusted.size.h = adjusted.size.h.min(workarea.height.max(1));
+    adjusted.size.w = adjusted.size.w.min(
+        workarea
+            .width
+            .saturating_sub(left)
+            .saturating_sub(right)
+            .max(1),
+    );
+    adjusted.size.h = adjusted.size.h.min(
+        workarea
+            .height
+            .saturating_sub(top)
+            .saturating_sub(bottom)
+            .max(1),
+    );
 
+    let workarea_left = workarea.x;
+    let workarea_right = workarea.x.saturating_add(workarea.width);
     let workarea_top = workarea.y;
     let workarea_bottom = workarea.y.saturating_add(workarea.height);
+    let min_x = workarea_left.saturating_add(left);
+    let max_x = workarea_right
+        .saturating_sub(right)
+        .saturating_sub(adjusted.size.w)
+        .max(min_x);
+    adjusted.loc.x = adjusted.loc.x.clamp(min_x, max_x);
+
+    let min_y = workarea_top.saturating_add(top);
+    let max_y = workarea_bottom
+        .saturating_sub(bottom)
+        .saturating_sub(adjusted.size.h)
+        .max(min_y);
     let mut y = adjusted.loc.y;
-    let bottom = y.saturating_add(adjusted.size.h);
-    if bottom > workarea_bottom {
-        y = workarea_bottom.saturating_sub(adjusted.size.h);
-    }
-    if y < workarea_top {
-        y = workarea_top;
-    }
+    y = y.clamp(min_y, max_y);
     adjusted.loc.y = y;
     adjusted
 }
@@ -69,6 +100,7 @@ fn configure_request_rect(
     rect
 }
 
+#[cfg(test)]
 fn adjusted_configure_request_rect(
     requested_rect: Rectangle<i32, Logical>,
     output_geometry: Option<crate::state::OutputGeometry>,

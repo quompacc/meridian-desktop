@@ -122,10 +122,19 @@ pub(crate) fn apply_config_overrides(
 }
 
 /// Read the system keyboard layout settings, returning
-/// `(model, layout, variant, options)`. Reads `/etc/vconsole.conf` (Arch /
-/// systemd-localed) first, then `/etc/default/keyboard` (Debian). Any field that
-/// cannot be found is returned empty, which lets libxkbcommon use its default.
+/// `(model, layout, variant, options)`. On OpenBSD, `/etc/kbdtype` is the native
+/// persistent keyboard layout source. Other systems use `/etc/vconsole.conf`
+/// (Arch / systemd-localed), then `/etc/default/keyboard` (Debian). Any field
+/// that cannot be found is returned empty, which lets libxkbcommon use its
+/// default.
 pub(crate) fn system_xkb_settings() -> (String, String, String, String) {
+    #[cfg(target_os = "openbsd")]
+    if let Ok(contents) = std::fs::read_to_string("/etc/kbdtype") {
+        if let Some((layout, variant)) = openbsd_kbdtype_value(&contents) {
+            return (String::new(), layout, variant, String::new());
+        }
+    }
+
     for path in ["/etc/vconsole.conf", "/etc/default/keyboard"] {
         if let Ok(contents) = std::fs::read_to_string(path) {
             let layout = xkb_value(&contents, "XKBLAYOUT");
@@ -140,6 +149,15 @@ pub(crate) fn system_xkb_settings() -> (String, String, String, String) {
         }
     }
     (String::new(), String::new(), String::new(), String::new())
+}
+
+fn openbsd_kbdtype_value(contents: &str) -> Option<(String, String)> {
+    let value = contents
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && !line.starts_with('#'))?;
+    let (layout, variant) = value.split_once('.').unwrap_or((value, ""));
+    (!layout.is_empty()).then(|| (layout.to_owned(), variant.to_owned()))
 }
 
 /// Extract `KEY=value` (optionally quoted) from a shell-style config file,
@@ -158,7 +176,7 @@ fn xkb_value(contents: &str, key: &str) -> String {
 
 #[cfg(test)]
 mod xkb_tests {
-    use super::xkb_value;
+    use super::{openbsd_kbdtype_value, xkb_value};
 
     #[test]
     fn parses_vconsole_layout_and_options() {
@@ -173,6 +191,18 @@ mod xkb_tests {
     fn handles_quotes_and_ignores_comments() {
         let c = "#XKBLAYOUT=us\nXKBLAYOUT=\"de\"\n";
         assert_eq!(xkb_value(c, "XKBLAYOUT"), "de");
+    }
+
+    #[test]
+    fn parses_openbsd_kbdtype_layout_and_variant() {
+        assert_eq!(
+            openbsd_kbdtype_value("de\n"),
+            Some(("de".to_owned(), String::new()))
+        );
+        assert_eq!(
+            openbsd_kbdtype_value("# keyboard\nus.dvorak\n"),
+            Some(("us".to_owned(), "dvorak".to_owned()))
+        );
     }
 }
 
