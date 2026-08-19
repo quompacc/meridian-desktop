@@ -13,6 +13,13 @@ und der GitHub-CI erzwungen:
 3. `cargo check --workspace`
 4. `cargo clippy --workspace --all-targets -- -D warnings`
 
+`cargo test --workspace` enthält den Source-Size-Guard. Für eine schnelle
+Einzelprüfung des 600-Zeilen-Limits:
+
+```sh
+cargo test -p meridian-tokens --test source_size_guard
+```
+
 ## Pflicht nach Codeänderungen
 - Nach Rust-Codeänderungen: `cargo fmt`
 - Nach Rust-Codeänderungen: `cargo check --workspace`

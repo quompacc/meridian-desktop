@@ -1,13 +1,12 @@
 # Meridian — Refactoring Plan
 
-> **Status 2026-08-19:** Wartungs-/Historikplan für die native Shell. Nur kleine,
-> verhaltensgleiche Refactors ausführen, wenn sie einen aktuellen Fix oder die
-> sichere Migration ermöglichen. Keine großflächige native UI-Neustrukturierung
-> vor Runtime/Bridge → Panel → Launcher → Quick Settings.
+> **Status 2026-08-19: umgesetzt.** Sämtliche Rust-Quelldateien liegen bei
+> höchstens 600 physischen Zeilen. Die Aufteilung ist verhaltensgleich und folgt
+> fachlichen Grenzen; `source_size_guard` verhindert neue Überschreitungen.
 
 Derived from the deep audit (2026-06-20). Goal: break the few oversized files
 into navigable modules **without behaviour changes**, lowering the cost of every
-future edit. This is a *plan* — each item is an independent, reviewable PR.
+future edit. This document now records the completed refactor and its seams.
 
 ## Guiding principles
 
@@ -31,15 +30,15 @@ future edit. This is a *plan* — each item is an independent, reviewable PR.
 
 ## Priority order (highest value first)
 
-| # | Target | Lines | Risk | Why now |
-|---|---|---|---|---|
-| 1 | `meridian-shell/src/settings_view.rs` | ~4100 | medium | Biggest file; clean seams; most-edited area. |
-| 2 | `MeridianShell` impls (`state.rs`/`render.rs`/`widget_dispatch.rs`) | ~3000+1900+800 | low–med | The god-object's behaviour is unnavigable today. |
-| 3 | `meridian-login/src/main.rs` | ~2800 | medium | Boot-critical; split improves testability. |
-| 4 | `meridian-compositor/src/protocols/xwayland.rs` | ~2000 | low | Helpers vs handler are cleanly separable. |
-| 5 | Shell `render.rs` / DRM `render.rs` | ~1900 / ~1600 | medium | Perf-sensitive — split by surface, don't touch hot loops. |
-| 6 | Duplicate pixel helpers | — | low | Quick win, removes drift. |
-| — | `meridian-config/src/config.rs` | ~2000 | n/a | **Do not split production types** — ~1700 of those lines are tests. Optionally move `mod tests` to `config/tests.rs`. |
+| Target | Result |
+|---|---|
+| Shell settings | Widgets, category builders, drawing and IDs live under `settings_view/`. |
+| Shell state/render/input | Split by lifecycle, popup, action, surface and pointer responsibility. |
+| Compositor | DRM init/render, XWayland, setup, grabs and pointer logic are modularized. |
+| Login/lock | Runtime, state, animation, rendering, controls and IPC are separated. |
+| Config/IPC/tests | Mutation, TOML output, wallpapers and test groups are separated. |
+| Compass/Polkit | Rendering phases and Wayland state/dispatch are separated. |
+| Regression gate | `cargo test -p meridian-tokens --test source_size_guard`. |
 
 ---
 
