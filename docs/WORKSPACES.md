@@ -1,5 +1,9 @@
 # Workspace Policy (Multi-Monitor)
 
+> **Priority note (2026-08-19):** preserve this policy during UI migration.
+> Additional workspace features are deferred unless required by the active BSD
+> core or first WebKit vertical slice.
+
 ## Scope
 Diese Datei spezifiziert die Ziel-Policy für Workspaces auf mehreren Outputs.  
 Nur Spezifikation, keine Implementierung.

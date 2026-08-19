@@ -1,5 +1,10 @@
 # Debugging Guide
 
+> Scope note (2026-08-19): most procedures below target the current native
+> Linux/FreeBSD implementation. Record OS, hardware, backend and native versus
+> WebKit renderer in every new result. OpenBSD evaluation lives in `OPENBSD.md`;
+> target runtime diagnostics are specified in `UI_PLATFORM.md`.
+
 ## Standard-Logging
 - Standard: `RUST_LOG=info`
 - Detailliert: `RUST_LOG=debug`

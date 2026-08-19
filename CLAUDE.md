@@ -1,10 +1,11 @@
 # Meridian – Regeln für Claude Code
 
-## ⛔ NUR AUF DER ARCH-BOX BAUEN/TESTEN/INSTALLIEREN — NIE LOKAL.
-Die Dev-Maschine ist **Windows**; die wayland-Crates (`meridian-compositor`,
-`meridian-shell`, …) kompilieren dort **nicht** (`std::os::unix`). **Niemals**
-lokal `cargo build/test/check` versuchen. Der gesamte Zyklus — bauen, Gate,
-installieren, Screenshot — läuft auf der **Arch-Box** (`ssh meridian-arch`):
+## ⛔ UNIX-CODE NICHT AUF DER WINDOWS-DEV-MASCHINE VALIDIEREN
+Die lokale Dev-Maschine ist **Windows**; die Wayland-Crates
+(`meridian-compositor`, `meridian-shell`, …) kompilieren dort nicht vollständig
+(`std::os::unix`). Builds und Gates laufen auf einem dokumentierten Unix-Ziel.
+Bis der OpenBSD-Acer eingerichtet ist, bleibt die **Arch-Box**
+(`ssh meridian-arch`) der bekannte Build-/Regression-Pfad:
 
 1. **Sync:** `tar czf - --exclude=./target --exclude=./.git --exclude='*/target' . | ssh meridian-arch 'tar xzf - -C /root/meridian-build'`
    (Build-Dir ist `/root/meridian-build`, NICHT `/root/meridian-desktop`).
@@ -15,8 +16,21 @@ installieren, Screenshot — läuft auf der **Arch-Box** (`ssh meridian-arch`):
 4. **Installieren für den Test:** `install -m755 target/release/{meridian,meridian-shell} /usr/local/bin/`, dann `systemctl reboot` (Compositor-Änderung braucht Session-Neustart).
 5. **Screenshot:** `grim` als eduard (siehe `docs/SSD_FRAME_PLAN.md` für die genaue `sudo -u eduard …`-Umgebung).
 
-Nur design_guard (reiner Text-Scan in `meridian-tokens`) läuft notfalls auch
-lokal — sonst alles auf der Box.
+Nur `design_guard` (reiner Text-Scan in `meridian-tokens`) läuft notfalls lokal.
+OpenBSD-/FreeBSD-Ergebnisse stets mit OS/Hardware kennzeichnen; ein VM- oder
+Linux-Pass ist kein BSD-Hardware-Pass.
+
+## Aktive Produktstrategie (2026-08-19)
+
+- Meridian bleibt eigener Rust-Wayland-Compositor.
+- OpenBSD wird auf Acer/Intel HD 620 evaluiert; FreeBSD bleibt Alternative.
+- Meridian-eigene Alltags-UI migriert nach einem Proof auf WebKit + HTML/CSS +
+  Web Components + kleine TypeScript-Schicht + typisierte Rust-Bridge.
+- Reihenfolge: Hardware-Inventar -> OpenBSD-Baseline -> Meridian-Core ->
+  Runtime/Bridge -> Panel -> Launcher -> Quick Settings.
+- Keine großen neuen Features vor diesem Vertical Slice.
+- WebKit bleibt unprivilegiert; privilegierte Aktionen bleiben in kleinen
+  Rust-Services/Helpern.
 
 ## ⛔ ABSOLUTES TABU — KEINE AUR-PAKETE. NIEMALS.
 **NUR offizielle Repos** (Arch `core`/`extra`, Distro-Repos). **DAS AUR IST
@@ -45,6 +59,8 @@ wählen oder nachfragen. Niemals `yay`/`paru`/`makepkg` o. Ä. ausführen.
   (Manifest §3.4/§9/§14).
 - Guard grün halten: `cargo test -p meridian-tokens --test design_guard`.
 - Definition of Done: `docs/GUI_CENTRALIZATION_PLAN.md` §9.
+- Web-CSS wird aus `meridian-tokens` + `meridian-config` generiert; niemals eine
+  zweite handgepflegte Tokenquelle einführen.
 
 ## Vor jedem Commit:
 - cargo test --workspace grün

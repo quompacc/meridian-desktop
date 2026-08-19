@@ -1,7 +1,12 @@
 # Meridian Agent Rules
 
 ## Projekt (Kurz)
-Meridian ist ein Wayland-Compositor mit separatem Shell-Prozess. Workspace ist Rust-Multi-Crate mit `meridian-compositor`, `meridian-shell`, `meridian-config`, `meridian-ipc`, `meridian-wm`, `meridian-portal`.
+Meridian ist ein Rust-Wayland-Compositor mit separatem Shell-Prozess und
+erstklassigem BSD-Ziel. Der aktuelle Shell-Renderer ist nativ; die aktive
+Zielarchitektur migriert Meridian-eigene Alltags-UI schrittweise auf eine kleine
+WebKit-Plattform mit HTML/CSS/Web Components und typisierter Rust-Bridge.
+OpenBSD wird zuerst auf realer Intel-Hardware evaluiert, FreeBSD bleibt die
+ernsthafte Alternative. Aktive Reihenfolge: `MERIDIAN_OS_PLAN.md` + `ROADMAP.md`.
 
 ## Design – VERBINDLICHE Vorgabe (gilt für jede UI-/Render-Änderung)
 Die Datei **`docs/meridian_design_manifest.md` ist die maßgebliche Design-Spezifikation.**
@@ -24,6 +29,8 @@ Daraus abgeleitete, nicht verhandelbare Invarianten:
   schlägt bei neuen Hardcodes fehl. Roten Guard nie ignorieren — entweder
   zentralisieren oder bewusst mit `// guard:allow: <grund>` freigeben.
 - Definition of Done für Zentralität: `docs/GUI_CENTRALIZATION_PLAN.md` §9.
+- Web-UI erzeugt CSS-Tokens ausschließlich aus `meridian-tokens` +
+  `meridian-config`; keine zweite handgepflegte Palette/Geometrie.
 
 ## Harte Regeln für Codex
 1. Keine Feature-Änderung ohne expliziten Auftrag.
@@ -36,10 +43,17 @@ Daraus abgeleitete, nicht verhandelbare Invarianten:
 8. Prefer cached visual assets over per-frame recomputation.
 9. Do not add animations, blur, shadows, or icon decoding without cache/invalidation strategy.
 10. Every visual feature must explain its performance model.
+10a. WebKit/UI-Bridge bleibt unprivilegiert, deny-by-default und ohne ambienten
+    Datei-/Netzwerk-/Prozesszugriff; privilegierte Aktionen bleiben in kleinen
+    Rust-Services/Helpern.
+10b. Keine große neue Desktop-Funktion vor dem Vertical Slice
+    Runtime/Bridge -> Panel -> Launcher -> Quick Settings.
 11. After every Rust code change, run at least `cargo check --workspace`.
 12. If tests were added or changed, run `cargo test --workspace`.
 13. For formatting-sensitive Rust changes, run `cargo fmt`.
 14. A task with Rust changes is not complete until the check/test results are reported.
+15. Plattformannahmen explizit kapseln; OpenBSD- und FreeBSD-Sicherheitsmodelle
+    nicht künstlich gleichsetzen.
 
 ## Erlaubt
 - Rust-Code in betroffenen Modulen ändern.

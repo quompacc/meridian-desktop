@@ -1,5 +1,10 @@
 # Configuration
 
+> Architecture note (2026-08-19): `meridian-config` remains the persistent and
+> validated source when Settings moves to WebKit. UI documents emit typed
+> intents through the Rust bridge; they do not edit configuration files or
+> define fallback design tokens themselves.
+
 Meridian lädt die Benutzerkonfiguration aus:
 - `~/.config/meridian/config.toml`
 

@@ -1,5 +1,9 @@
 # XDG Portals
 
+> **Priority note (2026-08-19):** existing portal behavior remains supported.
+> Broad new portal/UI work is deferred behind the WebKit vertical slice unless
+> required for its security boundary or basic daily-driver validation.
+
 Stand: 2026-06-05, auditiert gegen `crates/meridian-portal`.
 
 ## Ziel

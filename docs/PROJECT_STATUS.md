@@ -1,26 +1,63 @@
 # Project Status
 
-Stand: 2026-06-20, auditiert gegen `master` == `freebsd-port` == `b1c5d1b`
-(GUI-Zentralisierung + Icon-Pipeline + Power + App-Theming + Live-Theme-Switch).
+Stand: 2026-08-19. Dokumentationsabgleich auf Branch `freebsd-port` bei
+`664b5ba`; nach `git fetch`/`pull --ff-only` ist der Branch `3 ahead / 0 behind`
+gegenüber `origin/freebsd-port`. Nicht eingecheckte Nutzerdateien sind darin
+nicht enthalten.
 
-Dieses Dokument ist der kompakte Ist-Stand. Aeltere Phasenlisten in anderen
-Dokumenten koennen historischen Kontext enthalten; bei Widerspruch gilt hier
-der Code-Stand plus `AGENTS.md` bzw. `CLAUDE.md`.
+Dieses Dokument beschreibt den **implementierten Ist-Stand**. Die aktive
+Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
+`UI_PLATFORM.md`. Zielarchitektur ist nicht automatisch implementierter Stand.
+
+## Strategische Einordnung (neu, noch nicht implementiert)
+
+- Meridian bleibt ein eigener Rust-Wayland-Compositor.
+- OpenBSD wird als nächste reale BSD-Referenz auf dem Acer/Intel-HD-620 geprüft;
+  FreeBSD bleibt die ernsthafte Alternative und der vorhandene Supportpfad.
+- Meridian-eigene Alltags-UI soll schrittweise auf eine gemeinsame
+  WebKit/HTML/CSS/Web-Components-Plattform wechseln.
+- Der erste Slice ist Runtime/Bridge → Panel → Launcher → Quick Settings.
+- Der unten dokumentierte native `meridian-shell` bleibt bis zum bewiesenen
+  Slice Referenz und Fallback.
+- Externe GTK-/Qt-/Browser-/wxWidgets-Apps bleiben Wayland/XWayland-Clients.
+
+### OpenBSD-Acer-Baseline (2026-08-19)
+
+- Acer Aspire F5-573G mit OpenBSD 7.9 wurde read-only über SSH inventarisiert.
+- Intel HD 620 läuft als `inteldrm0` mit 1920×1080 und verfügbaren DRM-/Render-
+  Nodes; Ethernet, Audio, Touchpad und Webcam werden erkannt.
+- Interne QCA9377-WLAN- und Bluetooth-Funktionen haben keinen angebundenen
+  Treiber. Ethernet ist aktuell der einzige Netzwerkpfad.
+- Systempatches `001` bis `009` sind eingespielt. Rust/Cargo 1.94.1,
+  Wayland/libinput/xkbcommon/seatd, XWayland und WebKitGTK 4.1 sind installiert;
+  `seatd` und D-Bus laufen und starten beim Boot.
+- WebKitGTK 4.1 kompiliert und linkt nativ (2.52.5); ein gerenderter
+  Wayland/WebKit-Frame ist noch nicht bewiesen.
+- `meridian-tokens`, `meridian-ipc`, `meridian-config`, `meridian-portal`,
+  `meridian-boot-common`, `meridian-compass-render`, `meridian-freetype` und
+  `meridian-ui` bauen auf OpenBSD. Der Design-Guard ist gruen.
+- Die erste harte Portierungsgrenze ist geloest: Der gepinnte Smithay-Port
+  kompiliert `linux-drm-syncobj-v1` auf OpenBSD nicht, behaelt aber DRM/KMS,
+  GBM und EGL. `meridian-wm` und `meridian-compositor` bauen nativ; alle 378
+  Compositor-Library-Tests sind auf OpenBSD gruen.
+- Verbleibende harte Portierungsgrenzen: Shell-Screencopy benoetigt
+  `memfd_create`, und Login/Lock/Polkit benoetigen derzeit PAM statt OpenBSD
+  BSD Authentication.
+- Vollständige Evidenz und offene Tests: `OPENBSD.md`.
 
 ## Validierter Basisstand
-- Git-Stand: `master` == `freebsd-port` == `b1c5d1b`, beide nach Codeberg
-  gepusht. Letzte relevante Commits: `9aa2bc3` (GUI-Zentralisierung, Icon-
-  Pipeline, Power, Tastatur, Startup), `2641a29` (App-Theming via Portal),
-  `b1c5d1b` (Live-Theme-Switch).
+- Remote-Stand: `origin/freebsd-port` bei `24177fe`; lokal zusätzlich
+  `e0116ea`, `751cab8` und `664b5ba`.
 - Audit-Reports: `docs/AUDIT_2026-06-20.md` (GLM, gegen Code geprueft: bis auf
   eine falsche Pfadangabe in §3.6 korrekt), `docs/AUDIT_2026-05-25.md` (aelter).
 - `cargo test --workspace`: gruen (zuletzt auf der Arch-Box).
 - `cargo clippy --workspace -- -D warnings`: gruen.
 - `cargo test -p meridian-tokens --test design_guard`: gruen (0 Findings,
   erzwingt zentrale Design-Quelle).
-- Hardware-Testbox ist jetzt **Arch Linux** (nicht mehr FreeBSD), per WLAN
-  unter `192.168.1.190` erreichbar (`ssh meridian-arch`). FreeBSD-Pfad bleibt
-  gepflegt, ist aber nicht die primaere Live-Box.
+- Die bisherige vollstaendige Live-Testbox/Workflow-Dokumentation bezieht sich
+  auf Arch Linux. Der OpenBSD-Entwicklungs- und Teil-Buildpfad ist eingerichtet,
+  aber eine Meridian-Grafiksession ist noch nicht validiert. FreeBSD bleibt
+  separat dokumentiert.
 - Theme-Assets liegen im Repo unter `themes/` und werden via
   `scripts/install-local.sh` nach `/usr/local/share/meridian/themes` installiert.
 
@@ -221,6 +258,10 @@ der Code-Stand plus `AGENTS.md` bzw. `CLAUDE.md`.
   aktualisierte beschatten (xdg-desktop-portal nimmt die erste pro Quelle).
 
 ## Offene Risiken
+- OpenBSD-Portierung hat noch zwei bekannte Compile-Architekturarbeiten:
+  portables Shared Memory statt `memfd_create` und BSD Authentication statt
+  PAM/pam_systemd. Danach folgen native Input-/Session- und Runtime-Smokes;
+  eine startbare Meridian-Session ist noch nicht bewiesen.
 - Breiter Bug-Audit steht aus: Es ist eine relevante Zahl offener Bugs bekannt,
   aber noch nicht systematisch katalogisiert. Naechster grosser Schritt ist ein
   vollstaendiger Audit gegen `b1c5d1b` mit priorisierter Bug-Liste.
@@ -245,19 +286,26 @@ der Code-Stand plus `AGENTS.md` bzw. `CLAUDE.md`.
   und Multi-Output-Politur bleiben offen.
 
 ## Naechste sinnvolle Arbeiten
-1. Grosser Bug-Audit gegen `b1c5d1b`: Bugs systematisch erfassen, gegen den
+1. Smithay-OpenBSD-Grenze upstream vorbereiten und parallel einen echten
+   DRM/GBM/EGL-Lauf auf dem Acer testen; `linux-drm-syncobj-v1` darf dabei nicht
+   beworben werden.
+2. Shell-Screencopy auf eine portable Shared-Memory-Abstraktion umstellen und
+   die Linux-Implementierung verhaltensgleich erhalten.
+3. OpenBSD-Authentifizierungsadapter fuer Login/Lock/Polkit auf Basis von BSD
+   Authentication und nativer Sessionverwaltung spezifizieren.
+4. Grosser Bug-Audit gegen `b1c5d1b`: Bugs systematisch erfassen, gegen den
    echten Code verifizieren und priorisiert als neuen `docs/AUDIT_*`-Report
    ablegen. Danach abarbeiten.
-2. Runtime-Hotplug H5d auf echter DRM-Hardware erneut ausfuehren und
+5. Runtime-Hotplug H5d auf echter DRM-Hardware erneut ausfuehren und
    Ergebnisse in `docs/MULTI_MONITOR.md`/`docs/NVIDIA_PASSTHROUGH.md`
    eintragen.
-3. Theme-/Asset-Packaging definieren: installierbare Theme-Ziele,
+6. Theme-/Asset-Packaging definieren: installierbare Theme-Ziele,
    Dependency-Liste und Cross-Distro-Pfade dokumentieren.
-4. StatusNotifierItem-Tray weiter ausbauen: DBusMenu-Submenus, Scrollen,
+7. StatusNotifierItem-Tray weiter ausbauen: DBusMenu-Submenus, Scrollen,
    Hover-State und sauberere Positionierung pro Tray-Icon polieren.
-5. Portal-Scope entscheiden: FileChooser haerten oder Screenshot-Permission-
+8. Portal-Scope entscheiden: FileChooser haerten oder Screenshot-Permission-
    Pfad spezifizieren, nicht beides in einem Slice.
-6. Login-Installationspfad dokumentieren: PAM-Dateien und Host-/VM-USB-
+9. Login-Installationspfad dokumentieren: PAM-Dateien und Host-/VM-USB-
    Durchreichung fuer YubiKey stabil beschreiben.
 
 ## Manuelle Testhinweise

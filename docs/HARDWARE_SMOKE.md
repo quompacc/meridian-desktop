@@ -1,5 +1,9 @@
 # Controlled Hardware Smoke
 
+> **Scope note (2026-08-19):** this documents the current Linux/native-shell
+> hardware pass. For the new OpenBSD/Acer decision path use `OPENBSD.md`; do not
+> report this smoke as BSD validation.
+
 This runbook separates preflight work from checks that can only be proven on
 real DRM/input hardware.
 

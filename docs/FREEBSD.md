@@ -1,5 +1,11 @@
 # Meridian on FreeBSD
 
+> **Platform position (2026-08-19):** this is the existing, implemented BSD
+> path and remains maintained. OpenBSD is evaluated next, but FreeBSD is the
+> explicit fallback if hardware, browser or WebKit compatibility is better
+> here. The installer below deploys the current native Rust shell; the planned
+> WebKit runtime has no FreeBSD packaging claim yet.
+
 Meridian builds and runs as a full desktop on FreeBSD (verified on 15.1-RELEASE,
 amd64, Intel KMS): boot → login manager → PAM login → compositor + shell +
 panel + launcher + apps. FreeBSD has no systemd or logind, so the systemd units,

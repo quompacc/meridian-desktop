@@ -1,5 +1,9 @@
 # Multi-Monitor Audit
 
+> **Priority note (2026-08-19):** these compositor invariants remain valid and
+> must not regress. New polish work is deferred unless it blocks the OpenBSD core
+> smoke or the WebKit panel/launcher/Quick Settings vertical slice.
+
 ## Scope
 Dieser Task dokumentiert den aktuellen Output-Stand und ein Zielmodell für späteren Multi-Monitor-Support.  
 Keine vollständige Implementierung, keine Render-/Workspace-Verhaltensänderung.

@@ -29,6 +29,17 @@ Siehe ergänzend: `docs/VISUAL_PERFORMANCE.md`.
 - Zustandswechsel über Events/Handler.
 - Polling nur für klar begrenzte Aufgaben (z. B. IPC-Timer), mit moderatem Intervall.
 
+## WebKit-/Bridge-Regeln
+- Kein DOM-/Animationstimer im unveränderten Idle-Zustand.
+- Keine synchronen Bridge-Roundtrips in Input- oder Paint-Handlern.
+- Icons/Fonts/Assets nach Identität, Scale und Theme cachen.
+- Nur betroffene Komponenten invalidieren; keine vollständige UI-Neuladung für
+  normale State-Events.
+- Cold start, First Paint, Input-to-Paint, RSS und Idle CPU/GPU auf realer
+  Referenzhardware messen.
+- WebKit bleibt ein unprivilegierter Presentation-Prozess; Sicherheit nicht für
+  Performance-Abkürzungen umgehen.
+
 ## RAM-Ziele (Richtwerte)
 - Keine ungebremsten per-frame Wachstumsstrukturen.
 - Caches müssen ersetzbar/invalidierbar sein.
@@ -39,3 +50,4 @@ Siehe ergänzend: `docs/VISUAL_PERFORMANCE.md`.
 2. Renderpfad-Diff auf Allokationen/Clones prüfen
 3. Keine neuen Warnungen im geänderten Pfad
 4. Für Rendering-Änderungen: beide Backends (`drm`, `winit`) gedanklich/technisch mitprüfen
+5. Für Web-UI: Cache/Invalidation, Idle-Timer, Bridge-Latenz und Acer-Budget dokumentieren

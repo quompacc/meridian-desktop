@@ -1,5 +1,9 @@
 # Code Style
 
+> Updated 2026-08-19: Rust remains the system/policy language. The target UI
+> adds a small TypeScript/CSS layer governed by the same modularity, security and
+> design-token rules.
+
 ## Rust-Stil
 - Kleine, fokussierte Module.
 - Frühzeitige Returns statt tiefer Verschachtelung.
@@ -30,5 +34,19 @@
 
 ## Feature-Gates
 - Optionales Verhalten klar hinter `#[cfg(feature = ...)]`.
+
+## Plattform-Code
+- Linux/OpenBSD/FreeBSD-Abhängigkeiten hinter kleinen, benannten Adaptern halten.
+- Gemeinsame Semantik testen; OS-spezifische Sicherheits- und Sessionmodelle
+  nicht durch scheinbar einheitliche, aber falsche Abstraktionen verstecken.
+- Unsupported klar melden statt still auf Linux-Verhalten zurückzufallen.
+
+## Web-UI
+- Möglichst Web Components + CSS; TypeScript nur für State/Bridge/Interaktion.
+- Keine Framework-Abhängigkeit ohne expliziten Architekturauftrag.
+- Bridge-Typen versionieren und an der Rust-Grenze validieren.
+- Keine lokalen Produktionsfarben/-radien/-alphas; nur generierte CSS-Tokens.
+- Komponenten nach Verantwortung splitten; keine monolithischen Surface-Dateien.
+- Keine synchronen Bridge-Aufrufe in Input-/Paint-Pfaden.
 - Fallbackpfad (ohne Feature) muss kompilieren und getestet bleiben.
 

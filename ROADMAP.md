@@ -1,93 +1,151 @@
-# Meridian — Roadmap (forward-looking)
+# Meridian — Active Roadmap
 
-> Companion to `PLAN.md` (which is the historical initial-buildup plan).
-> This file is the working "what's next" view, organised by daily-driver
-> readiness milestones.
+> Updated 2026-08-19. This is the forward-looking execution order for the
+> BSD/WebKit strategy. Completed native-shell work remains documented in
+> `docs/PROJECT_STATUS.md`; older phase estimates are no longer scheduling
+> commitments.
 
-Last updated: 2026-05-25 (documentation audit against `master` at `2e7a2ed`,
-plus shell idle timer/input-redraw, Sound tray/PipeWire, and SNI watcher/detail/
-activate/dbusmenu-popup slices).
+## Guiding constraint
 
-## Where we are now
+No new large desktop feature comes before the UI platform proof. Existing
+compositor, protocol, login, portal and FreeBSD work is maintained, but product
+expansion waits until the runtime → bridge → panel → launcher → Quick Settings
+slice is credible.
 
-The full boot chain runs end-to-end on the linux-dev VM:
+## Phase 0 — Acer hardware inventory
 
-```
-bootsplash  →  meridian-login  →  meridian (compositor)  →  meridian-shell
-   spin           Card+PAM             wallpaper                panel+launcher
-```
+Status: **substantially complete on 2026-08-19; backup/recovery record remains.**
+The exact model and devices are now recorded in `docs/OPENBSD.md`. The internal
+QCA9377 WLAN and Bluetooth functions have no attached OpenBSD driver; Ethernet
+is operational.
 
-DRM/KMS backend with libseat, xdg-shell + layer-shell + xwayland +
-screencopy + session_lock + output-power + dmabuf + idle stack are in.
-The login path supports YubiKey/PIN auth with username/password fallback,
-keeps the PAM/logind session alive for the compositor lifetime, and includes
-compositor handover plus login-side power controls.
+Identify and record the exact laptop model and these devices before changing
+its operating system:
 
-The shell is beyond a minimal panel/launcher: notification daemon,
-StatusNotifierItem watcher v1, network/calendar/workspace/thumbnail popups,
-screenshot capture, context menus, power footer, partial settings UI, and
-first idle wakeup/input-redraw reductions are present. `meridian-portal`
-implements FileChooser plus an experimental Screenshot path with Meridian
-consent/region UI; ScreenCast remains open.
+- Intel HD 620 PCI identity and active display connectors
+- NVIDIA 940MX identity, while planning not to use it
+- WLAN, Ethernet, audio, touchpad and Bluetooth chipsets
+- firmware dependencies, suspend state and external-display ports
 
-What follows is the path from "author's experimental desktop" to "real
-people can use it".
+Exit criterion: `docs/OPENBSD.md` contains the actual device inventory and a
+backup/recovery plan.
 
----
+## Phase 1 — OpenBSD real-hardware baseline
 
-## Phase A — Self-Daily-Driver (next ~4-6 weeks)
+Status: **development baseline active.** OpenBSD patches `001`–`009`, Rust
+1.94.1, Wayland/input/seat libraries, XWayland and WebKitGTK 4.1 are installed.
+`seatd` and D-Bus are enabled. WebKit compiles and links; rendered GUI,
+audio, suspend and external-display tests remain.
 
-> Author runs Meridian on a dedicated machine, accepting rough edges.
+Install OpenBSD on the Acer and validate the base system before Meridian:
 
-| # | Item | Effort | Why |
-|---|------|--------|-----|
-| A1 | ~~**Notification daemon**~~ — v1 scope: Notify/CloseNotification/GetCapabilities/GetServerInformation on dbus; top-right popup; auto-expiry timer. Polish deferred: click-to-dismiss, richer wrapping, app icons, stacking display, NotificationClosed signal. | done | |
-| A2 | **xdg-desktop-portal v1** — FileChooser is present via delegated picker; Screenshot has consent/region plumbing and needs installed-session E2E validation; ScreenCast remains open. | 2-3 weeks | Flatpaks, browser screen-share, screenshots, and file dialogs need portal coverage. |
-| A3 | **Settings UI v1** — Desktop/System root skeleton is present; theme, wallpaper, pinned apps, display status, primary-output switching, Printers read-only v1, and Sound read-only v1 are active. | 1-2 weeks | Without it every adjustment is a TOML edit + restart. |
-| A4 | **Multi-monitor hotplug stable** (README flagged in-progress) | ongoing | First thing that breaks when you plug into a beamer or dock. |
+- Intel GPU acceleration, modesetting and cursor
+- keyboard, touchpad, WLAN, Ethernet, audio and Bluetooth as applicable
+- external display, hotplug and suspend/resume
+- Firefox, Chromium availability, GTK, Qt and WebKit runtime behavior
+- Rust toolchain and build prerequisites
 
-## Phase B — Tech-User-Daily-Driver (~3 months after Phase A)
+VM runs remain useful for repeatability, but hardware results are authoritative.
 
-> A Linux-savvy friend can install and use Meridian on their own gear.
+Exit criterion: a completed pass/fail matrix with blockers classified as
+hardware, OS, port/package, upstream protocol or Meridian issues.
 
-| # | Item | Effort |
-|---|------|--------|
-| B1 | System tray (StatusNotifierItem dbus) — watcher v1 registers items, reads `Title`/`IconName`/`Menu`, renders panel slots with icon/label fallback, forwards `Activate`/`SecondaryActivate`/`ContextMenu`, parses DBusMenu `GetLayout` into a local menu model, returns it to the shell event loop, renders a first popup, and sends `clicked` events for enabled menu rows; richer submenu/scroll polish remains open. | 2-3 weeks |
-| B2 | Panel applets: network is partial via `nmcli`; audio has a first tray card backed by PipeWire/`wpctl` with an optional `System -> Sound` settings link; bluetooth, battery, brightness, and full StatusNotifierItem tray remain open | 1-2 weeks each |
-| B3 | Fractional scaling — for HiDPI laptop + FHD external setups | 2-3 weeks |
-| B4 | Lock screen polish + idle timer — `meridian-lock` exists and now installs; remaining work is installed-session E2E, idle integration, and multi-output polish | 1-2 weeks |
-| B5 | Input methods — `text_input_v3` + IBus/fcitx bridge for CJK | 2-3 weeks |
-| B6 | Clipboard manager + cross-app drag-and-drop polish | 1-2 weeks |
+## Phase 2 — Meridian core on OpenBSD
 
-## Phase C — Real-Daily-Driver (~6-12 months after Phase B)
+Status: **native compositor compile path established.** Portable
+tokens/config/IPC/UI/portal/boot crates compile unchanged. The OpenBSD Smithay
+port disables only the unavailable `linux-drm-syncobj-v1` eventfd contract;
+DRM/KMS, GBM and EGL remain enabled. WM and compositor compile, and all 378
+compositor library tests pass on OpenBSD. The next compile boundary is shell
+shared memory (`memfd_create`), followed by BSD Authentication instead of PAM.
 
-> Someone who isn't willing to debug their desktop can rely on it.
+Port or isolate Linux assumptions without weakening the existing architecture:
 
-| # | Item | Effort |
-|---|------|--------|
-| C1 | Stability hardening — memory leak hunt, crash recovery, long-session burn-in | continuous |
-| C2 | Compatibility matrix — Firefox / Chromium / Steam / Electron / LibreOffice / GIMP, edge cases | continuous |
-| C3 | Color management + night mode | 2-3 weeks |
-| C4 | Power management — brightness keys, suspend/resume, lid-close behavior | 2-3 weeks |
-| C5 | User-facing docs (not dev-facing) | 1-2 weeks |
-| C6 | Distribution — Debian package / AUR / Flatpak manifest | 1-2 weeks |
-| C7 | Update mechanism (or deliberate hand-off to distro PM) | 1 week |
+- compile the workspace or a documented subset
+- establish the seat/input and DRM/KMS path available on OpenBSD
+- run a minimal compositor session with Intel HD 620
+- validate Wayland clients and XWayland, if available
+- define OpenBSD process boundaries using `pledge`, `unveil` and privilege
+  separation where they improve the trusted base
 
-## Explicitly out of scope (for now)
+Exit criterion: a minimal Meridian session renders, accepts input and can run a
+reference client, or the exact upstream blocker is documented.
 
-- VR / AR, exotic displays
-- Custom auth stack — PAM stays
-- Custom sound server — PipeWire stays
-- Mobile / touch-first UX — that's Phosh territory
-- Gaming-specific (gamescope integration, controller support) — Phase C+ if at all
+## Phase 3 — WebKit UI platform spike
 
-## How to use this document
+Build the smallest runtime that can prove the architecture:
 
-Treat each item as a small project. Before starting one:
-1. Read the existing code surface it touches, e.g. `crates/meridian-shell/src/context_menu.rs`
-   for launcher context menus or `crates/meridian-portal/src/file_chooser.rs`
-   for FileChooser portal work.
-2. Sketch the protocol surface in a short design note.
-3. Implement on a feature branch, land in small commits.
-4. Update this file's status when shipping (strike-through completed
-   items rather than deleting — keeps the trail visible).
+1. create and manage a WebKit-backed Wayland surface;
+2. load bundled HTML/CSS/components without an HTTP server;
+3. expose one typed, capability-scoped Rust bridge operation;
+4. export light/dark CSS variables from Meridian's central tokens;
+5. demonstrate deterministic lifecycle, crash handling and diagnostics;
+6. measure cold start, steady idle CPU/GPU, memory and input-to-paint latency.
+
+Tauri may be reused only if its required subset is maintainable on the chosen
+BSD target. Meridian will not recreate Tauri wholesale.
+
+Exit criterion: the spike works on the selected BSD reference path and meets a
+written performance/security budget.
+
+## Phase 4 — First vertical slice
+
+Migrate in this order:
+
+1. panel/taskbar;
+2. launcher;
+3. Quick Settings.
+
+Each component must use shared Web Components and generated design tokens. The
+native Rust shell remains the fallback until the complete slice is functional.
+Render order, compositor policy and IPC compatibility must remain stable.
+
+Exit criterion: all three components can be daily-tested together, survive a
+runtime restart and look/behave consistently in both themes.
+
+## Phase 5 — Meridian system applications
+
+Only after Phase 4 succeeds:
+
+- Settings
+- package management UI
+- ZFS/storage tooling where supported
+- system monitor
+- notifications and overview migration
+
+Privileged work remains in small Rust services/helpers. UI processes receive
+only the capabilities and data required for the active view.
+
+## Continuous tracks
+
+### External client compatibility
+
+Maintain a matrix for Firefox, Chromium/Electron, GTK3/4, Qt5/6, wxWidgets and
+representative XWayland applications. Prefer protocol correctness; add
+application-specific quirks only as a documented last resort.
+
+### FreeBSD fallback
+
+Keep the existing FreeBSD install path buildable. Evaluate Capsicum, jails, MAC,
+securelevel and ZFS according to FreeBSD's own model rather than imitating
+OpenBSD APIs.
+
+### Performance
+
+The Acer is the low-end benchmark. Cache decoded icons and reusable visual
+assets; invalidate on explicit state changes. No animation, blur or shadow is
+accepted without an idle-cost and cache strategy.
+
+### Security
+
+Keep WebKit and untrusted content outside privileged processes. The bridge is
+deny-by-default, typed and auditable. Remote navigation and arbitrary command
+execution are not implicit runtime features.
+
+## Deferred until the vertical slice is proven
+
+- new large settings categories
+- package-manager or storage-manager product work
+- broad visual rewrites of the native shell
+- toolkit-specific compatibility hacks without protocol evidence
+- a final choice between OpenBSD and FreeBSD based on preference alone

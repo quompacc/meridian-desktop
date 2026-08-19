@@ -1,5 +1,9 @@
 # Meridian — Code Index
 
+> **Migration note (2026-08-19):** this indexes the current native
+> implementation. It is the source map for behavior that the WebKit vertical
+> slice must preserve, not evidence that the target runtime already exists.
+
 A navigational map of the workspace: **which crate/file/function owns what**, so a
 contributor (or an AI assistant) can jump straight to the right place instead of
 grepping blind. The codebase has several files >1500 lines and one ~205-field

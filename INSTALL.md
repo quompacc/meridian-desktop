@@ -1,11 +1,18 @@
 # Meridian - Installation
 
-This guide targets Arch Linux and Arch-based systemd systems first. Debian/apt
-is still supported by the same dependency helper, but Arch is the reference path
-for a fresh hardware install.
+This guide documents the **currently implemented Linux installation path**. It
+does not decide Meridian's long-term operating system. OpenBSD is the next
+real-hardware evaluation target; FreeBSD remains the existing BSD install path.
+
+The WebKit UI runtime described in the active plan is not installed by these
+steps yet. They deploy the current native Rust shell.
 
 > **FreeBSD?** FreeBSD has no systemd/logind and uses its own turnkey installer —
 > see [docs/FREEBSD.md](docs/FREEBSD.md). The steps below do not apply there.
+
+> **OpenBSD?** Support is not yet claimed and there is no installer. Follow the
+> evidence-first checklist in [docs/OPENBSD.md](docs/OPENBSD.md); do not adapt
+> Linux commands blindly.
 
 For the full boot experience keep the sibling checkouts next to each other:
 

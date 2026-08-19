@@ -2,6 +2,31 @@
 
 These guidelines define implementation discipline for Meridian patches.
 
+The active product direction is the BSD-capable Rust compositor plus an
+unprivileged WebKit UI platform for Meridian-owned surfaces. Target architecture
+and current implementation must always be labelled separately.
+
+## Native / Web Boundary
+- Keep DRM/KMS, input, Wayland policy, window management, IPC authority and
+  privileged helpers in Rust.
+- Use WebKit only for Meridian-owned presentation surfaces and system tools.
+- Do not move authentication or privileged policy into JavaScript as a side
+  effect of UI migration.
+- Do not build a general Tauri replacement; expose the smallest required API.
+
+## Bridge Security
+- Bridge operations are typed, versioned, capability-scoped and deny-by-default.
+- Packaged local content is the default; remote navigation has no privileged
+  bridge access.
+- No ambient filesystem, network or subprocess access.
+- Validate identity, bounds and state at every process boundary.
+
+## Platform Discipline
+- Isolate Linux, OpenBSD and FreeBSD adapters explicitly.
+- Apply `pledge`/`unveil` and Capsicum/FreeBSD facilities according to their own
+  OS semantics, not through misleading equivalence.
+- Real hardware is authoritative for GPU, input, suspend and performance claims.
+
 ## Protocol Correctness Over App Hacks
 - Prefer protocol-correct behavior over application-specific exceptions.
 - Do not introduce compatibility behavior that breaks standards semantics.
@@ -25,6 +50,8 @@ These guidelines define implementation discipline for Meridian patches.
 ## Meridian-Owned Shell Components
 - Keep panel, launcher, and compositor-owned UI behavior coherent and predictable.
 - Avoid unbounded extension points that fragment UX.
+- Until the vertical slice is proven, keep the native shell as behavioral
+  reference and fallback.
 
 ## Toolkit-Neutral Defaults
 - Default behavior must remain toolkit-neutral.
@@ -44,6 +71,8 @@ These guidelines define implementation discipline for Meridian patches.
   - `cargo clippy --workspace --all-targets -- -D warnings`
   - `cargo test --workspace`
   - `git diff --check`
+- Web UI changes additionally require generated-token snapshots, bridge schema
+  tests, component interaction/accessibility tests and an idle/performance check.
 
 ## Visual Validation
 - For rendering or input-adjacent changes, validate affected visual and interaction paths directly.
@@ -54,11 +83,11 @@ These guidelines define implementation discipline for Meridian patches.
 
 ## Decision Priority
 Apply this priority order:
-1. protocol correctness
-2. desktop coherence
+1. security boundary and protocol correctness
+2. desktop coherence and central design source
 3. bounded complexity
-4. performance sanity
-5. compatibility scope control
+4. measured performance sanity
+5. portability and compatibility scope control
 
 ## Product Filter
 A technical change is acceptable only if it:

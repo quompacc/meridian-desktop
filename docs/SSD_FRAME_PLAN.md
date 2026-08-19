@@ -1,8 +1,12 @@
 # Plan: Uniform Meridian window frame (SSD) matching the mockups
 
+> **HISTORICAL / DEFERRED (2026-08-19).** Keep the measurements and toolkit
+> findings. Do not resume global frame-forcing work ahead of the WebKit vertical
+> slice; external applications retain their Wayland/XWayland decoration model.
+
 **Goal:** every app window shows Meridian's own titlebar + window controls,
-styled to [`assets/bsd_desktop_mockup.png`](../assets/bsd_desktop_mockup.png)
-(dark) and [`assets/bsd_desktop_mockup_hell.png`](../assets/bsd_desktop_mockup_hell.png)
+styled to the then-current dark/light desktop mockups (the historical
+`assets/bsd_desktop_mockup*.png` files are not present in the current worktree)
 (light) — the Wayland-correct equivalent of Cinnamon's uniform X11 WM titlebars.
 Everything from `meridian-tokens` (design_guard must stay green).
 

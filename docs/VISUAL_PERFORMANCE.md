@@ -3,6 +3,9 @@
 ## Grundprinzip
 High-end visuals through cached, event-driven rendering.
 
+Diese Regeln gelten für native Renderer und WebKit gleichermaßen. Der Browser
+ist kein Freibrief für permanente Timer, Layout-Thrashing oder unbounded DOM.
+
 ## Optik-Ziele
 - Saubere Kanten
 - Gute Typografie
@@ -32,6 +35,8 @@ High-end visuals through cached, event-driven rendering.
 - Dirty-region rendering
 - Static wallpaper cache
 - Scale-aware assets
+- WebKit compositor-friendly transforms/opacity während kurzer Animationen
+- virtualisierte lange Listen/Grids
 
 ## Animation-Regeln
 - Nur event-getrieben.
@@ -60,3 +65,6 @@ High-end visuals through cached, event-driven rendering.
 4. Welche Allokationen entstehen pro Frame?
 5. Wie viel RAM kostet das Feature?
 6. Ist die Optik skalierungsfähig?
+7. Welche DOM-/Style-/Layout-Arbeit entsteht pro Zustandsänderung?
+8. Welche Bridge-Roundtrips liegen im Interaktionspfad?
+9. Bleibt der Acer im unveränderten Desktop wirklich idle?

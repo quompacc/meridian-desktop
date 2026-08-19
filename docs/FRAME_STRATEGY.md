@@ -1,5 +1,10 @@
 # Meridian — Window-Frame-Strategie (der Schlachtplan)
 
+> **Status 2026-08-19:** Die Live-Befunde zu GTK-CSD/SSD bleiben gültiger
+> Kompatibilitätskontext für externe Clients. Dieser Plan ist aber keine aktive
+> Priorität vor dem WebKit-Vertical-Slice und gilt nicht als Strategie für
+> Meridian-eigene UI. Externe Apps bleiben Wayland/XWayland-Clients.
+
 **Status:** Entscheidung getroffen 2026-06-21. Umsetzung in Phasen, später.
 **Kurzfassung:** Eine uniforme, vom Compositor gezeichnete Meridian-Titelleiste
 über **alle** Apps ist auf Wayland **nicht erreichbar**. Wir fahren deshalb

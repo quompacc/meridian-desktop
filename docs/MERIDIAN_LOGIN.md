@@ -1,6 +1,12 @@
 # Meridian Login
 
-Stand: 2026-05-25, auditiert gegen `crates/meridian-login`.
+> Strategy note (2026-08-19): Login remains on the current native security path
+> during the WebKit panel/launcher/Quick Settings slice. Moving authentication
+> UI into WebKit would require a separate explicit threat-model decision; it is
+> not implied by the general UI migration.
+
+Stand: 2026-05-25, auditiert gegen `crates/meridian-login`. The systemd/logind
+details below describe the Linux implementation; BSD session adapters differ.
 
 `meridian-login` ist kein Planungs-Scaffold mehr. Es ist der root-seitige
 DRM-Login-Prozess zwischen `bootsplash` und dem User-Compositor.

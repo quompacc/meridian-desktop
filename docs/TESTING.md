@@ -1,5 +1,9 @@
 # Testing Guide
 
+> Updated 2026-08-19. Existing sections cover the current native Rust
+> implementation. OpenBSD and WebKit checks below are additive and must not be
+> reported as passing until the corresponding platform/runtime exists.
+
 ## Standardchecks
 Diese Checks sind die Baseline und werden vom pre-push-Hook
 (`.githooks/pre-push`, aktivieren mit `git config core.hooksPath .githooks`)
@@ -23,6 +27,37 @@ und der GitHub-CI erzwungen:
 - Nach Login-Änderungen: Standardchecks + Login-Unit-Tests + passenden uinput-Smoke.
 - Nach Portal-Änderungen: Standardchecks + Portal-Unit-Tests + D-Bus/Picker-Smoke.
 - Nach Render-Z-Order-Änderungen: Standardchecks + manuelle Sichtbarkeits-/Layer-Reihenfolge-Checks.
+- Nach Web-UI-Änderungen: generierte Token-Snapshots, Component-/Accessibility-
+  Tests, Bridge-Schema-/Capability-Tests und Idle-/Interaktionsmessung.
+- Nach Plattformänderungen: betroffenen OS-Adapter prüfen; Linux/VM-Ergebnis
+  nicht als OpenBSD-/FreeBSD-Hardwareergebnis ausgeben.
+
+## Zieltests für die WebKit-Plattform
+
+Vor dem ersten produktiven Vertical Slice sind mindestens abzudecken:
+
+- deterministische CSS-Generierung aus `meridian-tokens`/`meridian-config`
+- Guard gegen lokale Produktionsfarben, Alpha, Radien, Mix- und Geometriewerte
+- Bridge-Roundtrip, Versionierung, ungültige Payloads und Capability-Denial
+- Verbot externer Top-Level-Navigation und privilegierter Remote-Bridge-Nutzung
+- Tastatur, Pointer, Focus, Screenreader-Semantik und Reduced Motion
+- Scale-/Theme-Wechsel ohne Layoutunterschied zwischen hell/dunkel
+- Runtime-/Document-Crash ohne Compositor-Crash, inklusive Restart/Fallback
+- Panel/Launcher/Quick-Settings-Parität gegen die vereinbarten IPC-Semantiken
+- Cold start, first paint, Input-to-Paint, Idle CPU/GPU und RSS auf dem Acer
+
+## Plattformmatrix
+
+Ergebnisse immer mit Datum, OS-Version, Hardware und Backend festhalten:
+
+| Pfad | VM | Acer real | Zweck |
+|---|---|---|---|
+| Linux/Winit | vorgesehen | optional | schnelle Regression |
+| Linux/DRM | optional | bisherige Referenz | heutige Implementierung |
+| OpenBSD/DRM Intel HD 620 | ergänzend | maßgeblich | Primärentscheidung |
+| FreeBSD/DRM | ergänzend | bei Vergleich maßgeblich | Alternative/Fallback |
+
+Die detaillierte OpenBSD-Matrix steht in `OPENBSD.md`.
 
 ## Automatisierte Testbereiche
 - Config Parsing/Reload:

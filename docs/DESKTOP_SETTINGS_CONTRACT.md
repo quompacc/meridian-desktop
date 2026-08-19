@@ -1,5 +1,8 @@
 # Desktop Settings Contract v0
 
+> Updated 2026-08-19. The future Settings UI may be WebKit-based; ownership of
+> persistent configuration, policy and standard toolkit exports remains native.
+
 ## Ziel
 
 Meridian soll globale Desktop-Einstellungen standardnah und toolkit-neutral bereitstellen.
@@ -38,11 +41,15 @@ Optional spaeter:
 - `meridian-config` bleibt die Quelle fuer interne Defaults.
 - `meridian-portal` oder ein separater Settings-Daemon kann eine standardisierte Read-only-Schnittstelle fuer Apps bereitstellen.
 - XSettings, GSettings und Portal-Settings sind moegliche Integrationsrichtungen, aber in v0 noch nicht implementiert.
+- Die Web-UI-Bridge ist nur Presentation/Intent-Transport. Sie schreibt keine
+  Systemdateien direkt und umgeht weder Config-Validierung noch Portal-/Service-
+  Policy.
 
 ## Verantwortungsgrenzen
 
 - Compositor: Protokolle, Fensterverwaltung, Input, Session-Basis.
 - Shell/Settings: User-facing Einstellungen.
+- WebKit Runtime: unprivilegierte Darstellung und typisierte Nutzerabsichten.
 - Config: persistente Meridian-Einstellungen.
 - Portal/Settings-Service: app-seitige Desktop-Settings-Signale.
 - Apps/Toolkits: finale CSD/Headerbar/Window-Control-Darstellung.

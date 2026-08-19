@@ -1,5 +1,10 @@
 # Meridian — Refactoring Plan
 
+> **Status 2026-08-19:** Wartungs-/Historikplan für die native Shell. Nur kleine,
+> verhaltensgleiche Refactors ausführen, wenn sie einen aktuellen Fix oder die
+> sichere Migration ermöglichen. Keine großflächige native UI-Neustrukturierung
+> vor Runtime/Bridge → Panel → Launcher → Quick Settings.
+
 Derived from the deep audit (2026-06-20). Goal: break the few oversized files
 into navigable modules **without behaviour changes**, lowering the cost of every
 future edit. This is a *plan* — each item is an independent, reviewable PR.

@@ -1,160 +1,162 @@
-# Architecture
+# Meridian Architecture
 
-Stand: 2026-05-25, auditiert gegen `master` bei `2e7a2ed`.
+> Updated 2026-08-19. Sections explicitly distinguish the current native-shell
+> implementation from the target WebKit UI platform.
 
-## Workspace-Struktur
-- `src/main.rs`: Startpunkt, Backend-Wahl, XWayland, IPC-Timer und
-  Shell-Watchdog.
-- `crates/meridian-compositor`: Wayland-Compositor, Backends, State,
-  Rendering, Input, Output-/Workspace-Policy.
-- `crates/meridian-shell`: separater Layer-Shell-Client fuer Panel,
-  Launcher, Popups, Settings, Notifications und Screenshots.
-- `crates/meridian-login`: root-seitiger DRM-Login mit PAM/logind,
-  YubiKey/PIN-Flow, Passwort-Fallback und Compositor-Handover.
-- `crates/meridian-config`: TOML-Konfiguration, Themes, Wallpaper,
-  Keybinds, Outputs und Panel-Pinned-Apps.
-- `crates/meridian-ipc`: JSON-Line IPC fuer Shell/Compositor plus
-  gemeinsame Screenshot-Bridge-Typen.
-- `crates/meridian-portal`: D-Bus Portal-Backend; aktuell FileChooser
-  delegiert an einen externen Picker.
-- `crates/meridian-wm`: Tiling/Floating-Workspace-Logik.
-- `crates/meridian-ui`: gemeinsam nutzbare UI-Primitives.
-- `crates/meridian-compass-render`: gemeinsamer Compass-Renderer fuer
-  Bootsplash/Login.
-- `crates/meridian-boot-common`: Boot-Chain-Helfer fuer Socket-Cleanup,
-  sichere Socket-Rechte und Boot-Mode-Auswahl.
+## Stable system boundary
 
-## Modulstruktur
-- `meridian-compositor/backend/drm/*`: DRM-Init, GPU/Mode-Auswahl, Hotplug,
-  Timing-Diagnostik und Render-Pipeline.
-- `meridian-compositor/backend/winit/*`: Entwicklungsbackend, Winit-Output
-  und Scene-Komposition.
-- `meridian-compositor/state/*`: Smithay-State, Setup, Layout, IPC,
-  Handler, OutputRegistry, WorkspaceOutputState, Lock/Idle/Output-Power.
-- `meridian-compositor/input/*`: Keyboard-/Pointer-Verarbeitung,
-  Keybind-Ausfuehrung und Output-Fokuspflege.
-- `meridian-compositor/decoration/*`: Server-Side Decorations, Icons,
-  Shadow-/Icon-Caches und Hit-Testing.
-- `meridian-compositor/wallpaper/*`: Wallpaper-Compose und GPU-Cache.
-- `meridian-shell/wayland/*`: Client-Init, State, Render, IPC,
-  Screencopy und Wayland-Handler.
-- `meridian-shell/icons/*`: Icon-Theme, SVG/RCC-Loader und Cache.
-- `meridian-shell/draw/*`: tiny-skia Painter, Text, FreeType/fontconfig.
-- `meridian-shell/*_view.rs`, `*_popup.rs`: App-Grid, Settings, Panel,
-  Power-Footer, Network/Notification/Thumbnail-Popups.
-- `meridian-login/src/*`: Auth, Input, Session-Spawn und DRM/Login-UI.
-- `meridian-portal/src/*`: D-Bus Service und FileChooser-Implementierung.
+Meridian is a Wayland compositor and desktop, not a themed layer over another
+desktop. Rust remains responsible for protocol correctness, hardware access,
+policy, IPC and privileged integration on Linux and BSD.
 
-## Startpfade
+External applications remain Wayland/XWayland clients in both the current and
+target architecture.
 
-### Desktop
-1. `src/main.rs`
-2. `MeridianState::new`
-3. `backend::drm::init_drm` ohne Parent-Display, sonst `init_winit`
-4. XWayland-Start
-5. IPC-Poll-Timer
-6. `meridian-shell` Watchdog, ausser `MERIDIAN_DRM_DISABLE_SHELL=1` oder
-   `MERIDIAN_NO_SHELL=1`
+## Current implementation
 
-### Login
-1. `meridian-login`
-2. Bootsplash-Handover ueber `/run/bootsplash.sock`
-3. PAM/logind-Session nach erfolgreichem Smartcard- oder Passwort-Login
-4. Compositor-Spawn als User
-5. Handover ueber `/run/meridian-login.sock`
+The current executable path is:
 
-## Compositor / Shell / IPC
-- `meridian-compositor` verwaltet Surfaces, Focus, Workspaces, Outputs,
-  Rendering und Shell-Kommandos.
-- `meridian-shell` rendert Panel/Launcher/Popups als Layer-Surfaces.
-- IPC-Kommandos Shell -> Compositor:
-  - `SwitchWorkspace`
-  - `FocusWindow`
-  - `LaunchApp`
-  - `ReloadConfig`
-  - `Quit`
-  - `CaptureWindowThumbnail`
-- IPC-Events Compositor -> Shell:
-  - legacy Workspace- und Window-Events
-  - `WindowSnapshot`
-  - output-aware Workspace-Events/Snapshots
-  - `ConfigReloaded`
-  - `ToggleLauncher`
-  - `WindowThumbnail`
-- Screenshot-Bridge-Messages sind im IPC-Typensystem vorhanden; Portal-
-  Requests werden ueber Compositor-Policy und Shell-Consent/Region-Picker
-  vermittelt, nicht global erlaubt.
+```text
+boot/login → meridian compositor → native meridian-shell
+                                  ├─ panel / launcher / popups / settings
+                                  └─ IPC to compositor and system services
+```
 
-## Shell-Oberflaeche
-- Panel: Launcher, Workspaces, pinned Apps, Network, Screenshot, Clock.
-- Launcher: App-Grid, Kategorien, Suche, Kontextmenues, versteckte Apps,
-  Pinned-App-Management.
-- Settings: Theme, Cursor-Kategorie, Wallpaper-Auswahl/Picker/Modus,
-  Pinned-Apps. Display/Keyboard/Audio sind noch offen.
-- Popups: Calendar, Workspace, Network, Notifications, Window-Thumbnails.
-- Power-Footer: Poweroff/Reboot/Suspend/Lock via Systemtools, Logout via
-  Compositor-IPC.
+Important workspace responsibilities:
 
-## Backends
-- `drm`: KMS/GBM/GLES, Hauptpfad fuer echte Sessions.
-- `winit`: Fallback/Embedded-Session, gleiche State- und Renderprinzipien.
+- `src/main.rs`: backend selection, XWayland, IPC timer and shell watchdog
+- `meridian-compositor`: Wayland server, DRM/Winit backends, input, rendering,
+  output/workspace policy and compositor IPC
+- `meridian-shell`: native Rust layer-shell client and current desktop UI
+- `meridian-config`: TOML configuration, themes, outputs and keybindings
+- `meridian-tokens`: authoritative design values and guard tests
+- `meridian-ipc`: shell/compositor contracts
+- `meridian-wm`: workspace, tiling and floating logic
+- `meridian-login`, `meridian-lock`: authentication/session surfaces
+- `meridian-portal`: portal policy and D-Bus integration
+- `meridian-polkit`: authorization agent
+- `meridian-ui`: reusable native UI primitives
 
-## Wayland-Protokolle
-- XDG Shell (+ Popups/Toplevel)
-- WLR Layer Shell
-- XDG Decoration
-- SHM
-- Output/XDG-Output
-- Data Device / DnD
-- XWayland Shell
-- linux-dmabuf
-- linux-drm-syncobj
-- ext-image-copy-capture / ext-image-capture-source
-- session-lock
-- output-power-management
-- idle-inhibit / idle-notify
+The exact source inventory is generated in `CODE_INDEX.md`.
 
-## Render-Layer-Reihenfolge
-Die visuelle Stapelung ist Korrektheit, nicht Stilfrage:
-1. background / wallpaper
+## Target UI architecture
+
+```text
+Meridian compositor
+├─ Wayland / XWayland
+├─ DRM/KMS, input and output management
+├─ window/workspace policy and effects
+└─ typed IPC and supervision
+          │
+          ▼
+Meridian UI runtime (unprivileged)
+├─ WebKit lifecycle and Wayland surface integration
+├─ capability-scoped Rust bridge
+├─ packaged/offline assets
+└─ crash containment and diagnostics
+          │
+          ▼
+Meridian UI framework
+├─ CSS generated from meridian-tokens/config
+├─ Web Components and shared icons
+└─ minimal TypeScript state adapters
+          ├─ panel
+          ├─ launcher
+          ├─ Quick Settings
+          └─ later Meridian system tools
+```
+
+The new runtime is an additional unprivileged client, not a compositor plugin
+and not a privileged web view. Detailed requirements are in `UI_PLATFORM.md`.
+
+## Migration boundary
+
+The native shell remains the fallback and behavioral reference until the full
+panel/launcher/Quick Settings vertical slice is proven. Migration may extend IPC
+additively but must not silently break existing native-shell decoding.
+
+Login and bootsplash stay native during the first slice. Authentication UI is a
+separate security decision; the WebKit direction does not automatically move it.
+
+## Compositor / shell / IPC contract
+
+The compositor owns surfaces, focus, workspaces, outputs, final composition and
+policy. UI clients request actions; they do not bypass compositor decisions.
+
+Existing IPC includes window/workspace snapshots, focus, launch, config reload,
+quit, thumbnails and screenshot mediation. New bridge/state schemas must reuse
+or version these semantic contracts rather than duplicate policy in JavaScript.
+
+## Render order
+
+Visual stacking is correctness and remains:
+
+1. background/wallpaper
 2. bottom layer surfaces
 3. normal application windows
-4. top layer surfaces / panel
-5. overlay surfaces / launcher / popups
+4. top layer surfaces/panel
+5. overlay surfaces/launcher/popups
 6. cursor
 
-## Keybinding-Orte
-- Parsing/Defaults: `crates/meridian-config/src/keybind/*`
-- Ausfuehrung: `crates/meridian-compositor/src/input/keyboard.rs`
-- Runtime-Reload: `crates/meridian-compositor/src/state/ipc/commands.rs`
+Moving a surface from native drawing to WebKit does not authorize reordering.
 
-## Performance-sensitive Bereiche
-- `backend/drm/render/*`
-- `backend/winit/*`
-- `decoration/render/*`
-- `wallpaper/*`
-- `state/handlers/*`
-- `meridian-shell/wayland/render.rs`
-- Shell-Timer und Popups, besonders Notifications/Thumbnails/Screenshots
+## Backends and platforms
 
-## XDG-Portals
-- `meridian-portal` ist ein separater Prozess.
-- Implementiert: FileChooser, Screenshot und Access unter
-  `org.freedesktop.impl.portal.desktop.meridian`.
-- FileChooser delegiert an `MERIDIAN_FILE_PICKER` oder
-  `/usr/local/bin/meridian-file-picker`.
-- Screenshot laeuft ueber IPC, Compositor-Policy und Shell-Consent/Region-
-  Picker; installierter E2E-Pfad muss noch validiert werden.
-- ScreenCast/Settings/OpenURI bleiben offene Portal-Slices.
-- Referenz: `docs/XDG_PORTALS.md`.
+- DRM/KMS is the authoritative real-session path.
+- Winit/nested execution supports development and regression tests.
+- Linux is the currently exercised implementation platform.
+- FreeBSD has an existing logind-free installer/session path.
+- OpenBSD is the next hardware/portability evaluation; support is not yet
+  claimed.
 
-## Multi-Monitor
-- Output-Metadaten werden in `OutputRegistry` gespiegelt.
-- Workspace-Zielmodell ist Hybrid:
-  `focused_output` plus `active_workspace_by_output`, mit globalem
-  `WorkspaceManager.active` als Kompatibilitaets-Shadow.
-- Active-Workspace im Panel ist output-aware; Occupied bleibt global.
-- Hotplug-Pipeline ist in Code vorbereitet/aktiv bis DRM Add/Remove:
-  Registry -> Workspace-State-Sync/Fallback -> Layer-Shell-Recovery ->
-  OutputWorkspaceSnapshot Broadcast.
-- Runtime-Hotplug braucht weiter reale E2E-Validierung.
+OS integrations live behind explicit platform adapters. OpenBSD `pledge` and
+`unveil` and FreeBSD Capsicum/jails/MAC are not treated as interchangeable APIs.
+
+## Wayland and application boundary
+
+The compositor supports or is developing the expected XDG Shell, Layer Shell,
+XDG Decoration, SHM, output, data-device, XWayland, dmabuf/sync, session lock,
+idle and output-power paths. Protocol correctness takes priority over
+application-specific fixes.
+
+GTK, Qt, browsers, Electron and wxWidgets remain external. See `APP_STACK.md`.
+
+## Design-source flow
+
+```text
+meridian-tokens + meridian-config
+              ├─ native render consumers
+              └─ generated CSS variables → shared Web Components
+```
+
+There is no hand-maintained parallel CSS palette. The design guard must cover
+web assets before production migration.
+
+## Security boundaries
+
+- WebKit runs without root, DRM/input handles or ambient command execution.
+- Privileged operations remain in small Rust services/helpers.
+- Every bridge call is typed, validated and capability-checked.
+- Packaged local content is the default; remote navigation is denied.
+- A compromised document must not imply compositor or root compromise.
+
+## Performance-sensitive paths
+
+- compositor DRM/Winit render and damage paths
+- decorations, wallpaper and captures
+- UI surface commits and WebKit paints
+- icon/font decode and launcher population
+- bridge event fan-out and state serialization
+
+Static UI must be event-driven. Reusable assets are cached with explicit
+theme/scale/content invalidation. The Acer/OpenBSD evaluation provides the
+low-end measurement baseline.
+
+## Related documents
+
+- `../MERIDIAN_OS_PLAN.md` — strategy and OS decision
+- `../ROADMAP.md` — execution phases
+- `UI_PLATFORM.md` — runtime/bridge target
+- `PROJECT_STATUS.md` — implemented behavior
+- `OPENBSD.md` / `FREEBSD.md` — platform evidence
+- `meridian_design_manifest.md` — binding visual specification

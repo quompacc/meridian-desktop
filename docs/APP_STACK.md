@@ -1,56 +1,81 @@
-# Meridian — Application Stack (GTK-only)
+# Meridian — External Application Compatibility
 
-## The insight (why GTK-only)
+> Updated 2026-08-19. This replaces the former “GTK-only application stack” as
+> product policy. The previous GTK findings remain relevant to client-side
+> decorations, but Meridian no longer chooses one toolkit as its architecture.
 
-**GTK applications draw and theme their own window frame.** The titlebar,
-window buttons, **corner rounding and drop shadow** all come from the GTK theme
-CSS (`window.csd decoration { border-radius; box-shadow }`, `windowcontrols
-button`, `.titlebar`). This means:
+## Boundary
 
-- For a **GTK app stack, Meridian does NOT build per-app frames** — it ships a
-  generated GTK theme (from `meridian-tokens`) and lets GTK render the frame.
-  No reimplementing titlebars / rounding / shadows per app.
-- The compositor's **server-side-decoration (SSD) frame** is only needed for
-  **non-GTK / XWayland / non-CSD** clients (terminals, some Qt, SDL…).
-- **Do not** force SSD (it double-frames CSD clients like Chromium, and GTK
-  ignores a forced SSD) and **do not** use `GTK_CSD=0`. Honor the client's
-  decoration mode; theme the GTK CSD via the generated theme.
+Third-party applications are ordinary clients:
 
-KDE/Qt was dropped because those apps need Plasma session infrastructure
-(`ksycoca`/`kded6`) Meridian doesn't provide. See the theming pipeline in
-[`crates/meridian-shell/src/theme_export.rs`](../crates/meridian-shell/src/theme_export.rs)
-and templates in [`crates/meridian-shell/assets/gtk/`](../crates/meridian-shell/assets/gtk/).
+```text
+GTK / Qt / Firefox / Chromium / Electron / wxWidgets
+                         │
+                      Wayland
+                         │
+                      Meridian
 
-## Hard rules
+legacy or incompatible clients
+                         │
+                       X11
+                         │
+                     XWayland
+                         │
+                      Meridian
+```
 
-- **GTK-only** default apps.
-- **No AUR** — official repos only (see `CLAUDE.md`). All apps below are in Arch
-  `extra`.
-- App colour, cursor (Adwaita), icons (Papirus-Dark) and the CSD frame shape all
-  derive from the central design tokens via `theme_export`.
+The WebKit UI platform is for Meridian-owned surfaces and tools. It does not
+embed, replace or restyle arbitrary external applications.
 
-## Default app set (modern, all in Arch `extra`)
+## Compatibility policy
 
-| Category | App | Pkg | Toolkit | Notes |
-|---|---|---|---|---|
-| File manager | Nemo | `nemo` | GTK3 | Cinnamon; best-in-class, uses gio/mimeapps |
-| Image viewer | Loupe | `loupe` | GTK4/libadwaita | modern, fast |
-| Text editor | GNOME Text Editor | `gnome-text-editor` | GTK4 | modern |
-| Terminal | Ptyxis | `ptyxis` | GTK4 | newest GNOME terminal (alt: `gnome-console`) |
-| Archive manager | File Roller | `file-roller` | GTK3 | standard |
-| Documents / PDF | Papers | `papers` | GTK4 | modern Evince successor |
-| Video | Celluloid | `celluloid` | GTK + mpv | GTK frontend, keeps the mpv engine |
-| Music | Amberol | `amberol` | GTK4/libadwaita | minimal modern player |
-| Calculator | GNOME Calculator | `gnome-calculator` | GTK4 | |
-| System monitor | GNOME System Monitor | `gnome-system-monitor` | GTK | |
-| Disk usage | Baobab | `baobab` | GTK4 | |
-| Disks | GNOME Disks | `gnome-disk-utility` | GTK | |
-| Web browser | Firefox | `firefox` | GTK | GTK-native; better theme integration than Chromium |
-| Email (optional) | Geary | `geary` | GTK | modern GTK mail |
+1. Prefer protocol-correct Wayland behavior.
+2. Keep XWayland as a supported, legitimate fallback.
+3. Respect client-side versus server-side decoration ownership.
+4. Do not force global SSD or `GTK_CSD=0` to chase uniform visuals.
+5. Do not introduce toolkit-specific compositor policy.
+6. Add an application quirk only after a minimal reproducer, upstream/protocol
+   analysis and a tightly scoped test.
 
-**Replaces** the interim Cinnamon X-Apps set (Xviewer→Loupe, Xed→GNOME Text
-Editor, Xreader→Papers) and the KDE defaults (Dolphin/Gwenview/Kate) and Chromium
-(→ Firefox). Nemo stays.
+GTK and libadwaita commonly draw their own header bars and decorations. Qt and
+other clients may negotiate server-side decorations. Meridian must honor each
+protocol path rather than double-frame clients.
 
-Set defaults via `xdg-mime default <app>.desktop <mime>` (writes
-`~/.config/mimeapps.list`); GTK apps launch via `gio open` which honors it.
+## Reference matrix
+
+Record version, backend (Wayland/XWayland), result and known issue on each
+reference OS and real-hardware run.
+
+| Family | Reference | OpenBSD | FreeBSD | Linux | Notes |
+|---|---|---|---|---|---|
+| Browser | Firefox | pending | usable, gaps tracked | reference | historically harder than Chromium in some Meridian paths |
+| Browser | Chromium | pending | known platform gap | reference | test native Wayland and fallback separately |
+| GTK3 | representative file manager | pending | pending | reference | CSD/SSD ownership must stay correct |
+| GTK4/libadwaita | representative modern app | pending | pending | reference | client owns header bar |
+| Qt5 | representative app | pending | pending | reference | verify decoration negotiation |
+| Qt6 | representative app | pending | pending | reference | verify decoration negotiation |
+| wxWidgets | Bambu Studio or smaller reproducer | pending | pending | problematic | avoid app-specific compositor hacks |
+| Electron | representative app | pending | pending | pending | record Ozone/Wayland flags if required |
+| XWayland | representative legacy app | pending | pending | reference | isolate X11-specific policy |
+
+“Pending” is not support. Replace it only with a dated test result and evidence.
+
+## Default applications
+
+Default-app selection is a packaging/product decision per operating system, not
+a compositor constraint. Choose maintained applications available from trusted
+platform repositories and set defaults using freedesktop MIME associations when
+the platform supports them.
+
+Do not require Plasma/GNOME session infrastructure merely to make a default app
+work. Prefer applications that behave correctly as standalone Wayland clients.
+
+## Relationship to theming
+
+Meridian may export compatible color/theme hints through standard desktop
+mechanisms. Those exports are best-effort integration, not a promise that all
+toolkits share identical geometry. The binding visual system applies to
+Meridian-owned UI; external clients retain their toolkit conventions.
+
+See `FRAME_STRATEGY.md` for the historical decoration findings and
+`UI_PLATFORM.md` for Meridian-owned UI.

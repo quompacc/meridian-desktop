@@ -1,5 +1,9 @@
 # NVIDIA Passthrough Test Plan
 
+> **Platform note (2026-08-19):** Linux/NVIDIA compatibility evidence remains
+> useful, but this is not the next product milestone. The immediate BSD
+> reference is the Acer using Intel HD 620; the laptop's NVIDIA 940MX is ignored.
+
 ## Ziel
 Meridian auf einer per VFIO durchgereichten NVIDIA RTX 4070 Super in der Entwicklungs-VM mit DRM/GBM validieren.
 

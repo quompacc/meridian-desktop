@@ -1,224 +1,134 @@
 # Meridian Desktop
 
-Meridian is a calm, modern Wayland desktop positioned between GNOME and KDE.
+Meridian is an experimental Wayland desktop and compositor written in Rust.
+Its long-term direction is a polished BSD-capable desktop: native Rust where
+system ownership, security and performance matter; WebKit-based UI where HTML
+and CSS make a coherent modern interface practical for a small team.
 
-Wayland-first, toolkit-neutral, and opinionated in sensible defaults, Meridian focuses on productive workflows without configuration overload.
+> **Strategy status (2026-08-19):** the current Rust compositor and native shell
+> remain the working implementation. The new WebKit UI platform is the active
+> direction, but has not yet replaced the shell. OpenBSD is the next hardware
+> evaluation target; FreeBSD remains the supported BSD fallback.
 
-Meridian is a calm, Wayland-first desktop for users who want polish without rigidity and power without clutter.
+## Product direction
 
-## Vision
+Rust continues to own:
 
-Meridian aims to be a full desktop environment, not just a compositor plus loose utilities.
-The project focuses on a curated UX, strong runtime behavior, and practical performance on real hardware.
+- Wayland/XWayland, DRM/KMS and input
+- window and workspace management
+- IPC, system services and platform integration
+- privileged helpers, policy and security boundaries
+- compositor-level effects and final surface composition
 
-Long-term, Meridian targets a polished Linux desktop that feels coherent out of the box and remains responsive for everyday use and gaming-oriented workflows.
+Meridian-owned desktop surfaces will converge on a shared UI platform:
 
-## Design Manifesto
+- a small WebKit runtime, not a general Tauri clone
+- HTML, CSS and Web Components
+- a deliberately small TypeScript/JavaScript layer
+- a typed, capability-scoped Rust bridge
+- CSS generated from `meridian-tokens` and `meridian-config`
+- shared components, icons, typography and interaction primitives
 
-- [Meridian Design Manifesto](docs/design-manifesto.md)
-- [Technical Design Guidelines](docs/technical-design-guidelines.md)
+The first proof is deliberately narrow: runtime and bridge, then panel,
+launcher and Quick Settings. Settings and other Meridian system tools follow
+only after that vertical slice proves visual quality, responsiveness, security
+and BSD viability.
 
-## Current Status
+External GTK, Qt, Firefox, Chromium/Electron and wxWidgets applications remain
+ordinary Wayland or XWayland clients. Meridian does not render or replace them.
 
-Meridian is active and moving fast, but still experimental.
-It is not yet ready as a daily driver for most users.
+## Current implementation
 
-Primary target is Linux (Arch reference). FreeBSD is supported via a turnkey
-installer with a logind-free boot path — see [docs/FREEBSD.md](docs/FREEBSD.md).
+The repository already contains:
 
-### Working now
+- a Smithay-based Wayland compositor with DRM/KMS and Winit backends
+- XDG Shell, Layer Shell, XWayland and compositor IPC
+- a separate native Rust shell with panel, launcher, popups and settings
+- login, lock, portal and polkit processes
+- multi-monitor/workspace infrastructure and diagnostics
+- centralized design tokens guarded against render-code hardcodes
+- Linux installation support and a FreeBSD installer path
 
-- Wayland compositor core
-- DRM/KMS backend and Winit development backend
-- Shell process with panel, launcher, popups, screenshots, notifications, and a structured settings UI
-- XWayland support
-- IPC between compositor and shell, including window snapshots, thumbnails, workspace state, launch, reload, and quit
-- Boot/login chain with `meridian-login`, PAM/logind handover, YubiKey/PIN login, and password fallback
-- FileChooser portal backend and experimental Screenshot portal via `meridian-portal`
-- Ongoing NVIDIA timing and mode-selection stability work
+This implementation is retained as the behavioral reference while the new UI
+platform is proven incrementally. No big feature expansion should precede the
+vertical slice.
 
-### Experimental / in progress
+## Platform strategy
 
-- Multi-monitor polish and hotplug edge cases
-- Shell idle wakeup/commit optimization, with timer and popup redraw reductions landed
-- Settings UI completion beyond the current Desktop/System skeleton
-- Portal Screenshot hardening and ScreenCast support
-- Lock screen frontend install and E2E validation
-- Gaming-oriented UX features
+- **OpenBSD:** next real-hardware evaluation on an Acer laptop using only its
+  Intel HD 620. The NVIDIA 940MX is intentionally ignored.
+- **FreeBSD:** maintained alternative when OpenBSD hardware, WebKit or desktop
+  compatibility is insufficient. Existing installer work remains valuable.
+- **Linux:** current development and compatibility platform; no longer the only
+  product assumption.
+- **VMs:** fast and reproducible regression checks, never the final authority
+  for DRM/KMS, input, suspend/resume or performance.
 
-## Features Overview
+See [the roadmap](ROADMAP.md), [the active master plan](MERIDIAN_OS_PLAN.md),
+[the UI platform design](docs/UI_PLATFORM.md), and
+[the OpenBSD evaluation guide](docs/OPENBSD.md).
 
-- Rust workspace with separated compositor, shell, config, IPC, and WM logic
-- Wayland-first architecture with a dedicated shell client
-- Dedicated DRM login process with PAM/logind session lifetime management
-- Dedicated portal backend process for D-Bus portal integration
-- Focus on correctness in render/input paths and explicit testing discipline
-- Practical diagnostics for DRM/runtime issues during development
+## Design system
 
-## Boot & login experience
+[The Meridian Design Manifest](docs/meridian_design_manifest.md) is binding.
+There are exactly two themes, light and dark, identical except for colors.
+`meridian-tokens` plus `meridian-config` remain the single source of truth;
+Web UI consumes generated CSS variables rather than defining a second token
+system.
 
-Meridian aims for a cohesive boot — bootloader to desktop without a single
-glitch frame or hard cut to black. The chain is three cooperating processes
-that hand DRM master to each other on a Unix socket; they all share the same
-[`meridian-compass-render`](crates/meridian-compass-render) crate so the
-compass is pixel-identical from the splash through the login screen.
+## Build and test
 
-| Stage                                                                            | What you see                                                                          |
-|----------------------------------------------------------------------------------|---------------------------------------------------------------------------------------|
-| [**bootsplash**](https://github.com/quompacc/bootsplash) (separate repo)         | full QuompaCC compass, north needle glowing — runs from `basic.target` as DRM master  |
-| **meridian-login** (this repo, [`crates/meridian-login`](crates/meridian-login)) | compass dims to a watermark, the north-glow falls into a cyan login card              |
-| **meridian** (this repo, the workspace's main `meridian` binary)                 | compositor takes over the framebuffer once PAM has opened a logind session            |
-
-![meridian-login](assets/login.png)
-
-*meridian-login: the compass dims to a watermark and the cyan card with `Willkommen` slides in. Keyboard input goes through evdev + xkbcommon with `EVIOCGRAB` so the password never leaks to the kernel TTY.*
-
-![bootsplash](assets/bootsplash.png)
-
-*bootsplash: rendered before any user-space services are up, lives until meridian-login is ready to take master.*
-
-The login flow ([`docs/MERIDIAN_LOGIN.md`](docs/MERIDIAN_LOGIN.md)) supports
-YubiKey/PIN authentication and falls back to username/password when no
-registered key is ready. It authenticates through PAM, opens a logind session
-via `pam_systemd`, then spawns the compositor as that user with the full
-supplementary-group set (`video`, `render`, `input`, ...) and a clean
-Wayland environment. The PAM handle is held for the lifetime of the
-compositor; on exit it is dropped, which closes the logind session.
-
-## Screenshots
-
-![Meridian Desktop](assets/desktop.png)
-
-*Desktop after login: a floating, frosted-glass island panel (the
-wallpaper shows through) with the compass-rose launcher and pinned apps
-on the left and the system cluster (network · audio · workspaces · clock)
-on the right. The wallpaper is the live compass renderer. Running on
-DRM/KMS — no nested compositor.*
-
-![Meridian Desktop — launcher open](assets/launcher.png)
-
-*The command-palette launcher: type-to-search header, a bento strip of
-pinned apps, and a three-column grid of everything else (KDE apps
-detected from `*.desktop` files). Rounded corners and a soft drop shadow.*
-
-![Meridian Desktop — settings](assets/settings.png)
-
-*Settings live inside the launcher surface: a full-height grouped sidebar
-(Darstellung / System), a working back arrow, and a search box that
-filters categories by name, keyword, or content (theme/wallpaper names).*
-
-![Meridian Desktop — window shadows](assets/window-shadow.png)
-
-*Server-side decorations with an analytic soft drop shadow — a rounded-box
-SDF pixel shader (after Evan Wallace's rounded-rectangle shadows) rendered
-by the compositor, consistent across GTK/Qt/KDE toolkits and translucency-safe.*
-
-## Build & Run
-
-Dependencies are the usual Rust + Linux Wayland/DRM development stack (tooling and headers vary by distro).
+The current implementation is a Rust workspace. On a supported Unix build host:
 
 ```bash
 cargo build --workspace
 cargo test --workspace
-cargo build --release --workspace
+cargo check --workspace
 ```
 
-For release runs, use the matching binaries from this workspace so `meridian` and `meridian-shell` stay in sync:
-
-```bash
-PATH="$PWD/target/release:$PATH" target/release/meridian
-```
-
-## Development Workflow
-
-Before opening or updating a patch:
+Before a patch is considered ready:
 
 ```bash
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
+cargo test -p meridian-tokens --test design_guard
 ```
 
-These three gates are enforced automatically by CI (GitHub Actions) and
-by a local pre-push hook. Enable the hook once per clone:
+Platform-specific prerequisites and installation paths are documented in
+[INSTALL.md](INSTALL.md) and [docs/FREEBSD.md](docs/FREEBSD.md). OpenBSD does
+not yet have a turnkey installer; its first phase is evidence gathering.
 
-```bash
-git config core.hooksPath .githooks
-```
+## Documentation map
 
-## Versioning
+Use this precedence when documents disagree:
 
-Meridian follows [Semantic Versioning](https://semver.org/) (pre-1.0:
-`0.MINOR.PATCH`). All workspace crates share one version, set once in the
-root `Cargo.toml` under `[workspace.package]`; notable changes are recorded
-in [CHANGELOG.md](CHANGELOG.md).
+1. [current BSD handoff](Meridian%20-%20BSD%20%E2%80%93%20%C3%9Cbergabe%20f%C3%BCr%20ChatGPT%20Desktop.md)
+2. [active master plan](MERIDIAN_OS_PLAN.md) and [roadmap](ROADMAP.md)
+3. [design manifest](docs/meridian_design_manifest.md) for every visual decision
+4. [architecture](docs/ARCHITECTURE.md) and [project status](docs/PROJECT_STATUS.md)
+5. focused technical documents
+6. dated audits and superseded plans, which are historical evidence only
 
-The changelog is generated with [git-cliff](https://git-cliff.org/) from
-[Conventional Commits](https://www.conventionalcommits.org/) — use real
-types (`feat:`, `fix:`, `perf:`, `refactor:`, `docs:`, `test:`, `ci:`,
-`chore:`) so entries are picked up. Preview the pending entries any time:
+Important references:
 
-```bash
-git-cliff --unreleased
-```
+- [UI platform](docs/UI_PLATFORM.md)
+- [OpenBSD evaluation](docs/OPENBSD.md)
+- [FreeBSD support](docs/FREEBSD.md)
+- [external application compatibility](docs/APP_STACK.md)
+- [testing](docs/TESTING.md)
+- [configuration](docs/CONFIGURATION.md)
+- [debugging](docs/DEBUGGING.md)
+- [technical design guidelines](docs/technical-design-guidelines.md)
 
-To cut a release `vX.Y.Z`: bump `version` under `[workspace.package]`, run
-`scripts/release-changelog.sh vX.Y.Z` to fold the unreleased commits into a
-dated section, then commit, tag, and push:
+## Philosophy
 
-```bash
-scripts/release-changelog.sh vX.Y.Z
-git commit -am "chore(release): vX.Y.Z"
-git tag -a vX.Y.Z -m "Meridian vX.Y.Z"
-git push && git push origin vX.Y.Z
-```
+**Native where it matters. Web where it shines.**
 
-## Roadmap
-
-- Foundation and stability hardening
-- Shell UI quality and consistency
-- Settings UI completion: fill the Desktop/System skeleton with real controls
-- Portal Screenshot hardening and ScreenCast support
-- Multi-monitor and hotplug validation
-- Shell idle performance and popup redraw profiling
-- Gaming-friendly features and performance polish
-
-## Contributing
-
-Contributors are welcome.
-
-Good first areas include:
-- targeted bug fixes
-- test coverage improvements
-- launcher/panel UX polish
-- documentation cleanup and accuracy updates
-
-Please prefer focused, small patches with clear scope and tests where applicable.
-
-## Philosophy / Non-goals
-
-Meridian is intentionally opinionated:
-- a fixed high-quality UI baseline
-- limited, purposeful customization
-- no fragmented widget/plugin wildgrowth
-
-The goal is cohesion and reliability over endless surface-level tweakability.
-
-## Documentation
-
-- [Changelog](CHANGELOG.md)
-- [Meridian Design Manifesto](docs/design-manifesto.md)
-- [Technical Design Guidelines](docs/technical-design-guidelines.md)
-- [Project status](docs/PROJECT_STATUS.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Testing guide](docs/TESTING.md)
-- [Configuration](docs/CONFIGURATION.md)
-- [Debugging guide](docs/DEBUGGING.md)
-- [NVIDIA passthrough notes](docs/NVIDIA_PASSTHROUGH.md)
-- [Multi-monitor audit](docs/MULTI_MONITOR.md)
-- [Workspace policy](docs/WORKSPACES.md)
-- [XDG portals plan](docs/XDG_PORTALS.md)
-- [Desktop settings contract](docs/DESKTOP_SETTINGS_CONTRACT.md)
+Meridian values protocol correctness, a small and understandable trusted base,
+real-hardware performance, coherent design and bounded maintenance cost. It is
+not trying to replace third-party application toolkits or rebuild a general web
+application framework.
 
 ## License
 
