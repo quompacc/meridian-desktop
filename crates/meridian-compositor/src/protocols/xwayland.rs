@@ -30,7 +30,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use crate::grabs::{
     move_grab::MoveSurfaceGrab,
-    resize_grab::{ResizeEdge, ResizeSurfaceGrab},
+    resize_grab::{configure_interval_at, ResizeEdge, ResizeSurfaceGrab},
 };
 use crate::state::{
     maximized_client_loc_from_output, normal_window_workarea_from_output_geometry,

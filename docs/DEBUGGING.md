@@ -170,6 +170,11 @@ Messbefund auf dem OpenBSD-Laptop (Intel HD 620, 1920x1080@60 Hz, 2026-08-19):
   5,8-6,3 ms. Bewegung und Resize erreichen mit und ohne Shell 57-60 Frames/s.
 - Der Glass-Pass selbst liegt danach bei etwa 4,8-5,2 ms und lässt auf dem
   60-Hz-Panel ungefähr 10 ms Reserve im 16,67-ms-Framebudget.
+- Interaktives Resize läuft zusätzlich durch einen refreshgebundenen
+  Configure-Pacer. Identische Geometrien werden verworfen, Zwischenziele auf
+  das jeweils neueste Ziel zusammengefasst und die letzte Geometrie beim
+  Loslassen zwingend gesendet. Nach jedem Grab erscheint eine einzelne
+  `interactive resize pacing summary`-Zeile mit Offers/Emits/Coalescing.
 - Hardwarebeschleunigung ist aktiv (`GL Vendor: Intel`, `GL Renderer: Mesa
   Intel(R) HD Graphics 620`); DRM-Commit und Queueing sind nicht der Engpass.
 

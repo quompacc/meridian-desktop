@@ -14,7 +14,7 @@ use crate::{
     decoration::{DecorationHit, DecorationResizeEdge},
     grabs::{
         move_grab::MoveSurfaceGrab,
-        resize_grab::{ResizeEdge, ResizeSurfaceGrab},
+        resize_grab::{configure_interval_at, ResizeEdge, ResizeSurfaceGrab},
     },
     protocols::xwayland::{
         apply_x11_maximize, apply_x11_unmaximize, clear_managed_xwayland_maximized_state,
@@ -331,6 +331,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                             toplevel.send_pending_configure();
 
                             let grab = ResizeSurfaceGrab::start(
+                                configure_interval_at(state, start_data.location),
                                 start_data,
                                 window.clone(),
                                 resize_edges,
@@ -340,6 +341,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                         } else if let Some(x11) = window.x11_surface() {
                             clear_managed_xwayland_maximized_state(state, x11);
                             let grab = ResizeSurfaceGrab::start(
+                                configure_interval_at(state, start_data.location),
                                 start_data,
                                 window.clone(),
                                 resize_edges,
@@ -382,6 +384,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                         clear_managed_xwayland_maximized_state(state, x11);
                     }
                     let grab = ResizeSurfaceGrab::start(
+                        configure_interval_at(state, start_data.location),
                         start_data,
                         window.clone(),
                         resize_edges,

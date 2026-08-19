@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use smithay::{
     desktop::Window,
     input::pointer::{
@@ -14,11 +16,11 @@ use smithay::{
     wayland::{compositor, shell::xdg::SurfaceCachedState},
     xwayland::X11Surface,
 };
-use tracing::error;
+use tracing::{error, info};
 
 use crate::state::MeridianState;
 
-use super::{state::ResizeSurfaceState, ResizeEdge};
+use super::{pacing::ConfigurePacer, state::ResizeSurfaceState, ResizeEdge};
 
 enum ResizeSurfaceTarget {
     Xdg(smithay::wayland::shell::xdg::ToplevelSurface),
@@ -31,10 +33,12 @@ pub struct ResizeSurfaceGrab {
     edges: ResizeEdge,
     initial_rect: Rectangle<i32, Logical>,
     last_window_size: Size<i32, Logical>,
+    configure_pacer: ConfigurePacer<Rectangle<i32, Logical>>,
 }
 
 impl ResizeSurfaceGrab {
     pub fn start(
+        configure_interval: Duration,
         start_data: PointerGrabStartData<MeridianState>,
         window: Window,
         edges: ResizeEdge,
@@ -59,6 +63,7 @@ impl ResizeSurfaceGrab {
             edges,
             initial_rect,
             last_window_size: initial_rect.size,
+            configure_pacer: ConfigurePacer::new(configure_interval),
         }
     }
 }
@@ -118,25 +123,20 @@ impl PointerGrab<MeridianState> for ResizeSurfaceGrab {
         self.last_window_size =
             Size::from((new_w.max(min_w).min(max_w), new_h.max(min_h).min(max_h)));
 
+        let requested = resize_target_rect(self.initial_rect, self.last_window_size, self.edges);
+        let Some(requested) = self.configure_pacer.offer(requested, Instant::now()) else {
+            return;
+        };
+
         match &self.target {
             ResizeSurfaceTarget::Xdg(xdg) => {
                 xdg.with_pending_state(|state| {
                     state.states.set(xdg_toplevel::State::Resizing);
-                    state.size = Some(self.last_window_size);
+                    state.size = Some(requested.size);
                 });
                 xdg.send_pending_configure();
             }
             ResizeSurfaceTarget::X11(x11) => {
-                let mut loc = self.initial_rect.loc;
-                if self.edges.intersects(ResizeEdge::LEFT) {
-                    loc.x = self.initial_rect.loc.x
-                        + (self.initial_rect.size.w - self.last_window_size.w);
-                }
-                if self.edges.intersects(ResizeEdge::TOP) {
-                    loc.y = self.initial_rect.loc.y
-                        + (self.initial_rect.size.h - self.last_window_size.h);
-                }
-                let requested = Rectangle::new(loc, self.last_window_size);
                 if let Err(err) = x11.configure(requested) {
                     error!("xwayland resize grab configure failed: {}", err);
                 }
@@ -164,6 +164,7 @@ impl PointerGrab<MeridianState> for ResizeSurfaceGrab {
         const BTN_LEFT: u32 = 0x110;
         if !handle.current_pressed().contains(&BTN_LEFT) {
             handle.unset_grab(self, data, event.serial, event.time, true);
+            let final_target = self.configure_pacer.flush(Instant::now());
             match &self.target {
                 ResizeSurfaceTarget::Xdg(xdg) => {
                     xdg.with_pending_state(|state| {
@@ -179,21 +180,26 @@ impl PointerGrab<MeridianState> for ResizeSurfaceGrab {
                     });
                 }
                 ResizeSurfaceTarget::X11(x11) => {
-                    let mut loc = self.initial_rect.loc;
-                    if self.edges.intersects(ResizeEdge::LEFT) {
-                        loc.x = self.initial_rect.loc.x
-                            + (self.initial_rect.size.w - self.last_window_size.w);
-                    }
-                    if self.edges.intersects(ResizeEdge::TOP) {
-                        loc.y = self.initial_rect.loc.y
-                            + (self.initial_rect.size.h - self.last_window_size.h);
-                    }
-                    let requested = Rectangle::new(loc, self.last_window_size);
-                    if let Err(err) = x11.configure(requested) {
-                        error!("xwayland resize grab final configure failed: {}", err);
+                    if let Some(requested) = final_target {
+                        if let Err(err) = x11.configure(requested) {
+                            error!("xwayland resize grab final configure failed: {}", err);
+                        }
                     }
                 }
             }
+            let stats = self.configure_pacer.stats();
+            info!(
+                "interactive resize pacing summary: target={} offers={} emitted={} duplicates={} coalesced={} interval_us={}",
+                match &self.target {
+                    ResizeSurfaceTarget::Xdg(_) => "xdg",
+                    ResizeSurfaceTarget::X11(_) => "x11",
+                },
+                stats.offers,
+                stats.emitted,
+                stats.duplicates,
+                stats.coalesced,
+                self.configure_pacer.interval().as_micros()
+            );
         }
     }
 
@@ -281,4 +287,19 @@ impl PointerGrab<MeridianState> for ResizeSurfaceGrab {
         &self.start_data
     }
     fn unset(&mut self, _data: &mut MeridianState) {}
+}
+
+fn resize_target_rect(
+    initial_rect: Rectangle<i32, Logical>,
+    size: Size<i32, Logical>,
+    edges: ResizeEdge,
+) -> Rectangle<i32, Logical> {
+    let mut loc = initial_rect.loc;
+    if edges.intersects(ResizeEdge::LEFT) {
+        loc.x += initial_rect.size.w - size.w;
+    }
+    if edges.intersects(ResizeEdge::TOP) {
+        loc.y += initial_rect.size.h - size.h;
+    }
+    Rectangle::new(loc, size)
 }

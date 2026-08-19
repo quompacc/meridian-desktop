@@ -93,6 +93,7 @@ macro_rules! xwm_input_selection_methods {
             "starting xwayland resize grab"
         );
         let grab = ResizeSurfaceGrab::start(
+            configure_interval_at(self, start_data.location),
             start_data,
             mapped_window,
             resize_edges,

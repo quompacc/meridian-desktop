@@ -11,7 +11,7 @@ use smithay::{
 use crate::{
     grabs::{
         move_grab::MoveSurfaceGrab,
-        resize_grab::{ResizeEdge, ResizeSurfaceGrab},
+        resize_grab::{configure_interval_at, ResizeEdge, ResizeSurfaceGrab},
     },
     state::{handlers::core::check_grab, MeridianState},
 };
@@ -99,6 +99,7 @@ pub(crate) fn handle_resize_request(
         });
         surface.send_pending_configure();
         let grab = ResizeSurfaceGrab::start(
+            configure_interval_at(state, start_data.location),
             start_data,
             window,
             ResizeEdge::from(edges),
