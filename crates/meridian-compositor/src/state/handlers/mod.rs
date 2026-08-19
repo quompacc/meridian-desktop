@@ -5,6 +5,7 @@ mod misc;
 pub mod output_power;
 mod screencopy;
 pub mod session_lock;
+#[cfg(not(target_os = "openbsd"))]
 pub mod syncobj;
 pub mod wayland_extra;
 pub(crate) mod xdg;

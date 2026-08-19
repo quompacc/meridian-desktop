@@ -5,6 +5,8 @@ use std::{
     time::Duration,
 };
 
+#[cfg(not(target_os = "openbsd"))]
+use smithay::wayland::drm_syncobj::{supports_syncobj_eventfd, DrmSyncobjState};
 use smithay::{
     backend::{
         allocator::{
@@ -32,10 +34,7 @@ use smithay::{
         input::Libinput,
     },
     utils::{DeviceFd, Transform},
-    wayland::{
-        dmabuf::DmabufFeedbackBuilder,
-        drm_syncobj::{supports_syncobj_eventfd, DrmSyncobjState},
-    },
+    wayland::dmabuf::DmabufFeedbackBuilder,
 };
 use tracing::{info, warn};
 
@@ -1317,9 +1316,9 @@ pub fn init_drm(
 
     if state.dmabuf_global.is_none() {
         let dmabuf_formats: Vec<_> = renderer.dmabuf_formats().into_iter().collect();
-        let main_device = std::fs::metadata(&gpu_path).ok().map(|meta| {
+        let main_device = std::fs::metadata(&gpu_path).ok().and_then(|meta| {
             use std::os::unix::fs::MetadataExt;
-            meta.rdev()
+            libc::dev_t::try_from(meta.rdev()).ok()
         });
 
         if let Some(main_device) = main_device {
@@ -1363,6 +1362,7 @@ pub fn init_drm(
         }
     }
 
+    #[cfg(not(target_os = "openbsd"))]
     if state.syncobj_state.is_none() {
         let device_fd_for_syncobj = device_fd.clone();
         if supports_syncobj_eventfd(&device_fd_for_syncobj) {
@@ -1377,6 +1377,11 @@ pub fn init_drm(
             );
         }
     }
+
+    #[cfg(target_os = "openbsd")]
+    tracing::info!(
+        "linux-drm-syncobj-v1 unavailable on OpenBSD: using native DRM without eventfd explicit sync"
+    );
 
     state.drm_backend = Some(DrmBackend {
         device_fd: device_fd.clone(),

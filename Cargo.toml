@@ -16,13 +16,17 @@ members = [
     "crates/meridian-compass-render",
     "crates/meridian-boot-common",
 ]
+exclude = ["third_party/smithay"]
 
 [workspace.package]
 version = "0.5.1"
 
 [workspace.dependencies]
 bitflags = "2"
-smithay = { git = "https://github.com/Smithay/smithay.git", rev = "060e9cd9c8ae2633947bdb72cffa1748ac53922d", default-features = false, features = [
+# OpenBSD needs a small target-native Smithay port layer. The vendored source is
+# exactly upstream 060e9cd9 plus the documented changes in
+# third_party/smithay/OPENBSD_PORT.md.
+smithay = { path = "third_party/smithay", default-features = false, features = [
     "backend_drm",
     "backend_gbm",
     "backend_egl",

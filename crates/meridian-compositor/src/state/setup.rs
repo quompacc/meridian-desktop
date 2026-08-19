@@ -828,6 +828,7 @@ impl MeridianState {
             dmabuf_state,
             dmabuf_global: None,
             dmabuf_default_feedback: None,
+            #[cfg(not(target_os = "openbsd"))]
             syncobj_state: None,
             session_lock_state,
             lock_manager: LockManager::new(),
