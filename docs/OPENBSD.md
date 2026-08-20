@@ -179,6 +179,19 @@ does not search `/usr/local/lib` by default. Native test linking (`-lxkbcommon`,
 2. `LIBRARY_PATH=/usr/local/lib:/usr/X11R6/lib` exported for the cargo run
    (lld honours it at link time without invalidating the compile cache).
 
+**Shell audio backend (implemented 2026-08-20).** OpenBSD has no PipeWire and
+no FreeBSD `mixer(8)`; `meridian-shell` drives the kernel mixer through base
+`mixerctl(8)` (`audio/mixerctl.rs`): it picks the playback volume control
+(`outputs.master`, with fallbacks to `outputs.dac`/`outputs.speaker`/
+`outputs.spkr`/`outputs.volume` or the first numeric `outputs.*` control),
+scales against the `mixerctl -v` range when printed (azalia(4) on the Acer
+uses 0..255 and clamps out-of-range writes), and toggles `<control>.mute`.
+Choosing a default output is not supported (audio(4)/sndiod(8) routing).
+Runtime prerequisite: the session user must be able to open `/dev/audioN`,
+i.e. be in the `_sndiop` group (on the Acer done via
+`doas user mod -G wheel,_seatd,_sndiop eduard`; group changes apply at next
+login). Without access the snapshot reports "unavailable" gracefully.
+
 Do not paper over failures with broad `cfg` removal. Classify each dependency as
 portable core, Linux adapter, OpenBSD adapter or currently unsupported.
 

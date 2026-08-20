@@ -292,10 +292,12 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
   P1-2 (ReloadConfig nutzt wieder den Off-Thread-Rescan), P1-1 (lokaler
   Screenshot erfasst den Primary-Output des Region-Pickers), P2-1
   (`process::output_with_timeout` fuer nmcli/wpctl/mixer, 2-s-Frist mit Kill),
-  P1-4 (Lock-Spawn-Reaping + Exit-Log) und die drei `expect`→Fallback-Stellen
-  P2-2/P2-3/P2-4 (Hotplug-Resolver, XDG-Popup-Initialconfigure, Resize-Grab).
-  Offen: P1-3 (OpenBSD-Audio), P2-5, Rest-P3; Lauf-Repros (Theme-Wechsel,
-  Multi-Monitor) auf der Arch-Box stehen weiter aus.
+  P1-4 (Lock-Spawn-Reaping + Exit-Log), die drei `expect`→Fallback-Stellen
+  P2-2/P2-3/P2-4 (Hotplug-Resolver, XDG-Popup-Initialconfigure, Resize-Grab)
+  und P1-3 (OpenBSD-Audio-Backend `audio/mixerctl.rs` ueber mixerctl(8),
+  inkl. `_sndiop`-Gruppe fuer den Session-User auf dem Acer).
+  Offen: P2-5, Rest-P3; Lauf-Repros (Theme-Wechsel, Multi-Monitor) auf der
+  Arch-Box stehen weiter aus.
 - Live-Theme-Switch funktioniert via Portal-`SettingChanged`; der Watcher pollt
   (ca. 2s Latenz). Auf inotify wurde bewusst verzichtet. Polling-Intervall und
   ob es auf einen ereignisbasierten Pfad umgestellt werden soll, sind offen.
@@ -331,13 +333,17 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
    (`process::output_with_timeout`, 2-s-Frist + Kill fuer nmcli/wpctl/mixer).
    Verifiziert mit `cargo check --workspace` und `cargo test --workspace
    --exclude smithay` auf der OpenBSD-Box (alles gruen). Ebenfalls erledigt:
-   P1-4 (Lock-Spawn wird gereapt, Exit-Status wird geloggt) und die drei
+   P1-4 (Lock-Spawn wird gereapt, Exit-Status wird geloggt), die drei
    `expect`→Fallback-Stellen P2-2 (Hotplug-Resolver), P2-3 (XDG-Popup-
-   Initialconfigure), P2-4 (Resize-Grab ohne wl_surface) — erneut auf OpenBSD
-   verifiziert (391 Compositor-, 318 Shell-, 52 Login-Tests gruen). Als
-   Naechstes: P1-3 (OpenBSD-Audio-Backend), danach P2-5 und Rest-P3.
-   Lauf-Repros (Theme-Wechsel, Multi-Monitor-Screenshot) auf der Arch-Box
-   stehen weiter aus.
+   Initialconfigure), P2-4 (Resize-Grab ohne wl_surface) und P1-3
+   (OpenBSD-Audio-Backend `audio/mixerctl.rs`: mixerctl(8)-Parser gegen die
+   echte azalia(4)-Ausgabe des Acer entwickelt, 10 Unit-Tests; der FreeBSD-
+   Pfad `mixer.rs` bleibt fuer FreeBSD erhalten) — alles auf OpenBSD
+   verifiziert (391 Compositor-, 324 Shell-, 52 Login-Tests gruen). Als
+   Naechstes: P2-5 (Resize-Commit-Handling bei Workspace-Wechsel, braucht
+   eine Policy-Entscheidung) und Rest-P3 (Kosmetik/Hygiene).
+   Lauf-Repros (Theme-Wechsel, Multi-Monitor-Screenshot, hoerbare Audio-
+   Ausgabe) stehen weiter aus.
 5. Runtime-Hotplug H5d auf echter DRM-Hardware erneut ausfuehren und
    Ergebnisse in `docs/MULTI_MONITOR.md`/`docs/NVIDIA_PASSTHROUGH.md`
    eintragen.
