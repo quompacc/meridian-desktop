@@ -194,7 +194,10 @@ impl MeridianConfig {
     }
 }
 
-fn config_directory() -> PathBuf {
+/// `~/.config/meridian` — the directory holding `config.toml`. Exposed so
+/// other crates (e.g. the settings portal watcher) can reason about the
+/// config file without re-deriving the path convention.
+pub fn config_directory() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
     PathBuf::from(home).join(".config").join("meridian")
 }

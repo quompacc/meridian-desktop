@@ -28,11 +28,17 @@ impl SettingsImpl {
     /// 0 = no preference, 1 = prefer dark, 2 = prefer light.
     pub(crate) fn color_scheme() -> u32 {
         let mut config = meridian_config::MeridianConfig::default();
-        let _ = config.reload();
+        if let Err(err) = config.reload() {
+            // A broken config must not silently fall back to the default
+            // theme (P3-4, AUDIT_2026-08-19).
+            tracing::warn!("Settings: config reload failed, using defaults: {err}");
+        }
         let name = config.general.theme.trim();
         let name = if name.is_empty() { "dark" } else { name };
         let mut manager = meridian_config::ThemeManager::new();
-        let _ = manager.set_theme(name);
+        if let Err(err) = manager.set_theme(name) {
+            tracing::warn!("Settings: theme {name:?} failed to load, using default: {err}");
+        }
         if manager.current().config.appearance_is_light() {
             2
         } else {
@@ -52,6 +58,42 @@ impl SettingsImpl {
                         .map(|prefix| ns.starts_with(prefix))
                         .unwrap_or(false)
             })
+    }
+}
+
+/// Sorted mtimes (ms since epoch) of everything `color_scheme()` reads: the
+/// user config plus every theme file ThemeManager could load. The watcher
+/// compares this fingerprint each poll and skips the re-parse while nothing
+/// changed on disk (P3-4, AUDIT_2026-08-19). Missing/unreadable files
+/// contribute nothing; appearing or changing files alter the fingerprint.
+pub(crate) fn appearance_source_mtimes() -> Vec<u128> {
+    let mut mtimes = Vec::new();
+    push_mtime(
+        &mut mtimes,
+        &meridian_config::config_directory().join("config.toml"),
+    );
+    let manager = meridian_config::ThemeManager::new();
+    for dir in manager.theme_dirs() {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            push_mtime(&mut mtimes, &entry.path().join("theme.toml"));
+        }
+    }
+    mtimes.sort_unstable();
+    mtimes
+}
+
+fn push_mtime(out: &mut Vec<u128>, path: &std::path::Path) {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return;
+    };
+    let Ok(modified) = meta.modified() else {
+        return;
+    };
+    if let Ok(age) = modified.duration_since(std::time::UNIX_EPOCH) {
+        out.push(age.as_millis());
     }
 }
 

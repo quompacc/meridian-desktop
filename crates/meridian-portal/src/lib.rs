@@ -29,8 +29,16 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         let conn = conn.clone();
         tokio::spawn(async move {
             let mut last = settings::SettingsImpl::color_scheme();
+            let mut last_sources = settings::appearance_source_mtimes();
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                // Cheap mtime fingerprint first: only re-parse config/theme
+                // when something actually changed on disk (P3-4).
+                let sources = settings::appearance_source_mtimes();
+                if sources == last_sources {
+                    continue;
+                }
+                last_sources = sources;
                 let now = settings::SettingsImpl::color_scheme();
                 if now == last {
                     continue;
