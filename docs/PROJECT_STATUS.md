@@ -65,7 +65,9 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
 ## Validierter Basisstand
 - Remote-Stand: `origin/freebsd-port` bei `24177fe`; lokal zusätzlich
   `e0116ea`, `751cab8` und `664b5ba`.
-- Audit-Reports: `docs/AUDIT_2026-06-20.md` (GLM, gegen Code geprueft: bis auf
+- Audit-Reports: `docs/AUDIT_2026-08-19.md` (Bug-Audit gegen HEAD `874381e`
+  inkl. unverpflichtetem Resize-/Glass-WIP; priorisierte Bug-Liste P1-P3),
+  `docs/AUDIT_2026-06-20.md` (GLM, gegen Code geprueft: bis auf
   eine falsche Pfadangabe in §3.6 korrekt), `docs/AUDIT_2026-05-25.md` (aelter).
 - `cargo test --workspace`: gruen (zuletzt auf der Arch-Box).
 - `cargo clippy --workspace -- -D warnings`: gruen.
@@ -280,9 +282,13 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
   Screenshot- und laengere Runtime-/Performance-Smokes. Eine beschleunigte
   Meridian-Session mit Shell ist startbar, aber noch kein validierter
   Daily-Driver.
-- Breiter Bug-Audit steht aus: Es ist eine relevante Zahl offener Bugs bekannt,
-  aber noch nicht systematisch katalogisiert. Naechster grosser Schritt ist ein
-  vollstaendiger Audit gegen `b1c5d1b` mit priorisierter Bug-Liste.
+- Breiter Bug-Audit ist erledigt: `docs/AUDIT_2026-08-19.md` katalogisiert die
+  Befunde priorisiert (P1: Multi-Monitor-Screenshot erfasst falschen Output,
+  ReloadConfig/Theme-Wechsel friert die Shell-Eventloop ein (LAUNCH-2-
+  Regression), OpenBSD-Audio-Backend fehlt, Lock-Spawn ohne Reaping/Exit-Log;
+  P2: blockierende nmcli/wpctl/mixer-Aufrufe ohne Timeout, drei Panic-Stellen
+  in Hotplug/XDG-Popup/Resize-Grab; P3: Kosmetik/Hygiene). Naechster Schritt
+  ist das Abarbeiten in der dort vorgeschlagenen Reihenfolge.
 - Live-Theme-Switch funktioniert via Portal-`SettingChanged`; der Watcher pollt
   (ca. 2s Latenz). Auf inotify wurde bewusst verzichtet. Polling-Intervall und
   ob es auf einen ereignisbasierten Pfad umgestellt werden soll, sind offen.
@@ -310,9 +316,14 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
    OpenBSD-Sitzung interaktiv pruefen.
 3. Smithay-OpenBSD-Grenze upstream vorbereiten; `linux-drm-syncobj-v1` darf auf
    OpenBSD nicht beworben werden.
-4. Grosser Bug-Audit gegen `b1c5d1b`: Bugs systematisch erfassen, gegen den
-   echten Code verifizieren und priorisiert als neuen `docs/AUDIT_*`-Report
-   ablegen. Danach abarbeiten.
+4. Bug-Audit ist erledigt (`docs/AUDIT_2026-08-19.md`). Jetzt: die Befunde in
+   der dort vorgeschlagenen Reihenfolge abarbeiten — zuerst P1-2
+   (ReloadConfig-Eventloop-Freeze, 1-Zeilen-Fix auf den bestehenden
+   Off-Thread-Rescan) und P1-1 (Multi-Monitor-Screenshot), dann P2-1
+   (Timeout/Off-Thread-Helper fuer nmcli/wpctl/mixer), dann P1-4
+   (Lock-Spawn warten) und die drei `expect`→Fallback-Stellen (P2-2/P2-3/P2-4).
+   Jeder Fix mit `cargo check`/`cargo test --workspace` und Lauf-Verifikat auf
+   der Arch-Box.
 5. Runtime-Hotplug H5d auf echter DRM-Hardware erneut ausfuehren und
    Ergebnisse in `docs/MULTI_MONITOR.md`/`docs/NVIDIA_PASSTHROUGH.md`
    eintragen.
