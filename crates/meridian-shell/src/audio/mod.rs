@@ -1,12 +1,15 @@
 //! Audio status and control for the panel and settings.
 //!
 //! The backend is platform-specific. Linux drives PipeWire through `wpctl`.
-//! FreeBSD uses the base `mixer(8)`/OSS instead: the FreeBSD PipeWire build
-//! ships no ALSA/OSS SPA plugin, so PipeWire cannot reach the sound hardware
-//! there, whereas mixer(8) talks to `/dev/mixerN` directly.
+//! FreeBSD uses the base `mixer(8)`/OSS: the FreeBSD PipeWire build ships no
+//! ALSA/OSS SPA plugin, so PipeWire cannot reach the sound hardware there,
+//! whereas mixer(8) talks to `/dev/mixerN` directly. OpenBSD has neither and
+//! uses base `mixerctl(8)` over `/dev/audioN` (P1-3, AUDIT_2026-08-19).
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(all(not(target_os = "linux"), not(target_os = "openbsd")))]
 mod mixer;
+#[cfg(target_os = "openbsd")]
+mod mixerctl;
 #[cfg(target_os = "linux")]
 mod wpctl;
 
@@ -120,21 +123,38 @@ fn backend_set_default(id: u32) {
     wpctl::set_default(id);
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(all(not(target_os = "linux"), not(target_os = "openbsd")))]
 fn backend_poll() -> AudioSnapshot {
     mixer::snapshot()
 }
-#[cfg(not(target_os = "linux"))]
+#[cfg(all(not(target_os = "linux"), not(target_os = "openbsd")))]
 fn backend_set_volume(percent: u8) {
     mixer::set_volume(percent);
 }
-#[cfg(not(target_os = "linux"))]
+#[cfg(all(not(target_os = "linux"), not(target_os = "openbsd")))]
 fn backend_toggle_mute() {
     mixer::toggle_mute();
 }
-#[cfg(not(target_os = "linux"))]
+#[cfg(all(not(target_os = "linux"), not(target_os = "openbsd")))]
 fn backend_set_default(id: u32) {
     mixer::set_default(id);
+}
+
+#[cfg(target_os = "openbsd")]
+fn backend_poll() -> AudioSnapshot {
+    mixerctl::snapshot()
+}
+#[cfg(target_os = "openbsd")]
+fn backend_set_volume(percent: u8) {
+    mixerctl::set_volume(percent);
+}
+#[cfg(target_os = "openbsd")]
+fn backend_toggle_mute() {
+    mixerctl::toggle_mute();
+}
+#[cfg(target_os = "openbsd")]
+fn backend_set_default(id: u32) {
+    mixerctl::set_default(id);
 }
 
 #[cfg(test)]
