@@ -234,7 +234,16 @@ impl MeridianShell {
                     crate::font_resolve::apply_theme_ui_font(&self.theme);
                 }
 
-                self.launcher_state.apps = launcher::DesktopApp::load_system();
+                // LAUNCH-2 regression guard: scanning every applications dir is
+                // hundreds of fs reads + TryExec stats; running it synchronously
+                // here froze the shell on every theme switch / config reload.
+                // Reuse the off-thread rescan — tick() swaps the fresh list in
+                // when the worker finishes (P1-2, AUDIT_2026-08-19).
+                self.request_launcher_apps_refresh();
+                // The icon cache rebuild stays synchronous by design: a theme
+                // change must recolour the symbolic panel/tray icons before the
+                // next panel frame, and this warm set (~40 icons) is far smaller
+                // than the launcher-grid decode that LAUNCH-3 offloaded.
                 self.icon_cache =
                     super::init::assets::build_icon_cache(&self.theme, &self.pinned_apps);
                 self.launcher_icons_warmed = false;

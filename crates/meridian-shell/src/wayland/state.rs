@@ -7,7 +7,7 @@ use smithay_client_toolkit::shell::WaylandSurface;
 use tracing::{debug, info};
 use wayland_client::QueueHandle;
 
-use crate::{launcher, status_notifier, status_notifier_popup};
+use crate::{status_notifier, status_notifier_popup};
 
 use super::{
     time, types::WindowInfo, ClickAction, CommitReason, CommitSurfaceKind, MeridianShell,
