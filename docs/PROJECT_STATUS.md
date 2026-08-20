@@ -295,9 +295,14 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
   P1-4 (Lock-Spawn-Reaping + Exit-Log), die drei `expect`→Fallback-Stellen
   P2-2/P2-3/P2-4 (Hotplug-Resolver, XDG-Popup-Initialconfigure, Resize-Grab)
   und P1-3 (OpenBSD-Audio-Backend `audio/mixerctl.rs` ueber mixerctl(8),
-  inkl. `_sndiop`-Gruppe fuer den Session-User auf dem Acer).
-  Offen: P2-5, Rest-P3; Lauf-Repros (Theme-Wechsel, Multi-Monitor) auf der
-  Arch-Box stehen weiter aus.
+  inkl. `_sndiop`-Gruppe fuer den Session-User auf dem Acer), P2-5
+  (Workspace-Switch wird waehrend aktivem Pointer-Grab blockiert) sowie
+  P3-1 bis P3-4 (Resize-Preview-Eckenclip als Trade-off dokumentiert,
+  Multi-Battery-Aggregation statt last-one-wins, einmalige `.bak`-Sicherung
+  vor Theme-Export-Ueberschreibungen, Portal-Settings-Watcher mit
+  mtime-Fingerprint und Reload-Fehler-Log).
+  Das Audit ist damit vollstaendig abgearbeitet; Lauf-Repros (Theme-Wechsel,
+  Multi-Monitor, hoerbare Audio-Ausgabe) stehen weiter aus.
 - Live-Theme-Switch funktioniert via Portal-`SettingChanged`; der Watcher pollt
   (ca. 2s Latenz). Auf inotify wurde bewusst verzichtet. Polling-Intervall und
   ob es auf einen ereignisbasierten Pfad umgestellt werden soll, sind offen.
@@ -338,12 +343,13 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
    Initialconfigure), P2-4 (Resize-Grab ohne wl_surface) und P1-3
    (OpenBSD-Audio-Backend `audio/mixerctl.rs`: mixerctl(8)-Parser gegen die
    echte azalia(4)-Ausgabe des Acer entwickelt, 10 Unit-Tests; der FreeBSD-
-   Pfad `mixer.rs` bleibt fuer FreeBSD erhalten) — alles auf OpenBSD
-   verifiziert (391 Compositor-, 324 Shell-, 52 Login-Tests gruen). Als
-   Naechstes: P2-5 (Resize-Commit-Handling bei Workspace-Wechsel, braucht
-   eine Policy-Entscheidung) und Rest-P3 (Kosmetik/Hygiene).
-   Lauf-Repros (Theme-Wechsel, Multi-Monitor-Screenshot, hoerbare Audio-
-   Ausgabe) stehen weiter aus.
+   Pfad `mixer.rs` bleibt fuer FreeBSD erhalten), P2-5 (Workspace-Switch
+   waehrend aktivem Pointer-Grab wird blockiert) und P3-1 bis P3-4. Damit
+   ist das Audit vollstaendig abgearbeitet — alles auf OpenBSD verifiziert.
+   Offen bleiben Lauf-Repros auf echter Hardware (Theme-Wechsel-Freeze,
+   Multi-Monitor-Screenshot, Resize-/Hotplug-Verhalten, hoerbare Audio-
+   Ausgabe); die Arch-Box ist von der aktuellen Dev-Maschine nicht per SSH
+   erreichbar.
 5. Runtime-Hotplug H5d auf echter DRM-Hardware erneut ausfuehren und
    Ergebnisse in `docs/MULTI_MONITOR.md`/`docs/NVIDIA_PASSTHROUGH.md`
    eintragen.
