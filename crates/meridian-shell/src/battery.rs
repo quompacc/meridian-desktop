@@ -44,6 +44,7 @@ impl BatterySnapshot {
         let Ok(entries) = fs::read_dir(POWER_SUPPLY) else {
             return snap;
         };
+        let mut batteries: Vec<(u8, ChargeState)> = Vec::new();
         for entry in entries.flatten() {
             let path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
@@ -54,30 +55,34 @@ impl BatterySnapshot {
                 || name.starts_with("ADP");
 
             if is_battery {
-                if let Some(cap) = read_trim(&path.join("capacity")).and_then(|s| s.parse().ok()) {
-                    snap.capacity = cap;
-                    snap.present = true;
-                }
-                snap.state = match read_trim(&path.join("status")).as_deref() {
+                let capacity = read_trim(&path.join("capacity")).and_then(|s| s.parse::<u8>().ok());
+                let state = match read_trim(&path.join("status")).as_deref() {
                     Some("Charging") => ChargeState::Charging,
                     Some("Discharging") => ChargeState::Discharging,
                     Some("Full") => ChargeState::Full,
                     Some("Not charging") => ChargeState::NotCharging,
                     _ => ChargeState::Unknown,
                 };
+                if let Some(capacity) = capacity {
+                    batteries.push((capacity.min(100), state));
+                }
             } else if is_mains && read_trim(&path.join("online")).as_deref() == Some("1") {
                 snap.on_ac = true;
             }
         }
-        snap.capacity = snap.capacity.min(100);
+        if let Some((capacity, state)) = aggregate_batteries(&batteries) {
+            snap.present = true;
+            snap.capacity = capacity;
+            snap.state = state;
+        }
         snap
     }
 
     /// Freedesktop symbolic icon name (recoloured to the theme text colour by the
     /// icon pipeline, so it always contrasts). Charging variants when on power.
     pub fn icon_name(&self) -> &'static str {
-        let charging = matches!(self.state, ChargeState::Charging)
-            || (self.on_ac && self.capacity >= 100);
+        let charging =
+            matches!(self.state, ChargeState::Charging) || (self.on_ac && self.capacity >= 100);
         if charging {
             return match self.capacity {
                 c if c >= 90 => "battery-full-charging-symbolic",
@@ -99,6 +104,44 @@ impl BatterySnapshot {
     pub fn label(&self) -> String {
         format!("{}%", self.capacity)
     }
+}
+
+/// Collapse several battery devices into one tray reading (P3-2,
+/// AUDIT_2026-08-19 — previously each iteration overwrote the previous
+/// battery, "last one wins"). Capacity is the rounded mean of all readable
+/// batteries; state prefers Charging > Discharging > Full > NotCharging so a
+/// single charging cell is visible even while another discharges.
+fn aggregate_batteries(batteries: &[(u8, ChargeState)]) -> Option<(u8, ChargeState)> {
+    let count = batteries.len();
+    if count == 0 {
+        return None;
+    }
+    let sum: u32 = batteries.iter().map(|(capacity, _)| *capacity as u32).sum();
+    let capacity = ((sum + count as u32 / 2) / count as u32).min(100) as u8;
+    let state = if batteries
+        .iter()
+        .any(|(_, state)| matches!(state, ChargeState::Charging))
+    {
+        ChargeState::Charging
+    } else if batteries
+        .iter()
+        .any(|(_, state)| matches!(state, ChargeState::Discharging))
+    {
+        ChargeState::Discharging
+    } else if batteries
+        .iter()
+        .any(|(_, state)| matches!(state, ChargeState::Full))
+    {
+        ChargeState::Full
+    } else if batteries
+        .iter()
+        .any(|(_, state)| matches!(state, ChargeState::NotCharging))
+    {
+        ChargeState::NotCharging
+    } else {
+        ChargeState::Unknown
+    };
+    Some((capacity, state))
 }
 
 fn read_trim(path: &Path) -> Option<String> {
@@ -168,5 +211,38 @@ mod tests {
     fn poll_does_not_panic() {
         // Host-dependent (desktops have no battery); must not panic.
         let _ = BatterySnapshot::poll();
+    }
+
+    #[test]
+    fn aggregates_multiple_batteries_to_mean_and_charging_priority() {
+        let readings = [
+            (80u8, ChargeState::Discharging),
+            (41u8, ChargeState::Charging),
+        ];
+        let (capacity, state) = aggregate_batteries(&readings).expect("reading");
+        assert_eq!(capacity, 61); // rounded mean of 80 and 41
+        assert_eq!(state, ChargeState::Charging);
+    }
+
+    #[test]
+    fn aggregate_single_battery_passes_through() {
+        let readings = [(72u8, ChargeState::Discharging)];
+        assert_eq!(
+            aggregate_batteries(&readings),
+            Some((72, ChargeState::Discharging))
+        );
+    }
+
+    #[test]
+    fn aggregate_prefers_discharging_over_full() {
+        let readings = [(100u8, ChargeState::Full), (30u8, ChargeState::Discharging)];
+        let (capacity, state) = aggregate_batteries(&readings).expect("reading");
+        assert_eq!(capacity, 65);
+        assert_eq!(state, ChargeState::Discharging);
+    }
+
+    #[test]
+    fn aggregate_empty_is_none() {
+        assert_eq!(aggregate_batteries(&[]), None);
     }
 }
