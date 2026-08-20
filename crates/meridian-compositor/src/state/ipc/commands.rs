@@ -504,9 +504,37 @@ impl MeridianState {
             .env("XDG_RUNTIME_DIR", &xdg_runtime)
             .spawn()
         {
-            Ok(_child) => tracing::info!("spawned meridian-lock"),
+            Ok(child) => {
+                tracing::info!("spawned meridian-lock");
+                reap_lock_screen_child(child);
+            }
             Err(e) => tracing::warn!("failed to spawn meridian-lock: {}", e),
         }
+    }
+}
+
+/// Wait on the lock-screen child so it cannot zombie on the compositor and
+/// its exit status stays observable. The session lock is a security feature:
+/// a crashing `meridian-lock` must not disappear silently (P1-4,
+/// AUDIT_2026-08-19). Exit 0 is the normal unlock path.
+fn reap_lock_screen_child(mut child: std::process::Child) {
+    if let Err(err) = std::thread::Builder::new()
+        .name("meridian-lock-reaper".to_string())
+        .spawn(move || match child.wait() {
+            Ok(status) if status.success() => {
+                tracing::info!("meridian-lock exited successfully (session unlocked)");
+            }
+            Ok(status) => {
+                tracing::warn!(
+                    "meridian-lock exited with {status} — the lock screen may have crashed; session security state is uncertain"
+                );
+            }
+            Err(err) => {
+                tracing::warn!("failed to reap meridian-lock: {err}");
+            }
+        })
+    {
+        tracing::warn!("failed to spawn meridian-lock reaper thread: {}", err);
     }
 }
 
