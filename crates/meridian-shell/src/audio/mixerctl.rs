@@ -8,6 +8,7 @@
 //! missing backend.
 
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::{AudioDevice, AudioServiceState, AudioSnapshot};
 
@@ -32,10 +33,18 @@ const FALLBACK_MIXER_MAX: u32 = 255;
 
 pub(super) fn snapshot() -> AudioSnapshot {
     let Some(output) = run(&["mixerctl"]) else {
+        log_backend_state_once(
+            false,
+            "mixerctl failed (missing, or no access to /dev/audioctlN — the session user needs the _sndiop group)",
+        );
         return AudioSnapshot::unavailable();
     };
     let controls = parse_controls(&output);
     let Some(volume_control) = select_volume_control(&controls).map(str::to_string) else {
+        log_backend_state_once(
+            false,
+            "mixerctl ran but no playback volume control was found",
+        );
         return AudioSnapshot::unavailable();
     };
     let max = control_max(&volume_control).unwrap_or(FALLBACK_MIXER_MAX);
@@ -44,11 +53,16 @@ pub(super) fn snapshot() -> AudioSnapshot {
         .find(|(name, _)| *name == volume_control)
         .and_then(|(_, value)| first_channel_value(value))
         .map(|value| scale_percent(value, max));
+    let muted = is_muted(&controls, &volume_control);
+    log_backend_state_once(
+        true,
+        &format!("control={volume_control} volume={volume_percent:?}% muted={muted}"),
+    );
     let device = AudioDevice {
         id: 0,
         name: display_name(&volume_control),
         volume_percent,
-        muted: is_muted(&controls, &volume_control),
+        muted,
         is_default: true,
     };
     AudioSnapshot {
@@ -57,6 +71,22 @@ pub(super) fn snapshot() -> AudioSnapshot {
         default_input: None,
         outputs: vec![device],
         inputs: Vec::new(),
+    }
+}
+
+/// One-shot runtime log so the backend state is observable in the session
+/// log exactly once — the audio path had no diagnostics at all before
+/// (P1-3, AUDIT_2026-08-19).
+static BACKEND_STATE_LOGGED: AtomicBool = AtomicBool::new(false);
+
+fn log_backend_state_once(running: bool, detail: &str) {
+    if BACKEND_STATE_LOGGED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    if running {
+        tracing::info!("openbsd audio backend active via mixerctl: {detail}");
+    } else {
+        tracing::warn!("openbsd audio backend unavailable: {detail}");
     }
 }
 

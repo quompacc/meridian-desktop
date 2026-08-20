@@ -191,6 +191,10 @@ Runtime prerequisite: the session user must be able to open `/dev/audioN`,
 i.e. be in the `_sndiop` group (on the Acer done via
 `doas user mod -G wheel,_seatd,_sndiop eduard`; group changes apply at next
 login). Without access the snapshot reports "unavailable" gracefully.
+Runtime-Verifikat 2026-08-20: ein kontrollierter 25-s-Session-Lauf auf dem
+Acer meldete im Shell-Log `openbsd audio backend active via mixerctl:
+control=outputs.master volume=Some(49)% muted=false` (das Backend loggt
+seinen Zustand genau einmal, damit der Audio-Pfad beobachtbar ist).
 
 Do not paper over failures with broad `cfg` removal. Classify each dependency as
 portable core, Linux adapter, OpenBSD adapter or currently unsupported.
