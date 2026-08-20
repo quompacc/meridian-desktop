@@ -37,8 +37,17 @@ pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: 
         match popup {
             PopupKind::Xdg(ref xdg) => {
                 if !xdg.is_initial_configure_sent() {
-                    xdg.send_configure()
-                        .expect("initial popup configure failed");
+                    if let Err(err) = xdg.send_configure() {
+                        // A misbehaving client can reach PopupConfigureError here
+                        // (popup already configured, old protocol version without
+                        // reposition). Dismiss that one popup instead of tearing
+                        // down the whole session (P2-3, AUDIT_2026-08-19).
+                        tracing::warn!(
+                            "initial popup configure failed ({:?}); sending popup_done",
+                            err
+                        );
+                        xdg.send_popup_done();
+                    }
                 }
             }
             PopupKind::InputMethod(_) => {}
