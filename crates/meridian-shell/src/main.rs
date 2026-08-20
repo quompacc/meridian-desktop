@@ -31,6 +31,7 @@ mod panel_view;
 mod popup_card;
 mod power_profile;
 mod printers;
+mod process;
 mod region_picker;
 mod screenshot_consent;
 mod settings_view;

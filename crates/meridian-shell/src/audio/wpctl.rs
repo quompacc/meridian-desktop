@@ -4,6 +4,11 @@ use std::process::Command;
 
 use super::{AudioDevice, AudioServiceState, AudioSnapshot};
 
+/// Hard deadline for wpctl calls on the event loop. Healthy wpctl answers in
+/// well under 100 ms; a wedged PipeWire/WirePlumber must not be able to stall
+/// the whole shell (P2-1, AUDIT_2026-08-19).
+const WPCTL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
 pub(super) fn snapshot() -> AudioSnapshot {
     let Some(output) = run_wpctl_status() else {
         return AudioSnapshot::unavailable();
@@ -101,11 +106,9 @@ fn parse_volume_percent(meta: &str) -> Option<u8> {
 }
 
 fn run_wpctl_status() -> Option<String> {
-    let output = Command::new("wpctl")
-        .env("LC_ALL", "C")
-        .arg("status")
-        .output()
-        .ok()?;
+    let mut command = Command::new("wpctl");
+    command.env("LC_ALL", "C").arg("status");
+    let output = crate::process::output_with_timeout(&mut command, WPCTL_TIMEOUT)?;
     if !output.status.success() {
         return None;
     }
@@ -139,10 +142,12 @@ fn set_default_args(id: u32) -> Vec<String> {
 }
 
 fn run_wpctl(args: &[String]) {
-    match Command::new("wpctl").env("LC_ALL", "C").args(args).status() {
-        Ok(status) if status.success() => {}
-        Ok(status) => tracing::warn!("wpctl {:?} exited with {}", args, status),
-        Err(err) => tracing::warn!("failed to run wpctl {:?}: {}", args, err),
+    let mut command = Command::new("wpctl");
+    command.env("LC_ALL", "C").args(args);
+    match crate::process::output_with_timeout(&mut command, WPCTL_TIMEOUT) {
+        Some(output) if output.status.success() => {}
+        Some(output) => tracing::warn!("wpctl {:?} exited with {}", args, output.status),
+        None => tracing::warn!("wpctl {:?} failed or timed out", args),
     }
 }
 

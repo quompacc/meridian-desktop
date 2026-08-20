@@ -8,6 +8,11 @@ use std::process::Command;
 
 use super::{AudioDevice, AudioServiceState, AudioSnapshot};
 
+/// Hard deadline for mixer/sysctl calls on the event loop. Healthy calls
+/// answer in well under 100 ms; a wedged backend must not be able to stall
+/// the whole shell (P2-1, AUDIT_2026-08-19).
+const MIXER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
 pub(super) fn snapshot() -> AudioSnapshot {
     let Some(stat) = run(&["cat", "/dev/sndstat"]).or_else(read_sndstat) else {
         return AudioSnapshot::unavailable();
@@ -47,13 +52,17 @@ pub(super) fn toggle_mute() {
 pub(super) fn set_default(id: u32) {
     // The OSS default playback device is a sysctl; the session runs with enough
     // privilege to set it. Best-effort.
-    match Command::new("sysctl")
-        .arg(format!("hw.snd.default_unit={id}"))
-        .status()
-    {
-        Ok(status) if status.success() => {}
-        Ok(status) => tracing::warn!("sysctl hw.snd.default_unit={id} exited with {status}"),
-        Err(err) => tracing::warn!("failed to set default audio unit {id}: {err}"),
+    let mut command = Command::new("sysctl");
+    command.arg(format!("hw.snd.default_unit={id}"));
+    match crate::process::output_with_timeout(&mut command, MIXER_TIMEOUT) {
+        Some(output) if output.status.success() => {}
+        Some(output) => {
+            tracing::warn!(
+                "sysctl hw.snd.default_unit={id} exited with {}",
+                output.status
+            )
+        }
+        None => tracing::warn!("failed to set default audio unit {id} (spawn failure or timeout)"),
     }
 }
 
@@ -139,7 +148,7 @@ fn run_mixer(unit: u32, args: &[&str]) -> Option<String> {
     let device = format!("/dev/mixer{unit}");
     let mut cmd = Command::new("mixer");
     cmd.env("LC_ALL", "C").arg("-f").arg(&device).args(args);
-    let output = cmd.output().ok()?;
+    let output = crate::process::output_with_timeout(&mut cmd, MIXER_TIMEOUT)?;
     if !output.status.success() {
         return None;
     }
@@ -148,11 +157,9 @@ fn run_mixer(unit: u32, args: &[&str]) -> Option<String> {
 
 fn run(args: &[&str]) -> Option<String> {
     let (program, rest) = args.split_first()?;
-    let output = Command::new(program)
-        .env("LC_ALL", "C")
-        .args(rest)
-        .output()
-        .ok()?;
+    let mut cmd = Command::new(program);
+    cmd.env("LC_ALL", "C").args(rest);
+    let output = crate::process::output_with_timeout(&mut cmd, MIXER_TIMEOUT)?;
     if !output.status.success() {
         return None;
     }

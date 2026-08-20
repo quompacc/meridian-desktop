@@ -410,12 +410,15 @@ fn redact_nmcli_args(args: &[String]) -> Vec<String> {
     out
 }
 
+/// Hard deadline for read-only nmcli queries on the event loop. Healthy nmcli
+/// answers in well under 100 ms; a wedged NetworkManager/D-Bus must not be
+/// able to stall the whole shell (P2-1, AUDIT_2026-08-19).
+const NMCLI_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
 fn run_nmcli(args: &[&str]) -> Option<String> {
-    let output = Command::new("nmcli")
-        .env("LC_ALL", "C")
-        .args(args)
-        .output()
-        .ok()?;
+    let mut command = Command::new("nmcli");
+    command.env("LC_ALL", "C").args(args);
+    let output = crate::process::output_with_timeout(&mut command, NMCLI_READ_TIMEOUT)?;
     if !output.status.success() {
         return None;
     }
