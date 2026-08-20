@@ -287,8 +287,14 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
   ReloadConfig/Theme-Wechsel friert die Shell-Eventloop ein (LAUNCH-2-
   Regression), OpenBSD-Audio-Backend fehlt, Lock-Spawn ohne Reaping/Exit-Log;
   P2: blockierende nmcli/wpctl/mixer-Aufrufe ohne Timeout, drei Panic-Stellen
-  in Hotplug/XDG-Popup/Resize-Grab; P3: Kosmetik/Hygiene). Naechster Schritt
-  ist das Abarbeiten in der dort vorgeschlagenen Reihenfolge.
+  in Hotplug/XDG-Popup/Resize-Grab; P3: Kosmetik/Hygiene). Erledigt davon
+  (2026-08-20, auf OpenBSD verifiziert): P3-5 (Arbeitsbaum committet),
+  P1-2 (ReloadConfig nutzt wieder den Off-Thread-Rescan), P1-1 (lokaler
+  Screenshot erfasst den Primary-Output des Region-Pickers), P2-1
+  (`process::output_with_timeout` fuer nmcli/wpctl/mixer, 2-s-Frist mit Kill).
+  Offen: P1-3 (OpenBSD-Audio), P1-4 (Lock-Spawn), P2-2/P2-3/P2-4 (expect-
+  Stellen), P2-5, Rest-P3; Lauf-Repros (Theme-Wechsel, Multi-Monitor) auf der
+  Arch-Box stehen weiter aus.
 - Live-Theme-Switch funktioniert via Portal-`SettingChanged`; der Watcher pollt
   (ca. 2s Latenz). Auf inotify wurde bewusst verzichtet. Polling-Intervall und
   ob es auf einen ereignisbasierten Pfad umgestellt werden soll, sind offen.
@@ -316,14 +322,17 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
    OpenBSD-Sitzung interaktiv pruefen.
 3. Smithay-OpenBSD-Grenze upstream vorbereiten; `linux-drm-syncobj-v1` darf auf
    OpenBSD nicht beworben werden.
-4. Bug-Audit ist erledigt (`docs/AUDIT_2026-08-19.md`). Jetzt: die Befunde in
-   der dort vorgeschlagenen Reihenfolge abarbeiten — zuerst P1-2
-   (ReloadConfig-Eventloop-Freeze, 1-Zeilen-Fix auf den bestehenden
-   Off-Thread-Rescan) und P1-1 (Multi-Monitor-Screenshot), dann P2-1
-   (Timeout/Off-Thread-Helper fuer nmcli/wpctl/mixer), dann P1-4
-   (Lock-Spawn warten) und die drei `expect`→Fallback-Stellen (P2-2/P2-3/P2-4).
-   Jeder Fix mit `cargo check`/`cargo test --workspace` und Lauf-Verifikat auf
-   der Arch-Box.
+4. Bug-Audit (`docs/AUDIT_2026-08-19.md`) wird abgearbeitet. Erledigt
+   (2026-08-20): P3-5 (Arbeitsbaum: Asset-Rename, Audit-Doku und Resize-/
+   Glass-WIP committet), P1-2 (ReloadConfig-Eventloop-Freeze: zurueck auf den
+   bestehenden Off-Thread-Rescan), P1-1 (Multi-Monitor-Screenshot: Capture
+   laeuft auf dem Primary-Output des Region-Pickers), P2-1
+   (`process::output_with_timeout`, 2-s-Frist + Kill fuer nmcli/wpctl/mixer).
+   Verifiziert mit `cargo check --workspace` und `cargo test --workspace
+   --exclude smithay` auf der OpenBSD-Box (alles gruen). Als Naechstes: P1-4
+   (Lock-Spawn warten) und die drei `expect`→Fallback-Stellen (P2-2/P2-3/P2-4),
+   danach P1-3 (OpenBSD-Audio-Backend). Lauf-Repros (Theme-Wechsel,
+   Multi-Monitor-Screenshot) auf der Arch-Box stehen weiter aus.
 5. Runtime-Hotplug H5d auf echter DRM-Hardware erneut ausfuehren und
    Ergebnisse in `docs/MULTI_MONITOR.md`/`docs/NVIDIA_PASSTHROUGH.md`
    eintragen.

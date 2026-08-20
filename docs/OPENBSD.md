@@ -164,6 +164,21 @@ Smithay's feature-gated example programs and fails there because Vulkan and the
 example-only CLI/image dependencies are intentionally disabled; this is not a
 Meridian test failure.
 
+**Link-environment prerequisites (verified 2026-08-20).** OpenBSD packages ship
+only versioned shared objects and no unversioned `.so` symlinks, and the linker
+does not search `/usr/local/lib` by default. Native test linking (`-lxkbcommon`,
+`-lwayland-client`, …) therefore needs both of:
+
+1. Unversioned symlinks next to the versioned libraries (once, via `doas`):
+   `/usr/local/lib`: `libxkbcommon.so`, `libwayland-client.so`,
+   `libwayland-server.so`, `libwayland-cursor.so`, `libwayland-egl.so`,
+   `libseat.so`, `libinput.so`; `/usr/X11R6/lib`: `libfreetype.so`,
+   `libfontconfig.so`, `libEGL.so`, `libGLESv2.so`, `libdrm.so`, `libgbm.so`
+   — each pointing at the installed versioned file. A package update can remove
+   them again; re-check when linking suddenly fails.
+2. `LIBRARY_PATH=/usr/local/lib:/usr/X11R6/lib` exported for the cargo run
+   (lld honours it at link time without invalidating the compile cache).
+
 Do not paper over failures with broad `cfg` removal. Classify each dependency as
 portable core, Linux adapter, OpenBSD adapter or currently unsupported.
 
