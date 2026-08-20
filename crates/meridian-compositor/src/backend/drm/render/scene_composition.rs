@@ -72,6 +72,14 @@ macro_rules! compose_output_scene {
                     // Round the client content's bottom corners to match the
                     // rounded border/titlebar (top corners sit under the
                     // titlebar, so only the bottom two need clipping).
+                    //
+                    // P3-1 (AUDIT_2026-08-19, accepted trade-off): during the
+                    // interactive resize stretch-preview this clip is skipped,
+                    // so the client content shows square bottom corners for
+                    // the duration of the drag. Combining the radius shader
+                    // with the preview stretch would need a combined
+                    // CropRenderElement + radius pass; the transient square
+                    // corners were judged cheaper than that render complexity.
                     if preview_rect.is_none() {
                         if let Some(r) = $state
                         .decoration_manager
