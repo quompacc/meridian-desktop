@@ -200,6 +200,18 @@ impl MeridianState {
         );
     }
 
+    /// True while the pointer is held by a grab (move/resize/popup).
+    /// Workspace switches during such a grab are rejected because the commit
+    /// handlers only anchor surfaces on the active workspace; switching
+    /// mid-drag would leave the grabbed window's commits untracked until the
+    /// window becomes visible again (P2-5, AUDIT_2026-08-19). The keybind or
+    /// panel click can simply be repeated once the drag ends.
+    fn pointer_grab_active(&self) -> bool {
+        self.seat
+            .get_pointer()
+            .is_some_and(|pointer| pointer.is_grabbed())
+    }
+
     pub fn switch_workspace(&mut self, idx: usize) {
         let old = self.workspaces.active;
         tracing::debug!(
@@ -207,6 +219,14 @@ impl MeridianState {
             old + 1,
             idx + 1
         );
+
+        if self.pointer_grab_active() {
+            tracing::debug!(
+                "workspace switch ignored: requested={} reason=pointer-grab-active",
+                idx + 1
+            );
+            return;
+        }
 
         if idx >= self.workspaces.count() {
             tracing::debug!(
@@ -250,6 +270,14 @@ impl MeridianState {
             old + 1,
             idx + 1
         );
+
+        if self.pointer_grab_active() {
+            tracing::debug!(
+                "focused-output workspace switch ignored: requested={} reason=pointer-grab-active",
+                idx + 1
+            );
+            return;
+        }
 
         if idx >= self.workspaces.count() {
             tracing::debug!(
