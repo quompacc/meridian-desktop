@@ -429,6 +429,7 @@ pub fn init_drm(
             scratch_upper_layer_data: Vec::new(),
             scratch_lower_layer_elements: Vec::new(),
             scratch_upper_layer_elements: Vec::new(),
+            glass_pass_cache: Default::default(),
         });
         info!(
             "Initialized output {}x{} @ {}Hz (calc_refresh_millihz={})",

@@ -2,6 +2,10 @@ use std::time::{Duration, Instant};
 
 use meridian_config::ThemeSurface;
 
+use smithay::backend::renderer::element::utils::{
+    constrain_render_elements, ConstrainAlign, ConstrainScaleBehavior, CropRenderElement,
+    RelocateRenderElement, RescaleRenderElement,
+};
 use smithay::backend::renderer::element::{
     render_elements, surface::render_elements_from_surface_tree,
     surface::WaylandSurfaceRenderElement, AsRenderElements, Wrap,
@@ -59,73 +63,85 @@ render_elements! {
     ClippedSurface=ClippedSurfaceRenderElement,
     Wallpaper=TextureRenderElement<GlesTexture>,
     Layer=WaylandSurfaceRenderElement<GlesRenderer>,
+    ResizePreview=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>>>,
 }
 
 include!("render/scene_helpers.rs");
 include!("render/scene_composition.rs");
-fn render_window_toplevel_elements<C>(
+fn render_window_toplevel_elements(
     renderer: &mut GlesRenderer,
     window: &Window,
     window_loc: smithay::utils::Point<i32, smithay::utils::Logical>,
     scale: Scale<f64>,
+    preview_rect: Option<smithay::utils::Rectangle<i32, smithay::utils::Logical>>,
     clip: Option<(
         smithay::backend::renderer::gles::GlesTexProgram,
         smithay::utils::Rectangle<f64, smithay::utils::Logical>,
         [u8; 4],
     )>,
-    out: &mut Vec<C>,
-) where
-    C: From<SpaceRenderElements<GlesRenderer, WaylandSurfaceRenderElement<GlesRenderer>>>
-        + From<ClippedSurfaceRenderElement>,
-{
-    match window.underlying_surface() {
-        WindowSurface::Wayland(toplevel) => {
-            let elements = render_elements_from_surface_tree::<
-                GlesRenderer,
-                WaylandSurfaceRenderElement<GlesRenderer>,
-            >(
+    out: &mut Vec<MeridianRenderElements>,
+) {
+    let elements = match window.underlying_surface() {
+        WindowSurface::Wayland(toplevel) => render_elements_from_surface_tree::<
+            GlesRenderer,
+            WaylandSurfaceRenderElement<GlesRenderer>,
+        >(
+            renderer,
+            toplevel.wl_surface(),
+            window_loc.to_physical_precise_round(scale),
+            scale,
+            1.0,
+            Kind::Unspecified,
+        ),
+        WindowSurface::X11(_) => window
+            .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
                 renderer,
-                toplevel.wl_surface(),
                 window_loc.to_physical_precise_round(scale),
                 scale,
                 1.0,
-                Kind::Unspecified,
-            );
-            match clip {
-                Some((prog, geo, radius)) => {
-                    out.extend(elements.into_iter().map(|e| {
-                        C::from(ClippedSurfaceRenderElement::new(
-                            prog.clone(),
-                            e,
-                            scale,
-                            geo,
-                            radius,
-                        ))
-                    }));
-                }
-                None => {
-                    out.extend(
-                        elements
-                            .into_iter()
-                            .map(SpaceRenderElements::from)
-                            .map(C::from),
-                    );
-                }
-            }
-        }
-        WindowSurface::X11(_) => {
-            out.extend(
-                window
-                    .render_elements::<WaylandSurfaceRenderElement<GlesRenderer>>(
-                        renderer,
-                        window_loc.to_physical_precise_round(scale),
+            ),
+    };
+
+    if let Some(target) = preview_rect {
+        let geometry = window.geometry();
+        let committed = smithay::utils::Rectangle::new(
+            (window_loc + geometry.loc).to_physical_precise_round(scale),
+            geometry.size.to_physical_precise_round(scale),
+        );
+        let target = target.to_physical_precise_round(scale);
+        out.extend(
+            constrain_render_elements(
+                elements,
+                committed.loc,
+                target,
+                committed,
+                ConstrainScaleBehavior::Stretch,
+                ConstrainAlign::TOP | ConstrainAlign::LEFT,
+                scale,
+            )
+            .map(MeridianRenderElements::ResizePreview),
+        );
+    } else {
+        match clip {
+            Some((prog, geo, radius)) => {
+                out.extend(elements.into_iter().map(|e| {
+                    MeridianRenderElements::ClippedSurface(ClippedSurfaceRenderElement::new(
+                        prog.clone(),
+                        e,
                         scale,
-                        1.0,
-                    )
-                    .into_iter()
-                    .map(SpaceRenderElements::from)
-                    .map(C::from),
-            );
+                        geo,
+                        radius,
+                    ))
+                }));
+            }
+            None => {
+                out.extend(
+                    elements
+                        .into_iter()
+                        .map(SpaceRenderElements::from)
+                        .map(MeridianRenderElements::Space),
+                );
+            }
         }
     }
 }
@@ -324,7 +340,7 @@ fn render_outputs_for_crtc(
                         }),
                     }
                 }
-                for batch in batches {
+                for (batch_index, batch) in batches.into_iter().enumerate() {
                     let blur = batch.items[0].1.blur;
                     let glass_size = (
                         out_size.0.div_ceil(GLASS_SCENE_DOWNSAMPLE),
@@ -334,18 +350,25 @@ fn render_outputs_for_crtc(
                         glass_size.0 as f64 / out_size.0.max(1) as f64,
                         glass_size.1 as f64 / out_size.1.max(1) as f64,
                     );
-                    let Some(scene) = render_scene_for_blur(
+                    let Some(buffers) =
+                        out.glass_pass_cache
+                            .batch(renderer, glass_size, batch_index)
+                    else {
+                        continue;
+                    };
+                    if !render_scene_for_blur(
                         renderer,
                         &out.scratch_final,
                         batch.first_behind,
                         glass_size,
                         glass_scale,
-                    ) else {
+                        &mut buffers.scene,
+                    ) {
                         continue;
-                    };
-                    let Some(blurred) = blur_scene(
+                    }
+                    let Some(blurred) = blur_scene_cached(
                         renderer,
-                        scene,
+                        buffers,
                         glass_size,
                         blur / GLASS_SCENE_DOWNSAMPLE as f32,
                     ) else {

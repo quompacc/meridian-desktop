@@ -11,6 +11,7 @@ mod state;
 
 pub use grab::ResizeSurfaceGrab;
 pub use state::handle_commit;
+pub(crate) use state::preview_rect;
 
 pub(crate) fn configure_interval_at(
     state: &MeridianState,

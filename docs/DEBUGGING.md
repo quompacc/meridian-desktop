@@ -170,11 +170,18 @@ Messbefund auf dem OpenBSD-Laptop (Intel HD 620, 1920x1080@60 Hz, 2026-08-19):
   5,8-6,3 ms. Bewegung und Resize erreichen mit und ohne Shell 57-60 Frames/s.
 - Der Glass-Pass selbst liegt danach bei etwa 4,8-5,2 ms und lässt auf dem
   60-Hz-Panel ungefähr 10 ms Reserve im 16,67-ms-Framebudget.
-- Interaktives Resize läuft zusätzlich durch einen refreshgebundenen
-  Configure-Pacer. Identische Geometrien werden verworfen, Zwischenziele auf
-  das jeweils neueste Ziel zusammengefasst und die letzte Geometrie beim
-  Loslassen zwingend gesendet. Nach jedem Grab erscheint eine einzelne
-  `interactive resize pacing summary`-Zeile mit Offers/Emits/Coalescing.
+- Interaktives Resize nutzt eine compositorseitige Scale/Crop-Vorschau, damit
+  Rahmen und sichtbarer Inhalt dem Pointer auch dann folgen, wenn ein Client
+  seinen größeren Buffer noch zeichnet. Der refreshgebundene Configure-Pacer
+  sendet das nächste Zwischenziel bevorzugt erst nach einem Client-Commit;
+  nach vier Refresh-Intervallen verhindert ein Timeout, dass ein fehlerhafter
+  Client den Resize dauerhaft blockiert. Die finale Geometrie wird beim
+  Loslassen zwingend gesendet. Die abschließende
+  `interactive resize pacing summary` enthält neben Offers/Emits/Coalescing
+  auch blockierte Sends, Timeouts, Client-Commits und Commit-Latenzen.
+- Die drei halbauflösenden Glass-Offscreen-Texturen pro Render-Batch werden pro
+  Output und Auflösung wiederverwendet. Eine Neuanlage erfolgt nur bei einer
+  geänderten Outputgröße oder einem erstmals benötigten zusätzlichen Batch.
 - Hardwarebeschleunigung ist aktiv (`GL Vendor: Intel`, `GL Renderer: Mesa
   Intel(R) HD Graphics 620`); DRM-Commit und Queueing sind nicht der Engpass.
 

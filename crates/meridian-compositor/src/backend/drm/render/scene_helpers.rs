@@ -33,33 +33,28 @@ fn render_scene_for_blur(
     first_behind: usize,
     render_size: (u32, u32),
     source_scale: (f64, f64),
-) -> Option<GlesTexture> {
+    texture: &mut GlesTexture,
+) -> bool {
     use smithay::backend::{
-        allocator::Fourcc,
         renderer::{
             element::{Element, RenderElement},
-            Bind, Frame as RendererFrame, Offscreen, Renderer,
+            Bind, Frame as RendererFrame, Renderer,
         },
     };
-    use smithay::utils::{Buffer, Physical, Rectangle, Scale, Size, Transform};
+    use smithay::utils::{Physical, Rectangle, Scale, Size, Transform};
 
     let w = render_size.0 as i32;
     let h = render_size.1 as i32;
-    let buf_size = Size::<i32, Buffer>::from((w, h));
     let phys_size = Size::<i32, Physical>::from((w, h));
     let phys_region = Rectangle::from_size(phys_size);
 
-    let mut tex = <GlesRenderer as Offscreen<GlesTexture>>::create_buffer(
-        renderer,
-        Fourcc::Abgr8888,
-        buf_size,
-    )
-    .ok()?;
     {
-        let mut target = renderer.bind(&mut tex).ok()?;
-        let mut frame = renderer
-            .render(&mut target, phys_size, Transform::Normal)
-            .ok()?;
+        let Ok(mut target) = renderer.bind(texture) else {
+            return false;
+        };
+        let Ok(mut frame) = renderer.render(&mut target, phys_size, Transform::Normal) else {
+            return false;
+        };
         let _ = frame.clear([0.0, 0.0, 0.0, 1.0].into(), &[phys_region]);
         for element in elements.iter().skip(first_behind).rev() {
             if is_glass_blur_source_excluded(element) {
@@ -85,7 +80,7 @@ fn render_scene_for_blur(
         drop(frame);
         drop(target);
     }
-    Some(tex)
+    true
 }
 
 /// One separable blur pass: render `input` through the blur shader with the
@@ -121,26 +116,25 @@ struct PendingGlassBatch {
 fn blur_pass(
     renderer: &mut GlesRenderer,
     prog: &smithay::backend::renderer::gles::GlesTexProgram,
-    input: GlesTexture,
+    input: &GlesTexture,
+    output: &mut GlesTexture,
     out_size: (u32, u32),
     step: (f32, f32),
-) -> Option<GlesTexture> {
+) -> Option<()> {
     use smithay::backend::{
-        allocator::Fourcc,
         renderer::{
             element::{Element, RenderElement},
             gles::Uniform,
-            Bind, Offscreen, Renderer,
+            Bind, Renderer,
         },
     };
-    use smithay::utils::{Buffer, Logical, Physical, Point, Rectangle, Scale, Size, Transform};
+    use smithay::utils::{Logical, Physical, Point, Rectangle, Scale, Size, Transform};
 
     let w = out_size.0 as i32;
     let h = out_size.1 as i32;
-    let buf_size = Size::<i32, Buffer>::from((w, h));
     let phys_size = Size::<i32, Physical>::from((w, h));
 
-    let in_buf = TextureBuffer::from_texture(renderer, input, 1, Transform::Normal, None);
+    let in_buf = TextureBuffer::from_texture(renderer, input.clone(), 1, Transform::Normal, None);
     let elem = TextureRenderElement::from_texture_buffer(
         Point::<f64, Physical>::from((0.0, 0.0)),
         &in_buf,
@@ -150,14 +144,8 @@ fn blur_pass(
         Kind::Unspecified,
     );
 
-    let mut out_tex = <GlesRenderer as Offscreen<GlesTexture>>::create_buffer(
-        renderer,
-        Fourcc::Abgr8888,
-        buf_size,
-    )
-    .ok()?;
     {
-        let mut target = renderer.bind(&mut out_tex).ok()?;
+        let mut target = renderer.bind(output).ok()?;
         let mut frame = renderer
             .render(&mut target, phys_size, Transform::Normal)
             .ok()?;
@@ -177,29 +165,44 @@ fn blur_pass(
         drop(frame);
         drop(target);
     }
-    Some(out_tex)
+    Some(())
 }
 
 /// Two-pass separable Gaussian blur of the scene texture. Falls back to the
 /// unblurred texture if the shader is unavailable or the radius is tiny.
-fn blur_scene(
+fn blur_scene_cached(
     renderer: &mut GlesRenderer,
-    scene: GlesTexture,
+    buffers: &mut super::glass_cache::GlassPassBuffers,
     out_size: (u32, u32),
     radius: f32,
 ) -> Option<GlesTexture> {
     let prog = match super::glass::blur_shader(renderer) {
         Some(p) => p,
-        None => return Some(scene),
+        None => return Some(buffers.scene.clone()),
     };
     if radius <= 0.5 {
-        return Some(scene);
+        return Some(buffers.scene.clone());
     }
     let spread = radius / 4.0;
     let ow = out_size.0.max(1) as f32;
     let oh = out_size.1.max(1) as f32;
-    let tmp = blur_pass(renderer, &prog, scene, out_size, (spread / ow, 0.0))?;
-    blur_pass(renderer, &prog, tmp, out_size, (0.0, spread / oh))
+    blur_pass(
+        renderer,
+        &prog,
+        &buffers.scene,
+        &mut buffers.horizontal,
+        out_size,
+        (spread / ow, 0.0),
+    )?;
+    blur_pass(
+        renderer,
+        &prog,
+        &buffers.horizontal,
+        &mut buffers.vertical,
+        out_size,
+        (0.0, spread / oh),
+    )?;
+    Some(buffers.vertical.clone())
 }
 
 fn clear_output_dirty(

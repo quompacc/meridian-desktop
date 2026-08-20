@@ -21,6 +21,7 @@ use crate::state::{OutputGeometry, OutputId};
 use crate::{cursor::CursorImage, wallpaper::WallpaperGpuCache};
 
 pub(crate) mod glass;
+pub(crate) mod glass_cache;
 mod gpu;
 pub(crate) mod init;
 mod init_diagnostics;
@@ -84,6 +85,7 @@ pub struct DrmOutput {
     pub scratch_upper_layer_data: Vec<render::LayerRenderData>,
     pub scratch_lower_layer_elements: Vec<render::MeridianRenderElements>,
     pub scratch_upper_layer_elements: Vec<render::MeridianRenderElements>,
+    pub(crate) glass_pass_cache: glass_cache::GlassPassCache,
 }
 
 #[derive(Debug, Clone)]

@@ -430,6 +430,7 @@ impl MeridianState {
             scratch_upper_layer_data: Vec::new(),
             scratch_lower_layer_elements: Vec::new(),
             scratch_upper_layer_elements: Vec::new(),
+            glass_pass_cache: Default::default(),
         });
         drm_backend
             .dirty_stats

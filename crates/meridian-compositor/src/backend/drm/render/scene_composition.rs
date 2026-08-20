@@ -7,6 +7,12 @@ macro_rules! compose_output_scene {
                     None => continue,
                 };
                 let geometry = window.geometry();
+                let window_surface = window.wl_surface().map(|surface| surface.into_owned());
+                let preview_rect = window_surface
+                    .as_ref()
+                    .and_then(crate::grabs::resize_grab::preview_rect);
+                let visual_rect = preview_rect
+                    .unwrap_or_else(|| smithay::utils::Rectangle::new(loc, geometry.size));
                 let render_loc =
                     smithay::utils::Point::from((loc.x - geometry.loc.x, loc.y - geometry.loc.y));
 
@@ -20,11 +26,11 @@ macro_rules! compose_output_scene {
 
                 let mut content_clip = None;
                 let mut window_drop_shadow = None;
-                if let Some(wl_surf) = window.wl_surface().map(|s| s.into_owned()) {
+                if let Some(wl_surf) = window_surface {
                     let metrics = $state.decoration_manager.ssd_render_metrics(
                         &wl_surf,
-                        loc,
-                        geometry.size,
+                        visual_rect.loc,
+                        visual_rect.size,
                         &$theme.decorations,
                     );
                     let window_deco_elements = $state.decoration_manager.render_elements(
@@ -66,7 +72,8 @@ macro_rules! compose_output_scene {
                     // Round the client content's bottom corners to match the
                     // rounded border/titlebar (top corners sit under the
                     // titlebar, so only the bottom two need clipping).
-                    if let Some(r) = $state
+                    if preview_rect.is_none() {
+                        if let Some(r) = $state
                         .decoration_manager
                         .content_corner_radius(&wl_surf, &$theme.decorations)
                     {
@@ -76,6 +83,7 @@ macro_rules! compose_output_scene {
                                 Some((prog, metrics.client_rect.to_f64(), [r8, 0, r8, 0]));
                         }
                     }
+                    }
                 }
 
                 let space_start = $out.scratch_normal.len();
@@ -84,6 +92,7 @@ macro_rules! compose_output_scene {
                     window,
                     render_loc,
                     $scale,
+                    preview_rect,
                     content_clip,
                     &mut $out.scratch_normal,
                 );
