@@ -300,10 +300,17 @@ fn add_drm_output_via_hotplug_pipeline(
         height: height as i32,
     });
     let resolved = state.resolve_output_layout(&pending);
-    let new_resolved = resolved
-        .iter()
-        .find(|entry| entry.name == output_name)
-        .expect("new output in resolver result");
+    let Some(new_resolved) = resolved.iter().find(|entry| entry.name == output_name) else {
+        // The resolver can legitimately drop the output (layout/config edge
+        // cases). Reject the new output instead of crashing the compositor
+        // (P2-2, AUDIT_2026-08-19).
+        tracing::warn!(
+            "drm output add skipped reason=resolver-did-not-return-output connector={:?} output={}",
+            connector,
+            output_name
+        );
+        return false;
+    };
     let (x, y) = (new_resolved.x, new_resolved.y);
     tracing::debug!(
         "resolved layout for hotplug output {}: x={} y={}",
