@@ -395,7 +395,32 @@ impl MeridianShell {
             .map(|d| d.as_secs())
             .unwrap_or(0);
         let path = dir.join(format!("meridian-{}.png", secs));
-        let Some(wl_output) = self.output_state.outputs().next() else {
+        // P1-1 (AUDIT_2026-08-19): the region picker (and thus its region
+        // coordinates) lives on the primary output because its layer surface
+        // was created without an explicit output. Match that name against the
+        // wl_output globals; without IPC state or a known name fall back to
+        // the first output (previous single-output behaviour).
+        let wanted_name = select_local_capture_output_name(&self.output_workspaces);
+        let outputs: Vec<_> = self.output_state.outputs().collect();
+        let wl_output = match wanted_name {
+            Some(name) => {
+                let matched = outputs.iter().find(|output| {
+                    self.output_state
+                        .info(output)
+                        .and_then(|info| info.name.clone())
+                        .as_deref()
+                            == Some(name)
+                });
+                matched.cloned().or_else(|| {
+                    tracing::debug!(
+                        "screenshot: capture output {name} not found among wl_outputs; using first"
+                    );
+                    outputs.first().cloned()
+                })
+            }
+            None => outputs.first().cloned(),
+        };
+        let Some(wl_output) = wl_output else {
             tracing::warn!("screenshot: no output available");
             return;
         };

@@ -91,6 +91,21 @@ fn select_panel_active_workspace(
     legacy_active_workspace.clamp(1, 9)
 }
 
+/// Pick the output name a local (panel-button) screenshot must capture from.
+/// The region-picker layer surface is created without an explicit output and
+/// the compositor assigns such surfaces to the primary output (see
+/// `select_layer_output_info` in the compositor's layer-shell handler), so the
+/// picker-local region coordinates belong to the primary output — not to an
+/// arbitrary one (P1-1, AUDIT_2026-08-19). Falls back to the first known
+/// output when no primary is marked; `None` when no usable name exists.
+fn select_local_capture_output_name(output_workspaces: &[OutputWorkspaceState]) -> Option<&str> {
+    output_workspaces
+        .iter()
+        .find(|state| state.primary)
+        .or_else(|| output_workspaces.first())
+        .and_then(|state| state.output_name.as_deref())
+}
+
 fn apply_output_workspace_snapshot_state(
     focused_output_id: &mut Option<u32>,
     output_workspaces: &mut Vec<OutputWorkspaceState>,

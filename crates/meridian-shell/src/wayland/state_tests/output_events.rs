@@ -1,4 +1,60 @@
 #[test]
+fn local_capture_output_empty_state_is_none() {
+    assert_eq!(select_local_capture_output_name(&[]), None);
+}
+
+#[test]
+fn local_capture_output_prefers_primary_over_first() {
+    let outputs = vec![
+        OutputWorkspaceState {
+            output_id: 1,
+            output_name: Some("HDMI-A-1".to_string()),
+            primary: false,
+            ..Default::default()
+        },
+        OutputWorkspaceState {
+            output_id: 2,
+            output_name: Some("eDP-1".to_string()),
+            primary: true,
+            ..Default::default()
+        },
+    ];
+    assert_eq!(select_local_capture_output_name(&outputs), Some("eDP-1"));
+}
+
+#[test]
+fn local_capture_output_falls_back_to_first_without_primary() {
+    let outputs = vec![
+        OutputWorkspaceState {
+            output_id: 1,
+            output_name: Some("DP-1".to_string()),
+            primary: false,
+            ..Default::default()
+        },
+        OutputWorkspaceState {
+            output_id: 2,
+            output_name: Some("DP-2".to_string()),
+            primary: false,
+            ..Default::default()
+        },
+    ];
+    assert_eq!(select_local_capture_output_name(&outputs), Some("DP-1"));
+}
+
+#[test]
+fn local_capture_output_none_when_selected_entry_has_no_name() {
+    // Synthetic entries (OutputWorkspaceChanged for an unknown output) can
+    // carry no name; the caller then falls back to the first wl_output.
+    let outputs = vec![OutputWorkspaceState {
+        output_id: 7,
+        output_name: None,
+        primary: true,
+        ..Default::default()
+    }];
+    assert_eq!(select_local_capture_output_name(&outputs), None);
+}
+
+#[test]
 fn output_workspace_changed_updates_known_output() {
     let mut focused_output_id = Some(1);
     let mut output_workspaces = vec![OutputWorkspaceState {
