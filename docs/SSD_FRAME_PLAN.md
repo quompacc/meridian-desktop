@@ -6,7 +6,8 @@
 
 **Goal:** every app window shows Meridian's own titlebar + window controls,
 styled to the then-current dark/light desktop mockups (the historical
-`assets/bsd_desktop_mockup*.png` files are not present in the current worktree)
+`assets/bsd_desktop_mockup*.png` files were renamed to
+`assets/arch_desktop_mockup*.png` in the current worktree)
 (light) — the Wayland-correct equivalent of Cinnamon's uniform X11 WM titlebars.
 Everything from `meridian-tokens` (design_guard must stay green).
 

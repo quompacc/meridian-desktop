@@ -3,7 +3,7 @@ use tiny_skia::{
     PixmapPaint, Point, Rect, Shader, SpreadMode, Stroke, Transform,
 };
 
-const WALLPAPER_PNG: &[u8] = include_bytes!("../../../assets/bsd_wallpaper.png");
+const WALLPAPER_PNG: &[u8] = include_bytes!("../../../assets/arch_wallpaper.png");
 
 /// Fully composed static login background.
 ///

@@ -124,7 +124,7 @@ pub struct Palette {
 
 impl Palette {
     /// The single source of truth for the **dark** desktop theme. Sampled from
-    /// the dark reference mockup (`assets/bsd_desktop_mockup.png`); a neutral
+    /// the dark reference mockup (`assets/arch_desktop_mockup.png`); a neutral
     /// grey-blue. `meridian_config::ThemeColors::default()` derives from this,
     /// and `themes/dark/theme.toml` mirrors these values for human editing.
     /// The light theme (`LIGHT`) differs **only** in these colours — geometry,
@@ -144,7 +144,7 @@ impl Palette {
     };
 
     /// The single source of truth for the **light** desktop theme. Sampled from
-    /// the light reference mockup (`assets/bsd_desktop_mockup_hell.png`). The
+    /// the light reference mockup (`assets/arch_desktop_mockup_hell.png`). The
     /// only thing that differs from [`Palette::DARK`] is the colour table —
     /// see `themes/light/theme.toml`.
     pub const LIGHT: Palette = Palette {
