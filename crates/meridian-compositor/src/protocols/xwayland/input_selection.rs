@@ -92,15 +92,16 @@ macro_rules! xwm_input_selection_methods {
             initial_window_size = ?initial_window_size,
             "starting xwayland resize grab"
         );
-        let grab = ResizeSurfaceGrab::start(
+        if let Some(grab) = ResizeSurfaceGrab::start(
             configure_interval_at(self, start_data.location),
             start_data,
             mapped_window,
             resize_edges,
             Rectangle::new(initial_window_location, initial_window_size),
-        );
-        let serial = SERIAL_COUNTER.next_serial();
-        pointer.set_grab(self, grab, serial, Focus::Clear);
+        ) {
+            let serial = SERIAL_COUNTER.next_serial();
+            pointer.set_grab(self, grab, serial, Focus::Clear);
+        }
     }
 
     fn move_request(&mut self, _xwm: XwmId, window: X11Surface, button: u32) {

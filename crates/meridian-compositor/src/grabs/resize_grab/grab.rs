@@ -45,20 +45,25 @@ impl ResizeSurfaceGrab {
         window: Window,
         edges: ResizeEdge,
         initial_rect: Rectangle<i32, Logical>,
-    ) -> Self {
-        let surface = window
-            .wl_surface()
-            .map(|surface| surface.into_owned())
-            .expect("mapped resize target must have an associated wl_surface");
+    ) -> Option<Self> {
+        let Some(surface) = window.wl_surface().map(|surface| surface.into_owned()) else {
+            // No associated wl_surface (e.g. an X11 window before XWayland
+            // associated it): reject the grab instead of panicking; the
+            // invariant holds for visible windows today, but a future code
+            // path must not crash the session (P2-4, AUDIT_2026-08-19).
+            tracing::warn!("resize grab rejected: window has no associated wl_surface");
+            return None;
+        };
         let target = if let Some(toplevel) = window.toplevel() {
             ResizeSurfaceTarget::Xdg(toplevel.clone())
         } else if let Some(x11) = window.x11_surface() {
             ResizeSurfaceTarget::X11(Box::new(x11.clone()))
         } else {
-            unreachable!("resize grab requires xdg or x11 window target")
+            tracing::warn!("resize grab rejected: window has neither xdg toplevel nor x11 surface");
+            return None;
         };
         let resize_state = state::begin(&surface, edges, initial_rect);
-        Self {
+        Some(Self {
             start_data,
             target,
             edges,
@@ -67,7 +72,7 @@ impl ResizeSurfaceGrab {
             configure_pacer: ConfigurePacer::new(configure_interval),
             surface,
             last_commit_generation: resize_state.commit_generation,
-        }
+        })
     }
 }
 

@@ -98,13 +98,15 @@ pub(crate) fn handle_resize_request(
             state.states.set(xdg_toplevel::State::Resizing);
         });
         surface.send_pending_configure();
-        let grab = ResizeSurfaceGrab::start(
+        let Some(grab) = ResizeSurfaceGrab::start(
             configure_interval_at(state, start_data.location),
             start_data,
             window,
             ResizeEdge::from(edges),
             Rectangle::new(initial_window_location, initial_window_size),
-        );
+        ) else {
+            return;
+        };
         let Some(pointer) = seat.get_pointer() else {
             tracing::debug!("ignoring resize request: seat has no pointer");
             return;

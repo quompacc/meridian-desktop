@@ -330,24 +330,26 @@ pub fn handle_pointer_button<I: InputBackend>(
                             });
                             toplevel.send_pending_configure();
 
-                            let grab = ResizeSurfaceGrab::start(
+                            if let Some(grab) = ResizeSurfaceGrab::start(
                                 configure_interval_at(state, start_data.location),
                                 start_data,
                                 window.clone(),
                                 resize_edges,
                                 Rectangle::new(initial_window_location, window.geometry().size),
-                            );
-                            pointer.set_grab(state, grab, serial, Focus::Clear);
+                            ) {
+                                pointer.set_grab(state, grab, serial, Focus::Clear);
+                            }
                         } else if let Some(x11) = window.x11_surface() {
                             clear_managed_xwayland_maximized_state(state, x11);
-                            let grab = ResizeSurfaceGrab::start(
+                            if let Some(grab) = ResizeSurfaceGrab::start(
                                 configure_interval_at(state, start_data.location),
                                 start_data,
                                 window.clone(),
                                 resize_edges,
                                 Rectangle::new(initial_window_location, window.geometry().size),
-                            );
-                            pointer.set_grab(state, grab, serial, Focus::Clear);
+                            ) {
+                                pointer.set_grab(state, grab, serial, Focus::Clear);
+                            }
                         }
                     }
                     return;
@@ -383,14 +385,15 @@ pub fn handle_pointer_button<I: InputBackend>(
                     if let Some(x11) = window.x11_surface() {
                         clear_managed_xwayland_maximized_state(state, x11);
                     }
-                    let grab = ResizeSurfaceGrab::start(
+                    if let Some(grab) = ResizeSurfaceGrab::start(
                         configure_interval_at(state, start_data.location),
                         start_data,
                         window.clone(),
                         resize_edges,
                         Rectangle::new(initial_window_location, window.geometry().size),
-                    );
-                    pointer.set_grab(state, grab, serial, Focus::Clear);
+                    ) {
+                        pointer.set_grab(state, grab, serial, Focus::Clear);
+                    }
                 }
                 return;
             }
