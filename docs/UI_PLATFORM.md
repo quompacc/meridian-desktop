@@ -117,6 +117,27 @@ The first shared component set is limited to what the vertical slice needs:
 Components own accessibility semantics, focus behavior, input states and token
 usage. Product surfaces compose them; they do not fork their CSS.
 
+## Product interaction models
+
+Shared components do not imply identical information density on every surface.
+
+The launcher is a complete, familiar application catalogue: search is always
+available, favourites are the stable landing view, all installed applications
+remain browsable alphabetically and by category, and session actions keep a
+fixed location. It is compact and keyboard-first. Search is capability-scoped;
+it does not become an ambient command shell or remote-content entry point.
+
+Settings is a curated decision surface inspired by the restraint of GNOME and
+macOS without copying either visual system. It uses strong defaults, a small
+number of top-level areas and progressive disclosure. Frequent transient
+changes belong in Quick Settings; durable system choices belong in Settings;
+task-specific choices remain with the task they affect. Changes apply directly
+except where a safe confirmation/rollback flow is required.
+
+Both models use the same Meridian tokens, materials, controls and focus rules.
+Meridian identity comes from consistent proportion and behaviour, never from
+repeated compass, map or logo decoration in daily UI.
+
 ## Surface integration
 
 The runtime must preserve existing Wayland roles and compositor stacking:
@@ -153,6 +174,14 @@ Rules:
 Numeric acceptance budgets are recorded after the Acer baseline so they reflect
 real hardware rather than guesses.
 
+The first live runtime has no polling animation and assembles its HTML/CSS and
+generated token sheet once before the initial load. WebKit uses an ephemeral
+context, so it adds no persistent cookie/storage state. Bridge traffic is
+event-driven and limited to launcher lifecycle plus catalogue-validated app
+activation. The panel process remains resident; the launcher is currently
+spawned on demand. Its noticeable cold-open delay is the next measurement and
+optimization target.
+
 ## Security model by platform
 
 Common rules:
@@ -183,7 +212,11 @@ native shell.
 
 ## Open decisions for the spike
 
-- exact WebKit port/API on OpenBSD and FreeBSD
+- the current proof targets OpenBSD's installed WebKitGTK 4.1/GTK3 ABI through
+  `webkit2gtk` 2.0.2; the archived GTK3 Rust stack is an explicit maintenance
+  risk and not yet the final runtime commitment
+- exact WebKit port/API on FreeBSD and whether WebKitGTK 6.0 becomes practical
+  on the selected reference path
 - whether a maintainable Tauri subset exists on the selected target
 - process-per-surface versus shared runtime isolation
 - binary bridge encoding after the first typed JSON prototype

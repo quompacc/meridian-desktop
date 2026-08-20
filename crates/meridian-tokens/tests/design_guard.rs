@@ -61,6 +61,32 @@ fn collect_rs_files(root: &Path) -> Vec<PathBuf> {
     out
 }
 
+fn collect_web_asset_files(root: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    let assets = root.join("crates/meridian-ui-runtime/assets");
+    if assets.is_dir() {
+        walk_web_assets(&assets, &mut files);
+    }
+    files.sort();
+    files
+}
+
+fn walk_web_assets(directory: &Path, files: &mut Vec<PathBuf>) {
+    if let Ok(entries) = fs::read_dir(directory) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk_web_assets(&path, files);
+                continue;
+            }
+            let extension = path.extension().and_then(|value| value.to_str());
+            if matches!(extension, Some("css" | "html" | "js" | "ts")) {
+                files.push(path);
+            }
+        }
+    }
+}
+
 fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     if let Ok(entries) = fs::read_dir(dir) {
         for e in entries.flatten() {
@@ -186,6 +212,44 @@ fn for_each_call(src: &str, pat: &str, mut f: impl FnMut(usize)) {
         f(paren);
         from = at + pat.len();
     }
+}
+
+fn contains_hex_color(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    for start in 0..bytes.len() {
+        if bytes[start] != b'#' {
+            continue;
+        }
+        let digits = bytes[start + 1..]
+            .iter()
+            .take_while(|byte| byte.is_ascii_hexdigit())
+            .count();
+        if matches!(digits, 3 | 4 | 6 | 8) {
+            return true;
+        }
+    }
+    false
+}
+
+fn contains_literal_dimension(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    for (index, byte) in bytes.iter().enumerate() {
+        if !byte.is_ascii_digit() {
+            continue;
+        }
+        if index > 0 && (bytes[index - 1].is_ascii_alphanumeric() || bytes[index - 1] == b'-') {
+            continue;
+        }
+        let number_end = bytes[index..]
+            .iter()
+            .position(|byte| !byte.is_ascii_digit() && *byte != b'.')
+            .map_or(bytes.len(), |offset| index + offset);
+        let unit = &line[number_end..];
+        if unit.starts_with("px") || unit.starts_with("rem") || unit.starts_with("em") {
+            return true;
+        }
+    }
+    false
 }
 
 #[test]
@@ -353,4 +417,64 @@ fn no_hardcoded_design_values_outside_central_source() {
          ODER `// guard:allow: <grund>` mit Begründung.\n",
     );
     panic!("{report}");
+}
+
+#[test]
+fn web_assets_use_generated_design_tokens_only() {
+    let root = workspace_root();
+    let files = collect_web_asset_files(&root);
+    assert!(!files.is_empty(), "no Web UI assets found to guard");
+
+    let mut violations = Vec::new();
+    for path in files {
+        let source = fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("cannot read {}: {error}", path.display()));
+        if source.contains("guard:allow-file") {
+            continue;
+        }
+        for (index, line) in source.lines().enumerate() {
+            if line.contains("guard:allow") {
+                continue;
+            }
+            let trimmed = line.trim();
+            let reason = if contains_hex_color(trimmed) {
+                Some("literal color")
+            } else if ["rgb(", "rgba(", "hsl(", "hsla(", "color-mix("]
+                .iter()
+                .any(|pattern| trimmed.contains(pattern))
+            {
+                Some("local color function")
+            } else if contains_literal_dimension(trimmed) {
+                Some("literal geometry")
+            } else if trimmed.starts_with("opacity:")
+                && trimmed
+                    .trim_start_matches("opacity:")
+                    .trim()
+                    .trim_end_matches(';')
+                    .parse::<f32>()
+                    .is_ok()
+            {
+                Some("literal opacity")
+            } else if trimmed.contains(" style=") {
+                Some("inline style")
+            } else {
+                None
+            };
+            if let Some(reason) = reason {
+                let relative = path.strip_prefix(&root).unwrap_or(&path);
+                violations.push(format!(
+                    "{}:{}: {reason}: {}",
+                    relative.display(),
+                    index + 1,
+                    trimmed
+                ));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "Web UI design values must come from generated tokens:\n{}",
+        violations.join("\n")
+    );
 }

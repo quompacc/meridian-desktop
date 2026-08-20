@@ -1,0 +1,15 @@
+[package]
+name = "meridian-ui-runtime"
+version.workspace = true
+edition = "2021"
+
+[dependencies]
+gtk = "0.18.2"
+gtk-layer-shell = { version = "0.8.2", features = ["v0_6"] }
+meridian-app-catalog = { path = "../meridian-app-catalog" }
+meridian-config = { path = "../meridian-config" }
+meridian-ipc = { path = "../meridian-ipc" }
+meridian-tokens = { path = "../meridian-tokens" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+webkit2gtk = { version = "2.0.2", features = ["v2_40"] }

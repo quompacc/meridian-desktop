@@ -28,9 +28,66 @@ impl Default for Scrollbar {
     }
 }
 
+/// Geometry shared by the panel surface and popovers anchored beside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Panel {
+    pub height: u32,
+    pub bottom_gap: u32,
+    pub side_margin: u32,
+    pub top_shadow: u32,
+    /// Height of the quiet interactive rail inside the panel.
+    pub control_height: u32,
+    /// Raster size requested for pinned application icons.
+    pub app_icon_size: i32,
+    /// Resting control width for launcher and pinned applications.
+    pub control_width: u32,
+    /// Wider status control used by the clock.
+    pub clock_width: u32,
+    /// Neutral hover overlay over `Palette::surface_alt`.
+    pub hover_alpha: u8,
+    /// Focus/running indicator overlay over `Palette::accent`.
+    pub active_alpha: u8,
+    /// Hairline/group separator over `Palette::text`.
+    pub divider_alpha: u8,
+}
+
+impl Panel {
+    pub const DEFAULT: Panel = Panel {
+        height: 42,
+        bottom_gap: 8,
+        side_margin: 12,
+        top_shadow: 16,
+        control_height: 32,
+        app_icon_size: 22,
+        control_width: 40,
+        clock_width: 88,
+        hover_alpha: 30,
+        active_alpha: 38,
+        divider_alpha: 46,
+    };
+
+    pub const fn surface_height(self) -> u32 {
+        self.top_shadow + self.height + self.bottom_gap
+    }
+}
+
+impl Default for Panel {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 /// Launcher surface-overlay opacities (each applied over a `Palette` colour).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Launcher {
+    /// Canonical launcher surface width in logical pixels.
+    pub width: i32,
+    /// Canonical launcher surface height in logical pixels.
+    pub height: i32,
+    /// Gap between the launcher and the panel reservation.
+    pub panel_gap: i32,
+    /// Raster size requested for application icons in logical pixels.
+    pub app_icon_size: i32,
     /// Outer band behind the grid (0 = fully transparent: the compositor glass shows).
     pub band_alpha: u8,
     /// Resting cell background (0 = transparent).
@@ -51,6 +108,10 @@ pub struct Launcher {
 
 impl Launcher {
     pub const DEFAULT: Launcher = Launcher {
+        width: 880,
+        height: 620,
+        panel_gap: 2,
+        app_icon_size: 32,
         band_alpha: 0,
         cell_alpha: 0,
         hover_alpha: 42,
@@ -95,6 +156,13 @@ mod tests {
         assert_eq!(Scrollbar::DEFAULT.track_alpha, 25);
         assert_eq!(Scrollbar::DEFAULT.thumb_alpha, 180);
         assert_eq!(Launcher::DEFAULT.hover_alpha, 42);
+        assert_eq!(Launcher::DEFAULT.width, 880);
+        assert_eq!(Launcher::DEFAULT.height, 620);
+        assert_eq!(Launcher::DEFAULT.panel_gap, 2);
+        assert_eq!(Launcher::DEFAULT.app_icon_size, 32);
+        assert_eq!(Panel::DEFAULT.surface_height(), 66);
+        assert_eq!(Panel::DEFAULT.control_height, 32);
+        assert_eq!(Panel::DEFAULT.app_icon_size, 22);
         assert_eq!(Launcher::DEFAULT.selected_alpha, 56);
         assert_eq!(Launcher::DEFAULT.divider_alpha, 44);
         assert_eq!(Mask::DEFAULT.dim_alpha, 160);

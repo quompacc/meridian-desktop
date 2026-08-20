@@ -229,6 +229,9 @@ pub(crate) struct MeridianShell {
     pub(crate) desktop_layer: LayerSurface,
     pub(crate) desktop_menu_layer: LayerSurface,
     pub(crate) panel: LayerSurface,
+    /// True while the separately managed WebKit process owns the panel zone.
+    pub(crate) web_panel_enabled: bool,
+    pub(crate) web_launcher: Option<crate::web_panel::WebLauncherProcess>,
     pub(crate) launcher_layer: LayerSurface,
     pub(crate) calendar_layer: LayerSurface,
     pub(crate) workspace_layer: LayerSurface,

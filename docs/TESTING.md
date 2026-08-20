@@ -53,6 +53,18 @@ Vor dem ersten produktiven Vertical Slice sind mindestens abzudecken:
 - Panel/Launcher/Quick-Settings-Parität gegen die vereinbarten IPC-Semantiken
 - Cold start, first paint, Input-to-Paint, Idle CPU/GPU und RSS auf dem Acer
 
+Aktueller erster Smoke auf OpenBSD, innerhalb einer Meridian-Sitzung:
+
+```sh
+cargo test -p meridian-ui-runtime
+cargo run -p meridian-ui-runtime -- --theme=dark
+cargo run -p meridian-ui-runtime -- --theme=light
+```
+
+Der automatisierte Test prueft lokale Assets, Theme-Auswahl und Navigation-
+Denylist. Der manuelle Lauf ist weiterhin erforderlich, weil nur er einen
+tatsaechlich gerenderten WebKit-/Wayland-Frame beweist.
+
 ## Plattformmatrix
 
 Ergebnisse immer mit Datum, OS-Version, Hardware und Backend festhalten:

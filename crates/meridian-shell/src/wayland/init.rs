@@ -144,7 +144,7 @@ pub(crate) fn initialize(
     region_picker_layer.set_exclusive_zone(-1);
     region_picker_layer.set_keyboard_interactivity(KeyboardInteractivity::Exclusive);
     info!("Screenshot region picker surface created");
-
+    let web_panel_enabled = flags::enabled("MERIDIAN_WEB_UI_PANEL");
     let panel_surface = compositor.create_surface(&qh);
     let panel = layer_shell.create_layer_surface(
         &qh,
@@ -372,6 +372,8 @@ pub(crate) fn initialize(
         desktop_layer,
         desktop_menu_layer,
         panel,
+        web_panel_enabled,
+        web_launcher: None,
         launcher_layer,
         calendar_layer,
         workspace_layer,

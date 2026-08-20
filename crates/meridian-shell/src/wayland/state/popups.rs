@@ -1,5 +1,9 @@
 impl MeridianShell {
     fn toggle_launcher(&mut self) {
+        if self.web_panel_enabled {
+            self.toggle_web_launcher();
+            return;
+        }
         let open_before = self.launcher_state.open;
         if !open_before && self.calendar_popup_open {
             self.close_calendar_popup(CommitReason::Input);

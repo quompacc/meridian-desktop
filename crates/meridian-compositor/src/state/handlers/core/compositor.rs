@@ -73,11 +73,20 @@ impl CompositorHandler for MeridianState {
                 states
                     .data_map
                     .get::<LayerSurfaceData>()
-                    .unwrap()
-                    .lock()
-                    .unwrap()
-                    .initial_configure_sent
+                    .and_then(|data| data.lock().ok().map(|data| data.initial_configure_sent))
             });
+            let Some(initial_configure_sent) = initial_configure_sent else {
+                // A layer client may disappear while its final wl_surface
+                // commit is still queued. The layer map can retain the surface
+                // for that transaction even though Smithay has already
+                // removed its role data. Treat this as teardown, not a fatal
+                // compositor invariant violation.
+                tracing::debug!(
+                    "Ignoring layer surface commit without live role data: output={}",
+                    output_name
+                );
+                return;
+            };
 
             if initial_configure_sent {
                 tracing::trace!(
@@ -155,6 +164,19 @@ impl CompositorHandler for MeridianState {
                         requested_size,
                         layer_geometry,
                         keyboard_interactivity,
+                        has_buffer
+                    );
+                }
+                if namespace == "meridian-panel-web" && !initial_configure_sent {
+                    tracing::info!(
+                        "web panel initial layer state: output={} layer={:?} anchor={:?} margin={:?} exclusive_zone={:?} requested_size={:?} geometry={:?} has_buffer={}",
+                        output_name,
+                        layer_kind,
+                        anchor,
+                        margin,
+                        exclusive_zone,
+                        requested_size,
+                        layer_geometry,
                         has_buffer
                     );
                 }

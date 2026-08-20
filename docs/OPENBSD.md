@@ -110,7 +110,7 @@ Use `pass`, `partial`, `fail`, `not available` or `not tested`, with evidence.
 | Qt6 reference app | available, not installed/tested | package `qt6-qtbase-6.10.2` |
 | wxWidgets reference app | not tested | |
 | XWayland | installed, runtime not tested | `xwayland-24.1.12` |
-| WebKitGTK 4.1 | compile/link smoke passed, runtime surface pending | `webkitgtk41-2.52.5`; reports 2.52.5 through its C API |
+| WebKitGTK 4.1 | pass: native panel and launcher render as layer-shell clients in the DRM session | `webkitgtk41-2.52.5`; panel first document load about 320 ms |
 | WebKitGTK 6.0 | available, not installed/tested | package `webkitgtk60-2.52.5` |
 
 Test native Wayland first where available, then document XWayland fallback.
@@ -137,9 +137,38 @@ Installed development baseline (2026-08-19):
 - `doas pkg_check` completed cleanly after installation (the unprivileged run
   cannot read the intentionally protected D-Bus launch helper)
 
-The WebKit C smoke compiled, linked and returned version `2.52.5`. This proves
-headers, pkg-config metadata, linker and loader availability; it does not yet
-prove display creation, Wayland integration, GPU acceleration or performance.
+The WebKit C smoke compiled, linked and returned version `2.52.5`. The later
+Meridian hardware run also proved display creation, Wayland layer-shell
+integration and interactive panel/launcher rendering. Detailed steady-state
+GPU/memory and launcher-start performance budgets remain open.
+
+### WebKit diagnostic runtime
+
+`meridian-ui-runtime` provides the Rust panel and launcher surface proof. Run a
+standalone surface from an existing Meridian Wayland session so
+`WAYLAND_DISPLAY` and `XDG_RUNTIME_DIR` refer to that session:
+
+```sh
+cargo run -p meridian-ui-runtime -- --surface=panel --theme=dark
+cargo run -p meridian-ui-runtime -- --surface=launcher --theme=light
+```
+
+For the managed integration, start the session with
+`MERIDIAN_WEB_UI_PANEL=1`; `meridian-shell` then owns the panel runtime and
+launcher lifecycle. Expected evidence:
+
+- the panel is a 66-logical-pixel bottom layer surface in both themes
+- the terminal logs `first Panel document load finished in ... ms`
+- the panel button opens one Web launcher and a second click closes it
+- search, categories and catalogue-approved app activation work
+- no HTTP server, file asset lookup or network navigation is involved
+- a panel-runtime exit falls back to the native shell panel
+
+Hardware evidence from 2026-08-20: on the 1920x1080 Acer output, the corrected
+panel layer is `y=1014, h=66` and its first document load completes in about
+320 ms. Launcher opening still feels delayed because it currently pays process
+and WebKit startup on demand; measure spawn-to-first-paint, catalogue/icon cost,
+RSS and idle CPU before choosing a warm-process strategy.
 
 Native Meridian build matrix on 2026-08-19:
 
@@ -281,7 +310,8 @@ the more workable platform. The decision and blockers belong in this file.
    to automated checks. The launcher uses a private, ownership-checked
    `/tmp/meridian-runtime-<uid>` directory and includes `/usr/X11R6/bin` in the
    sanitized OpenBSD session `PATH`, so XWayland remains discoverable.
-7. **Graphics/WebKit packaging is positive but runtime proof is incomplete.**
-   EGL/GBM and WebKit compile/link successfully, and the compositor's Intel-
-   accelerated first frame is proven. A real client surface, interactive
-   cursor/input test and WebKit render remain pending.
+7. **Graphics/WebKit runtime proof is complete for the first panel/launcher
+   slice.** EGL/GBM and WebKit compile/link successfully; the Intel-accelerated
+   compositor renders real WebKit layer-shell clients and panel/launcher input
+   is interactive. Numeric memory/idle-GPU budgets, launcher cold-start
+   optimization and the broader external-client matrix remain pending.

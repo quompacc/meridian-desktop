@@ -21,6 +21,17 @@ pub struct Elevation {
 }
 
 impl Elevation {
+    /// Transparent host-space required so a CSS shadow can fade out without
+    /// being clipped into square window corners.
+    pub const fn outer_extent(self) -> i32 {
+        self.blur as i32
+            + if self.offset_y < 0 {
+                -self.offset_y
+            } else {
+                self.offset_y
+            }
+    }
+
     /// The floating panel island — subtle, no drop (cast straight out).
     pub const PANEL: Elevation = Elevation {
         blur: 13.0,
@@ -80,5 +91,10 @@ mod tests {
     fn launcher_sits_above_popup() {
         const { assert!(Elevation::LAUNCHER.blur >= Elevation::POPUP.blur) };
         const { assert!(Elevation::LAUNCHER.offset_y >= Elevation::POPUP.offset_y) };
+    }
+
+    #[test]
+    fn launcher_shadow_extent_includes_vertical_offset() {
+        assert_eq!(Elevation::LAUNCHER.outer_extent(), 22);
     }
 }

@@ -1,22 +1,20 @@
 # Project Status
 
-Stand: 2026-08-19. Dokumentationsabgleich auf Branch `freebsd-port` bei
-`664b5ba`; nach `git fetch`/`pull --ff-only` ist der Branch `3 ahead / 0 behind`
-gegenüber `origin/freebsd-port`. Nicht eingecheckte Nutzerdateien sind darin
-nicht enthalten.
+Stand: 2026-08-20 auf Branch `codex/openbsd-native`.
 
 Dieses Dokument beschreibt den **implementierten Ist-Stand**. Die aktive
 Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
 `UI_PLATFORM.md`. Zielarchitektur ist nicht automatisch implementierter Stand.
 
-## Strategische Einordnung (neu, noch nicht implementiert)
+## Strategische Einordnung
 
 - Meridian bleibt ein eigener Rust-Wayland-Compositor.
 - OpenBSD wird als nächste reale BSD-Referenz auf dem Acer/Intel-HD-620 geprüft;
   FreeBSD bleibt die ernsthafte Alternative und der vorhandene Supportpfad.
-- Meridian-eigene Alltags-UI soll schrittweise auf eine gemeinsame
-  WebKit/HTML/CSS/Web-Components-Plattform wechseln.
-- Der erste Slice ist Runtime/Bridge → Panel → Launcher → Quick Settings.
+- Meridian-eigene Alltags-UI wechselt schrittweise auf eine gemeinsame
+  WebKit/HTML/CSS/Web-Components-Plattform.
+- Der erste Slice ist Runtime/Bridge → Panel → Launcher → Quick Settings;
+  Runtime, Bridge, Panel und Launcher sind als erster Live-Pfad implementiert.
 - Der unten dokumentierte native `meridian-shell` bleibt bis zum bewiesenen
   Slice Referenz und Fallback.
 - Externe GTK-/Qt-/Browser-/wxWidgets-Apps bleiben Wayland/XWayland-Clients.
@@ -31,8 +29,17 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
 - Systempatches `001` bis `009` sind eingespielt. Rust/Cargo 1.94.1,
   Wayland/libinput/xkbcommon/seatd, XWayland und WebKitGTK 4.1 sind installiert;
   `seatd` und D-Bus laufen und starten beim Boot.
-- WebKitGTK 4.1 kompiliert und linkt nativ (2.52.5); ein gerenderter
-  Wayland/WebKit-Frame ist noch nicht bewiesen.
+- WebKitGTK 4.1 kompiliert, linkt und rendert nativ (2.52.5) als echte
+  Layer-Shell-Oberflaeche in der DRM-Sitzung.
+- Der WebKit-Tokenvertrag hat mit `meridian-config::web_tokens` begonnen:
+  Schema v1 exportiert die beiden zentralen Farbtabellen und die gemeinsamen
+  Geometrie-/Material-/Interaktionswerte deterministisch als CSS Custom
+  Properties. `meridian-ui-runtime` stellt den ersten separaten GTK3/
+  WebKitGTK-4.1-Prozess bereit: nur einkompilierte Assets, ephemerer WebContext,
+  Remote-Navigation deny-by-default und eine kleine typisierte Bridge fuer
+  Launcher-Lifecycle und kataloggepruefte App-Starts. Panel und Launcher sind
+  auf OpenBSD gebaut, gerendert und interaktiv geprueft; Quick Settings und
+  vollstaendige gemeinsame Web Components fehlen noch.
 - `meridian-tokens`, `meridian-ipc`, `meridian-config`, `meridian-portal`,
   `meridian-boot-common`, `meridian-compass-render`, `meridian-freetype` und
   `meridian-ui` bauen auf OpenBSD. Der Design-Guard ist gruen.
@@ -91,8 +98,30 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
   hartverdrahtete Farb-/Alpha-/lerp-/ALPHA-Const-Werte; 112 -> 0 Findings.
   Definition of Done: `docs/GUI_CENTRALIZATION_PLAN.md` §9.
 - Genau 2 Themes (hell/dunkel), identisch bis auf Farben. Branding (Kompass) nur
-  subtil in Login/Bootsplash, nie in Alltags-UI; der Panel-Startbutton ist ein
-  reduziertes, getheemtes Meridian-Symbol, nicht das alte Kompass-Badge.
+  subtil in Login/Bootsplash, nie in Alltags-UI; der Panel-Startbutton verwendet
+  ein neutrales Launcher-Symbol aus dem zentralen Icon-System.
+
+### WebKit-Vertical-Slice (2026-08-20)
+
+- `meridian-ui-runtime` stellt tokengetriebene Panel- und Launcher-Dokumente
+  als GTK3/WebKitGTK-4.1-Layer-Shell-Clients bereit.
+- `MERIDIAN_WEB_UI_PANEL=1` aktiviert den verwalteten Pfad. Die native
+  Panel-Surface reserviert ohne Buffer weiterhin den Arbeitsbereich; die
+  sichtbare Web-Surface liegt mit exakt 66 logischen Pixeln am unteren Rand.
+  Faellt der Runtime-Prozess aus, aktiviert die Shell kontrolliert das native
+  Panel.
+- Panel-Klicks toggeln ueber authentifiziertes IPC einen separat verwalteten
+  Web-Launcher. Ein zweiter Klick schliesst ihn; App-Aktivierung ist auf den
+  geladenen Desktop-Katalog beschraenkt.
+- Der OpenBSD-Hardwarelauf bestaetigt genau einen Panel-Prozess, eine Geometrie
+  von `y=1014, h=66` auf 1920x1080 und etwa 320 ms bis zum ersten geladenen
+  Panel-Dokument. Die zuvor sichtbare Hoehenverschiebung kam von WebKitGTKs
+  natuerlicher 200-px-Anforderung und wird nun durch die zentrale
+  `Panel::surface_height()` begrenzt.
+- Offen fuer den naechsten Arbeitstag: Der Launcher fuehlt sich beim Oeffnen
+  noch verzoegert an. Spawn-to-first-paint, Katalog- und Icon-Kosten muessen
+  gemessen werden, bevor Prozess-Warmhaltung oder Wiederverwendung entschieden
+  wird.
 
 ## Aktueller Ist-Stand
 

@@ -1,6 +1,6 @@
 # Meridian — Active Roadmap
 
-> Updated 2026-08-19. This is the forward-looking execution order for the
+> Updated 2026-08-20. This is the forward-looking execution order for the
 > BSD/WebKit strategy. Completed native-shell work remains documented in
 > `docs/PROJECT_STATUS.md`; older phase estimates are no longer scheduling
 > commitments.
@@ -34,8 +34,9 @@ backup/recovery plan.
 
 Status: **development baseline active.** OpenBSD patches `001`–`009`, Rust
 1.94.1, Wayland/input/seat libraries, XWayland and WebKitGTK 4.1 are installed.
-`seatd` and D-Bus are enabled. WebKit compiles and links; rendered GUI,
-audio, suspend and external-display tests remain.
+`seatd` and D-Bus are enabled. Accelerated Meridian rendering, the OpenBSD
+audio backend and WebKitGTK panel/launcher rendering are proven on hardware;
+suspend and external-display tests remain.
 
 Install OpenBSD on the Acer and validate the base system before Meridian:
 
@@ -89,6 +90,19 @@ reference client, or the exact upstream blocker is documented.
 
 ## Phase 3 — WebKit UI platform spike
 
+Status: **working vertical proof on OpenBSD since 2026-08-20.** The versioned
+CSS-token export, ephemeral WebKitGTK 4.1 runtime, bundled assets and typed
+deny-by-default bridge are live. The shell supervises a Web panel process and
+falls back to its native panel if that process exits. The panel toggles a
+separate Web launcher process through authenticated IPC; catalogue loading,
+category filtering, search and app activation are wired. Both surfaces render
+on the Acer in the live DRM session.
+
+Next performance task: launcher opening currently includes process/WebKit
+cold-start latency and feels delayed. Measure spawn-to-first-paint and then
+decide between a warm hidden runtime, process reuse or a smaller startup path;
+do not add polling or permanent idle work without a measured budget.
+
 Build the smallest runtime that can prove the architecture:
 
 1. create and manage a WebKit-backed Wayland surface;
@@ -105,6 +119,10 @@ Exit criterion: the spike works on the selected BSD reference path and meets a
 written performance/security budget.
 
 ## Phase 4 — First vertical slice
+
+Status: **started.** Panel and launcher are available together behind
+`MERIDIAN_WEB_UI_PANEL=1`; Quick Settings and parity/polish remain. The native
+panel/launcher paths are retained as fallback during this phase.
 
 Migrate in this order:
 

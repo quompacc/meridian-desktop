@@ -45,6 +45,7 @@ mod ui;
 mod updates;
 mod users;
 mod wayland;
+mod web_panel;
 mod widget_action;
 mod widget_traversal;
 mod wifi_password_modal;
@@ -60,18 +61,18 @@ const SHELL_IDLE_TICK: Duration = Duration::from_secs(1);
 const NETWORK_IDLE_POLL: Duration = Duration::from_secs(15);
 const NETWORK_ACTIVE_POLL: Duration = Duration::from_secs(2);
 
-pub const PANEL_HEIGHT: u32 = 42;
+pub const PANEL_HEIGHT: u32 = meridian_tokens::Panel::DEFAULT.height;
 /// Floating island panel: gap below the island (toward the screen edge) and
 /// horizontal inset on each side. The layer surface spans the full bottom
 /// strip (PANEL_SURFACE_HEIGHT) but only the inset island is painted.
-pub const PANEL_BOTTOM_GAP: u32 = 8;
-pub const PANEL_SIDE_MARGIN: u32 = 12;
+pub const PANEL_BOTTOM_GAP: u32 = meridian_tokens::Panel::DEFAULT.bottom_gap;
+pub const PANEL_SIDE_MARGIN: u32 = meridian_tokens::Panel::DEFAULT.side_margin;
 /// Room above the island so the panel can cast a soft shadow upward onto the
 /// desktop (the island is positioned PANEL_TOP_SHADOW below the surface top).
-pub const PANEL_TOP_SHADOW: u32 = 16;
-pub const PANEL_SURFACE_HEIGHT: u32 = PANEL_TOP_SHADOW + PANEL_HEIGHT + PANEL_BOTTOM_GAP;
-pub const LAUNCHER_WIDTH: u32 = 880;
-pub const LAUNCHER_HEIGHT: u32 = 620;
+pub const PANEL_TOP_SHADOW: u32 = meridian_tokens::Panel::DEFAULT.top_shadow;
+pub const PANEL_SURFACE_HEIGHT: u32 = meridian_tokens::Panel::DEFAULT.surface_height();
+pub const LAUNCHER_WIDTH: u32 = meridian_tokens::Launcher::DEFAULT.width as u32;
+pub const LAUNCHER_HEIGHT: u32 = meridian_tokens::Launcher::DEFAULT.height as u32;
 pub const CALENDAR_POPUP_WIDTH: u32 = 280;
 pub const CALENDAR_POPUP_HEIGHT: u32 = 220;
 pub const WORKSPACE_POPUP_WIDTH: u32 = 280;
@@ -92,7 +93,7 @@ pub const VOLUME_OSD_HEIGHT: u32 = 64;
 pub const VOLUME_OSD_BOTTOM_MARGIN: i32 = 96;
 pub const VOLUME_OSD_VISIBLE_MS: u64 = 1800;
 pub const SNI_MENU_RIGHT_MARGIN: i32 = 8;
-pub const SHELL_POPUP_BOTTOM_MARGIN: i32 = 2;
+pub const SHELL_POPUP_BOTTOM_MARGIN: i32 = meridian_tokens::Launcher::DEFAULT.panel_gap;
 /// Padding around every tray popup that holds room for the soft drop
 /// shadow. Layer surfaces are sized `card + 2*PAD` and the card is drawn
 /// at `(PAD, PAD)` inside; the popup's anchor-margin is reduced by PAD so
@@ -206,6 +207,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut event_loop = EventLoop::try_new()?;
     let (mut shell, qh) = wayland::initialize(&mut event_loop)?;
+    let mut web_panel = if shell.web_panel_enabled {
+        match web_panel::WebPanelProcess::spawn(shell.theme.appearance_is_light()) {
+            Ok(process) => Some(process),
+            Err(error) => {
+                tracing::error!("failed to start managed WebKit panel: {error}");
+                shell.activate_native_panel_fallback();
+                None
+            }
+        }
+    } else {
+        None
+    };
     // THEME-1: write the legacy theme files (kdeglobals / gtk settings.ini /
     // gsettings) that KDE/GTK apps read at startup, BEFORE any app launches.
     // The appearance portal alone does not make Breeze/KColorScheme apps (e.g.
@@ -226,6 +239,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     while !shell.exit {
         event_loop.dispatch(Duration::from_millis(500), &mut shell)?;
+        let exited = match web_panel.as_mut().map(|process| process.try_wait()) {
+            Some(Ok(Some(status))) => {
+                tracing::error!("managed WebKit panel exited: {status}");
+                true
+            }
+            Some(Err(error)) => {
+                tracing::error!("failed to monitor managed WebKit panel: {error}");
+                true
+            }
+            _ => false,
+        };
+        if exited {
+            web_panel = None;
+            shell.activate_native_panel_fallback();
+        }
     }
 
     Ok(())

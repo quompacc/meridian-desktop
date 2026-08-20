@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 libc = "0.2"
+meridian-app-catalog = { path = "../meridian-app-catalog" }
 meridian-config = { path = "../meridian-config" }
 meridian-freetype = { path = "../meridian-freetype" }
 meridian-ipc = { path = "../meridian-ipc" }

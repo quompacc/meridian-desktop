@@ -27,7 +27,10 @@ tokens to varying degrees, with `design_guard` preventing new render hardcodes.
 The current shell is implemented in tiny-skia/native Rust and remains the
 fallback during migration.
 
-The WebKit runtime, CSS exporter and Web Component library do not yet exist.
+The WebKit runtime and Web Component library do not yet exist. The first
+versioned CSS-token exporter now lives in `meridian-config::web_tokens`; it
+emits both canonical colour tables plus shared geometry, material, elevation
+and interaction values and is locked by a snapshot test.
 
 ## 4. Target pipeline
 
@@ -74,6 +77,10 @@ shared Meridian Web Components
 - implement only controls needed by panel, launcher and Quick Settings
 - add interaction, keyboard, focus and accessibility tests
 - provide a component gallery/diagnostic page loaded from packaged assets
+- model the launcher as a complete keyboard-first application catalogue, not a
+  decorative dashboard
+- keep Settings components compatible with later progressive-disclosure panes,
+  without pulling the Settings product into the first vertical slice
 
 ### Phase C — Vertical slice
 

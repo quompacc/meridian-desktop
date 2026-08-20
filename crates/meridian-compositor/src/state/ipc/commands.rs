@@ -105,6 +105,9 @@ impl MeridianState {
                 let idx = ipc_workspace_to_index(workspace);
                 self.switch_workspace(idx);
             }
+            ShellCommand::ToggleLauncher => {
+                self.ipc.broadcast(&ShellEvent::ToggleLauncher);
+            }
             ShellCommand::FocusWindow { id } => {
                 self.focus_window_by_id(&id);
             }

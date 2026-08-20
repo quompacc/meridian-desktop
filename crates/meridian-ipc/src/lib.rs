@@ -283,6 +283,7 @@ pub enum ShellCommand {
     SwitchWorkspace {
         workspace: u8,
     },
+    ToggleLauncher,
     FocusWindow {
         id: String,
     },

@@ -22,6 +22,10 @@ pub struct Color {
 }
 
 impl Color {
+    /// Fully transparent host/background colour. Renderer adapters use this
+    /// when the compositor must remain visible outside a rounded surface.
+    pub const TRANSPARENT: Color = Color::rgba(0, 0, 0, 0);
+
     pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
     }

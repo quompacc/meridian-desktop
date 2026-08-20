@@ -54,7 +54,7 @@ Die Oberfläche ist nicht verspielt, nicht überdekoriert und nicht demonstrativ
 Das bedeutet:
 
 - Die tägliche UI bleibt neutral.
-- Das Branding darf in Boot, Login und Default-Wallpaper stärker sein.
+- Sichtbares Branding bleibt Boot und Login vorbehalten.
 - Der Desktop selbst ordnet sich dem Nutzer und seinem Wallpaper unter.
 
 ---
@@ -410,13 +410,10 @@ Das bleibt.
 
 #### Startbutton
 
-Kein buntes Logo.
-
-Besser:
-
-- reduzierter Meridian-Kreis
-- kleiner Navigationspunkt
-- abstraktes Symbol
+Kein buntes Logo und kein Meridian-/Kompass-Motiv. Der Button verwendet ein
+neutrales, vertrautes Launcher-Symbol aus dem zentralen Icon-System. Meridians
+Identitaet entsteht im Alltag aus Proportion, Material und Verhalten, nicht aus
+einem wiederholten Markenzeichen.
 
 ### Aktive Apps
 
@@ -437,6 +434,34 @@ Nicht durch:
 - aufgeräumt
 - wenig visuelles Rauschen
 - Uhr, Netzwerk, Audio, Akku, Sitzung
+
+### 9.1 Launcher
+
+Der Launcher ist ein **vollstaendiger, vertrauter Anwendungskatalog**. Seine
+Informationsdichte darf hoeher sein als die der Settings, solange Hierarchie,
+Tastaturbedienung und Positionen stabil bleiben.
+
+Verbindliche Struktur:
+
+- dauerhaft sichtbares Suchfeld; Tippen startet unmittelbar die Suche
+- Favoriten als vorhersehbare Startansicht
+- vollstaendige alphabetische App-Liste
+- Kategorien als Filter, nicht als verschachtelte Menuebaeume
+- kompakte Listen oder Raster ohne grosse dekorative Karten
+- feste Fusszeile fuer Benutzer, Settings, Sperren und Sitzung
+- vollstaendige Bedienung mit Pfeiltasten, Tab, Enter und Escape
+
+Nicht erlaubt:
+
+- Vollbild-Dashboard als Standard
+- News, Werbung oder Remote-Inhalte
+- allgemeine Shell-/Befehlsausfuehrung ueber die Suche
+- Branding-Flaechen, Kompassgrafik oder Logo-Kacheln
+- wechselnde Positionen fuer Sitzungs- und Sicherheitsaktionen
+
+Der Launcher darf funktional an bewaehrte KDE-Menues erinnern, kopiert aber
+weder deren konkrete Optik noch deren Konfigurationsbreite. Meridian liefert
+eine einzige sorgfaeltig abgestimmte Variante.
 
 ---
 
@@ -472,6 +497,38 @@ Merkmale:
 - etwas matter
 - geringerer Kontrast
 - kein starker Schattenunterschied
+
+### 10.1 Settings und Quick Settings
+
+Settings folgen dem Prinzip **weniger ist mehr**: gute Defaults, wenige
+Hauptbereiche und progressive Offenlegung statt einer flachen Liste aller
+technisch moeglichen Optionen. Bestehende Faehigkeiten werden sinnvoll
+gruppiert, nicht entfernt.
+
+Verbindliche Informationsarchitektur:
+
+- Erscheinungsbild
+- Desktop & Apps
+- Anzeigen
+- Netzwerk & Bluetooth
+- Geraete
+- Audio
+- Energie
+- Benutzer & Sicherheit
+- System
+
+Regeln:
+
+- haeufige Sofortaktionen gehoeren in Quick Settings
+- dauerhafte Systementscheidungen gehoeren in Settings
+- aufgabenspezifische Optionen bleiben bei der betroffenen Aufgabe
+- Aenderungen wirken unmittelbar; riskante Aenderungen erhalten Rueckfall
+- seltene Optionen liegen unter einer klar bezeichneten Erweiterung
+- Suche findet Unteroptionen und gebraeuchliche Synonyme
+- keine globale Speichern-Schaltflaeche und keine leeren Zukunftskategorien
+
+Settings duerfen sich an der Ruhe und progressiven Offenlegung von GNOME/macOS
+orientieren, verwenden aber ausschliesslich Meridians Komponenten und Tokens.
 
 ---
 
@@ -549,16 +606,16 @@ Deshalb:
 
 ### Default-Wallpaper
 
-Hier darf Meridian sichtbarer werden:
+Das Default-Wallpaper bleibt atmosphaerisch, aber markenneutral:
 
 - Horizont
 - Berge
 - Wasser
 - ruhige Landschaft
-- dezente Navigationssymbolik
 - weiche Dämmerungsfarben
 
-Das Default-Wallpaper darf die Marke transportieren. Die UI selbst bleibt neutral.
+Keine Kompass-, Meridian- oder Logo-Grafik. Sichtbares Branding bleibt Login
+und Bootsplash vorbehalten.
 
 ---
 
@@ -631,3 +688,5 @@ Das Default-Wallpaper darf die Marke transportieren. Die UI selbst bleibt neutra
 6. **Taskbar bleibt unten und Windows-artig.**
 7. **Klare Typografie, keine verspielten Fonts.**
 8. **Präzision + Ruhe schlagen Deko + Effekte.**
+9. **Launcher ist vollstaendig und vertraut; Settings sind kuratiert und ruhig.**
+10. **Meridian wird an Verhalten und Proportion erkannt, nicht an Alltags-Branding.**

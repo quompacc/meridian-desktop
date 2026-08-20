@@ -15,9 +15,11 @@ pub mod elevation;
 pub mod font;
 pub mod interaction;
 pub mod radius;
+pub mod typography;
 
-pub use chrome::{Launcher, Mask, Scrollbar};
+pub use chrome::{Launcher, Mask, Panel, Scrollbar};
 pub use color::{contrast_text, relative_luminance, Color, Palette};
 pub use elevation::Elevation;
 pub use interaction::Interaction;
 pub use radius::Radius;
+pub use typography::Typography;

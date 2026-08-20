@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="de" data-meridian-theme="@@MERIDIAN_THEME@@">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src meridian-icon:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+    <title>Meridian Launcher Preview</title>
+    <style>
+@@MERIDIAN_TOKENS@@
+@@MERIDIAN_COMPONENT_CSS@@
+    </style>
+  </head>
+  <body>
+    @@MERIDIAN_ICON_SPRITE@@
+    <main class="launcher" aria-label="Anwendungen">
+      <header class="launcher__header">
+        <label class="search">
+          <span class="visually-hidden">Anwendungen suchen</span>
+          <svg class="icon search__icon" aria-hidden="true"><use href="#search"></use></svg>
+          <input type="search" placeholder="Anwendungen suchen" autocomplete="off" autofocus>
+          <kbd>Strg K</kbd>
+        </label>
+      </header>
+
+      <div class="launcher__body">
+        <nav class="categories" aria-label="Kategorien">
+          <p class="categories__label">Bibliothek</p>
+          <button class="category is-selected" type="button" aria-current="page" data-category="favorites" data-title="Favoriten">
+            <svg class="icon" aria-hidden="true"><use href="#favorites"></use></svg>
+            <span>Favoriten</span>
+          </button>
+          <button class="category" type="button" data-category="all" data-title="Alle Anwendungen">
+            <svg class="icon" aria-hidden="true"><use href="#all-apps"></use></svg>
+            <span>Alle Anwendungen</span>
+          </button>
+          <span class="categories__divider" aria-hidden="true"></span>
+          <p class="categories__label">Kategorien</p>
+          <button class="category" type="button" data-category="internet" data-title="Internet">
+            <svg class="icon" aria-hidden="true"><use href="#internet"></use></svg>
+            <span>Internet</span>
+          </button>
+          <button class="category" type="button" data-category="office" data-title="Büro">
+            <svg class="icon" aria-hidden="true"><use href="#document"></use></svg>
+            <span>Büro</span>
+          </button>
+          <button class="category" type="button" data-category="development" data-title="Entwicklung">
+            <svg class="icon" aria-hidden="true"><use href="#terminal"></use></svg>
+            <span>Entwicklung</span>
+          </button>
+          <button class="category" type="button" data-category="graphics" data-title="Grafik">
+            <svg class="icon" aria-hidden="true"><use href="#graphic"></use></svg>
+            <span>Grafik</span>
+          </button>
+          <button class="category" type="button" data-category="system" data-title="System">
+            <svg class="icon" aria-hidden="true"><use href="#settings"></use></svg>
+            <span>System</span>
+          </button>
+          <button class="category" type="button" data-category="utilities" data-title="Dienstprogramme">
+            <svg class="icon" aria-hidden="true"><use href="#utilities"></use></svg>
+            <span>Dienstprogramme</span>
+          </button>
+        </nav>
+
+        <section class="applications" aria-labelledby="applications-title">
+          <div class="section-heading">
+            <div>
+              <h1 id="applications-title">Favoriten</h1>
+              <p>6 Anwendungen</p>
+            </div>
+            <button class="icon-button" type="button" aria-label="Listenansicht">
+              <svg class="icon" aria-hidden="true"><use href="#list"></use></svg>
+            </button>
+          </div>
+
+          <div class="app-grid">
+@@MERIDIAN_APP_CATALOG@@
+          </div>
+        </section>
+      </div>
+
+      <footer class="launcher__footer">
+        <button class="user" type="button">
+          <span class="user__avatar"><svg class="icon" aria-hidden="true"><use href="#user"></use></svg></span>
+          <span class="user__copy"><strong>Benutzer</strong><small>Lokale Sitzung</small></span>
+        </button>
+        <div class="session-actions" aria-label="Sitzung">
+          <button class="icon-button" type="button" aria-label="Einstellungen">
+            <svg class="icon" aria-hidden="true"><use href="#settings"></use></svg>
+          </button>
+          <button class="icon-button" type="button" aria-label="Sperren">
+            <svg class="icon" aria-hidden="true"><use href="#lock"></use></svg>
+          </button>
+          <button class="icon-button" type="button" aria-label="Sitzung beenden">
+            <svg class="icon" aria-hidden="true"><use href="#power"></use></svg>
+          </button>
+        </div>
+      </footer>
+    </main>
+    <script>
+@@MERIDIAN_LAUNCHER_SCRIPT@@
+    </script>
+  </body>
+</html>
