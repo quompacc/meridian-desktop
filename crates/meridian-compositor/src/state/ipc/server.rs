@@ -202,7 +202,7 @@ impl IpcServer {
                         } else {
                             tracing::warn!(
                                 client_id = client.id,
-                                command = ?command,
+                                command = command.name(),
                                 "ignoring unauthenticated IPC control command"
                             );
                         }

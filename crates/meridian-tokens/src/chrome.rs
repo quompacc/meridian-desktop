@@ -94,10 +94,12 @@ pub struct Launcher {
     pub cell_alpha: u8,
     /// Hovered cell overlay (over `Palette::surface`).
     pub hover_alpha: u8,
-    /// Selected cell overlay (over `surface` blended toward `accent`).
+    /// Selected cell overlay over the neutral `surface_alt` colour.
     pub selected_alpha: u8,
     /// Search-field fill (over `Palette::surface`).
     pub search_field_alpha: u8,
+    /// Quiet accent hairline while the launcher search owns keyboard focus.
+    pub search_focus_alpha: u8,
     /// Bento accent strip (over `Palette::accent`).
     pub bento_accent_alpha: u8,
     /// Power button when "armed" (over `Palette::error`).
@@ -117,6 +119,7 @@ impl Launcher {
         hover_alpha: 42,
         selected_alpha: 56,
         search_field_alpha: 24,
+        search_focus_alpha: 52,
         bento_accent_alpha: 105,
         power_armed_alpha: 46,
         divider_alpha: 44,
@@ -124,6 +127,28 @@ impl Launcher {
 }
 
 impl Default for Launcher {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Geometry for the compact system-controls popover.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QuickSettings {
+    pub width: i32,
+    pub height: i32,
+    pub panel_gap: i32,
+}
+
+impl QuickSettings {
+    pub const DEFAULT: QuickSettings = QuickSettings {
+        width: 384,
+        height: 468,
+        panel_gap: 2,
+    };
+}
+
+impl Default for QuickSettings {
     fn default() -> Self {
         Self::DEFAULT
     }
@@ -164,6 +189,7 @@ mod tests {
         assert_eq!(Panel::DEFAULT.control_height, 32);
         assert_eq!(Panel::DEFAULT.app_icon_size, 22);
         assert_eq!(Launcher::DEFAULT.selected_alpha, 56);
+        assert_eq!(Launcher::DEFAULT.search_focus_alpha, 52);
         assert_eq!(Launcher::DEFAULT.divider_alpha, 44);
         assert_eq!(Mask::DEFAULT.dim_alpha, 160);
     }

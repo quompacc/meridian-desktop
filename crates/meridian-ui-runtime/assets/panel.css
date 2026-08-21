@@ -76,6 +76,7 @@ button {
 
 .control,
 .panel-app,
+.system-status,
 .workspace,
 .clock {
   position: relative;
@@ -131,16 +132,12 @@ button {
   background: var(--meridian-color-panel-divider);
 }
 
-.battery {
+.system-status {
+  min-inline-size: calc(var(--meridian-panel-control-width) * 2.4);
   grid-auto-flow: column;
-  gap: calc(var(--meridian-layout-gap) / 2);
-}
-
-.battery span,
-.workspace span,
-.clock span {
-  color: var(--meridian-color-text-dim);
-  font-size: var(--meridian-type-caption-size);
+  gap: var(--meridian-layout-gap);
+  padding-inline: var(--meridian-layout-gap);
+  color: var(--meridian-color-text);
 }
 
 .workspace {
@@ -171,17 +168,15 @@ button {
   gap: calc(var(--meridian-layout-gap) / 3);
 }
 
-.system-menu {
-  inline-size: calc(var(--meridian-panel-control-width) * 0.8);
-}
-
-.system-menu .icon {
-  inline-size: calc(var(--meridian-layout-gap) * 1.5);
-  block-size: calc(var(--meridian-layout-gap) * 1.5);
+.workspace span,
+.clock span {
+  color: var(--meridian-color-text-dim);
+  font-size: var(--meridian-type-caption-size);
 }
 
 .control:hover,
 .panel-app:hover,
+.system-status:hover,
 .workspace:hover,
 .clock:hover {
   color: var(--meridian-color-text);
@@ -190,6 +185,7 @@ button {
 
 .control:active,
 .panel-app:active,
+.system-status:active,
 .workspace:active,
 .clock:active {
   background: var(--meridian-color-panel-active);

@@ -37,6 +37,9 @@
   document.querySelector(".launcher-button").addEventListener("click", () => {
     post("panel.toggle-launcher");
   });
+  document.querySelector(".system-status").addEventListener("click", () => {
+    post("panel.toggle-quick-settings");
+  });
   document.querySelectorAll(".panel-app").forEach((button) => {
     button.addEventListener("click", () => {
       post("launcher.launch", { desktop_id: button.dataset.appId });

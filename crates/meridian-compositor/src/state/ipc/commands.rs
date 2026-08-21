@@ -1,4 +1,4 @@
-use std::{env, path::Path, process::Command};
+use std::{env, process::Command};
 
 use meridian_config::MeridianConfig;
 use meridian_ipc::{ScreenshotBridgeError, ScreenshotBridgeResult, ShellCommand, ShellEvent};
@@ -22,7 +22,7 @@ impl MeridianState {
         }
 
         for command in poll.commands {
-            tracing::info!("received shell IPC command: {:?}", command);
+            tracing::info!(command = command.name(), "received shell IPC command");
             self.handle_shell_command(command);
         }
 
@@ -108,6 +108,60 @@ impl MeridianState {
             ShellCommand::ToggleLauncher => {
                 self.ipc.broadcast(&ShellEvent::ToggleLauncher);
             }
+            ShellCommand::ToggleQuickSettings => {
+                self.ipc.broadcast(&ShellEvent::ToggleQuickSettings);
+            }
+            ShellCommand::OpenSystemSettings => {
+                self.ipc.broadcast(&ShellEvent::OpenSystemSettings);
+            }
+            ShellCommand::AppearanceRefresh => {
+                self.ipc.broadcast(&ShellEvent::AppearanceRefresh);
+            }
+            ShellCommand::AppearanceThemeSet { theme } => {
+                self.ipc
+                    .broadcast(&ShellEvent::AppearanceThemeSet { theme });
+            }
+            ShellCommand::AppearanceWallpaperSet { path } => {
+                if super::appearance::valid_wallpaper_path(&path) {
+                    self.ipc
+                        .broadcast(&ShellEvent::AppearanceWallpaperSet { path });
+                } else {
+                    tracing::warn!("rejected invalid appearance wallpaper path");
+                }
+            }
+            ShellCommand::AppearanceWallpaperModeSet { mode } => {
+                self.ipc
+                    .broadcast(&ShellEvent::AppearanceWallpaperModeSet { mode });
+            }
+            ShellCommand::QuickSettingsNetworkRefresh => {
+                self.ipc.broadcast(&ShellEvent::QuickSettingsNetworkRefresh);
+            }
+            ShellCommand::QuickSettingsNetworkConnect { ssid, password } => {
+                if super::network::valid_connect_request(&ssid, password.as_deref()) {
+                    self.ipc
+                        .broadcast(&ShellEvent::QuickSettingsNetworkConnect { ssid, password });
+                } else {
+                    tracing::warn!("rejected invalid Quick Settings network request");
+                }
+            }
+            ShellCommand::QuickSettingsNetworkDisconnect => {
+                self.ipc
+                    .broadcast(&ShellEvent::QuickSettingsNetworkDisconnect);
+            }
+            ShellCommand::AudioVolumeSet { percent } => {
+                if percent <= 100 {
+                    self.ipc.broadcast(&ShellEvent::AudioVolumeSet { percent });
+                } else {
+                    tracing::warn!(percent, "rejected out-of-range Quick Settings volume");
+                }
+            }
+            ShellCommand::AudioMuteToggle => {
+                self.ipc
+                    .broadcast(&ShellEvent::QuickSettingsAudioMuteToggle);
+            }
+            ShellCommand::PowerProfileSet { profile } => {
+                self.ipc.broadcast(&ShellEvent::PowerProfileSet { profile });
+            }
             ShellCommand::FocusWindow { id } => {
                 self.focus_window_by_id(&id);
             }
@@ -147,13 +201,13 @@ impl MeridianState {
                     .env("XDG_CURRENT_DESKTOP", "Meridian")
                     .env("XDG_SESSION_DESKTOP", "meridian")
                     .env("DESKTOP_SESSION", "meridian");
-                if is_firefox_program(&spec.program)
+                if super::launch::is_firefox_program(&spec.program)
                     && std::env::var_os("MOZ_ENABLE_WAYLAND").is_none()
                 {
                     launch.env("MOZ_ENABLE_WAYLAND", "1");
                 }
 
-                spawn_and_reap_launch(launch, &spec.program, &spec.args);
+                super::launch::spawn_and_reap(launch, &spec.program, &spec.args);
             }
             ShellCommand::ReloadConfig => {
                 self.reload_config();
@@ -539,44 +593,4 @@ fn reap_lock_screen_child(mut child: std::process::Child) {
     {
         tracing::warn!("failed to spawn meridian-lock reaper thread: {}", err);
     }
-}
-
-fn spawn_and_reap_launch(mut launch: Command, program: &str, args: &[String]) {
-    let mut child = match launch.spawn() {
-        Ok(child) => child,
-        Err(err) => {
-            if err.kind() == std::io::ErrorKind::NotFound {
-                tracing::warn!("failed to launch app: program not found: {:?}", program);
-            } else {
-                tracing::warn!(
-                    "failed to launch app program {:?} args {:?}: {}",
-                    program,
-                    args,
-                    err
-                );
-            }
-            return;
-        }
-    };
-
-    let program = program.to_string();
-    if let Err(err) = std::thread::Builder::new()
-        .name(format!("meridian-launch-reaper-{program}"))
-        .spawn(move || {
-            if let Err(err) = child.wait() {
-                tracing::warn!("failed to reap launched app {:?}: {}", program, err);
-            }
-        })
-    {
-        tracing::warn!("failed to spawn launch reaper thread: {}", err);
-    }
-}
-
-fn is_firefox_program(program: &str) -> bool {
-    Path::new(program)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| {
-            name.eq_ignore_ascii_case("firefox") || name.eq_ignore_ascii_case("firefox-esr")
-        })
 }

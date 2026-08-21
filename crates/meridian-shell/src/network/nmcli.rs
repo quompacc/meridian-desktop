@@ -347,6 +347,15 @@ pub fn connect_wifi(ssid: &str, password: Option<&str>) {
     run_nmcli_background(connect_wifi_invocation(ssid, password));
 }
 
+pub fn disconnect_connection(name: &str) {
+    run_nmcli_background(NmcliInvocation::args(vec![
+        "connection".to_string(),
+        "down".to_string(),
+        "id".to_string(),
+        name.to_string(),
+    ]));
+}
+
 /// Run nmcli with owned args on a detached thread, logging non-zero/spawn
 /// failures. Shared by the activate/connect actions.
 fn run_nmcli_background(invocation: NmcliInvocation) {

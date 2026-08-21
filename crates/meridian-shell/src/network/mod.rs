@@ -6,16 +6,16 @@
 mod nmcli;
 #[cfg(target_os = "linux")]
 pub use self::nmcli::{
-    activate_connection, connect_wifi, list_saved_connections, scan_wifi_networks,
-    ConnectionProfile, NetworkController, WifiNetwork,
+    activate_connection, connect_wifi, disconnect_connection, list_saved_connections,
+    scan_wifi_networks, ConnectionProfile, NetworkController, WifiNetwork,
 };
 
 #[cfg(not(target_os = "linux"))]
 mod freebsd;
 #[cfg(not(target_os = "linux"))]
 pub use self::freebsd::{
-    activate_connection, connect_wifi, list_saved_connections, scan_wifi_networks,
-    ConnectionProfile, NetworkController, WifiNetwork,
+    activate_connection, connect_wifi, disconnect_connection, list_saved_connections,
+    scan_wifi_networks, ConnectionProfile, NetworkController, WifiNetwork,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

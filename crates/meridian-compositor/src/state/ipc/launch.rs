@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, process::Command};
 
 pub(super) struct LaunchSpec {
     pub program: String,
@@ -45,6 +45,54 @@ pub(super) fn prepare_launch(program: &str, args: &[String], terminal: bool) -> 
         program: terminal_program,
         args: terminal_args,
     })
+}
+
+pub(super) fn spawn_and_reap(mut launch: Command, program: &str, args: &[String]) {
+    let mut child = match launch.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                tracing::warn!("failed to launch app: program not found: {:?}", program);
+            } else {
+                tracing::warn!(
+                    "failed to launch app program {:?} args {:?}: {}",
+                    program,
+                    args,
+                    err
+                );
+            }
+            return;
+        }
+    };
+
+    let program = program.to_string();
+    let args = args.to_vec();
+    if let Err(err) = std::thread::Builder::new()
+        .name(format!("meridian-launch-reaper-{program}"))
+        .spawn(move || match child.wait() {
+            Ok(status) if !status.success() => {
+                tracing::warn!(
+                    "launched app exited unsuccessfully: program={:?} args={:?} status={}",
+                    program,
+                    args,
+                    status
+                );
+            }
+            Ok(_) => {}
+            Err(err) => tracing::warn!("failed to reap launched app {:?}: {}", program, err),
+        })
+    {
+        tracing::warn!("failed to spawn launch reaper thread: {}", err);
+    }
+}
+
+pub(super) fn is_firefox_program(program: &str) -> bool {
+    Path::new(program)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| {
+            name.eq_ignore_ascii_case("firefox") || name.eq_ignore_ascii_case("firefox-esr")
+        })
 }
 
 fn command_exists(command: &str) -> bool {

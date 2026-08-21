@@ -219,6 +219,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         None
     };
+    shell.prewarm_web_launcher();
+    shell.prewarm_web_quick_settings();
     // THEME-1: write the legacy theme files (kdeglobals / gtk settings.ini /
     // gsettings) that KDE/GTK apps read at startup, BEFORE any app launches.
     // The appearance portal alone does not make Breeze/KColorScheme apps (e.g.
@@ -239,6 +241,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     while !shell.exit {
         event_loop.dispatch(Duration::from_millis(500), &mut shell)?;
+        if let Some(light_theme) = shell.web_panel_theme_refresh.take() {
+            if let Some(process) = web_panel.as_mut() {
+                if let Err(error) = process.set_theme(light_theme) {
+                    tracing::error!("failed to update WebKit panel theme: {error}");
+                    web_panel = None;
+                    shell.activate_native_panel_fallback();
+                }
+            }
+        }
         let exited = match web_panel.as_mut().map(|process| process.try_wait()) {
             Some(Ok(Some(status))) => {
                 tracing::error!("managed WebKit panel exited: {status}");

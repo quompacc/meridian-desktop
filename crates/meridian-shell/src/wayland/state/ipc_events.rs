@@ -56,10 +56,7 @@ impl MeridianShell {
             } => {
                 debug!(
                     "output workspace changed received: output_id={} output_name={:?} workspace={} focused={}",
-                    output_id,
-                    output_name,
-                    workspace,
-                    focused
+                    output_id, output_name, workspace, focused
                 );
                 apply_output_workspace_changed_state(
                     &mut self.focused_output_id,
@@ -141,6 +138,103 @@ impl MeridianShell {
             ShellEvent::ToggleLauncher => {
                 self.toggle_launcher();
             }
+            ShellEvent::ToggleQuickSettings => {
+                self.toggle_web_quick_settings();
+            }
+            ShellEvent::OpenSystemSettings => {
+                self.open_web_system_settings();
+            }
+            ShellEvent::AppearanceRefresh => {
+                self.refresh_web_appearance();
+            }
+            ShellEvent::AppearanceThemeSet { theme } => {
+                let name = theme.config_name();
+                if self.theme_name != name {
+                    meridian_config::MeridianConfig::save_theme(name);
+                    self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
+                } else {
+                    self.refresh_web_appearance();
+                }
+            }
+            ShellEvent::AppearanceWallpaperSet { path } => {
+                if std::path::Path::new(&path).is_file() {
+                    let mode = self.wallpaper_mode;
+                    meridian_config::MeridianConfig::save_wallpaper(&path, mode);
+                    self.wallpaper_path = Some(path);
+                    self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
+                    self.refresh_web_appearance();
+                } else {
+                    tracing::warn!("appearance rejected missing wallpaper file");
+                }
+            }
+            ShellEvent::AppearanceWallpaperModeSet { mode } => {
+                let mode = match mode {
+                    meridian_ipc::AppearanceWallpaperMode::Fill => {
+                        meridian_config::WallpaperMode::Fill
+                    }
+                    meridian_ipc::AppearanceWallpaperMode::Fit => {
+                        meridian_config::WallpaperMode::Fit
+                    }
+                    meridian_ipc::AppearanceWallpaperMode::Center => {
+                        meridian_config::WallpaperMode::Center
+                    }
+                    meridian_ipc::AppearanceWallpaperMode::Tile => {
+                        meridian_config::WallpaperMode::Tile
+                    }
+                };
+                let effective_path = self.wallpaper_path.clone().or_else(|| {
+                    self.theme
+                        .wallpaper
+                        .as_ref()
+                        .map(|wallpaper| wallpaper.path.clone())
+                });
+                if let Some(path) = effective_path {
+                    self.wallpaper_path = Some(path.clone());
+                    self.wallpaper_mode = mode;
+                    meridian_config::MeridianConfig::save_wallpaper(&path, mode);
+                    self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
+                    self.refresh_web_appearance();
+                }
+            }
+            ShellEvent::QuickSettingsNetworkRefresh => {
+                self.refresh_quick_settings_network();
+                self.refresh_web_quick_settings();
+            }
+            ShellEvent::QuickSettingsNetworkConnect { ssid, password } => {
+                let Some(network) = self
+                    .wifi_networks
+                    .iter()
+                    .find(|network| network.ssid == ssid)
+                else {
+                    tracing::warn!("Quick Settings rejected stale Wi-Fi selection");
+                    return;
+                };
+                let known = self
+                    .network_profiles
+                    .iter()
+                    .any(|profile| profile.name == ssid);
+                if network.secured && !known && password.is_none() {
+                    tracing::warn!("Quick Settings rejected secured Wi-Fi without credentials");
+                    return;
+                }
+                crate::network::connect_wifi(
+                    &ssid,
+                    if network.secured && !known {
+                        password.as_deref()
+                    } else {
+                        None
+                    },
+                );
+            }
+            ShellEvent::QuickSettingsNetworkDisconnect => {
+                if let crate::network::NetworkState::Connected {
+                    kind: crate::network::ConnectionKind::Wifi { .. },
+                    connection_name,
+                } = self.network_controller.state()
+                {
+                    crate::network::disconnect_connection(connection_name);
+                }
+            }
             ShellEvent::AudioVolumeStep { delta } => {
                 let current = self
                     .audio_snapshot
@@ -153,12 +247,43 @@ impl MeridianShell {
                 self.audio_snapshot = crate::audio::AudioSnapshot::poll();
                 self.panel_dirty = true;
                 self.volume_osd_pending = true;
+                self.refresh_web_quick_settings();
+            }
+            ShellEvent::AudioVolumeSet { percent } => {
+                crate::audio::set_default_sink_volume(percent.min(100));
+                self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+                self.panel_dirty = true;
+                self.refresh_web_quick_settings();
             }
             ShellEvent::AudioMuteToggle => {
                 crate::audio::toggle_default_sink_mute();
                 self.audio_snapshot = crate::audio::AudioSnapshot::poll();
                 self.panel_dirty = true;
                 self.volume_osd_pending = true;
+                self.refresh_web_quick_settings();
+            }
+            ShellEvent::QuickSettingsAudioMuteToggle => {
+                crate::audio::toggle_default_sink_mute();
+                self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+                self.panel_dirty = true;
+                self.refresh_web_quick_settings();
+            }
+            ShellEvent::PowerProfileSet { profile } => {
+                use crate::power_profile::{self, PowerProfile};
+                let profile = match profile {
+                    meridian_ipc::QuickSettingsPowerProfile::Eco => PowerProfile::Eco,
+                    meridian_ipc::QuickSettingsPowerProfile::Standard => PowerProfile::Standard,
+                    meridian_ipc::QuickSettingsPowerProfile::Performance => {
+                        PowerProfile::Performance
+                    }
+                };
+                if power_profile::set(profile) {
+                    self.power_profile = Some(profile);
+                } else {
+                    self.power_profile = power_profile::current();
+                }
+                self.panel_dirty = true;
+                self.refresh_web_quick_settings();
             }
             ShellEvent::DesktopContextMenu { x, y } => {
                 self.open_desktop_context_menu_from_ipc(x, y);
@@ -229,6 +354,13 @@ impl MeridianShell {
                 self.theme_name = theme_name;
                 self.theme = new_theme;
                 self.available_themes = available_themes;
+                self.wallpaper_path = config.wallpaper.as_ref().map(|wallpaper| wallpaper.path.clone());
+                self.wallpaper_mode = config
+                    .wallpaper
+                    .as_ref()
+                    .map(|wallpaper| wallpaper.mode)
+                    .or_else(|| self.theme.wallpaper.as_ref().map(|wallpaper| wallpaper.mode))
+                    .unwrap_or_default();
 
                 if font_changed {
                     crate::font_resolve::apply_theme_ui_font(&self.theme);
@@ -254,6 +386,10 @@ impl MeridianShell {
                 self.network_dirty = true;
                 self.audio_dirty = true;
                 self.thumbnail_dirty |= self.thumbnail_popup_open;
+                if theme_changed {
+                    self.sync_web_theme();
+                }
+                self.refresh_web_appearance();
                 debug!("shell config reload succeeded");
             }
             Err(err) => {

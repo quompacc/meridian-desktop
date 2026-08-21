@@ -1,6 +1,6 @@
 # Meridian — Active Roadmap
 
-> Updated 2026-08-20. This is the forward-looking execution order for the
+> Updated 2026-08-21. This is the forward-looking execution order for the
 > BSD/WebKit strategy. Completed native-shell work remains documented in
 > `docs/PROJECT_STATUS.md`; older phase estimates are no longer scheduling
 > commitments.
@@ -98,10 +98,14 @@ separate Web launcher process through authenticated IPC; catalogue loading,
 category filtering, search and app activation are wired. Both surfaces render
 on the Acer in the live DRM session.
 
-Next performance task: launcher opening currently includes process/WebKit
-cold-start latency and feels delayed. Measure spawn-to-first-paint and then
-decide between a warm hidden runtime, process reuse or a smaller startup path;
-do not add polling or permanent idle work without a measured budget.
+Launcher cold-start was measured on 2026-08-21: catalogue loading costs 1 ms,
+while a newly spawned WebKit document costs 362-469 ms. The managed path now
+prewarms one hidden launcher and reuses it; toggle-to-layer-map dropped to
+0.18-5.1 ms across repeated opens. Its stdin control is event-driven, with no
+polling or hidden animation. Remaining performance work is to set a memory
+budget: the resident launcher currently accounts for roughly 77 MiB host,
+92 MiB Web process and 51 MiB network-process RSS (shared pages included).
+Evaluate process consolidation only with proportional-memory evidence.
 
 Build the smallest runtime that can prove the architecture:
 
@@ -120,9 +124,12 @@ written performance/security budget.
 
 ## Phase 4 — First vertical slice
 
-Status: **started.** Panel and launcher are available together behind
-`MERIDIAN_WEB_UI_PANEL=1`; Quick Settings and parity/polish remain. The native
-panel/launcher paths are retained as fallback during this phase.
+Status: **daily-testable on OpenBSD.** Panel, launcher and Quick Settings are
+available together behind `MERIDIAN_WEB_UI_PANEL=1`; appearance, real status
+data, volume controls, hardware audio keys and context-aware navigation into
+Settings are wired. Hidden persistent popups are input-transparent. The native
+panel/launcher paths remain fallback while runtime compatibility and visual
+polish are completed.
 
 Migrate in this order:
 
@@ -136,6 +143,11 @@ Render order, compositor policy and IPC compatibility must remain stable.
 
 Exit criterion: all three components can be daily-tested together, survive a
 runtime restart and look/behave consistently in both themes.
+
+Current compatibility follow-ups: diagnose Blender's maximized frameless map,
+FreeCAD stalling after its splash, and Thunar's visually inconsistent GTK3
+frame. Normal Wayland and XWayland main windows otherwise use one-time,
+frame-aware centered placement in the panel-safe workarea.
 
 ## Phase 5 — Meridian system applications
 

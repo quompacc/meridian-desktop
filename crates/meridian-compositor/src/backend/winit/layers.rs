@@ -1,7 +1,10 @@
 use std::time::Duration;
 
 use smithay::backend::renderer::{
-    element::{surface::render_elements_from_surface_tree, Kind},
+    element::{
+        surface::{render_elements_from_surface_tree, WaylandSurfaceRenderElement},
+        Kind,
+    },
     gles::GlesRenderer,
 };
 use smithay::{
@@ -12,6 +15,14 @@ use smithay::{
 };
 
 use super::WinitRenderElements;
+use crate::backend::non_opaque_surface::NonOpaqueSurfaceRenderElement;
+
+const LAUNCHER_NAMESPACE: &str = "meridian-launcher";
+const QUICK_SETTINGS_NAMESPACE: &str = "meridian-quick-settings";
+
+fn needs_transparent_layer_composition(namespace: &str) -> bool {
+    matches!(namespace, LAUNCHER_NAMESPACE | QUICK_SETTINGS_NAMESPACE)
+}
 
 pub(super) type LayerRenderData = (LayerSurface, Rectangle<i32, Logical>);
 
@@ -28,6 +39,7 @@ fn is_upper_layer(namespace: &str, layer: WlrLayer) -> bool {
     matches!(
         namespace,
         "meridian-launcher"
+            | "meridian-quick-settings"
             | "meridian-calendar-popup"
             | "meridian-workspace-popup"
             | "meridian-network-popup"
@@ -70,9 +82,9 @@ pub(super) fn render_layer_elements(
     out.clear();
     for (layer, geo) in layer_data {
         let loc = geo.loc.to_f64().to_physical(scale).to_i32_round();
-        out.extend(render_elements_from_surface_tree::<
+        let elements = render_elements_from_surface_tree::<
             GlesRenderer,
-            WinitRenderElements,
+            WaylandSurfaceRenderElement<GlesRenderer>,
         >(
             renderer,
             layer.wl_surface(),
@@ -80,7 +92,14 @@ pub(super) fn render_layer_elements(
             scale,
             1.0,
             Kind::Unspecified,
-        ));
+        );
+        if needs_transparent_layer_composition(&layer.namespace()) {
+            out.extend(elements.into_iter().map(|element| {
+                WinitRenderElements::NonOpaqueLayer(NonOpaqueSurfaceRenderElement::new(element))
+            }));
+        } else {
+            out.extend(elements.into_iter().map(WinitRenderElements::Layer));
+        }
     }
 }
 
@@ -107,6 +126,15 @@ mod tests {
     fn launcher_namespace_forces_upper_bucket() {
         assert!(is_upper_layer("meridian-launcher", WlrLayer::Background));
         assert!(is_upper_layer("meridian-launcher", WlrLayer::Bottom));
+    }
+
+    #[test]
+    fn quick_settings_namespace_forces_upper_bucket() {
+        assert!(is_upper_layer(
+            "meridian-quick-settings",
+            WlrLayer::Background
+        ));
+        assert!(is_upper_layer("meridian-quick-settings", WlrLayer::Bottom));
     }
 
     #[test]

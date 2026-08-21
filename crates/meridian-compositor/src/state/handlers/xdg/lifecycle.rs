@@ -82,6 +82,9 @@ pub(super) fn handle_new_toplevel(state: &mut MeridianState, surface: ToplevelSu
                 .map_element(window, maximized_origin, true);
         } else {
             state
+                .pending_initial_xdg_placement
+                .insert(window_id(&wl_surface));
+            state
                 .workspaces
                 .active_space_mut()
                 .map_element(window, initial_client_origin, true);

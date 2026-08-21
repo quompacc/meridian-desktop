@@ -48,8 +48,8 @@ impl Elevation {
 
     /// The launcher — sits highest, the most pronounced shadow.
     pub const LAUNCHER: Elevation = Elevation {
-        blur: 18.0,
-        alpha: 0.16,
+        blur: 22.0,
+        alpha: 0.14,
         offset_y: 4,
     };
 }
@@ -83,7 +83,7 @@ mod tests {
                 Elevation::LAUNCHER.alpha,
                 Elevation::LAUNCHER.offset_y
             ),
-            (18.0, 0.16, 4)
+            (22.0, 0.14, 4)
         );
     }
 
@@ -95,6 +95,6 @@ mod tests {
 
     #[test]
     fn launcher_shadow_extent_includes_vertical_offset() {
-        assert_eq!(Elevation::LAUNCHER.outer_extent(), 22);
+        assert_eq!(Elevation::LAUNCHER.outer_extent(), 26);
     }
 }

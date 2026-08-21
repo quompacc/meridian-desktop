@@ -1,11 +1,106 @@
 use super::{
     decode_command, decode_event, decode_screenshot_bridge_message, encode_command, encode_event,
-    encode_screenshot_bridge_message, OutputModeState, OutputWorkspaceSnapshot,
-    OutputWorkspaceState, ScreenshotBridgeError, ScreenshotBridgeMessage, ScreenshotBridgeRequest,
-    ScreenshotBridgeResponse, ScreenshotBridgeResult, ScreenshotKind, ScreenshotRegion,
-    ScreenshotRequestMetadata, ScreenshotRequestOrigin, ShellCommand, ShellEvent,
+    encode_screenshot_bridge_message, AppearanceSnapshot, AppearanceTheme, AppearanceWallpaperMode,
+    OutputModeState, OutputWorkspaceSnapshot, OutputWorkspaceState, QuickSettingsAudio,
+    QuickSettingsBattery, QuickSettingsNetwork, QuickSettingsPowerProfile, QuickSettingsSnapshot,
+    QuickSettingsWifiNetwork, ScreenshotBridgeError, ScreenshotBridgeMessage,
+    ScreenshotBridgeRequest, ScreenshotBridgeResponse, ScreenshotBridgeResult, ScreenshotKind,
+    ScreenshotRegion, ScreenshotRequestMetadata, ScreenshotRequestOrigin, ShellCommand, ShellEvent,
     WindowSnapshotEntry,
 };
+
+#[test]
+fn quick_settings_control_commands_roundtrip() {
+    for command in [
+        ShellCommand::AudioVolumeSet { percent: 72 },
+        ShellCommand::AudioMuteToggle,
+        ShellCommand::PowerProfileSet {
+            profile: QuickSettingsPowerProfile::Eco,
+        },
+        ShellCommand::OpenSystemSettings,
+        ShellCommand::QuickSettingsNetworkRefresh,
+        ShellCommand::QuickSettingsNetworkConnect {
+            ssid: "Meridian".to_string(),
+            password: Some("secret phrase".to_string()),
+        },
+        ShellCommand::QuickSettingsNetworkDisconnect,
+    ] {
+        let bytes = encode_command(&command).expect("encode command");
+        let decoded = decode_command(std::str::from_utf8(&bytes).expect("utf8")).expect("decode");
+        assert_eq!(decoded, command);
+    }
+}
+
+#[test]
+fn appearance_control_commands_roundtrip() {
+    for command in [
+        ShellCommand::AppearanceRefresh,
+        ShellCommand::AppearanceThemeSet {
+            theme: AppearanceTheme::Light,
+        },
+        ShellCommand::AppearanceWallpaperSet {
+            path: "/home/user/Pictures/meridian.png".to_string(),
+        },
+        ShellCommand::AppearanceWallpaperModeSet {
+            mode: AppearanceWallpaperMode::Fit,
+        },
+    ] {
+        let bytes = encode_command(&command).expect("encode command");
+        let decoded = decode_command(std::str::from_utf8(&bytes).expect("utf8")).expect("decode");
+        assert_eq!(decoded, command);
+    }
+}
+
+#[test]
+fn appearance_snapshot_rejects_untrusted_display_text() {
+    let mut snapshot = AppearanceSnapshot {
+        theme: AppearanceTheme::Dark,
+        wallpaper_name: Some("Berge".to_string()),
+        wallpaper_mode: AppearanceWallpaperMode::Fill,
+    };
+    assert_eq!(snapshot.validate(), Ok(()));
+    snapshot.wallpaper_name = Some("bad\nname".to_string());
+    assert!(snapshot.validate().is_err());
+}
+
+#[test]
+fn quick_settings_snapshot_validates_display_boundary() {
+    let mut snapshot = QuickSettingsSnapshot {
+        network: QuickSettingsNetwork {
+            available: true,
+            connected: true,
+            kind: Some("WLAN".to_string()),
+            name: Some("Meridian Lab".to_string()),
+            signal_percent: Some(82),
+            wifi_networks: vec![QuickSettingsWifiNetwork {
+                ssid: "Meridian Lab".to_string(),
+                signal_percent: 82,
+                secured: true,
+                known: true,
+                in_use: true,
+            }],
+        },
+        audio: QuickSettingsAudio {
+            available: true,
+            output_name: Some("Audio".to_string()),
+            volume_percent: Some(62),
+            muted: false,
+        },
+        battery: QuickSettingsBattery {
+            present: true,
+            capacity: 84,
+            charging: false,
+            on_ac: false,
+        },
+        power_profile: Some("Standard".to_string()),
+    };
+    assert_eq!(snapshot.validate(), Ok(()));
+    snapshot.audio.volume_percent = Some(101);
+    assert!(snapshot.validate().is_err());
+    snapshot.audio.volume_percent = Some(62);
+    snapshot.network.name = Some("bad\nlabel".to_string());
+    assert!(snapshot.validate().is_err());
+}
 
 #[test]
 fn window_snapshot_entry_contains_workspace_id_and_title() {

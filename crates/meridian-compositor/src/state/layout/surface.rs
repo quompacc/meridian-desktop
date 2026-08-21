@@ -2,11 +2,17 @@ use smithay::{
     desktop::{layer_map_for_output, WindowSurfaceType},
     reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::{Logical, Point},
+    wayland::shell::wlr_layer::KeyboardInteractivity,
 };
 use tracing::debug;
 
 use super::super::MeridianState;
 use crate::state::OutputInfo;
+
+fn layer_accepts_pointer(namespace: &str, interactivity: KeyboardInteractivity) -> bool {
+    !matches!(namespace, "meridian-launcher" | "meridian-quick-settings")
+        || interactivity == KeyboardInteractivity::Exclusive
+}
 
 fn select_surface_output_info(
     infos: &[OutputInfo],
@@ -75,6 +81,12 @@ impl MeridianState {
                 smithay::wayland::shell::wlr_layer::Layer::Top,
             ] {
                 if let Some(surface) = layer_map.layer_under(layer, local) {
+                    if !layer_accepts_pointer(
+                        surface.namespace(),
+                        surface.cached_state().keyboard_interactivity,
+                    ) {
+                        continue;
+                    }
                     if let Some(geo) = layer_map.layer_geometry(surface) {
                         return surface
                             .surface_under(local - geo.loc.to_f64(), WindowSurfaceType::ALL)
@@ -88,7 +100,13 @@ impl MeridianState {
             // Keep launcher hit-testing top-priority even if its cached role is stale.
             let launcher_surface = layer_map
                 .layers()
-                .find(|layer| layer.namespace() == "meridian-launcher")
+                .find(|layer| {
+                    layer.namespace() == "meridian-launcher"
+                        && layer_accepts_pointer(
+                            layer.namespace(),
+                            layer.cached_state().keyboard_interactivity,
+                        )
+                })
                 .cloned();
             if let Some(launcher_surface) = launcher_surface {
                 if let Some(geo) = layer_map.layer_geometry(&launcher_surface) {
@@ -143,8 +161,27 @@ impl MeridianState {
 #[cfg(test)]
 mod tests {
     use smithay::utils::{Logical, Point, Transform};
+    use smithay::wayland::shell::wlr_layer::KeyboardInteractivity;
 
     use crate::state::{OutputGeometry, OutputId, OutputInfo, OutputRegistration, OutputRegistry};
+
+    #[test]
+    fn hidden_persistent_popups_do_not_accept_pointer_input() {
+        for namespace in ["meridian-launcher", "meridian-quick-settings"] {
+            assert!(!super::layer_accepts_pointer(
+                namespace,
+                KeyboardInteractivity::None
+            ));
+            assert!(super::layer_accepts_pointer(
+                namespace,
+                KeyboardInteractivity::Exclusive
+            ));
+        }
+        assert!(super::layer_accepts_pointer(
+            "meridian-panel-web",
+            KeyboardInteractivity::None
+        ));
+    }
 
     fn reg(name: &str, x: i32, y: i32, width: i32, height: i32) -> OutputRegistration {
         OutputRegistration {

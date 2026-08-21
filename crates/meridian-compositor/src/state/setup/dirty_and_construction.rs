@@ -243,6 +243,7 @@ impl MeridianState {
             maximize_restore_locations: std::collections::HashMap::new(),
             half_snap_restore_locations: std::collections::HashMap::new(),
             active_window_snap_states: std::collections::HashMap::new(),
+            pending_initial_xdg_placement: std::collections::HashSet::new(),
             minimized_windows: std::collections::HashMap::new(),
             xwayland_or_diag: std::collections::HashMap::new(),
             cursor_status: smithay::input::pointer::CursorImageStatus::default_named(),

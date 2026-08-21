@@ -41,6 +41,7 @@ impl CompositorHandler for MeridianState {
         on_commit_buffer_handler::<Self>(surface);
         self.mark_all_outputs_dirty("surface-commit");
 
+        let mut committed_toplevel_root = None;
         if !is_sync_subsurface(surface) {
             let mut root = surface.clone();
             while let Some(parent) = get_parent(&root) {
@@ -52,7 +53,12 @@ impl CompositorHandler for MeridianState {
                     .is_some_and(|wl_surface| *wl_surface == root)
             }) {
                 window.on_commit();
+                committed_toplevel_root = Some(root);
             }
+        }
+
+        if let Some(root) = committed_toplevel_root {
+            self.center_pending_xdg_toplevel(&root);
         }
 
         handle_commit(&mut self.popups, self.workspaces.active_space(), surface);
@@ -211,12 +217,15 @@ impl CompositorHandler for MeridianState {
                             output_name
                         );
                     }
-                } else if keyboard_interactivity == KeyboardInteractivity::Exclusive && !has_buffer
+                } else if (keyboard_interactivity == KeyboardInteractivity::Exclusive
+                    && !has_buffer)
+                    || (matches!(
+                        namespace.as_str(),
+                        "meridian-launcher" | "meridian-quick-settings"
+                    ) && keyboard_interactivity == KeyboardInteractivity::None)
                 {
-                    // Exclusive layer just unmapped (attach(None) commit).
-                    // Release focus so the next focusable surface takes over;
-                    // without this the keyboard would point at a destroyed
-                    // surface and input would go nowhere.
+                    // Release focus when an exclusive layer unmaps or when a
+                    // persistent Web popup enters its mapped-but-hidden mode.
                     let should_clear_focus = self
                         .seat
                         .get_keyboard()
@@ -227,7 +236,7 @@ impl CompositorHandler for MeridianState {
                         self.set_keyboard_focus_with_decorations(Option::<WlSurface>::None, serial);
                         self.broadcast_toplevel_focus_cleared();
                         tracing::debug!(
-                            "layer keyboard focus cleared: namespace={} layer={:?} output={} reason=no-buffer-commit",
+                            "layer keyboard focus cleared: namespace={} layer={:?} output={} reason=hidden-or-unmapped",
                             namespace,
                             layer_kind,
                             output_name

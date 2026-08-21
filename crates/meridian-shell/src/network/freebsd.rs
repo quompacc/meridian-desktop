@@ -364,6 +364,21 @@ pub fn connect_wifi(ssid: &str, password: Option<&str>) {
     });
 }
 
+pub fn disconnect_connection(_name: &str) {
+    std::thread::spawn(|| {
+        let Some(wlan) = first_wlan_interface() else {
+            tracing::warn!("network(freebsd): no wlan device; cannot disconnect Wi-Fi");
+            return;
+        };
+        let status = Command::new("wpa_cli")
+            .args(["-i", &wlan, "disconnect"])
+            .status();
+        if !status.is_ok_and(|status| status.success()) {
+            tracing::warn!("network(freebsd): failed to disconnect Wi-Fi on {wlan}");
+        }
+    });
+}
+
 /// Drive wpa_cli to add, configure, and enable a network. Returns false on the
 /// first failing step. Passwords go through `set_network ... psk` arguments to
 /// wpa_cli, which talks to the local control socket only.

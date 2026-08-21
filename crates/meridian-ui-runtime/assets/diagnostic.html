@@ -12,12 +12,12 @@
   </head>
   <body>
     @@MERIDIAN_ICON_SPRITE@@
-    <main class="launcher" aria-label="Anwendungen">
+    <main class="launcher" aria-label="Anwendungen" data-launcher data-view="apps">
       <header class="launcher__header">
         <label class="search">
           <span class="visually-hidden">Anwendungen suchen</span>
           <svg class="icon search__icon" aria-hidden="true"><use href="#search"></use></svg>
-          <input type="search" placeholder="Anwendungen suchen" autocomplete="off" autofocus>
+          <input type="search" placeholder="Anwendungen suchen" autocomplete="off">
           <kbd>Strg K</kbd>
         </label>
       </header>
@@ -84,7 +84,7 @@
           <span class="user__copy"><strong>Benutzer</strong><small>Lokale Sitzung</small></span>
         </button>
         <div class="session-actions" aria-label="Sitzung">
-          <button class="icon-button" type="button" aria-label="Einstellungen">
+          <button class="icon-button" type="button" aria-label="Einstellungen" title="Einstellungen" data-open-settings>
             <svg class="icon" aria-hidden="true"><use href="#settings"></use></svg>
           </button>
           <button class="icon-button" type="button" aria-label="Sperren">
@@ -95,6 +95,91 @@
           </button>
         </div>
       </footer>
+
+      <section class="settings-view" aria-label="Systemeinstellungen" data-settings-view hidden>
+        <aside class="settings-nav">
+          <button class="settings-back" type="button" data-close-settings>Zurück</button>
+          <div class="settings-brand">
+            <p>Meridian</p>
+            <h1>Einstellungen</h1>
+          </div>
+          <nav aria-label="Einstellungsbereiche">
+            <button class="settings-nav-item is-selected" type="button" aria-current="page" data-settings-category="overview" data-settings-title="Übersicht">
+              <svg class="icon" aria-hidden="true"><use href="#settings"></use></svg><span>Übersicht</span>
+            </button>
+            <button class="settings-nav-item" type="button" data-settings-category="appearance" data-settings-title="Darstellung">
+              <svg class="icon" aria-hidden="true"><use href="#graphic"></use></svg><span>Darstellung</span>
+            </button>
+            <button class="settings-nav-item" type="button" data-settings-category="network" data-settings-title="Netzwerk">
+              <svg class="icon" aria-hidden="true"><use href="#network"></use></svg><span>Netzwerk</span>
+            </button>
+            <button class="settings-nav-item" type="button" data-settings-category="sound" data-settings-title="Audio">
+              <svg class="icon" aria-hidden="true"><use href="#volume"></use></svg><span>Audio</span>
+            </button>
+            <button class="settings-nav-item" type="button" data-settings-category="power" data-settings-title="Energie">
+              <svg class="icon" aria-hidden="true"><use href="#battery"></use></svg><span>Energie</span>
+            </button>
+            <span class="settings-nav-divider" aria-hidden="true"></span>
+            <button class="settings-nav-item" type="button" data-settings-category="apps" data-settings-title="Anwendungen">
+              <svg class="icon" aria-hidden="true"><use href="#all-apps"></use></svg><span>Anwendungen</span>
+            </button>
+          </nav>
+        </aside>
+
+        <div class="settings-content">
+          <header class="settings-heading">
+            <p>Systemeinstellungen</p>
+            <h2 data-settings-heading>Übersicht</h2>
+          </header>
+          <div class="settings-pages">
+            <section class="settings-page settings-overview" data-settings-page="overview">
+              <article class="overview-hero">
+                <span class="overview-icon"><svg class="icon" aria-hidden="true"><use href="#settings"></use></svg></span>
+                <div><h3>Meridian Desktop</h3><p>Ruhige Oberfläche, klare Systemebenen.</p></div>
+              </article>
+              <div class="overview-grid">
+                <article><span>System</span><strong>@@MERIDIAN_OS@@</strong><small>Wayland-Sitzung</small></article>
+                <article><span>Darstellung</span><strong data-theme-label>Dunkel</strong><small>Zentrales Meridian-Theme</small></article>
+                <article><span>Schnellzugriff</span><strong>Quick Settings</strong><small>Netzwerk, Audio und Energie</small></article>
+                <article><span>Anwendungen</span><strong>Standard-Apps</strong><small>Dateitypen und Systemdienste</small></article>
+              </div>
+            </section>
+            <section class="settings-page appearance-settings" data-settings-page="appearance" hidden>
+              <div class="settings-group">
+                <div class="settings-group__heading"><h3>Oberfläche</h3><p>Helle und dunkle Darstellung verwenden dieselben Proportionen und Effekte.</p></div>
+                <div class="theme-options" role="radiogroup" aria-label="Farbschema">
+                  <button class="theme-option" type="button" role="radio" data-appearance-theme="light">
+                    <span class="theme-preview theme-preview--light" aria-hidden="true"><i></i><i></i><i></i></span>
+                    <span><strong>Hell</strong><small>Klare, ruhige Flächen</small></span>
+                  </button>
+                  <button class="theme-option" type="button" role="radio" data-appearance-theme="dark">
+                    <span class="theme-preview theme-preview--dark" aria-hidden="true"><i></i><i></i><i></i></span>
+                    <span><strong>Dunkel</strong><small>Gedämpfte Blau-Grau-Töne</small></span>
+                  </button>
+                </div>
+              </div>
+              <div class="settings-group">
+                <div class="settings-group__heading"><h3>Hintergrund</h3><p>Das Bild bleibt der visuelle Mittelpunkt des Desktops.</p></div>
+                <div class="wallpaper-row">
+                  <span class="wallpaper-symbol" aria-hidden="true"><svg class="icon"><use href="#graphic"></use></svg></span>
+                  <span class="wallpaper-copy"><strong data-wallpaper-name>Systemstandard</strong><small>Aktueller Desktophintergrund</small></span>
+                  <button class="settings-action" type="button" data-pick-wallpaper>Bild auswählen</button>
+                </div>
+                <div class="wallpaper-modes" role="radiogroup" aria-label="Bildanpassung">
+                  <button type="button" role="radio" data-wallpaper-mode="fill">Ausfüllen</button>
+                  <button type="button" role="radio" data-wallpaper-mode="fit">Einpassen</button>
+                  <button type="button" role="radio" data-wallpaper-mode="center">Zentrieren</button>
+                  <button type="button" role="radio" data-wallpaper-mode="tile">Kacheln</button>
+                </div>
+              </div>
+            </section>
+            <section class="settings-page settings-placeholder" data-settings-page="network" hidden><h3>Netzwerk</h3><p>Dauerhafte Netzwerkentscheidungen und bekannte Verbindungen.</p></section>
+            <section class="settings-page settings-placeholder" data-settings-page="sound" hidden><h3>Audio</h3><p>Ausgabe, Eingabe und gerätespezifische Einstellungen.</p></section>
+            <section class="settings-page settings-placeholder" data-settings-page="power" hidden><h3>Energie</h3><p>Energieprofile und langfristiges Geräteverhalten.</p></section>
+            <section class="settings-page settings-placeholder" data-settings-page="apps" hidden><h3>Anwendungen</h3><p>Standard-Apps, Dateizuordnungen und Hintergrunddienste.</p></section>
+          </div>
+        </div>
+      </section>
     </main>
     <script>
 @@MERIDIAN_LAUNCHER_SCRIPT@@

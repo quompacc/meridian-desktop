@@ -154,7 +154,9 @@ impl KeyboardKeyEvent<WsconsInput> for WsconsKeyboardEvent {
     fn key_code(&self) -> Keycode {
         // On amd64, wskbd PC/USB events use XT-compatible key numbers. XKB
         // consumes those in the same +8 namespace used by Smithay/libinput.
-        (self.key + 8).into()
+        // pckbd consumer keys are the exception and need translating to their
+        // evdev equivalents before entering the shared XKB path.
+        (wscons_key_code(self.key) + 8).into()
     }
 
     fn state(&self) -> KeyState {
@@ -481,6 +483,19 @@ fn wscons_button_code(button: u32) -> u32 {
     }
 }
 
+fn wscons_key_code(key: u32) -> u32 {
+    const EVDEV_MUTE: u32 = 113;
+    const EVDEV_VOLUME_DOWN: u32 = 114;
+    const EVDEV_VOLUME_UP: u32 = 115;
+
+    match key {
+        160 => EVDEV_MUTE,
+        174 => EVDEV_VOLUME_DOWN,
+        176 => EVDEV_VOLUME_UP,
+        other => other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -491,6 +506,14 @@ mod tests {
         assert_eq!(wscons_button_code(1), BTN_MIDDLE);
         assert_eq!(wscons_button_code(2), BTN_RIGHT);
         assert_eq!(wscons_button_code(3), BTN_SIDE);
+    }
+
+    #[test]
+    fn maps_pckbd_volume_keys_to_evdev_codes_expected_by_xkb() {
+        assert_eq!(wscons_key_code(160), 113);
+        assert_eq!(wscons_key_code(174), 114);
+        assert_eq!(wscons_key_code(176), 115);
+        assert_eq!(wscons_key_code(30), 30);
     }
 
     #[test]

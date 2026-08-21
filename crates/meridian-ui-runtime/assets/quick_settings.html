@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="de" data-meridian-theme="@@MERIDIAN_THEME@@">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+    <title>Meridian Quick Settings</title>
+    <style>
+@@MERIDIAN_TOKENS@@
+@@MERIDIAN_QUICK_SETTINGS_CSS@@
+    </style>
+  </head>
+  <body>
+    @@MERIDIAN_ICON_SPRITE@@
+    <main class="quick-settings" aria-label="Schnelleinstellungen" data-quick-settings data-view="system">
+      <header>
+        <button class="back-button" type="button" data-network-back hidden>Zurück</button>
+        <div class="title"><p>Schnelleinstellungen</p><h1 data-view-title>System</h1></div>
+        <button class="icon-button" type="button" aria-label="Systemeinstellungen öffnen" title="Systemeinstellungen" data-settings-button>
+          <svg class="icon" aria-hidden="true"><use href="#settings"></use></svg>
+        </button>
+      </header>
+
+      <section class="tiles" aria-label="Verbindungen">
+        <button class="tile is-active" type="button" data-network-tile>
+          <svg class="icon" aria-hidden="true"><use href="#network"></use></svg>
+          <span><strong data-network-kind>Netzwerk</strong><small data-network-detail>Status wird geladen</small></span>
+        </button>
+        <button class="tile" type="button" data-power-tile>
+          <svg class="icon" aria-hidden="true"><use href="#battery"></use></svg>
+          <span><strong>Energie</strong><small data-power-profile>Nicht verfügbar</small></span>
+        </button>
+      </section>
+
+      <section class="network-detail" aria-label="Netzwerkdetails" data-network-detail-view hidden>
+        <div class="network-summary">
+          <div><strong data-network-current>Status wird geladen</strong><small data-network-current-detail></small></div>
+          <button class="compact-button" type="button" data-network-refresh>Aktualisieren</button>
+        </div>
+        <div class="network-list" role="list" aria-label="Verfügbare WLAN-Netzwerke" data-network-list></div>
+        <div class="network-empty" data-network-empty>Keine WLAN-Netzwerke gefunden</div>
+        <form class="password-form" data-network-password-form hidden>
+          <label for="quick-settings-network-password" data-network-password-label>WLAN-Passwort</label>
+          <input id="quick-settings-network-password" type="password" autocomplete="off" maxlength="256" data-network-password>
+          <div>
+            <button class="compact-button" type="button" data-network-password-cancel>Abbrechen</button>
+            <button class="compact-button is-primary" type="submit">Verbinden</button>
+          </div>
+        </form>
+        <button class="disconnect-button" type="button" data-network-disconnect hidden>WLAN trennen</button>
+      </section>
+
+      <section class="control-group" aria-label="Audio">
+        <div class="control-row">
+          <button class="audio-toggle" type="button" aria-label="Stummschaltung umschalten" data-audio-mute>
+            <svg class="icon" aria-hidden="true"><use href="#volume"></use></svg>
+          </button>
+          <div><strong>Lautstärke</strong><small data-audio-output>Nicht verfügbar</small></div>
+          <output data-volume>—</output>
+        </div>
+        <input class="volume-slider" type="range" min="0" max="100" value="0" aria-label="Lautstärke" data-volume-control disabled>
+      </section>
+
+      <section class="status" aria-label="Systemstatus">
+        <div><span>Akku</span><strong data-battery>Kein Akku</strong></div>
+        <div><span>Darstellung</span><strong>Dunkel</strong></div>
+      </section>
+
+      <footer>
+        <button type="button" aria-disabled="true"><svg class="icon" aria-hidden="true"><use href="#lock"></use></svg><span>Sperren</span></button>
+        <button type="button" aria-disabled="true"><svg class="icon" aria-hidden="true"><use href="#power"></use></svg><span>Ausschalten</span></button>
+      </footer>
+    </main>
+    <script>
+@@MERIDIAN_QUICK_SETTINGS_SCRIPT@@
+    </script>
+  </body>
+</html>

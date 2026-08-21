@@ -77,6 +77,45 @@ fn panel_safe_normal_xwayland_rect_with_insets(
     adjusted
 }
 
+fn centered_normal_xwayland_rect_with_insets(
+    rect: Rectangle<i32, Logical>,
+    output_geometry: crate::state::OutputGeometry,
+    frame_insets: (i32, i32, i32, i32),
+) -> Rectangle<i32, Logical> {
+    let mut adjusted = panel_safe_normal_xwayland_rect_with_insets(
+        rect,
+        output_geometry,
+        frame_insets,
+    );
+    if rect_matches_output_fullscreen_shape(rect, output_geometry) {
+        return adjusted;
+    }
+
+    let workarea = normal_window_workarea_from_output_geometry(output_geometry);
+    let (left, top, right, bottom) = frame_insets;
+    let frame_width = adjusted
+        .size
+        .w
+        .saturating_add(left)
+        .saturating_add(right)
+        .min(workarea.width.max(1));
+    let frame_height = adjusted
+        .size
+        .h
+        .saturating_add(top)
+        .saturating_add(bottom)
+        .min(workarea.height.max(1));
+    adjusted.loc.x = workarea
+        .x
+        .saturating_add(workarea.width.saturating_sub(frame_width) / 2)
+        .saturating_add(left);
+    adjusted.loc.y = workarea
+        .y
+        .saturating_add(workarea.height.saturating_sub(frame_height) / 2)
+        .saturating_add(top);
+    adjusted
+}
+
 fn configure_request_rect(
     base: Rectangle<i32, Logical>,
     x: Option<i32>,

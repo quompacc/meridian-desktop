@@ -231,7 +231,10 @@ pub(crate) struct MeridianShell {
     pub(crate) panel: LayerSurface,
     /// True while the separately managed WebKit process owns the panel zone.
     pub(crate) web_panel_enabled: bool,
+    /// The main loop owns the panel child and consumes this one-shot request.
+    pub(crate) web_panel_theme_refresh: Option<bool>,
     pub(crate) web_launcher: Option<crate::web_panel::WebLauncherProcess>,
+    pub(crate) web_quick_settings: Option<crate::web_panel::WebQuickSettingsProcess>,
     pub(crate) launcher_layer: LayerSurface,
     pub(crate) calendar_layer: LayerSurface,
     pub(crate) workspace_layer: LayerSurface,

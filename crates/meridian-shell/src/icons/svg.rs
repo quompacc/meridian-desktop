@@ -220,8 +220,7 @@ mod tests {
 
     #[test]
     fn decode_svg_uses_custom_symbolic_color() {
-        let svg =
-            br##"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+        let svg = br##"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
             <defs><style>.ColorScheme-Text { color:#232629; }</style></defs>
             <rect width="10" height="10" style="fill:currentColor" class="ColorScheme-Text"/>
         </svg>"##;
@@ -239,7 +238,8 @@ mod tests {
         // NON-Breeze grey (#444444). `substitute_color_scheme` does nothing here,
         // so without the symbolic recolour this would render dark. With
         // `symbolic = true` it must be forced to the theme colour regardless.
-        let svg = br##"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+        let svg =
+            br##"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
             <defs><style>.c{color:#444444}</style></defs>
             <rect width="10" height="10" style="fill:currentColor" class="c"/>
         </svg>"##;

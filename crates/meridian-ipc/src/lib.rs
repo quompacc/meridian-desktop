@@ -2,6 +2,9 @@ use std::{env, io, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+mod appearance;
+pub use appearance::{AppearanceSnapshot, AppearanceTheme, AppearanceWallpaperMode};
+
 pub const SOCKET_NAME: &str = "meridian.sock";
 pub const IPC_TOKEN_ENV: &str = "MERIDIAN_IPC_TOKEN";
 
@@ -235,6 +238,27 @@ pub enum ShellEvent {
         success: bool,
     },
     ToggleLauncher,
+    ToggleQuickSettings,
+    OpenSystemSettings,
+    AppearanceRefresh,
+    AppearanceThemeSet {
+        theme: AppearanceTheme,
+    },
+    AppearanceWallpaperSet {
+        path: String,
+    },
+    AppearanceWallpaperModeSet {
+        mode: AppearanceWallpaperMode,
+    },
+    QuickSettingsNetworkRefresh,
+    QuickSettingsNetworkConnect {
+        ssid: String,
+        password: Option<String>,
+    },
+    QuickSettingsNetworkDisconnect,
+    AudioVolumeSet {
+        percent: u8,
+    },
     /// A multimedia volume key was pressed. The compositor intercepts the
     /// XF86Audio{Raise,Lower}Volume keysyms (so they never reach apps) and asks
     /// the shell, which owns the platform audio backend, to nudge the level by
@@ -244,6 +268,12 @@ pub enum ShellEvent {
     },
     /// XF86AudioMute was pressed; the shell toggles the default sink mute.
     AudioMuteToggle,
+    /// Quick Settings already provides visual feedback, so toggling mute from
+    /// that surface must not also open the centre-screen volume OSD.
+    QuickSettingsAudioMuteToggle,
+    PowerProfileSet {
+        profile: QuickSettingsPowerProfile,
+    },
     DesktopContextMenu {
         x: i32,
         y: i32,
@@ -284,6 +314,31 @@ pub enum ShellCommand {
         workspace: u8,
     },
     ToggleLauncher,
+    ToggleQuickSettings,
+    OpenSystemSettings,
+    AppearanceRefresh,
+    AppearanceThemeSet {
+        theme: AppearanceTheme,
+    },
+    AppearanceWallpaperSet {
+        path: String,
+    },
+    AppearanceWallpaperModeSet {
+        mode: AppearanceWallpaperMode,
+    },
+    QuickSettingsNetworkRefresh,
+    QuickSettingsNetworkConnect {
+        ssid: String,
+        password: Option<String>,
+    },
+    QuickSettingsNetworkDisconnect,
+    AudioVolumeSet {
+        percent: u8,
+    },
+    AudioMuteToggle,
+    PowerProfileSet {
+        profile: QuickSettingsPowerProfile,
+    },
     FocusWindow {
         id: String,
     },
@@ -315,6 +370,125 @@ pub enum ShellCommand {
         request_id: String,
         region: Option<ScreenshotRegion>,
     },
+}
+
+impl ShellCommand {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Authenticate { .. } => "authenticate",
+            Self::SwitchWorkspace { .. } => "switch-workspace",
+            Self::ToggleLauncher => "toggle-launcher",
+            Self::ToggleQuickSettings => "toggle-quick-settings",
+            Self::OpenSystemSettings => "open-system-settings",
+            Self::AppearanceRefresh => "appearance-refresh",
+            Self::AppearanceThemeSet { .. } => "appearance-theme-set",
+            Self::AppearanceWallpaperSet { .. } => "appearance-wallpaper-set",
+            Self::AppearanceWallpaperModeSet { .. } => "appearance-wallpaper-mode-set",
+            Self::QuickSettingsNetworkRefresh => "quick-settings-network-refresh",
+            Self::QuickSettingsNetworkConnect { .. } => "quick-settings-network-connect",
+            Self::QuickSettingsNetworkDisconnect => "quick-settings-network-disconnect",
+            Self::AudioVolumeSet { .. } => "audio-volume-set",
+            Self::AudioMuteToggle => "audio-mute-toggle",
+            Self::PowerProfileSet { .. } => "power-profile-set",
+            Self::FocusWindow { .. } => "focus-window",
+            Self::LaunchApp { .. } => "launch-app",
+            Self::ReloadConfig => "reload-config",
+            Self::Quit => "quit",
+            Self::CaptureWindowThumbnail { .. } => "capture-window-thumbnail",
+            Self::ScreenshotConsentResponse { .. } => "screenshot-consent-response",
+            Self::ScreenshotRegionResponse { .. } => "screenshot-region-response",
+        }
+    }
+}
+
+/// State sent from the shell owner to the unprivileged Quick Settings
+/// document. Backend identities and privileged implementation details stay
+/// out of this display contract.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuickSettingsSnapshot {
+    pub network: QuickSettingsNetwork,
+    pub audio: QuickSettingsAudio,
+    pub battery: QuickSettingsBattery,
+    pub power_profile: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum QuickSettingsPowerProfile {
+    Eco,
+    Standard,
+    Performance,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuickSettingsNetwork {
+    pub available: bool,
+    pub connected: bool,
+    pub kind: Option<String>,
+    pub name: Option<String>,
+    pub signal_percent: Option<u8>,
+    pub wifi_networks: Vec<QuickSettingsWifiNetwork>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuickSettingsWifiNetwork {
+    pub ssid: String,
+    pub signal_percent: u8,
+    pub secured: bool,
+    pub known: bool,
+    pub in_use: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuickSettingsAudio {
+    pub available: bool,
+    pub output_name: Option<String>,
+    pub volume_percent: Option<u8>,
+    pub muted: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuickSettingsBattery {
+    pub present: bool,
+    pub capacity: u8,
+    pub charging: bool,
+    pub on_ac: bool,
+}
+
+impl QuickSettingsSnapshot {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        fn valid_label(value: &Option<String>, limit: usize) -> bool {
+            value.as_ref().is_none_or(|value| {
+                !value.is_empty() && value.len() <= limit && !value.chars().any(char::is_control)
+            })
+        }
+
+        if self.network.signal_percent.is_some_and(|value| value > 100)
+            || self.network.wifi_networks.len() > 64
+            || self
+                .network
+                .wifi_networks
+                .iter()
+                .any(|network| network.signal_percent > 100)
+            || self.audio.volume_percent.is_some_and(|value| value > 100)
+            || self.battery.capacity > 100
+        {
+            return Err("percentage outside 0..=100");
+        }
+        if !valid_label(&self.network.kind, 32)
+            || !valid_label(&self.network.name, 256)
+            || self
+                .network
+                .wifi_networks
+                .iter()
+                .any(|network| !valid_label(&Some(network.ssid.clone()), 128))
+            || !valid_label(&self.audio.output_name, 256)
+            || !valid_label(&self.power_profile, 64)
+        {
+            return Err("invalid display label");
+        }
+        Ok(())
+    }
 }
 
 pub fn socket_path() -> PathBuf {

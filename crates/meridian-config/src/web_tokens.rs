@@ -7,8 +7,8 @@
 use std::fmt::Write;
 
 use meridian_tokens::{
-    contrast_text, Color, Elevation, Interaction, Launcher, Mask, Palette, Panel, Radius,
-    Scrollbar, Typography,
+    contrast_text, Color, Elevation, Interaction, Launcher, Mask, Palette, Panel, QuickSettings,
+    Radius, Scrollbar, Typography,
 };
 
 use crate::{Decorations, Fonts, ThemeColors, ThemeSurface};
@@ -52,13 +52,27 @@ pub fn css_token_stylesheet(
     write_color_tokens(&mut css, light);
     writeln!(css, "  color-scheme: light;").expect("writing to String cannot fail");
     writeln!(css, "}}").expect("writing to String cannot fail");
+    write_scoped_color_tokens(&mut css, "dark", &dark);
+    write_scoped_color_tokens(&mut css, "light", &light);
     css
+}
+
+fn write_scoped_color_tokens(css: &mut String, theme: &str, colors: &ThemeColors) {
+    writeln!(css).expect("writing to String cannot fail");
+    writeln!(
+        css,
+        ".meridian-theme-scope[data-meridian-theme=\"{theme}\"] {{"
+    )
+    .expect("writing to String cannot fail");
+    write_color_tokens(css, colors);
+    writeln!(css, "}}").expect("writing to String cannot fail");
 }
 
 fn write_shared_tokens(css: &mut String, decorations: &Decorations, fonts: &Fonts) {
     let radius = Radius::DEFAULT;
     let interaction = Interaction::DEFAULT;
     let launcher = Launcher::DEFAULT;
+    let quick_settings = QuickSettings::DEFAULT;
     let panel = Panel::DEFAULT;
     let scrollbar = Scrollbar::DEFAULT;
     let mask = Mask::DEFAULT;
@@ -66,6 +80,28 @@ fn write_shared_tokens(css: &mut String, decorations: &Decorations, fonts: &Font
 
     property(css, "schema-version", CSS_TOKEN_SCHEMA_VERSION);
     property(css, "font-ui", css_string(fonts.ui_family()));
+    property(
+        css,
+        "color-preview-dark-background",
+        Palette::DARK.background,
+    );
+    property(css, "color-preview-dark-surface", Palette::DARK.surface);
+    property(
+        css,
+        "color-preview-dark-surface-alt",
+        Palette::DARK.surface_alt,
+    );
+    property(
+        css,
+        "color-preview-light-background",
+        Palette::LIGHT.background,
+    );
+    property(css, "color-preview-light-surface", Palette::LIGHT.surface);
+    property(
+        css,
+        "color-preview-light-surface-alt",
+        Palette::LIGHT.surface_alt,
+    );
     property_px(css, "type-caption-size", typography.caption_size);
     property_px(css, "type-body-size", typography.body_size);
     property_px(css, "type-title-size", typography.title_size);
@@ -76,6 +112,9 @@ fn write_shared_tokens(css: &mut String, decorations: &Decorations, fonts: &Font
     property_px(css, "launcher-width", launcher.width);
     property_px(css, "launcher-height", launcher.height);
     property_px(css, "launcher-app-icon-size", launcher.app_icon_size);
+    property_px(css, "quick-settings-width", quick_settings.width);
+    property_px(css, "quick-settings-height", quick_settings.height);
+    property_px(css, "quick-settings-panel-gap", quick_settings.panel_gap);
     property_px(css, "panel-height", panel.height);
     property_px(css, "panel-bottom-gap", panel.bottom_gap);
     property_px(css, "panel-side-margin", panel.side_margin);
@@ -251,12 +290,17 @@ fn write_color_tokens(css: &mut String, colors: &ThemeColors) {
     property(
         css,
         "color-launcher-selected",
-        with_alpha(colors.accent, alpha(launcher.selected_alpha)),
+        with_alpha(colors.surface_alt, alpha(launcher.selected_alpha)),
     );
     property(
         css,
         "color-launcher-search",
         with_alpha(colors.surface_alt, alpha(launcher.search_field_alpha)),
+    );
+    property(
+        css,
+        "color-launcher-search-focus",
+        with_alpha(colors.accent, alpha(launcher.search_focus_alpha)),
     );
     property(
         css,
@@ -372,6 +416,19 @@ mod tests {
         assert!(!light.contains("--meridian-radius-"));
         assert!(!light.contains("--meridian-glass-"));
         assert!(!light.contains("--meridian-elevation-"));
+    }
+
+    #[test]
+    fn scoped_themes_change_only_colors() {
+        let css = builtin_css_token_stylesheet();
+        for theme in ["dark", "light"] {
+            let selector = format!(".meridian-theme-scope[data-meridian-theme=\"{theme}\"]");
+            let scoped = css.split_once(&selector).expect("scoped theme selector").1;
+            let scoped = scoped.split_once('}').expect("scoped theme block").0;
+            assert!(scoped.contains("--meridian-color-background"));
+            assert!(!scoped.contains("color-scheme"));
+            assert!(!scoped.contains("--meridian-radius-"));
+        }
     }
 
     #[test]

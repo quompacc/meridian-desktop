@@ -4,10 +4,31 @@ use crate::state::{OutputGeometry, NORMAL_WINDOW_BOTTOM_RESERVED_PX};
 
 use super::{
     adjusted_configure_request_rect, apply_managed_map_ssd, apply_override_redirect_ssd,
-    classify_managed_configure_request, configure_request_rect, maximized_x11_content_size,
-    panel_safe_normal_xwayland_rect, panel_safe_normal_xwayland_rect_with_insets,
-    DecorationSyncTarget, ManagedConfigureRequestAction,
+    centered_normal_xwayland_rect_with_insets, classify_managed_configure_request,
+    configure_request_rect, maximized_x11_content_size, panel_safe_normal_xwayland_rect,
+    panel_safe_normal_xwayland_rect_with_insets, DecorationSyncTarget,
+    ManagedConfigureRequestAction,
 };
+
+#[test]
+fn normal_xwayland_window_centers_its_complete_frame() {
+    let output = OutputGeometry {
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 1080,
+    };
+    let requested = Rectangle::new((4000, -200).into(), (800, 600).into());
+
+    let centered = centered_normal_xwayland_rect_with_insets(requested, output, (2, 34, 2, 2));
+
+    assert_eq!(centered.loc.x, 560);
+    assert_eq!(
+        centered.loc.y,
+        (1080 - NORMAL_WINDOW_BOTTOM_RESERVED_PX - 636) / 2 + 34
+    );
+    assert_eq!(centered.size, Size::from((800, 600)));
+}
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct MockDecorationSyncTarget {

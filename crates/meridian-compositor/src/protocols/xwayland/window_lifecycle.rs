@@ -107,7 +107,11 @@ macro_rules! xwm_window_lifecycle_methods {
             (100, 100).into()
         };
         let requested_rect = Rectangle::new(loc, geo.size);
-        let output_geometry = select_output_geometry_for_rect(self, requested_rect);
+        let output_geometry = self
+            .focused_output()
+            .and_then(|id| self.output_registry.by_id(id))
+            .or_else(|| self.output_registry.primary())
+            .map(|info| info.geometry);
         let frame_insets = window
             .wl_surface()
             .map(|surface| {
@@ -117,13 +121,24 @@ macro_rules! xwm_window_lifecycle_methods {
                 )
             })
             .unwrap_or((0, 0, 0, 0));
-        let clamped_loc = output_geometry
+        let is_transient = window.is_transient_for().is_some();
+        let is_maximized = window.is_maximized();
+        let is_fullscreen = window.is_fullscreen();
+        let resolved_loc = output_geometry
             .map(|geometry| {
-                panel_safe_normal_xwayland_rect_with_insets(
-                    requested_rect,
-                    geometry,
-                    frame_insets,
-                )
+                if !is_transient && !is_maximized && !is_fullscreen {
+                    centered_normal_xwayland_rect_with_insets(
+                        requested_rect,
+                        geometry,
+                        frame_insets,
+                    )
+                } else {
+                    panel_safe_normal_xwayland_rect_with_insets(
+                        requested_rect,
+                        geometry,
+                        frame_insets,
+                    )
+                }
             })
             .map(|rect| rect.loc)
             .unwrap_or(loc);
@@ -132,8 +147,8 @@ macro_rules! xwm_window_lifecycle_methods {
             window_id,
             requested_rect = ?requested_rect,
             output_geometry = ?output_geometry,
-            clamp_applied = output_geometry.is_some(),
-            final_loc = ?clamped_loc,
+            centered = !is_transient && !is_maximized && !is_fullscreen && output_geometry.is_some(),
+            final_loc = ?resolved_loc,
             map_path = "managed",
             "resolved xwayland managed map geometry"
         );
@@ -142,7 +157,7 @@ macro_rules! xwm_window_lifecycle_methods {
         let opened = window_list_entry(&win);
         self.workspaces
             .space_at_mut(active)
-            .map_element(win, clamped_loc, true);
+            .map_element(win, resolved_loc, true);
         if let Some(wl_surface) = window.wl_surface() {
             let is_maximized = window.is_maximized();
             let is_fullscreen = window.is_fullscreen();

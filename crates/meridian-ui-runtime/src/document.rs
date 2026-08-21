@@ -14,6 +14,9 @@ const LAUNCHER_SCRIPT: &str = include_str!("../assets/launcher.js");
 const PANEL_HTML: &str = include_str!("../assets/panel.html");
 const PANEL_CSS: &str = include_str!("../assets/panel.css");
 const PANEL_SCRIPT: &str = include_str!("../assets/panel.js");
+const QUICK_SETTINGS_HTML: &str = include_str!("../assets/quick_settings.html");
+const QUICK_SETTINGS_CSS: &str = include_str!("../assets/quick_settings.css");
+const QUICK_SETTINGS_SCRIPT: &str = include_str!("../assets/quick_settings.js");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ThemeChoice {
@@ -49,7 +52,17 @@ pub(crate) fn diagnostic_html(theme: ThemeChoice, apps: &[DesktopApp]) -> String
     .replace("@@MERIDIAN_ICON_SPRITE@@", ICON_SPRITE)
     .replace("@@MERIDIAN_LAUNCHER_SCRIPT@@", LAUNCHER_SCRIPT)
     .replace("@@MERIDIAN_APP_CATALOG@@", &catalog_markup(apps))
+    .replace("@@MERIDIAN_OS@@", target_os_label())
     .replace("@@MERIDIAN_THEME@@", theme.attribute())
+}
+
+fn target_os_label() -> &'static str {
+    match std::env::consts::OS {
+        "openbsd" => "OpenBSD",
+        "freebsd" => "FreeBSD",
+        "linux" => "Linux",
+        _ => "Unix",
+    }
 }
 
 pub(crate) fn panel_html(theme: ThemeChoice, apps: &[DesktopApp]) -> String {
@@ -62,6 +75,18 @@ pub(crate) fn panel_html(theme: ThemeChoice, apps: &[DesktopApp]) -> String {
         .replace("@@MERIDIAN_ICON_SPRITE@@", ICON_SPRITE)
         .replace("@@MERIDIAN_PANEL_SCRIPT@@", PANEL_SCRIPT)
         .replace("@@MERIDIAN_PANEL_APPS@@", &panel_app_markup(apps))
+        .replace("@@MERIDIAN_THEME@@", theme.attribute())
+}
+
+pub(crate) fn quick_settings_html(theme: ThemeChoice) -> String {
+    QUICK_SETTINGS_HTML
+        .replace(
+            "@@MERIDIAN_TOKENS@@",
+            &meridian_config::builtin_css_token_stylesheet(),
+        )
+        .replace("@@MERIDIAN_QUICK_SETTINGS_CSS@@", QUICK_SETTINGS_CSS)
+        .replace("@@MERIDIAN_QUICK_SETTINGS_SCRIPT@@", QUICK_SETTINGS_SCRIPT)
+        .replace("@@MERIDIAN_ICON_SPRITE@@", ICON_SPRITE)
         .replace("@@MERIDIAN_THEME@@", theme.attribute())
 }
 
@@ -170,6 +195,7 @@ pub(crate) fn is_allowed_top_level_uri(uri: &str) -> bool {
     uri == "about:blank"
         || uri.starts_with("meridian://diagnostic/")
         || uri.starts_with("meridian://panel/")
+        || uri.starts_with("meridian://quick-settings/")
 }
 
 #[cfg(test)]
@@ -203,6 +229,10 @@ mod tests {
             "aria-label=\"Kategorien\"",
             "class=\"launcher__footer\"",
             "Einstellungen",
+            "Systemeinstellungen",
+            "data-settings-view",
+            "data-open-settings",
+            target_os_label(),
             "Sperren",
             "Sitzung",
         ] {
@@ -214,6 +244,9 @@ mod tests {
         for forbidden_branding in ["Kompass", "Meridian-Logo", "Weltkarte"] {
             assert!(!html.contains(forbidden_branding));
         }
+        assert!(!html.contains("autofocus"));
+        assert!(html.contains("visibilitychange"));
+        assert!(html.contains("plainText"));
     }
 
     #[test]
@@ -239,6 +272,7 @@ mod tests {
     fn launcher_script_is_bundled_and_has_no_ambient_io() {
         let html = diagnostic_html(ThemeChoice::Dark, &sample_apps()).to_ascii_lowercase();
         assert!(html.contains("applyfilter"));
+        assert!(html.contains("returntoapps"));
         for forbidden in ["fetch(", "xmlhttprequest", "websocket", "localstorage"] {
             assert!(!html.contains(forbidden), "ambient script API: {forbidden}");
         }
@@ -252,12 +286,43 @@ mod tests {
             "Anwendungen öffnen",
             "Angeheftete Anwendungen",
             "Systemstatus",
+            "Schnelleinstellungen öffnen",
             "meridian-icon://app/0",
         ] {
             assert!(html.contains(required), "missing panel region: {required}");
         }
         assert!(!PANEL_CSS.contains('#'));
         assert!(!PANEL_CSS.contains("px"));
+        assert!(html.contains("class=\"panel meridian-theme-scope\""));
+        assert!(html.contains("data-meridian-theme=\"dark\""));
+        assert!(!html.contains("system-menu"));
+        assert!(!html.contains("@@MERIDIAN_"));
+    }
+
+    #[test]
+    fn settings_target_label_is_platform_scoped() {
+        assert!(["OpenBSD", "FreeBSD", "Linux", "Unix"].contains(&target_os_label()));
+    }
+
+    #[test]
+    fn quick_settings_is_token_driven_and_contains_expected_regions() {
+        let html = quick_settings_html(ThemeChoice::Dark);
+        for required in [
+            "Schnelleinstellungen",
+            "data-network-kind",
+            "data-network-list",
+            "data-network-password-form",
+            "Systemeinstellungen öffnen",
+            "Lautstärke",
+            "Energie",
+        ] {
+            assert!(
+                html.contains(required),
+                "missing quick-settings region: {required}"
+            );
+        }
+        assert!(!QUICK_SETTINGS_CSS.contains('#'));
+        assert!(!QUICK_SETTINGS_CSS.contains("px"));
         assert!(!html.contains("@@MERIDIAN_"));
     }
 
@@ -282,6 +347,7 @@ mod tests {
         assert!(is_allowed_top_level_uri("about:blank"));
         assert!(is_allowed_top_level_uri("meridian://diagnostic/index"));
         assert!(is_allowed_top_level_uri("meridian://panel/index"));
+        assert!(is_allowed_top_level_uri("meridian://quick-settings/index"));
         for denied in [
             "https://example.com",
             "http://localhost",

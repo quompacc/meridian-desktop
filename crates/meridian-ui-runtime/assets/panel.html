@@ -12,7 +12,7 @@
   </head>
   <body>
     @@MERIDIAN_ICON_SPRITE@@
-    <main class="panel" aria-label="Desktop-Leiste">
+    <main class="panel meridian-theme-scope" data-meridian-theme="@@MERIDIAN_THEME@@" aria-label="Desktop-Leiste">
       <section class="panel__leading" aria-label="Anwendungen">
         <button class="control launcher-button" type="button" aria-label="Anwendungen öffnen" title="Anwendungen">
           <svg class="icon" aria-hidden="true"><use href="#launcher"></use></svg>
@@ -28,15 +28,10 @@
           <svg class="icon" aria-hidden="true"><use href="#screenshot"></use></svg>
         </button>
         <span class="divider" aria-hidden="true"></span>
-        <button class="control quiet" type="button" aria-label="Netzwerk verbunden" title="Netzwerk">
+        <button class="system-status" type="button" aria-label="Schnelleinstellungen öffnen" title="Schnelleinstellungen">
           <svg class="icon" aria-hidden="true"><use href="#network"></use></svg>
-        </button>
-        <button class="control quiet" type="button" aria-label="Lautstärke" title="Lautstärke">
           <svg class="icon" aria-hidden="true"><use href="#volume"></use></svg>
-        </button>
-        <button class="control battery" type="button" aria-label="Akku 84 Prozent" title="Akku: 84 %">
           <svg class="icon" aria-hidden="true"><use href="#battery"></use></svg>
-          <span>84</span>
         </button>
         <span class="divider" aria-hidden="true"></span>
         <button class="workspace" type="button" aria-label="Arbeitsfläche 1 von 4" title="Arbeitsflächen">
@@ -44,9 +39,6 @@
         </button>
         <button class="clock" type="button" aria-label="Datum und Uhrzeit" title="Kalender">
           <strong data-clock>--:--</strong><span data-date>---</span>
-        </button>
-        <button class="control quiet system-menu" type="button" aria-label="Systemmenü" title="Systemmenü">
-          <svg class="icon" aria-hidden="true"><use href="#chevron-up"></use></svg>
         </button>
       </section>
     </main>

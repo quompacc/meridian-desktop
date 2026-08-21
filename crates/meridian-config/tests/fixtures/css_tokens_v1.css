@@ -2,6 +2,12 @@
 :root {
   --meridian-schema-version: 1;
   --meridian-font-ui: "Inter";
+  --meridian-color-preview-dark-background: #14171b;
+  --meridian-color-preview-dark-surface: #20252b;
+  --meridian-color-preview-dark-surface-alt: #1b1f24;
+  --meridian-color-preview-light-background: #ece4d3;
+  --meridian-color-preview-light-surface: #f4efe3;
+  --meridian-color-preview-light-surface-alt: #e3d9c4;
   --meridian-type-caption-size: 12px;
   --meridian-type-body-size: 14px;
   --meridian-type-title-size: 18px;
@@ -12,6 +18,9 @@
   --meridian-launcher-width: 880px;
   --meridian-launcher-height: 620px;
   --meridian-launcher-app-icon-size: 32px;
+  --meridian-quick-settings-width: 384px;
+  --meridian-quick-settings-height: 468px;
+  --meridian-quick-settings-panel-gap: 2px;
   --meridian-panel-height: 42px;
   --meridian-panel-bottom-gap: 8px;
   --meridian-panel-side-margin: 12px;
@@ -87,11 +96,11 @@
   --meridian-elevation-popup-alpha: 0.12;
   --meridian-elevation-popup-offset-y: 3px;
   --meridian-elevation-popup-extent: 16px;
-  --meridian-elevation-launcher-blur: 18px;
-  --meridian-elevation-launcher-alpha: 0.16;
+  --meridian-elevation-launcher-blur: 22px;
+  --meridian-elevation-launcher-alpha: 0.14;
   --meridian-elevation-launcher-offset-y: 4px;
-  --meridian-elevation-launcher-extent: 22px;
-  --meridian-color-launcher-shadow: #05080c29;
+  --meridian-elevation-launcher-extent: 26px;
+  --meridian-color-launcher-shadow: #05080c24;
   --meridian-color-panel-shadow: #05080c29;
   --meridian-launcher-band-alpha: 0;
   --meridian-launcher-cell-alpha: 0;
@@ -120,8 +129,9 @@
   --meridian-color-success: #6fa08c;
   --meridian-color-on-accent: #f6f9ff;
   --meridian-color-launcher-hover: #1b1f242a;
-  --meridian-color-launcher-selected: #4e99f338;
+  --meridian-color-launcher-selected: #1b1f2438;
   --meridian-color-launcher-search: #1b1f2418;
+  --meridian-color-launcher-search-focus: #4e99f334;
   --meridian-color-launcher-divider: #4e99f32c;
   --meridian-color-panel-hover: #1b1f241e;
   --meridian-color-panel-active: #4e99f326;
@@ -143,11 +153,58 @@
   --meridian-color-success: #3f7d5e;
   --meridian-color-on-accent: #f6f9ff;
   --meridian-color-launcher-hover: #e3d9c42a;
-  --meridian-color-launcher-selected: #2f629938;
+  --meridian-color-launcher-selected: #e3d9c438;
   --meridian-color-launcher-search: #e3d9c418;
+  --meridian-color-launcher-search-focus: #2f629934;
   --meridian-color-launcher-divider: #2f62992c;
   --meridian-color-panel-hover: #e3d9c41e;
   --meridian-color-panel-active: #2f629926;
   --meridian-color-panel-divider: #07111c2e;
   color-scheme: light;
+}
+
+.meridian-theme-scope[data-meridian-theme="dark"] {
+  --meridian-color-background: #14171b;
+  --meridian-color-surface: #20252b;
+  --meridian-color-surface-alt: #1b1f24;
+  --meridian-color-accent: #4e99f3;
+  --meridian-color-accent-alt: #4383ce;
+  --meridian-color-text: #dcdee1;
+  --meridian-color-text-dim: #888d93;
+  --meridian-color-border: #353a40;
+  --meridian-color-error: #b5685c;
+  --meridian-color-warning: #b89a6a;
+  --meridian-color-success: #6fa08c;
+  --meridian-color-on-accent: #f6f9ff;
+  --meridian-color-launcher-hover: #1b1f242a;
+  --meridian-color-launcher-selected: #1b1f2438;
+  --meridian-color-launcher-search: #1b1f2418;
+  --meridian-color-launcher-search-focus: #4e99f334;
+  --meridian-color-launcher-divider: #4e99f32c;
+  --meridian-color-panel-hover: #1b1f241e;
+  --meridian-color-panel-active: #4e99f326;
+  --meridian-color-panel-divider: #dcdee12e;
+}
+
+.meridian-theme-scope[data-meridian-theme="light"] {
+  --meridian-color-background: #ece4d3;
+  --meridian-color-surface: #f4efe3;
+  --meridian-color-surface-alt: #e3d9c4;
+  --meridian-color-accent: #2f6299;
+  --meridian-color-accent-alt: #244f7d;
+  --meridian-color-text: #07111c;
+  --meridian-color-text-dim: #263746;
+  --meridian-color-border: #c9bca0;
+  --meridian-color-error: #9a4636;
+  --meridian-color-warning: #8a6a30;
+  --meridian-color-success: #3f7d5e;
+  --meridian-color-on-accent: #f6f9ff;
+  --meridian-color-launcher-hover: #e3d9c42a;
+  --meridian-color-launcher-selected: #e3d9c438;
+  --meridian-color-launcher-search: #e3d9c418;
+  --meridian-color-launcher-search-focus: #2f629934;
+  --meridian-color-launcher-divider: #2f62992c;
+  --meridian-color-panel-hover: #e3d9c41e;
+  --meridian-color-panel-active: #2f629926;
+  --meridian-color-panel-divider: #07111c2e;
 }

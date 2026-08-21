@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     ffi::OsString,
     time::{Duration, Instant},
 };
@@ -65,6 +65,7 @@ mod output_hotplug_tests;
 mod output_layout;
 mod output_power;
 mod output_registry;
+mod placement;
 #[cfg(test)]
 mod session_lock_tests;
 mod setup;
@@ -403,6 +404,10 @@ pub struct MeridianState {
     pub maximize_restore_locations: HashMap<String, MaximizeRestoreGeometry>,
     pub half_snap_restore_locations: HashMap<String, HalfSnapRestoreGeometry>,
     pub active_window_snap_states: HashMap<String, WindowSnapState>,
+    /// Floating XDG toplevels awaiting their first non-empty client geometry.
+    /// They are centered exactly once, after `Window::on_commit` knows the
+    /// actual content size.
+    pub pending_initial_xdg_placement: HashSet<String>,
     pub minimized_windows: HashMap<String, MinimizedWindowEntry>,
     pub xwayland_or_diag: HashMap<u32, XwaylandOrDiagEntry>,
     pub cursor_status: CursorImageStatus,
@@ -462,6 +467,7 @@ impl MeridianState {
         self.maximize_restore_locations.remove(window_key);
         self.half_snap_restore_locations.remove(window_key);
         self.active_window_snap_states.remove(window_key);
+        self.pending_initial_xdg_placement.remove(window_key);
     }
 
     pub fn keyboard_focus_diag_target(&self) -> Option<String> {

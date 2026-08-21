@@ -48,3 +48,18 @@ fn exec_tokenization_removes_field_codes_and_preserves_quotes() {
         ["app", "two words", "escaped space", "%"]
     );
 }
+
+#[test]
+fn helper_and_broken_standalone_entries_are_not_launcher_apps() {
+    for desktop_id in NON_LAUNCHER_DESKTOP_IDS {
+        assert!(!is_primary_launcher_entry(desktop_id));
+    }
+    for desktop_id in [
+        "foot.desktop",
+        "thunar.desktop",
+        "org.gnome.Calculator.desktop",
+        "org.gnome.TextEditor.desktop",
+    ] {
+        assert!(is_primary_launcher_entry(desktop_id));
+    }
+}

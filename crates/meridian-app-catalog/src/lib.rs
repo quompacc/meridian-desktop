@@ -16,6 +16,22 @@ use tracing::debug;
 const XDG_DATA_DIRS_DEFAULT: &str = "/usr/local/share:/usr/share";
 const MERIDIAN_DESKTOP_ENV: &str = "Meridian";
 
+// These desktop files describe helper processes, configuration frontends or
+// applications that are not viable as empty standalone launches. They remain
+// installed for MIME/actions and direct use, but do not belong in the primary
+// application catalogue.
+const NON_LAUNCHER_DESKTOP_IDS: &[&str] = &[
+    "foot-server.desktop",
+    "footclient.desktop",
+    "org.gnome.Adwaita1.Demo.desktop",
+    "org.gnome.Decibels.desktop",
+    "org.gnome.Yelp.desktop",
+    "panel-preferences.desktop",
+    "thunar-bulk-rename.desktop",
+    "thunar-settings.desktop",
+    "xfce4-about.desktop",
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DesktopApp {
     pub desktop_id: String,
@@ -79,10 +95,15 @@ impl DesktopApp {
     }
 
     fn from_file(path: &Path) -> Option<Self> {
+        let desktop_id = path.file_name()?.to_string_lossy().into_owned();
+        if !is_primary_launcher_entry(&desktop_id) {
+            debug!(path=?path, "launcher ignored helper desktop entry");
+            return None;
+        }
         let raw = fs::read_to_string(path).ok()?;
         match Self::parse(&raw) {
             Ok(mut app) => {
-                app.desktop_id = path.file_name()?.to_string_lossy().into_owned();
+                app.desktop_id = desktop_id;
                 Some(app)
             }
             Err(reason) => {
@@ -193,6 +214,10 @@ impl DesktopApp {
         }
         Ok(app)
     }
+}
+
+fn is_primary_launcher_entry(desktop_id: &str) -> bool {
+    !NON_LAUNCHER_DESKTOP_IDS.contains(&desktop_id)
 }
 
 fn parse_categories(raw: &str) -> Vec<String> {

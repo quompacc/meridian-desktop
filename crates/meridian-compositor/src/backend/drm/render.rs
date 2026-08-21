@@ -30,7 +30,10 @@ use smithay::{
 use tracing::{debug, error};
 
 use crate::{
-    backend::clipped_surface::ClippedSurfaceRenderElement,
+    backend::{
+        clipped_surface::ClippedSurfaceRenderElement,
+        non_opaque_surface::NonOpaqueSurfaceRenderElement,
+    },
     state::{LockPhase, MeridianState, OutputPowerMode},
     wallpaper::WallpaperGpuCache,
 };
@@ -63,6 +66,7 @@ render_elements! {
     ClippedSurface=ClippedSurfaceRenderElement,
     Wallpaper=TextureRenderElement<GlesTexture>,
     Layer=WaylandSurfaceRenderElement<GlesRenderer>,
+    NonOpaqueLayer=NonOpaqueSurfaceRenderElement,
     ResizePreview=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>>>,
 }
 

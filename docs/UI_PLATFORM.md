@@ -178,9 +178,26 @@ The first live runtime has no polling animation and assembles its HTML/CSS and
 generated token sheet once before the initial load. WebKit uses an ephemeral
 context, so it adds no persistent cookie/storage state. Bridge traffic is
 event-driven and limited to launcher lifecycle plus catalogue-validated app
-activation. The panel process remains resident; the launcher is currently
-spawned on demand. Its noticeable cold-open delay is the next measurement and
-optimization target.
+activation. Panel and launcher processes remain resident; the launcher is
+prewarmed while hidden and receives `show`/`hide` commands through an
+event-driven stdin source. This removes repeat process/WebKit startup without
+polling or hidden animation. Measured RSS is intentionally tracked as a cost;
+future process consolidation requires proportional-memory evidence rather than
+adding complexity from summed RSS alone.
+
+As of 2026-08-21 the same runtime also serves Quick Settings. State enters via
+typed, schema-checked IPC snapshots; actions return through a fixed bridge
+allowlist. Settings reuse the launcher document and preserve whether navigation
+originated in Launcher or Quick Settings. Light/dark changes swap only generated
+color tokens. Hidden persistent popup hosts publish an empty GTK input region,
+and the compositor independently excludes their non-interactive layer state
+from hit testing and keyboard focus. This two-sided rule prevents invisible Web
+surfaces from intercepting application input.
+
+External applications remain native Wayland/XWayland clients. Initial floating
+placement is compositor policy, not Web UI behavior: normal main windows are
+centered once after their real geometry is known, including SSD extents and the
+panel-safe workarea. No placement work runs after that initial mapping.
 
 ## Security model by platform
 

@@ -166,9 +166,14 @@ launcher lifecycle. Expected evidence:
 
 Hardware evidence from 2026-08-20: on the 1920x1080 Acer output, the corrected
 panel layer is `y=1014, h=66` and its first document load completes in about
-320 ms. Launcher opening still feels delayed because it currently pays process
-and WebKit startup on demand; measure spawn-to-first-paint, catalogue/icon cost,
-RSS and idle CPU before choosing a warm-process strategy.
+320 ms. The 2026-08-21 cold-launch measurement separated 1 ms catalogue work
+from 362-469 ms WebKit document startup. Meridian now prewarms one hidden
+launcher and controls visibility through a GLib-observed stdin FD. Repeated
+toggle-to-layer-map time is 0.18-5.1 ms with no process or document reload and
+no hidden-launcher CPU-time increase over a five-second idle sample. Resident
+launcher RSS was about 77 MiB for the GTK host, 92 MiB for WebProcess and
+51 MiB for NetworkProcess; those figures include multiply counted shared pages
+and are an upper-bound signal, not proportional memory.
 
 Native Meridian build matrix on 2026-08-19:
 
@@ -313,5 +318,14 @@ the more workable platform. The decision and blockers belong in this file.
 7. **Graphics/WebKit runtime proof is complete for the first panel/launcher
    slice.** EGL/GBM and WebKit compile/link successfully; the Intel-accelerated
    compositor renders real WebKit layer-shell clients and panel/launcher input
-   is interactive. Numeric memory/idle-GPU budgets, launcher cold-start
-   optimization and the broader external-client matrix remain pending.
+   is interactive. Launcher process reuse removes its measured cold-open delay;
+   proportional-memory/idle-GPU budgets and the broader external-client matrix
+   remain pending.
+8. **The first complete shell slice is interactively usable.** Panel, launcher,
+   Quick Settings and Settings navigation were exercised together in dark and
+   light themes. Audio state, slider, mute and wscons hardware keys work on the
+   Acer. Persistent hidden popups no longer intercept pointer or keyboard
+   input. Normal Wayland/XWayland windows now start centered in the panel-safe
+   workarea. Remaining application evidence: Blender maps maximized without a
+   visible frame; FreeCAD centers correctly but stalls after its splash; Thunar
+   is functional but visually inconsistent with the Meridian GTK styling.

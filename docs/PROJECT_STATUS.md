@@ -1,6 +1,6 @@
 # Project Status
 
-Stand: 2026-08-20 auf Branch `codex/openbsd-native`.
+Stand: 2026-08-21 auf Branch `codex/openbsd-native`.
 
 Dieses Dokument beschreibt den **implementierten Ist-Stand**. Die aktive
 Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
@@ -101,7 +101,7 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
   subtil in Login/Bootsplash, nie in Alltags-UI; der Panel-Startbutton verwendet
   ein neutrales Launcher-Symbol aus dem zentralen Icon-System.
 
-### WebKit-Vertical-Slice (2026-08-20)
+### WebKit-Vertical-Slice (2026-08-20/21)
 
 - `meridian-ui-runtime` stellt tokengetriebene Panel- und Launcher-Dokumente
   als GTK3/WebKitGTK-4.1-Layer-Shell-Clients bereit.
@@ -110,18 +110,61 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
   sichtbare Web-Surface liegt mit exakt 66 logischen Pixeln am unteren Rand.
   Faellt der Runtime-Prozess aus, aktiviert die Shell kontrolliert das native
   Panel.
-- Panel-Klicks toggeln ueber authentifiziertes IPC einen separat verwalteten
-  Web-Launcher. Ein zweiter Klick schliesst ihn; App-Aktivierung ist auf den
-  geladenen Desktop-Katalog beschraenkt.
+- Panel-Klicks toggeln ueber authentifiziertes IPC einen separat verwalteten,
+  beim Sitzungsstart verborgen vorgewaermten Web-Launcher. Oeffnen und
+  Schliessen zeigen beziehungsweise verstecken dieselbe geladene Surface;
+  App-Aktivierung ist auf den geladenen Desktop-Katalog beschraenkt.
 - Der OpenBSD-Hardwarelauf bestaetigt genau einen Panel-Prozess, eine Geometrie
   von `y=1014, h=66` auf 1920x1080 und etwa 320 ms bis zum ersten geladenen
   Panel-Dokument. Die zuvor sichtbare Hoehenverschiebung kam von WebKitGTKs
   natuerlicher 200-px-Anforderung und wird nun durch die zentrale
   `Panel::surface_height()` begrenzt.
-- Offen fuer den naechsten Arbeitstag: Der Launcher fuehlt sich beim Oeffnen
-  noch verzoegert an. Spawn-to-first-paint, Katalog- und Icon-Kosten muessen
-  gemessen werden, bevor Prozess-Warmhaltung oder Wiederverwendung entschieden
-  wird.
+- Die Launcher-Messung vom 2026-08-21 trennt 1 ms Katalogkosten von 362-469 ms
+  Prozess/WebKit-Kaltstart. Wiederverwendung reduziert Toggle bis Layer-Mapping
+  auf 0,18-5,1 ms. Der verborgene Prozess zeigte ueber fuenf Idle-Sekunden
+  keine zusaetzliche CPU-Zeit; GLib reagiert nur auf den stdin-Steuer-FD.
+  Offener Trade-off ist der Speicher: rund 77 MiB Host, 92 MiB WebProcess und
+  51 MiB NetworkProcess RSS, wobei gemeinsam genutzte Seiten mehrfach gezaehlt
+  werden. Vor Prozesskonsolidierung ist eine belastbare PSS/USS-nahe Messung
+  erforderlich.
+- Der erste Vertical Slice ist auf echter OpenBSD-Hardware gemeinsam
+  benutzbar: Web-Panel, vorgewärmter Launcher und Quick Settings laufen als
+  getrennte, von der Shell ueberwachte Layer-Shell-Surfaces. Quick Settings
+  zeigen reale Audio-, Netzwerk-, Bluetooth-, Theme- und Session-Zustaende;
+  Lautstaerke und Mute sind inklusive der OpenBSD-Hardwaretasten steuerbar.
+  Das Zahnrad fuehrt in die reduzierte Systemeinstellungsebene, deren
+  Zurueck-Navigation den Aufrufkontext (Launcher oder Quick Settings) erhaelt.
+- Hell/Dunkel wird ueber die zentrale Appearance-IPC und die generierten
+  Token-Tabellen umgeschaltet. Panel, Launcher und Quick Settings aktualisieren
+  sich ohne Prozessneustart. Persistente, verborgene Launcher-/Quick-Settings-
+  Surfaces haben eine leere GTK-Input-Region und werden auch compositorseitig
+  aus Hit-Test und Tastaturfokus ausgeschlossen.
+- Der Launcher-Katalog blendet Hilfs-, Einstellungs- und nicht allein
+  startfaehige Desktop-Dateien aus; fehlgeschlagene App-Prozesse liefern einen
+  Exit-Status im Compositor-Log. Die getestete OpenBSD-Installation zeigt damit
+  12 echte Anwendungen statt technischer Helfer.
+- Neue normale Floating-Fenster werden einmalig rahmenbewusst im nutzbaren
+  Arbeitsbereich des fokussierten Outputs zentriert. Wayland wartet dafuer auf
+  die erste belastbare Client-Geometrie; XWayland verwirft fuer normale
+  Hauptfenster unbrauchbare externe Startkoordinaten. Transiente Dialoge sowie
+  maximierte und Vollbild-Fenster behalten ihre Protokollsemantik. Die
+  Berechnung passiert nur beim Mapping und erzeugt keine Idle-Last.
+
+### Offene Laufzeitbefunde fuer 2026-08-22
+
+- Blender startet maximiert und ohne sichtbaren Meridian-Frame. Zuerst
+  feststellen, ob der Client beim Mapping Maximized/Fullscreen oder CSD
+  anfordert; erst danach die Dekorationssynchronisation aendern.
+- FreeCAD wird nun korrekt mittig und vollstaendig erreichbar platziert, bleibt
+  auf dem Acer jedoch nach der ersten Startanimation stehen. Prozess-, XWayland-
+  und GPU-Logs gemeinsam erfassen; die Zentrierung ist nicht mehr der Blocker.
+- Thunar ist funktional, passt mit seinem GTK3-Frame aber als einzige der
+  ausgewaehlten Basisanwendungen optisch nicht zum restlichen Satz. Styling
+  gegen die exportierte Meridian-GTK-Palette pruefen, bevor ein schwererer
+  Dateimanager eingefuehrt wird.
+- Der Launcher bleibt vorerst bewusst ohne Schatten. Alle getesteten
+  Cairo/WebKit-Schattenpfade summierten beim Tippen Alpha ueber mehrere Commits;
+  der flache Zustand ist stabil und vermeidet Artefakte.
 
 ## Aktueller Ist-Stand
 
