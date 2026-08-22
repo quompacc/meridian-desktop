@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 mod appearance;
 pub use appearance::{AppearanceSnapshot, AppearanceTheme, AppearanceWallpaperMode};
+mod settings;
+pub use settings::{SettingsSnapshot, SystemSettingsSnapshot};
 
 pub const SOCKET_NAME: &str = "meridian.sock";
 pub const IPC_TOKEN_ENV: &str = "MERIDIAN_IPC_TOKEN";
@@ -240,6 +242,7 @@ pub enum ShellEvent {
     ToggleLauncher,
     ToggleQuickSettings,
     OpenSystemSettings,
+    SettingsRefresh,
     AppearanceRefresh,
     AppearanceThemeSet {
         theme: AppearanceTheme,
@@ -316,6 +319,7 @@ pub enum ShellCommand {
     ToggleLauncher,
     ToggleQuickSettings,
     OpenSystemSettings,
+    SettingsRefresh,
     AppearanceRefresh,
     AppearanceThemeSet {
         theme: AppearanceTheme,
@@ -380,6 +384,7 @@ impl ShellCommand {
             Self::ToggleLauncher => "toggle-launcher",
             Self::ToggleQuickSettings => "toggle-quick-settings",
             Self::OpenSystemSettings => "open-system-settings",
+            Self::SettingsRefresh => "settings-refresh",
             Self::AppearanceRefresh => "appearance-refresh",
             Self::AppearanceThemeSet { .. } => "appearance-theme-set",
             Self::AppearanceWallpaperSet { .. } => "appearance-wallpaper-set",

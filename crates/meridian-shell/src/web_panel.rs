@@ -9,6 +9,7 @@ use std::{
 use meridian_ipc::{
     AppearanceSnapshot, AppearanceTheme, AppearanceWallpaperMode, QuickSettingsAudio,
     QuickSettingsBattery, QuickSettingsNetwork, QuickSettingsSnapshot, QuickSettingsWifiNetwork,
+    SettingsSnapshot, SystemSettingsSnapshot,
 };
 
 pub(crate) struct WebPanelProcess {
@@ -98,8 +99,8 @@ impl WebLauncherProcess {
         Ok(())
     }
 
-    fn show_settings(&mut self, snapshot: &AppearanceSnapshot) -> io::Result<()> {
-        let snapshot = canonical_appearance_json(snapshot)?;
+    fn show_settings(&mut self, snapshot: &SettingsSnapshot) -> io::Result<()> {
+        let snapshot = canonical_settings_json(snapshot)?;
         writeln!(self.control, "show-settings {snapshot}")?;
         self.control.flush()?;
         self.visible = true;
@@ -109,6 +110,12 @@ impl WebLauncherProcess {
     fn update_appearance(&mut self, snapshot: &AppearanceSnapshot) -> io::Result<()> {
         let snapshot = canonical_appearance_json(snapshot)?;
         writeln!(self.control, "appearance {snapshot}")?;
+        self.control.flush()
+    }
+
+    fn update_settings(&mut self, snapshot: &SettingsSnapshot) -> io::Result<()> {
+        let snapshot = canonical_settings_json(snapshot)?;
+        writeln!(self.control, "settings {snapshot}")?;
         self.control.flush()
     }
 
@@ -199,8 +206,13 @@ impl crate::wayland::MeridianShell {
         if !self.web_panel_enabled || self.web_launcher.is_some() {
             return;
         }
+        let snapshot = self.settings_snapshot();
         match WebLauncherProcess::spawn(self.theme.appearance_is_light()) {
-            Ok(process) => {
+            Ok(mut process) => {
+                if let Err(error) = process.update_settings(&snapshot) {
+                    tracing::error!("failed to prime WebKit System Settings: {error}");
+                    return;
+                }
                 self.web_launcher = Some(process);
                 tracing::info!("managed WebKit launcher prewarming while hidden");
             }
@@ -223,8 +235,12 @@ impl crate::wayland::MeridianShell {
             }
         }
         self.web_launcher = None;
+        let snapshot = self.settings_snapshot();
         match WebLauncherProcess::spawn(self.theme.appearance_is_light()) {
-            Ok(mut process) => match process.set_visible(true) {
+            Ok(mut process) => match process
+                .update_settings(&snapshot)
+                .and_then(|()| process.set_visible(true))
+            {
                 Ok(()) => self.web_launcher = Some(process),
                 Err(error) => tracing::error!("failed to show managed WebKit launcher: {error}"),
             },
@@ -249,7 +265,7 @@ impl crate::wayland::MeridianShell {
 
     pub(crate) fn open_web_system_settings(&mut self) {
         self.hide_web_quick_settings();
-        let snapshot = self.appearance_snapshot();
+        let snapshot = self.settings_snapshot();
         let running = self
             .web_launcher
             .as_mut()
@@ -363,6 +379,20 @@ impl crate::wayland::MeridianShell {
         }
         if let Err(error) = process.update_appearance(&snapshot) {
             tracing::error!("failed to refresh WebKit appearance settings: {error}");
+            self.web_launcher = None;
+        }
+    }
+
+    pub(crate) fn refresh_web_settings(&mut self) {
+        let snapshot = self.settings_snapshot();
+        let Some(process) = self.web_launcher.as_mut() else {
+            return;
+        };
+        if !process.is_running().unwrap_or(false) {
+            return;
+        }
+        if let Err(error) = process.update_settings(&snapshot) {
+            tracing::error!("failed to refresh WebKit System Settings: {error}");
             self.web_launcher = None;
         }
     }
@@ -505,9 +535,28 @@ impl crate::wayland::MeridianShell {
             wallpaper_mode,
         }
     }
+
+    fn settings_snapshot(&self) -> SettingsSnapshot {
+        let system = crate::sysinfo::SystemInfo::gather();
+        SettingsSnapshot {
+            appearance: self.appearance_snapshot(),
+            system: SystemSettingsSnapshot {
+                os_name: system.os_name,
+                hostname: system.hostname,
+                kernel: system.kernel,
+                uptime: system.uptime,
+                cpu: system.cpu,
+                memory: system.memory,
+            },
+        }
+    }
 }
 
 fn canonical_appearance_json(value: &AppearanceSnapshot) -> io::Result<String> {
+    serde_json::to_string(value).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+}
+
+fn canonical_settings_json(value: &SettingsSnapshot) -> io::Result<String> {
     serde_json::to_string(value).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 

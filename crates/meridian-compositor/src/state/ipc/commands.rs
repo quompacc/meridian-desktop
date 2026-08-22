@@ -114,6 +114,9 @@ impl MeridianState {
             ShellCommand::OpenSystemSettings => {
                 self.ipc.broadcast(&ShellEvent::OpenSystemSettings);
             }
+            ShellCommand::SettingsRefresh => {
+                self.ipc.broadcast(&ShellEvent::SettingsRefresh);
+            }
             ShellCommand::AppearanceRefresh => {
                 self.ipc.broadcast(&ShellEvent::AppearanceRefresh);
             }

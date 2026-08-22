@@ -5,8 +5,8 @@ use super::{
     QuickSettingsBattery, QuickSettingsNetwork, QuickSettingsPowerProfile, QuickSettingsSnapshot,
     QuickSettingsWifiNetwork, ScreenshotBridgeError, ScreenshotBridgeMessage,
     ScreenshotBridgeRequest, ScreenshotBridgeResponse, ScreenshotBridgeResult, ScreenshotKind,
-    ScreenshotRegion, ScreenshotRequestMetadata, ScreenshotRequestOrigin, ShellCommand, ShellEvent,
-    WindowSnapshotEntry,
+    ScreenshotRegion, ScreenshotRequestMetadata, ScreenshotRequestOrigin, SettingsSnapshot,
+    ShellCommand, ShellEvent, SystemSettingsSnapshot, WindowSnapshotEntry,
 };
 
 #[test]
@@ -18,6 +18,7 @@ fn quick_settings_control_commands_roundtrip() {
             profile: QuickSettingsPowerProfile::Eco,
         },
         ShellCommand::OpenSystemSettings,
+        ShellCommand::SettingsRefresh,
         ShellCommand::QuickSettingsNetworkRefresh,
         ShellCommand::QuickSettingsNetworkConnect {
             ssid: "Meridian".to_string(),
@@ -60,6 +61,28 @@ fn appearance_snapshot_rejects_untrusted_display_text() {
     };
     assert_eq!(snapshot.validate(), Ok(()));
     snapshot.wallpaper_name = Some("bad\nname".to_string());
+    assert!(snapshot.validate().is_err());
+}
+
+#[test]
+fn settings_snapshot_rejects_untrusted_system_text() {
+    let mut snapshot = SettingsSnapshot {
+        appearance: AppearanceSnapshot {
+            theme: AppearanceTheme::Dark,
+            wallpaper_name: None,
+            wallpaper_mode: AppearanceWallpaperMode::Fill,
+        },
+        system: SystemSettingsSnapshot {
+            os_name: "OpenBSD 7.8".to_string(),
+            hostname: "meridian".to_string(),
+            kernel: "OpenBSD 7.8".to_string(),
+            uptime: "2h 4m".to_string(),
+            cpu: "Intel Core i7 (8×)".to_string(),
+            memory: "16.0 GiB".to_string(),
+        },
+    };
+    assert_eq!(snapshot.validate(), Ok(()));
+    snapshot.system.hostname = "bad\nhost".to_string();
     assert!(snapshot.validate().is_err());
 }
 

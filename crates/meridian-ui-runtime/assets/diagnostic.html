@@ -110,18 +110,8 @@
             <button class="settings-nav-item" type="button" data-settings-category="appearance" data-settings-title="Darstellung">
               <svg class="icon" aria-hidden="true"><use href="#graphic"></use></svg><span>Darstellung</span>
             </button>
-            <button class="settings-nav-item" type="button" data-settings-category="network" data-settings-title="Netzwerk">
-              <svg class="icon" aria-hidden="true"><use href="#network"></use></svg><span>Netzwerk</span>
-            </button>
-            <button class="settings-nav-item" type="button" data-settings-category="sound" data-settings-title="Audio">
-              <svg class="icon" aria-hidden="true"><use href="#volume"></use></svg><span>Audio</span>
-            </button>
-            <button class="settings-nav-item" type="button" data-settings-category="power" data-settings-title="Energie">
-              <svg class="icon" aria-hidden="true"><use href="#battery"></use></svg><span>Energie</span>
-            </button>
-            <span class="settings-nav-divider" aria-hidden="true"></span>
-            <button class="settings-nav-item" type="button" data-settings-category="apps" data-settings-title="Anwendungen">
-              <svg class="icon" aria-hidden="true"><use href="#all-apps"></use></svg><span>Anwendungen</span>
+            <button class="settings-nav-item" type="button" data-settings-category="system" data-settings-title="System">
+              <svg class="icon" aria-hidden="true"><use href="#settings"></use></svg><span>System</span>
             </button>
           </nav>
         </aside>
@@ -138,10 +128,9 @@
                 <div><h3>Meridian Desktop</h3><p>Ruhige Oberfläche, klare Systemebenen.</p></div>
               </article>
               <div class="overview-grid">
-                <article><span>System</span><strong>@@MERIDIAN_OS@@</strong><small>Wayland-Sitzung</small></article>
+                <article><span>System</span><strong data-system-os>@@MERIDIAN_OS@@</strong><small>Wayland-Sitzung</small></article>
                 <article><span>Darstellung</span><strong data-theme-label>Dunkel</strong><small>Zentrales Meridian-Theme</small></article>
                 <article><span>Schnellzugriff</span><strong>Quick Settings</strong><small>Netzwerk, Audio und Energie</small></article>
-                <article><span>Anwendungen</span><strong>Standard-Apps</strong><small>Dateitypen und Systemdienste</small></article>
               </div>
             </section>
             <section class="settings-page appearance-settings" data-settings-page="appearance" hidden>
@@ -173,10 +162,19 @@
                 </div>
               </div>
             </section>
-            <section class="settings-page settings-placeholder" data-settings-page="network" hidden><h3>Netzwerk</h3><p>Dauerhafte Netzwerkentscheidungen und bekannte Verbindungen.</p></section>
-            <section class="settings-page settings-placeholder" data-settings-page="sound" hidden><h3>Audio</h3><p>Ausgabe, Eingabe und gerätespezifische Einstellungen.</p></section>
-            <section class="settings-page settings-placeholder" data-settings-page="power" hidden><h3>Energie</h3><p>Energieprofile und langfristiges Geräteverhalten.</p></section>
-            <section class="settings-page settings-placeholder" data-settings-page="apps" hidden><h3>Anwendungen</h3><p>Standard-Apps, Dateizuordnungen und Hintergrunddienste.</p></section>
+            <section class="settings-page system-settings" data-settings-page="system" hidden>
+              <div class="settings-group">
+                <div class="settings-group__heading"><h3>Geräteinformationen</h3><p>Grundlegende Daten dieser Meridian-Installation.</p></div>
+                <dl class="system-details">
+                  <div><dt>System</dt><dd data-system-os>—</dd></div>
+                  <div><dt>Hostname</dt><dd data-system-hostname>—</dd></div>
+                  <div><dt>Kernel</dt><dd data-system-kernel>—</dd></div>
+                  <div><dt>Laufzeit</dt><dd data-system-uptime>—</dd></div>
+                  <div><dt>Prozessor</dt><dd data-system-cpu>—</dd></div>
+                  <div><dt>Speicher</dt><dd data-system-memory>—</dd></div>
+                </dl>
+              </div>
+            </section>
           </div>
         </div>
       </section>

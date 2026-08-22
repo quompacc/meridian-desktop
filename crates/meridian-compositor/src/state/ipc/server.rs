@@ -102,6 +102,15 @@ impl IpcServer {
         &self.auth_token
     }
 
+    /// Clone the nonblocking listener for event-loop readiness notification.
+    /// Accepting and decoding remains centralized in `poll`; this descriptor
+    /// only removes the periodic-poll latency for newly connected clients.
+    pub fn event_listener_clone(&self) -> Option<UnixListener> {
+        self.listener
+            .as_ref()
+            .and_then(|listener| listener.try_clone().ok())
+    }
+
     pub fn poll(&mut self) -> IpcPoll {
         let mut accepted_clients = 0;
         let mut commands = Vec::new();

@@ -1,7 +1,4 @@
-//! Thin GTK/WebKit host boundary.
-//!
-//! Product UI, state and policy stay outside this module. GTK owns only the
-//! native process/window lifecycle required by WebKitGTK and layer-shell.
+//! Thin native lifecycle boundary for the unprivileged WebKit product UI.
 
 use std::{
     io::{self, BufRead},
@@ -29,10 +26,8 @@ use crate::{
     icon_service, ipc, SurfaceChoice,
 };
 
-#[path = "gtk_host/control_state.rs"]
 mod control_state;
-use control_state::{canonical_appearance_state, canonical_quick_settings_state};
-#[path = "gtk_host/wallpaper_picker.rs"]
+use control_state::{canonical_launcher_state, canonical_quick_settings_state};
 mod wallpaper_picker;
 
 pub(crate) fn run(theme: ThemeChoice, surface: SurfaceChoice, persistent_surface: bool) {
@@ -205,6 +200,8 @@ fn install_persistent_surface_control(
                     ("update", Some(snapshot), None, None)
                 } else if let Some(snapshot) = command.strip_prefix("show-settings ") {
                     ("show-settings", None, Some(snapshot), None)
+                } else if let Some(snapshot) = command.strip_prefix("settings ") {
+                    ("settings", None, Some(snapshot), None)
                 } else if let Some(snapshot) = command.strip_prefix("appearance ") {
                     ("appearance", None, Some(snapshot), None)
                 } else if let Some(theme) = command.strip_prefix("theme ") {
@@ -227,10 +224,12 @@ fn install_persistent_surface_control(
                 }
             }
             if let Some(snapshot) = appearance_snapshot {
-                match (canonical_appearance_state(snapshot), webview.upgrade()) {
-                    (Ok(snapshot), Some(webview)) => {
-                        let script =
-                            format!("window.meridianLauncher?.applyAppearanceState?.({snapshot});");
+                match (
+                    canonical_launcher_state(command, snapshot),
+                    webview.upgrade(),
+                ) {
+                    (Ok((apply, snapshot)), Some(webview)) => {
+                        let script = format!("window.meridianLauncher?.{apply}?.({snapshot});");
                         webview.run_javascript(&script, None::<&gtk::gio::Cancellable>, |_| {});
                     }
                     (Err(error), _) => {
@@ -295,7 +294,7 @@ fn install_persistent_surface_control(
                     set_launcher_input(&window, false);
                 }
                 "update" => {}
-                "appearance" | "theme" => {}
+                "appearance" | "settings" | "theme" => {}
                 _ => eprintln!("meridian-ui-runtime: ignored launcher control {command:?}"),
             }
             gtk::glib::ControlFlow::Continue
@@ -418,6 +417,11 @@ fn install_bridge(
                         eprintln!(
                             "meridian-ui-runtime: failed to open System Settings: {error}"
                         );
+                    }
+                }
+                Ok(Command::RefreshSettings) => {
+                    if let Err(error) = ipc::refresh_settings() {
+                        eprintln!("meridian-ui-runtime: failed to refresh settings: {error}");
                     }
                 }
                 Ok(Command::RefreshAppearance) => {

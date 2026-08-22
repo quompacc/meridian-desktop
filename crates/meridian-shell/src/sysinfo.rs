@@ -6,6 +6,9 @@
 
 use std::fs;
 
+#[cfg(target_os = "openbsd")]
+use std::{process::Command, time::Duration};
+
 const UNKNOWN: &str = "—";
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -20,6 +23,11 @@ pub struct SystemInfo {
 
 impl SystemInfo {
     pub fn gather() -> Self {
+        #[cfg(target_os = "openbsd")]
+        if let Some(info) = gather_openbsd() {
+            return info;
+        }
+
         let read = |path: &str| fs::read_to_string(path).ok();
 
         let os_name = read("/etc/os-release")
@@ -84,6 +92,55 @@ impl SystemInfo {
             ("Speicher", self.memory.as_str()),
         ]
     }
+}
+
+#[cfg(target_os = "openbsd")]
+fn gather_openbsd() -> Option<SystemInfo> {
+    let output = crate::process::output_with_timeout(
+        Command::new("sysctl").args([
+            "-n",
+            "kern.ostype",
+            "kern.osrelease",
+            "kern.hostname",
+            "hw.model",
+            "hw.ncpu",
+            "hw.physmem",
+        ]),
+        Duration::from_millis(250),
+    )?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout))
+        .and_then(|text| parse_openbsd_sysctl(&text))
+}
+
+fn parse_openbsd_sysctl(output: &str) -> Option<SystemInfo> {
+    let mut lines = output.lines().map(str::trim);
+    let ostype = lines.next()?.to_string();
+    let release = lines.next()?.to_string();
+    let hostname = lines.next()?.to_string();
+    let model = lines.next()?.to_string();
+    let cpu_count = lines.next()?.parse::<usize>().ok()?;
+    let memory_bytes = lines.next()?.parse::<u64>().ok()?;
+    if [
+        ostype.as_str(),
+        release.as_str(),
+        hostname.as_str(),
+        model.as_str(),
+    ]
+    .contains(&"")
+    {
+        return None;
+    }
+    Some(SystemInfo {
+        os_name: format!("{ostype} {release}"),
+        hostname,
+        kernel: format!("{ostype} {release}"),
+        uptime: UNKNOWN.to_string(),
+        cpu: format_cpu(Some(model), cpu_count),
+        memory: format_memory(Some(memory_bytes / 1024), None),
+    })
 }
 
 fn parse_os_pretty_name(s: &str) -> Option<String> {
@@ -217,5 +274,17 @@ mod tests {
     fn missing_meminfo_fields_degrade_gracefully() {
         assert_eq!(parse_meminfo_kib("Bogus: 1 kB\n"), (None, None));
         assert_eq!(format_memory(None, None), UNKNOWN);
+    }
+
+    #[test]
+    fn openbsd_sysctl_snapshot_is_parsed() {
+        let info =
+            parse_openbsd_sysctl("OpenBSD\n7.8\nmeridian\nIntel(R) Core(TM) i7\n8\n17179869184\n")
+                .expect("valid sysctl snapshot");
+        assert_eq!(info.os_name, "OpenBSD 7.8");
+        assert_eq!(info.hostname, "meridian");
+        assert_eq!(info.cpu, "Intel(R) Core(TM) i7 (8×)");
+        assert_eq!(info.memory, "16.0 GiB");
+        assert_eq!(info.uptime, UNKNOWN);
     }
 }

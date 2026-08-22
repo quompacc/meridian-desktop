@@ -144,6 +144,9 @@ impl MeridianShell {
             ShellEvent::OpenSystemSettings => {
                 self.open_web_system_settings();
             }
+            ShellEvent::SettingsRefresh => {
+                self.refresh_web_settings();
+            }
             ShellEvent::AppearanceRefresh => {
                 self.refresh_web_appearance();
             }

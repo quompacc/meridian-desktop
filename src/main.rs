@@ -11,8 +11,9 @@ use meridian_compositor::{
 };
 use smithay::reexports::{
     calloop::{
+        generic::Generic,
         timer::{TimeoutAction, Timer},
-        EventLoop,
+        EventLoop, Interest, Mode, PostAction,
     },
     wayland_server::Display,
 };
@@ -207,6 +208,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         info!("shell auto-start disabled by env (MERIDIAN_DRM_DISABLE_SHELL or MERIDIAN_NO_SHELL)");
     }
 
+    if let Some(listener) = state.ipc.event_listener_clone() {
+        event_loop.handle().insert_source(
+            Generic::new(listener, Interest::READ, Mode::Level),
+            |_, _, state| {
+                state.poll_ipc();
+                Ok(PostAction::Continue)
+            },
+        )?;
+    } else {
+        warn!("Meridian IPC readiness source unavailable; using timer polling only");
+    }
+
+    // Retain a low-frequency fallback for already-connected clients and for
+    // platforms where listener readiness cannot be registered. New UI-runtime
+    // connections are handled immediately by the source above.
     event_loop.handle().insert_source(
         Timer::from_duration(Duration::from_millis(100)),
         |_, _, state| {

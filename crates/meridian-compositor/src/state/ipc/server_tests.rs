@@ -121,6 +121,20 @@ fn authenticated_shell_control_command_is_accepted() {
 }
 
 #[test]
+fn event_listener_clone_observes_new_connections() {
+    let dir = temp_runtime_dir("listener-clone");
+    with_runtime_dir(&dir, || {
+        let server = IpcServer::new();
+        let listener = server
+            .event_listener_clone()
+            .expect("listener clone must be available");
+        let _client = connect_client();
+        let (_stream, _address) = listener.accept().expect("pending client connection");
+    });
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn broadcasts_only_reach_authenticated_shell_clients() {
     let dir = temp_runtime_dir("broadcast-auth");
     with_runtime_dir(&dir, || {

@@ -422,7 +422,8 @@ button:focus-visible {
 .settings-placeholder h3,
 .settings-placeholder p,
 .settings-group h3,
-.settings-group p {
+.settings-group p,
+.system-details {
   margin: 0;
 }
 
@@ -472,12 +473,6 @@ button:focus-visible {
   inline-size: calc(var(--meridian-decoration-border-width) * 2);
   background: var(--meridian-color-accent);
   border-radius: var(--meridian-radius-sm);
-}
-
-.settings-nav-divider {
-  margin-block: var(--meridian-layout-gap);
-  border-block-start: var(--meridian-decoration-border-width) solid
-    var(--meridian-color-launcher-divider);
 }
 
 .settings-content {
@@ -590,6 +585,35 @@ button:focus-visible {
   align-content: start;
   gap: calc(var(--meridian-layout-gap) * 2);
   overflow: auto;
+}
+
+.system-settings {
+  overflow: auto;
+}
+
+.system-details {
+  display: grid;
+}
+
+.system-details div {
+  min-block-size: calc(var(--meridian-layout-gap) * 5);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  align-items: center;
+  gap: var(--meridian-layout-gap);
+  border-block-start: var(--meridian-decoration-border-width) solid
+    var(--meridian-color-launcher-divider);
+}
+
+.system-details dt {
+  color: var(--meridian-color-text-dim);
+}
+
+.system-details dd {
+  min-inline-size: 0;
+  margin: 0;
+  text-align: end;
+  overflow-wrap: anywhere;
 }
 
 .settings-group {

@@ -19,6 +19,7 @@ pub(crate) enum Command {
     ToggleQuickSettings,
     CloseQuickSettings,
     OpenSystemSettings,
+    RefreshSettings,
     RefreshAppearance,
     SetAppearanceTheme {
         theme: AppearanceTheme,
@@ -105,6 +106,9 @@ pub(crate) fn decode(raw: &str) -> Result<Command, String> {
         }
         "quick-settings.open-settings" if request.desktop_id.is_none() && no_control_value => {
             Ok(Command::OpenSystemSettings)
+        }
+        "settings.refresh" if request.desktop_id.is_none() && no_control_value => {
+            Ok(Command::RefreshSettings)
         }
         "settings.appearance.refresh" if request.desktop_id.is_none() && no_control_value => {
             Ok(Command::RefreshAppearance)
@@ -234,6 +238,12 @@ mod tests {
                 r#"{"version":1,"capability":"quick-settings.open-settings","request_id":"request-settings"}"#
             ),
             Ok(Command::OpenSystemSettings)
+        );
+        assert_eq!(
+            decode(
+                r#"{"version":1,"capability":"settings.refresh","request_id":"request-settings-refresh"}"#
+            ),
+            Ok(Command::RefreshSettings)
         );
         assert_eq!(
             decode(

@@ -136,6 +136,26 @@ function applyAppearanceState(state) {
   selectRadioButton(wallpaperModeButtons, state.wallpaper_mode, "wallpaperMode");
 }
 
+function applySettingsState(state) {
+  if (!state?.system) {
+    return;
+  }
+  applyAppearanceState(state.appearance);
+  const fields = {
+    os: state.system.os_name,
+    hostname: state.system.hostname,
+    kernel: state.system.kernel,
+    uptime: state.system.uptime,
+    cpu: state.system.cpu,
+    memory: state.system.memory,
+  };
+  for (const [field, value] of Object.entries(fields)) {
+    for (const node of document.querySelectorAll(`[data-system-${field}]`)) {
+      node.textContent = value;
+    }
+  }
+}
+
 function showApps() {
   settingsOpenedExternally = false;
   launcher.dataset.view = "apps";
@@ -157,7 +177,7 @@ function returnToApps() {
   document.querySelector("[data-open-settings]").focus({ preventScroll: true });
 }
 
-window.meridianLauncher = { applyAppearanceState, showApps, showSettings };
+window.meridianLauncher = { applyAppearanceState, applySettingsState, showApps, showSettings };
 
 for (const category of categories) {
   category.addEventListener("click", () => activateCategory(category));
@@ -175,7 +195,7 @@ for (const category of settingsCategories) {
 
 document.querySelector("[data-open-settings]").addEventListener("click", () => {
   showSettings(false);
-  requestBridge("settings.appearance.refresh");
+  requestBridge("settings.refresh");
 });
 document.querySelector("[data-close-settings]").addEventListener("click", returnToApps);
 

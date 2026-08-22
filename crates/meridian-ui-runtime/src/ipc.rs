@@ -40,6 +40,10 @@ pub(crate) fn refresh_appearance() -> Result<(), String> {
     with_authenticated_stream(|stream| write(stream, &ShellCommand::AppearanceRefresh))
 }
 
+pub(crate) fn refresh_settings() -> Result<(), String> {
+    with_authenticated_stream(|stream| write(stream, &ShellCommand::SettingsRefresh))
+}
+
 pub(crate) fn set_appearance_theme(theme: AppearanceTheme) -> Result<(), String> {
     with_authenticated_stream(|stream| write(stream, &ShellCommand::AppearanceThemeSet { theme }))
 }
