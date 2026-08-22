@@ -252,6 +252,11 @@ process and network needs. Then design the smallest useful `pledge` and `unveil`
 profile. Keep privileged helpers separate and narrow. A sandbox profile is not
 accepted if it makes normal desktop behavior silently unreliable.
 
+The agreed fail-closed rollout, lock-process safety invariant, pilot procedure
+and process order are specified in `docs/OPENBSD_SANDBOX_PLAN.md`. Sandbox setup
+failure is fatal; Meridian never continues through an automatic unsandboxed
+runtime fallback.
+
 ## Decision record
 
 OpenBSD is selected as primary only when the evidence supports acceptable:

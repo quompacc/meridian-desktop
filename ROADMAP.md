@@ -83,7 +83,8 @@ Port or isolate Linux assumptions without weakening the existing architecture:
 - run a minimal compositor session with Intel HD 620
 - validate Wayland clients and XWayland, if available
 - define OpenBSD process boundaries using `pledge`, `unveil` and privilege
-  separation where they improve the trusted base
+  separation where they improve the trusted base; the fail-closed rollout begins
+  with the `meridian-lock` pilot in `docs/OPENBSD_SANDBOX_PLAN.md`
 
 Exit criterion: a minimal Meridian session renders, accepts input and can run a
 reference client, or the exact upstream blocker is documented.
