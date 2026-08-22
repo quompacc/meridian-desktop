@@ -15,9 +15,6 @@ pub(super) struct DecorationBuffers {
     pub(super) border_right: SolidColorBuffer,
     pub(super) border_bottom: SolidColorBuffer,
     pub(super) title_separator: SolidColorBuffer,
-    pub(super) close_bg: SolidColorBuffer,
-    pub(super) maximize_bg: SolidColorBuffer,
-    pub(super) minimize_bg: SolidColorBuffer,
 }
 
 impl DecorationBuffers {
@@ -30,9 +27,6 @@ impl DecorationBuffers {
             border_right: SolidColorBuffer::new((1, 1), z),
             border_bottom: SolidColorBuffer::new((1, 1), z),
             title_separator: SolidColorBuffer::new((1, 1), z),
-            close_bg: SolidColorBuffer::new((1, 1), z),
-            maximize_bg: SolidColorBuffer::new((1, 1), z),
-            minimize_bg: SolidColorBuffer::new((1, 1), z),
         }
     }
 }
@@ -84,6 +78,14 @@ impl WindowDecoration {
         }
     }
 
+    pub(super) fn corner_radius(&self, theme: &Decorations) -> i32 {
+        if self.is_maximized || self.is_fullscreen {
+            0
+        } else {
+            theme.window_corner_radius as i32
+        }
+    }
+
     pub(super) fn hovered_button(&self) -> Option<HoveredButton> {
         self.hovered_button
     }
@@ -108,6 +110,8 @@ pub(super) fn opaque(c: Color) -> [f32; 4] {
 
 #[cfg(test)]
 mod tests {
+    use meridian_config::Decorations;
+
     use super::{HoveredButton, WindowDecoration};
 
     #[test]
@@ -127,5 +131,14 @@ mod tests {
             .into_iter()
             .any(|deco| deco.set_hover(None));
         assert!(any);
+    }
+
+    #[test]
+    fn maximized_window_has_square_corners() {
+        let theme = Decorations::default();
+        let mut deco = WindowDecoration::new();
+        assert!(deco.corner_radius(&theme) > 0);
+        deco.is_maximized = true;
+        assert_eq!(deco.corner_radius(&theme), 0);
     }
 }

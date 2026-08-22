@@ -116,11 +116,66 @@ fn maybe_restore_maximized_drag(
     drag_start_location: Point<f64, Logical>,
     current_pointer_location: Point<f64, Logical>,
 ) -> Option<Point<i32, Logical>> {
-    let toplevel = window.toplevel()?;
     if !movement_crosses_restore_threshold(drag_start_location, current_pointer_location) {
         return None;
     }
 
+    if let Some(toplevel) = window.toplevel() {
+        return restore_maximized_xdg_drag(
+            data,
+            window,
+            &toplevel,
+            initial_window_location,
+            drag_start_location,
+            current_pointer_location,
+        );
+    }
+
+    let x11 = window.x11_surface()?;
+    let wl_surface = x11.wl_surface()?;
+    let theme = data.theme_manager.current().config.decorations.clone();
+    let maximized_insets = data
+        .decoration_manager
+        .decoration_inset(&wl_surface, &theme);
+    let anchor = drag_restore_anchor_from_start_pointer(
+        drag_start_location,
+        initial_window_location,
+        window.geometry().size,
+        maximized_insets,
+    );
+    let restore = data
+        .maximize_restore_locations
+        .get(&x11_window_key(&x11))
+        .copied();
+    let restore_client_size = restore
+        .and_then(|geometry| geometry.client_size)
+        .unwrap_or(window.geometry().size);
+
+    apply_x11_unmaximize(data, &x11);
+    let floating_insets = data
+        .decoration_manager
+        .decoration_inset(&wl_surface, &theme);
+    let restored_location = anchored_restore_client_location(
+        current_pointer_location,
+        anchor,
+        restore_client_size,
+        floating_insets,
+    );
+    if let Err(error) = x11.configure(Rectangle::new(restored_location, restore_client_size)) {
+        tracing::warn!(%error, "xwayland drag-restore configure failed");
+        return None;
+    }
+    Some(restored_location)
+}
+
+fn restore_maximized_xdg_drag(
+    data: &mut MeridianState,
+    window: &Window,
+    toplevel: &smithay::wayland::shell::xdg::ToplevelSurface,
+    initial_window_location: Point<i32, Logical>,
+    drag_start_location: Point<f64, Logical>,
+    current_pointer_location: Point<f64, Logical>,
+) -> Option<Point<i32, Logical>> {
     let theme = data.theme_manager.current().config.decorations.clone();
     let maximized_insets = data
         .decoration_manager

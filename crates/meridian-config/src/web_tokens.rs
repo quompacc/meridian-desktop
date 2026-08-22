@@ -130,6 +130,11 @@ fn write_shared_tokens(css: &mut String, decorations: &Decorations, fonts: &Font
     property_px(css, "radius-xl", radius.xl);
     property_px(css, "decoration-border-width", decorations.border_width);
     property_px(css, "decoration-corner-radius", decorations.corner_radius);
+    property_px(
+        css,
+        "decoration-window-corner-radius",
+        decorations.window_corner_radius,
+    );
     property_px(css, "layout-gap", decorations.gap);
     property(css, "shadow-enabled", flag(decorations.shadow));
     property_px(css, "shadow-radius", decorations.shadow_radius);
@@ -447,6 +452,7 @@ mod tests {
         );
         assert!(css.contains("--meridian-color-accent: #010203;"));
         assert!(css.contains("--meridian-decoration-corner-radius: 17px;"));
+        assert!(css.contains("--meridian-decoration-window-corner-radius: 8px;"));
     }
 
     #[test]

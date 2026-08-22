@@ -22,7 +22,7 @@ use crate::{
     },
     state::OutputInfo,
     state::{
-        clear_tiled_toplevel_states, maximized_client_loc_from_output,
+        clear_tiled_toplevel_states, maximized_client_rect_from_frame,
         normal_window_workarea_from_rect, remember_maximize_restore_geometry,
         resolve_unmaximize_restore_client_loc, take_maximize_restore_geometry, window_id,
         MaximizeRestoreGeometry, MeridianState, MinimizedWindowEntry, XwaylandOrDiagPointerEvent,
@@ -168,11 +168,14 @@ pub fn handle_pointer_button<I: InputBackend>(
                                 .decoration_manager
                                 .set_maximized(toplevel.wl_surface(), true);
                             let theme = &state.theme_manager.current().config.decorations;
-                            let (x_off, y_off) = state
+                            let decoration_inset = state
                                 .decoration_manager
-                                .decoration_offset(toplevel.wl_surface(), theme);
-                            let maximized_client_loc =
-                                maximized_client_loc_from_output(geo.loc, (x_off, y_off));
+                                .decoration_inset(toplevel.wl_surface(), theme);
+                            let maximized_client =
+                                maximized_client_rect_from_frame(geo, decoration_inset);
+                            toplevel.with_pending_state(|s| {
+                                s.size = Some(maximized_client.size);
+                            });
                             if let Some(current_loc) =
                                 state.workspaces.active_space().element_location(&window)
                             {
@@ -187,7 +190,7 @@ pub fn handle_pointer_button<I: InputBackend>(
                             }
                             state.workspaces.active_space_mut().map_element(
                                 window.clone(),
-                                maximized_client_loc,
+                                maximized_client.loc,
                                 true,
                             );
                         }

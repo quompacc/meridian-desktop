@@ -101,6 +101,14 @@ for bin in "${binaries[@]}"; do
   require_file "target/release/${bin}"
   "${SUDO[@]}" install -Dm755 "target/release/${bin}" "${bindir}/${bin}"
 done
+
+if [[ "$(uname -s)" == "OpenBSD" ]]; then
+  drm_bridge="libmeridian_xwayland_drm_bridge.so"
+  require_file "target/release/${drm_bridge}"
+  # The compositor resolves the bridge beside its own executable. Keep this
+  # OpenBSD-only artifact out of global loader configuration.
+  "${SUDO[@]}" install -Dm755 "target/release/${drm_bridge}" "${bindir}/${drm_bridge}"
+fi
 "${SUDO[@]}" install -Dm755 scripts/meridian-file-picker "${bindir}/meridian-file-picker"
 
 "${SUDO[@]}" install -d "${datadir}/meridian/themes"

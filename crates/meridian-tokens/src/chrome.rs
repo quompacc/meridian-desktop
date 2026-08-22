@@ -69,9 +69,48 @@ impl Panel {
     pub const fn surface_height(self) -> u32 {
         self.top_shadow + self.height + self.bottom_gap
     }
+
+    /// Screen edge occupied by the visible panel island and its bottom gap.
+    /// Maximized windows may extend into the transparent top-shadow canvas,
+    /// but must stop at the island itself.
+    pub const fn window_reservation(self) -> u32 {
+        self.height + self.bottom_gap
+    }
 }
 
 impl Default for Panel {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Geometry for compositor-owned server-side window decorations.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WindowChrome {
+    pub titlebar_height: i32,
+    pub button_width: i32,
+    pub button_icon_size: u32,
+    pub button_icon_stroke: f32,
+    pub button_hover_inset: i32,
+    pub button_hover_radius: f32,
+    pub separator_height: i32,
+    pub resize_handle: i32,
+}
+
+impl WindowChrome {
+    pub const DEFAULT: WindowChrome = WindowChrome {
+        titlebar_height: 34,
+        button_width: 38,
+        button_icon_size: 13,
+        button_icon_stroke: 1.25,
+        button_hover_inset: 3,
+        button_hover_radius: 6.0,
+        separator_height: 1,
+        resize_handle: 8,
+    };
+}
+
+impl Default for WindowChrome {
     fn default() -> Self {
         Self::DEFAULT
     }
@@ -186,8 +225,13 @@ mod tests {
         assert_eq!(Launcher::DEFAULT.panel_gap, 2);
         assert_eq!(Launcher::DEFAULT.app_icon_size, 32);
         assert_eq!(Panel::DEFAULT.surface_height(), 66);
+        assert_eq!(Panel::DEFAULT.window_reservation(), 50);
         assert_eq!(Panel::DEFAULT.control_height, 32);
         assert_eq!(Panel::DEFAULT.app_icon_size, 22);
+        assert_eq!(WindowChrome::DEFAULT.titlebar_height, 34);
+        assert_eq!(WindowChrome::DEFAULT.button_width, 38);
+        assert_eq!(WindowChrome::DEFAULT.button_icon_size, 13);
+        assert_eq!(WindowChrome::DEFAULT.separator_height, 1);
         assert_eq!(Launcher::DEFAULT.selected_alpha, 56);
         assert_eq!(Launcher::DEFAULT.search_focus_alpha, 52);
         assert_eq!(Launcher::DEFAULT.divider_alpha, 44);

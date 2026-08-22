@@ -135,6 +135,8 @@ fn started_move_grab_window_states(window: &smithay::desktop::Window) -> (bool, 
         }) || toplevel
             .with_pending_state(|s| s.states.contains(xdg_toplevel::State::Fullscreen));
         (maximized, fullscreen)
+    } else if let Some(x11) = window.x11_surface() {
+        (x11.is_maximized(), x11.is_fullscreen())
     } else {
         (false, false)
     }

@@ -9,7 +9,7 @@ use smithay::{
 use crate::decoration::icons::{rasterize, IconTint, WindowIcon};
 
 pub(crate) struct IconCache {
-    buffers: HashMap<(WindowIcon, IconTint), MemoryRenderBuffer>,
+    buffers: HashMap<(WindowIcon, IconTint, [u8; 4]), MemoryRenderBuffer>,
     icon_size_px: u32,
     stroke_width: f32,
 }
@@ -38,7 +38,7 @@ impl IconCache {
                 255,
             ],
         };
-        self.buffers.entry((kind, tint)).or_insert_with(|| {
+        self.buffers.entry((kind, tint, stroke)).or_insert_with(|| {
             let pixels = rasterize(kind, self.icon_size_px, stroke, self.stroke_width);
             MemoryRenderBuffer::from_slice(
                 &pixels,
@@ -81,5 +81,21 @@ mod tests {
         let second_ptr = cache.get_or_build(WindowIcon::Close, IconTint::OnSurface, &colors)
             as *const _ as usize;
         assert_eq!(first_ptr, second_ptr);
+    }
+
+    #[test]
+    fn test_icon_cache_rebuilds_when_theme_tint_changes() {
+        let dark = meridian_config::ThemeColors::default();
+        let mut light = dark.clone();
+        light.text = meridian_config::Color::rgb(7, 17, 28);
+        let mut cache = IconCache::new(16, 1.5);
+
+        let dark_ptr =
+            cache.get_or_build(WindowIcon::Close, IconTint::OnSurface, &dark) as *const _ as usize;
+        let light_ptr =
+            cache.get_or_build(WindowIcon::Close, IconTint::OnSurface, &light) as *const _ as usize;
+
+        assert_ne!(dark_ptr, light_ptr);
+        assert_eq!(cache.len(), 2);
     }
 }

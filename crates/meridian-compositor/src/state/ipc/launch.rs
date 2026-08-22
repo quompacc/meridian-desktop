@@ -86,6 +86,34 @@ pub(super) fn spawn_and_reap(mut launch: Command, program: &str, args: &[String]
     }
 }
 
+pub(super) fn apply_launch_environment(launch: &mut Command, program: &str) {
+    // OpenBSD's current Qt 6 Wayland path cannot create the OpenGL/QRhi
+    // contexts required by applications such as FreeCAD, while the same
+    // packaged applications work through the already-supported XWayland GLX
+    // path. Keep this platform boundary in one launch adapter and respect an
+    // explicit user/session override.
+    #[cfg(target_os = "openbsd")]
+    if std::env::var_os("QT_QPA_PLATFORM").is_none() {
+        launch.env("QT_QPA_PLATFORM", "xcb");
+    }
+
+    // Thunar's GTK3 client-side decoration does not match Meridian's window
+    // chrome and does not negotiate xdg-decoration when forced CSD-off on its
+    // native Wayland backend. Run only Thunar through the existing XWayland
+    // compatibility path so GTK yields the frame to Meridian SSD. Other GTK
+    // applications remain native Wayland clients.
+    if is_thunar_program(program) {
+        launch.env("GDK_BACKEND", "x11").env("GTK_CSD", "0");
+    }
+}
+
+fn is_thunar_program(program: &str) -> bool {
+    Path::new(program)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("thunar"))
+}
+
 pub(super) fn is_firefox_program(program: &str) -> bool {
     Path::new(program)
         .file_name()
@@ -141,6 +169,8 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
+    #[cfg(target_os = "openbsd")]
+    use super::apply_launch_environment;
     use super::prepare_launch;
 
     fn env_lock() -> &'static Mutex<()> {
@@ -181,6 +211,58 @@ mod tests {
         let spec = prepare_launch("demo", &args, false).expect("launch spec");
         assert_eq!(spec.program, "demo");
         assert_eq!(spec.args, args);
+    }
+
+    #[cfg(target_os = "openbsd")]
+    #[test]
+    fn openbsd_qt_platform_defaults_to_xcb_but_respects_session_override() {
+        use std::process::Command;
+
+        with_env_vars(&[("QT_QPA_PLATFORM", None)], || {
+            let mut launch = Command::new("true");
+            apply_launch_environment(&mut launch, "FreeCAD");
+            assert_eq!(
+                launch
+                    .get_envs()
+                    .find(|(name, _)| *name == "QT_QPA_PLATFORM")
+                    .and_then(|(_, value)| value),
+                Some(std::ffi::OsStr::new("xcb"))
+            );
+        });
+
+        with_env_vars(&[("QT_QPA_PLATFORM", Some("wayland"))], || {
+            let mut launch = Command::new("true");
+            apply_launch_environment(&mut launch, "FreeCAD");
+            assert!(launch.get_envs().all(|(name, _)| name != "QT_QPA_PLATFORM"));
+        });
+    }
+
+    #[test]
+    fn thunar_uses_xwayland_without_client_side_decorations() {
+        use std::process::Command;
+
+        let mut thunar = Command::new("thunar");
+        apply_launch_environment(&mut thunar, "/usr/local/bin/thunar");
+        assert_eq!(
+            thunar
+                .get_envs()
+                .find(|(name, _)| *name == "GDK_BACKEND")
+                .and_then(|(_, value)| value),
+            Some(std::ffi::OsStr::new("x11"))
+        );
+        assert_eq!(
+            thunar
+                .get_envs()
+                .find(|(name, _)| *name == "GTK_CSD")
+                .and_then(|(_, value)| value),
+            Some(std::ffi::OsStr::new("0"))
+        );
+
+        let mut other = Command::new("foot");
+        apply_launch_environment(&mut other, "foot");
+        assert!(other
+            .get_envs()
+            .all(|(name, _)| name != "GDK_BACKEND" && name != "GTK_CSD"));
     }
 
     #[test]

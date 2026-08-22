@@ -48,6 +48,9 @@ impl Default for ThemeColors {
 pub struct Decorations {
     pub border_width: u32,
     pub corner_radius: u32,
+    /// Corner radius of floating compositor-owned window frames. Kept
+    /// separate from shell-card radius so SSD tuning cannot move the panel.
+    pub window_corner_radius: u32,
     pub shadow: bool,
     pub shadow_radius: u32,
     pub shadow_radius_top: u32,
@@ -110,11 +113,12 @@ impl Default for Decorations {
         Self {
             border_width: 1,
             corner_radius: 10,
+            window_corner_radius: 8,
             shadow: true,
-            shadow_radius: 22,
-            shadow_radius_top: 11,
-            shadow_alpha: 0.35,
-            shadow_offset_y: 3,
+            shadow_radius: 18,
+            shadow_radius_top: 9,
+            shadow_alpha: 0.18,
+            shadow_offset_y: 2,
             gap: 8,
             glass: true,
             // High = opaque frosted surface (the launcher look the user signed
@@ -333,10 +337,11 @@ mod tests {
         assert_eq!(decorations.border_width, 1);
         assert_eq!(decorations.corner_radius, 10);
         assert!(decorations.shadow);
-        assert_eq!(decorations.shadow_radius, 22);
-        assert_eq!(decorations.shadow_radius_top, 11);
-        assert_eq!(decorations.shadow_alpha, 0.35);
-        assert_eq!(decorations.shadow_offset_y, 3);
+        assert_eq!(decorations.window_corner_radius, 8);
+        assert_eq!(decorations.shadow_radius, 18);
+        assert_eq!(decorations.shadow_radius_top, 9);
+        assert_eq!(decorations.shadow_alpha, 0.18);
+        assert_eq!(decorations.shadow_offset_y, 2);
         assert_eq!(decorations.gap, 8);
         assert!(decorations.glass);
         assert_eq!(decorations.glass_alpha, 0.92);
@@ -386,11 +391,12 @@ mod tests {
         assert_eq!(config.colors.success, Color::rgb(0x6f, 0xa0, 0x8c));
         assert_eq!(config.decorations.border_width, 1);
         assert_eq!(config.decorations.corner_radius, 10);
+        assert_eq!(config.decorations.window_corner_radius, 8);
         assert!(config.decorations.shadow);
-        assert_eq!(config.decorations.shadow_radius, 22);
-        assert_eq!(config.decorations.shadow_radius_top, 11);
-        assert_eq!(config.decorations.shadow_alpha, 0.35);
-        assert_eq!(config.decorations.shadow_offset_y, 3);
+        assert_eq!(config.decorations.shadow_radius, 18);
+        assert_eq!(config.decorations.shadow_radius_top, 9);
+        assert_eq!(config.decorations.shadow_alpha, 0.18);
+        assert_eq!(config.decorations.shadow_offset_y, 2);
         assert_eq!(config.decorations.gap, 8);
     }
 

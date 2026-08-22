@@ -144,10 +144,15 @@ Render order, compositor policy and IPC compatibility must remain stable.
 Exit criterion: all three components can be daily-tested together, survive a
 runtime restart and look/behave consistently in both themes.
 
-Current compatibility follow-ups: diagnose Blender's maximized frameless map,
-FreeCAD stalling after its splash, and Thunar's visually inconsistent GTK3
-frame. Normal Wayland and XWayland main windows otherwise use one-time,
-frame-aware centered placement in the panel-safe workarea.
+The secure OpenBSD XWayland server acceleration path is operational. Meridian
+opens only the active primary/render pair through seatd and passes those
+explicit descriptors to unprivileged Xwayland; device-node permissions remain
+unchanged and Xwayland initializes Glamor. The experimental extension of the
+bridge to X11 GL clients did produce the Intel HD 620 with `Accelerated: yes`,
+but failed the 2026-08-22 interactive stability gate: FreeCAD stopped opening
+and Blender crashed when leaving maximized geometry. Automatic client preload
+is therefore disabled and applications retain the stable software fallback
+until the OpenBSD Mesa/DRI3 path can be fixed without regressions.
 
 ## Phase 5 — Meridian system applications
 

@@ -326,6 +326,39 @@ the more workable platform. The decision and blockers belong in this file.
    light themes. Audio state, slider, mute and wscons hardware keys work on the
    Acer. Persistent hidden popups no longer intercept pointer or keyboard
    input. Normal Wayland/XWayland windows now start centered in the panel-safe
-   workarea. Remaining application evidence: Blender maps maximized without a
-   visible frame; FreeCAD centers correctly but stalls after its splash; Thunar
-   is functional but visually inconsistent with the Meridian GTK styling.
+   workarea. Blender and FreeCAD now keep their splash screens undecorated and
+   show the Meridian frame on their maximized main windows. This was
+   interactively accepted on the Acer on 2026-08-22.
+9. **Qt 6 application launch currently defaults to XCB/XWayland.** A controlled
+   2026-08-22 comparison showed FreeCAD's native Wayland path stopping after
+   the splash with `QOpenGLWidget`/QRhi context creation failures, while the
+   identical desktop command under `QT_QPA_PLATFORM=xcb` created its complete
+   main window without those errors. Meridian applies this default only to
+   OpenBSD-launched applications and respects an explicit session override.
+   Re-evaluate it when Qt Wayland OpenGL works on the reference stack. A second
+   controlled run on 2026-08-22 narrowed the remaining performance risk:
+   FreeCAD maps its normal main window and stays responsive as a process, but
+   The secure XWayland server path was completed on 2026-08-22 without changing
+   DRM-node permissions. Meridian opens exactly the active primary and render
+   nodes through seatd and passes only those descriptors to the still
+   unprivileged XWayland process. The OpenBSD bridge validates the canonical
+   device path and `st_rdev`; Xwayland initializes Glamor and exposes DRI3. An
+   experimental client-side preload also made `glxinfo -B` report the Mesa
+   Intel HD 620 with `Accelerated: yes`, but was rolled back immediately after
+   the hardware test: FreeCAD no longer opened and Blender crashed when leaving
+   maximized mode. X11 applications therefore retain the stable software client
+   path for now. The bridge remains required beside `meridian` for Xwayland's
+   own Glamor initialization, and the local installer handles that artifact.
+10. **Thunar uses a tightly scoped XWayland SSD compatibility path.** Its
+   native GTK3 Wayland backend does not negotiate `xdg-decoration`, and
+   `GTK_CSD=0` alone therefore cannot hand the frame to Meridian. The launcher
+   sets `GDK_BACKEND=x11` and `GTK_CSD=0` only for the Thunar executable. This
+   keeps every other GTK application on its normal native Wayland path. The
+   resulting frame, maximize workarea, square maximized corners and drag-restore
+   behavior were interactively accepted on the Acer on 2026-08-22.
+11. **The compositor-owned SSD frame is visually accepted in both themes.**
+   Geometry and effects come from `meridian-tokens` plus
+   `meridian-config::Decorations`; the light/dark switch changes only colors.
+   The decoration icon cache includes the resolved tint in its key, preventing
+   stale low-contrast glyphs after a theme switch. Hover assets remain cached
+   and no idle work was added.

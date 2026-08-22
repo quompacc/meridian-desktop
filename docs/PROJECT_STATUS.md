@@ -150,18 +150,44 @@ Zielrichtung steht in `../MERIDIAN_OS_PLAN.md`, `../ROADMAP.md` und
   maximierte und Vollbild-Fenster behalten ihre Protokollsemantik. Die
   Berechnung passiert nur beim Mapping und erzeugt keine Idle-Last.
 
-### Offene Laufzeitbefunde fuer 2026-08-22
+### Laufzeitbefunde fuer 2026-08-22
 
-- Blender startet maximiert und ohne sichtbaren Meridian-Frame. Zuerst
-  feststellen, ob der Client beim Mapping Maximized/Fullscreen oder CSD
-  anfordert; erst danach die Dekorationssynchronisation aendern.
+- Blender und FreeCAD klassifizieren ihre Splashscreens und Hauptfenster nun
+  korrekt: standardisierte X11-Splashfenster bleiben rahmenlos; normale exakt
+  ausgabegrosse Fenster ohne expliziten Maximized-Status werden in die
+  panel-sichere maximierte Geometrie ueberfuehrt und erhalten den
+  Meridian-Frame. Beide Pfade wurden auf dem Acer interaktiv bestaetigt.
 - FreeCAD wird nun korrekt mittig und vollstaendig erreichbar platziert, bleibt
-  auf dem Acer jedoch nach der ersten Startanimation stehen. Prozess-, XWayland-
-  und GPU-Logs gemeinsam erfassen; die Zentrierung ist nicht mehr der Blocker.
-- Thunar ist funktional, passt mit seinem GTK3-Frame aber als einzige der
-  ausgewaehlten Basisanwendungen optisch nicht zum restlichen Satz. Styling
-  gegen die exportierte Meridian-GTK-Palette pruefen, bevor ein schwererer
-  Dateimanager eingefuehrt wird.
+  im nativen Qt-Wayland-Pfad auf dem Acer jedoch nach der ersten Startanimation
+  stehen. Der Vergleich vom 2026-08-22 fand reproduzierbare
+  `QOpenGLWidget`-/QRhi-Kontextfehler; derselbe Desktop-Aufruf laedt ueber
+  XCB/XWayland vollstaendig. Meridian setzt deshalb auf OpenBSD fuer gestartete
+  Qt-Anwendungen standardmaessig `QT_QPA_PLATFORM=xcb`, respektiert aber eine
+  explizite Session-Vorgabe. Die Zentrierung ist nicht mehr der Blocker. Ein
+  isolierter Folgelauf bestaetigte zunaechst llvmpipe als Ursache des
+  verbleibenden Performance-Risikos. Der sichere XWayland-Serverpfad ist seit
+  2026-08-22 aktiv: Meridian reicht ausschliesslich die via seatd geoeffneten
+  DRM-FDs an das unprivilegierte XWayland weiter; Device-Rechte bleiben
+  unveraendert und XWayland initialisiert Glamor. Der experimentelle Preload
+  fuer X11-Clients erreichte zwar Intel HD 620 und `Accelerated: yes`, fiel aber
+  durch den Hardware-Stabilitaetstest: FreeCAD oeffnete nicht mehr und Blender
+  stuerzte beim Verlassen des maximierten Modus ab. Der globale Client-Preload
+  wurde deshalb zurueckgenommen; Anwendungen nutzen vorerst wieder den stabilen
+  Softwarepfad.
+- Thunar ist funktional; sein nativer GTK3-Wayland-Pfad verhandelt keine
+  `xdg-decoration` und behaelt einen optisch abweichenden CSD-Frame. Der
+  kontrollierte Vergleich vom 2026-08-22 bestaetigte XWayland mit
+  `GTK_CSD=0` als sauberen Meridian-SSD-Pfad. Der Launch-Adapter setzt diese
+  beiden Variablen deshalb ausschliesslich fuer Thunar; andere GTK-Apps
+  bleiben nativ. Rahmen, Maximieren und Drag-Restore sind auf dem Acer
+  interaktiv bestaetigt.
+- Der neue compositor-eigene SSD-Rahmen ist in Hell und Dunkel abgenommen:
+  zentrale `WindowChrome`-Geometrie, neutraler Hairline-Fokus, dezenter
+  Fensterschatten und kleine gecachte Hoverflaechen ersetzen den alten blauen
+  Fokusstrich und die schweren Button-Glasflaechen. Der Icon-Cache beruecksichtigt
+  die konkrete Themefarbe; ein Regressionstest deckt den Hell-/Dunkelwechsel ab.
+  Maximierte Fenster bleiben bewusst eckig und panelbuendig. Es entsteht keine
+  neue Idle-Last; ungenutzte Hover-Puffer wurden entfernt.
 - Der Launcher bleibt vorerst bewusst ohne Schatten. Alle getesteten
   Cairo/WebKit-Schattenpfade summierten beim Tippen Alpha ueber mehrere Commits;
   der flache Zustand ist stabil und vermeidet Artefakte.

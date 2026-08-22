@@ -17,6 +17,7 @@ members = [
     "crates/meridian-boot-common",
     "crates/meridian-ui-runtime",
     "crates/meridian-app-catalog",
+    "crates/meridian-xwayland-drm-bridge",
 ]
 exclude = ["third_party/smithay"]
 

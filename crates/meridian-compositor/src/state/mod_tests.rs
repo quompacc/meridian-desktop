@@ -2,11 +2,20 @@ use smithay::utils::{Logical, Point, Rectangle, Size};
 
 use super::{
     clear_tiled_toplevel_states, half_snap_client_placement_from_output,
-    maximized_client_loc_from_output, normal_window_workarea_from_output_geometry,
-    normal_window_workarea_from_rect, remember_maximize_restore_geometry,
-    resolve_unmaximize_restore_client_loc, restore_client_loc_or_fallback, HalfSnapDirection,
-    MaximizeRestoreGeometry, OutputGeometry, NORMAL_WINDOW_BOTTOM_RESERVED_PX,
+    maximized_client_loc_from_output, maximized_client_rect_from_frame,
+    normal_window_workarea_from_output_geometry, normal_window_workarea_from_rect,
+    remember_maximize_restore_geometry, resolve_unmaximize_restore_client_loc,
+    restore_client_loc_or_fallback, HalfSnapDirection, MaximizeRestoreGeometry, OutputGeometry,
+    NORMAL_WINDOW_BOTTOM_RESERVED_PX,
 };
+
+#[test]
+fn maximized_client_rect_subtracts_all_frame_insets() {
+    let frame = Rectangle::new((10, 20).into(), (1600, 850).into());
+    let client = maximized_client_rect_from_frame(frame, (0, 32, 0, 0));
+    assert_eq!(client.loc, (10, 52).into());
+    assert_eq!(client.size, (1600, 818).into());
+}
 
 #[test]
 fn capture_known_loc_and_size_preserves_client_size() {

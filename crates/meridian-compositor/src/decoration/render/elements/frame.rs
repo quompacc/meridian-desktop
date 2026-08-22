@@ -1,12 +1,3 @@
-mod glass_buttons {
-    /// Hovered colour-veil opacity = `glass_button_alpha * FACTOR`, capped.
-    pub const HOVER_FACTOR: f32 = 0.70;
-    pub const HOVER_CAP: f32 = 0.42;
-    /// Frosted-button tint pull on hover = `glass_button_alpha * FACTOR`, capped.
-    pub const TINT_FACTOR: f32 = 0.75;
-    pub const TINT_CAP: f32 = 0.55;
-}
-
 use super::{
     super::{
         icons::{IconTint, WindowIcon},
@@ -19,7 +10,7 @@ use super::{
 
 /// Rounded-box soft drop-shadow pixel shader (GLSL ES 100). Computes the
 /// signed distance to the (optionally rounded) window rect and fades the
-/// shadow smoothly across `u_blur` — a seamless analytic shadow, no 9-slice
+/// shadow smoothly across `u_blur` -- a seamless analytic shadow, no 9-slice
 /// bitmap. Technique after Evan Wallace's rounded-rectangle shadows.
 const SHADOW_SHADER_SRC: &str = r#"
 precision highp float;
@@ -40,16 +31,15 @@ float rounded_box_sdf(vec2 p, vec2 b, float r) {
 
 void main() {
     vec2 px = v_coords * size;
-    // Discard inside the *actual* window (u_frame_center is the drop-shifted
-    // shadow shape, so the window sits u_offset_y above it). Opaque clients
-    // would cover it anyway; translucent ones must not be tinted grey.
+    // Discard inside the actual window. Opaque clients would cover it anyway;
+    // translucent clients must not be tinted grey by their own shadow.
     vec2 win_center = u_frame_center - vec2(0.0, u_offset_y);
     float d_win = rounded_box_sdf(px - win_center, u_frame_half, u_radius);
     if (d_win < 0.0) {
         discard;
     }
-    // Coverage from the drop-shifted shape, so the shadow stays continuous
-    // directly below the window (no transparent gap from the offset).
+    // Coverage from the drop-shifted shape keeps the shadow continuous below
+    // the window instead of introducing a transparent offset gap.
     float d = rounded_box_sdf(px - u_frame_center, u_frame_half, u_radius);
     float cov = 1.0 - smoothstep(-u_blur, u_blur, d);
     gl_FragColor = u_color * (cov * alpha);

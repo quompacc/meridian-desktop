@@ -6,9 +6,11 @@ use super::{
     adjusted_configure_request_rect, apply_managed_map_ssd, apply_override_redirect_ssd,
     centered_normal_xwayland_rect_with_insets, classify_managed_configure_request,
     configure_request_rect, maximized_x11_content_size, panel_safe_normal_xwayland_rect,
-    panel_safe_normal_xwayland_rect_with_insets, DecorationSyncTarget,
+    panel_safe_normal_xwayland_rect_with_insets, should_apply_initial_x11_maximized_geometry,
+    should_promote_output_sized_x11_to_maximized, x11_window_uses_ssd, DecorationSyncTarget,
     ManagedConfigureRequestAction,
 };
+use smithay::xwayland::xwm::WmWindowType;
 
 #[test]
 fn normal_xwayland_window_centers_its_complete_frame() {
@@ -28,6 +30,46 @@ fn normal_xwayland_window_centers_its_complete_frame() {
         (1080 - NORMAL_WINDOW_BOTTOM_RESERVED_PX - 636) / 2 + 34
     );
     assert_eq!(centered.size, Size::from((800, 600)));
+}
+
+#[test]
+fn initial_maximized_geometry_applies_only_to_managed_non_fullscreen_windows() {
+    assert!(should_apply_initial_x11_maximized_geometry(
+        false, true, false
+    ));
+    assert!(!should_apply_initial_x11_maximized_geometry(
+        true, true, false
+    ));
+    assert!(!should_apply_initial_x11_maximized_geometry(
+        false, false, false
+    ));
+    assert!(!should_apply_initial_x11_maximized_geometry(
+        false, true, true
+    ));
+}
+
+#[test]
+fn x11_splash_is_the_only_managed_role_without_ssd() {
+    assert!(!x11_window_uses_ssd(Some(WmWindowType::Splash)));
+    assert!(x11_window_uses_ssd(Some(WmWindowType::Normal)));
+    assert!(x11_window_uses_ssd(Some(WmWindowType::Dialog)));
+    assert!(x11_window_uses_ssd(None));
+}
+
+#[test]
+fn output_sized_normal_window_is_promoted_but_fullscreen_and_splash_are_not() {
+    assert!(should_promote_output_sized_x11_to_maximized(
+        false, false, true, true
+    ));
+    assert!(!should_promote_output_sized_x11_to_maximized(
+        false, true, true, true
+    ));
+    assert!(!should_promote_output_sized_x11_to_maximized(
+        false, false, false, true
+    ));
+    assert!(!should_promote_output_sized_x11_to_maximized(
+        true, false, true, true
+    ));
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -104,7 +146,7 @@ fn output_sized_rect_is_treated_as_fullscreen_and_left_unchanged() {
     assert_eq!(adjusted, requested);
     assert_eq!(
         output.height - NORMAL_WINDOW_BOTTOM_RESERVED_PX,
-        816,
+        850,
         "sanity check: panel-safe height differs from fullscreen height"
     );
 }

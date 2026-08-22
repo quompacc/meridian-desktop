@@ -5,7 +5,7 @@ use smithay::wayland::seat::WaylandFocus;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::state::{
-    clear_tiled_toplevel_states, maximized_client_loc_from_output,
+    clear_tiled_toplevel_states, maximized_client_rect_from_frame,
     normal_window_workarea_from_output_geometry, remember_maximize_restore_geometry,
     resolve_unmaximize_restore_client_loc, take_maximize_restore_geometry, window_id,
     MaximizeRestoreGeometry, MeridianState, MinimizedWindowEntry, OutputGeometry, OutputInfo,
@@ -25,20 +25,19 @@ pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: Toplev
             selected.name,
             selected.fallback_reason
         );
-        let (loc, size) = normal_maximize_frame_for_output(selected.geometry);
+        state
+            .decoration_manager
+            .set_maximized(surface.wl_surface(), true);
+        let theme = &state.theme_manager.current().config.decorations;
+        let decoration_inset = state
+            .decoration_manager
+            .decoration_inset(surface.wl_surface(), theme);
+        let (loc, size) = normal_maximize_client_for_output(selected.geometry, decoration_inset);
         surface.with_pending_state(|state| {
             clear_tiled_toplevel_states(state);
             state.states.set(xdg_toplevel::State::Maximized);
             state.size = Some(size);
         });
-        state
-            .decoration_manager
-            .set_maximized(surface.wl_surface(), true);
-        let theme = &state.theme_manager.current().config.decorations;
-        let (x_off, y_off) = state
-            .decoration_manager
-            .decoration_offset(surface.wl_surface(), theme);
-        let maximized_client_loc = maximized_client_loc_from_output(loc, (x_off, y_off));
 
         if let Some(window) = find_active_window(state, &surface) {
             if !is_maxed {
@@ -54,7 +53,7 @@ pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: Toplev
             state
                 .workspaces
                 .active_space_mut()
-                .map_element(window, maximized_client_loc, true);
+                .map_element(window, loc, true);
         }
     } else {
         tracing::debug!("selected output for maximize: none (registry empty)");
@@ -62,14 +61,21 @@ pub(crate) fn handle_maximize_request(state: &mut MeridianState, surface: Toplev
     surface.send_pending_configure();
 }
 
-fn normal_maximize_frame_for_output(
+fn normal_maximize_client_for_output(
     output_geometry: OutputGeometry,
+    decoration_inset: (i32, i32, i32, i32),
 ) -> (Point<i32, Logical>, Size<i32, Logical>) {
     let workarea = normal_window_workarea_from_output_geometry(output_geometry);
-    (
-        (workarea.x, workarea.y).into(),
-        (workarea.width, workarea.height).into(),
-    )
+    let client = maximized_client_rect_from_frame(
+        smithay::utils::Rectangle::new(
+            (workarea.x, workarea.y).into(),
+            (workarea.width, workarea.height).into(),
+        ),
+        decoration_inset,
+    );
+    debug_assert_eq!(client.loc.x - decoration_inset.0, workarea.x);
+    debug_assert_eq!(client.loc.y - decoration_inset.1, workarea.y);
+    (client.loc, client.size)
 }
 
 /// New maximized frame when a window's output geometry changes, or None if the
@@ -78,8 +84,9 @@ fn normal_maximize_frame_for_output(
 fn remeasured_maximized_frame(
     current_size: Size<i32, Logical>,
     new_output: OutputGeometry,
+    decoration_inset: (i32, i32, i32, i32),
 ) -> Option<(Point<i32, Logical>, Size<i32, Logical>)> {
-    let (loc, size) = normal_maximize_frame_for_output(new_output);
+    let (loc, size) = normal_maximize_client_for_output(new_output, decoration_inset);
     (size != current_size).then_some((loc, size))
 }
 
@@ -113,8 +120,12 @@ pub(crate) fn remeasure_maximized_windows(state: &mut MeridianState) {
             else {
                 continue;
             };
+            let theme = &state.theme_manager.current().config.decorations;
+            let insets = state
+                .decoration_manager
+                .decoration_inset(toplevel.wl_surface(), theme);
             if let Some((new_loc, new_size)) =
-                remeasured_maximized_frame(window.geometry().size, output.geometry)
+                remeasured_maximized_frame(window.geometry().size, output.geometry, insets)
             {
                 updates.push((window.clone(), new_loc, new_size));
             }
@@ -138,15 +149,12 @@ pub(crate) fn handle_unmaximize_request(state: &mut MeridianState, surface: Topl
     state
         .decoration_manager
         .set_maximized(surface.wl_surface(), false);
-    surface.with_pending_state(|state| {
-        state.states.unset(xdg_toplevel::State::Maximized);
-        state.size = None;
-    });
     if let Some(window) = find_active_window(state, &surface) {
         let restore_geometry = take_maximize_restore_geometry(
             &mut state.maximize_restore_locations,
             surface.wl_surface(),
         );
+        let restore_size = restore_geometry.and_then(|geometry| geometry.client_size);
         let (restore_loc, used_fallback) = if restore_geometry.is_some() {
             resolve_unmaximize_restore_client_loc(restore_geometry, (0, 0))
         } else {
@@ -163,10 +171,19 @@ pub(crate) fn handle_unmaximize_request(state: &mut MeridianState, surface: Topl
                 "unmaximize restore location missing in xdg request path; applying fallback client origin"
             );
         }
+        surface.with_pending_state(|pending| {
+            pending.states.unset(xdg_toplevel::State::Maximized);
+            pending.size = restore_size;
+        });
         state
             .workspaces
             .active_space_mut()
             .map_element(window, restore_loc, true);
+    } else {
+        surface.with_pending_state(|pending| {
+            pending.states.unset(xdg_toplevel::State::Maximized);
+            pending.size = None;
+        });
     }
     surface.send_pending_configure();
 }
@@ -348,7 +365,7 @@ mod tests {
     use crate::state::{OutputGeometry, OutputId, OutputInfo, NORMAL_WINDOW_BOTTOM_RESERVED_PX};
 
     use super::{
-        normal_maximize_frame_for_output, remeasured_maximized_frame,
+        normal_maximize_client_for_output, remeasured_maximized_frame,
         select_output_from_infos_for_point,
     };
 
@@ -366,15 +383,16 @@ mod tests {
             width: 1280,
             height: 720,
         };
-        let (_, big_size) = normal_maximize_frame_for_output(big);
-        let (_, small_size) = normal_maximize_frame_for_output(small);
+        let insets = (0, 32, 0, 0);
+        let (_, big_size) = normal_maximize_client_for_output(big, insets);
+        let (_, small_size) = normal_maximize_client_for_output(small, insets);
         // Output shrank: the maximized frame must follow to the smaller workarea.
         assert_eq!(
-            remeasured_maximized_frame(big_size, small),
-            Some(((0, 0).into(), small_size))
+            remeasured_maximized_frame(big_size, small, insets),
+            Some(((0, 32).into(), small_size))
         );
         // Unchanged geometry: no re-measure (avoid a redundant configure).
-        assert_eq!(remeasured_maximized_frame(small_size, small), None);
+        assert_eq!(remeasured_maximized_frame(small_size, small, insets), None);
     }
 
     fn info(id: u32, name: &str, primary: bool, x: i32) -> OutputInfo {
@@ -424,9 +442,9 @@ mod tests {
             width: 1600,
             height: 900,
         };
-        let (loc, size) = normal_maximize_frame_for_output(output);
-        assert_eq!(loc, (42, 7).into());
+        let (loc, size) = normal_maximize_client_for_output(output, (0, 32, 0, 0));
+        assert_eq!(loc, (42, 39).into());
         assert_eq!(size.w, 1600);
-        assert_eq!(size.h, 900 - NORMAL_WINDOW_BOTTOM_RESERVED_PX);
+        assert_eq!(size.h, 900 - NORMAL_WINDOW_BOTTOM_RESERVED_PX - 32);
     }
 }

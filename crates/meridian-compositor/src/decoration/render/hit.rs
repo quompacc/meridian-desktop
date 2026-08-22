@@ -250,11 +250,11 @@ mod tests {
     }
 
     #[test]
-    fn docked_close_button_owns_top_right_corner() {
+    fn client_aligned_titlebar_leaves_outer_top_right_corner_for_resize() {
         let metrics = SsdFrameMetrics::from_frame_origin((0, 0).into(), (640, 400).into(), 2, 32);
         assert_eq!(
             classify_ssd_frame_hit((642.0, 1.0).into(), metrics),
-            SsdFrameHitRegion::CloseButton
+            SsdFrameHitRegion::TopRightCorner
         );
     }
 

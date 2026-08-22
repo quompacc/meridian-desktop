@@ -50,7 +50,7 @@ reference OS and real-hardware run.
 |---|---|---|---|---|---|
 | Browser | Firefox | pending | usable, gaps tracked | reference | historically harder than Chromium in some Meridian paths |
 | Browser | Chromium | pending | known platform gap | reference | test native Wayland and fallback separately |
-| GTK3 | representative file manager | pending | pending | reference | CSD/SSD ownership must stay correct |
+| GTK3 | Thunar | XWayland quirk verified 2026-08-22 | pending | reference | launcher scopes `GDK_BACKEND=x11` + `GTK_CSD=0` to Thunar so Meridian owns SSD |
 | GTK4/libadwaita | representative modern app | pending | pending | reference | client owns header bar |
 | Qt5 | representative app | pending | pending | reference | verify decoration negotiation |
 | Qt6 | representative app | pending | pending | reference | verify decoration negotiation |

@@ -73,27 +73,23 @@ Farbe/Form über Tokens:
 - Build/Test/Install nur auf der Arch-Box festgeschrieben (`CLAUDE.md`).
 - Step 2 (force-SSD + `GTK_CSD=0`) verworfen und zurückgenommen.
 
-**Phase 1 — SSD-Pfad sauber machen (klein, Gleis A):**
-- Default-Terminal auf ein SSD-Terminal festlegen (`foot` bevorzugt: klein,
-  schnell, sauber konfigurierbar; sonst `alacritty`). Beide nur aus Arch `extra`.
-  - **2026-06-21 entschieden:** `alacritty` (bereits installiert) bleibt Default;
-    es trägt die SSD-Leiste live verifiziert (`request_mode … forcing
-    ServerSide`). `foot` bleibt offene Option (in `extra`, nicht installiert).
-    Die Fallback-Liste in `terminal_program()` / `prepare_launch()` listet
-    `foot` zuerst — ein späteres `pacman -S foot` befördert es automatisch zum
-    Default, ohne Code-Change. **Kein Code-Change nötig.**
-- Step 1 des SSD-Plans abschließen: Titelleisten-Ton/Höhe/Ecken + exakte
-  Button-Alphas gegen das Mockup feinjustieren (Screenshot-Iteration auf der Box).
-  - **2026-06-21 (teilweise):** Ruhe-Chrome der Fensterknöpfe entfernt — das
-    Mockup zeigt nur saubere graue `─□×`-Glyphen ohne Hintergrund. Raus sind
-    die drei frosted Ruhe-Zonen, die zwei Trennlinien, der Ruhe-Frost-Schleier
-    und die Tint-Fallback-Pille; es bleibt nur die Hover-Wölbung (frosted bei
-    `glass_blur`), Close grau. Glass+Blur lebt weiter auf der Titelleisten-Fläche
-    selbst. (`decoration/render/elements.rs`.) Gebaut + Gate grün + deployt auf
-    der Box. **Noch offen:** On-Box-Screenshot-Verifikation + ggf. Feinschliff
-    von Höhe/Eckenradius/Hover-Alpha (Session war beim Deploy nicht eingeloggt).
-- Verifizieren: SSD-Apps tragen die Leiste pixelgenau wie im Mockup. **(offen —
-  Screenshot-Abgleich steht noch aus.)**
+**Phase 1 — erledigt (2026-08-22, OpenBSD-Referenzhardware):**
+- `foot` ist installiert, wird als bevorzugtes Terminal aufgeloest und traegt
+  den Meridian-SSD-Rahmen. Thunar nutzt ausschliesslich ueber seinen
+  Launch-Adapter XWayland plus `GTK_CSD=0` und traegt denselben Rahmen.
+- Die live abgestimmte SSD-Leiste nutzt zentrale `WindowChrome`-Tokens: 34 px
+  Titelleiste, grosszuegige Klickflaechen, ruhige Glyphen, eingelassene
+  Hoverflaechen, neutrale 1-px-Trennkante und einen separaten Fensterradius.
+- Maximierte Fenster sind kantenbuendig und eckig; Ziehen stellt die letzte
+  Floating-Geometrie unter dem Zeiger wieder her. Foot und Thunar wurden in
+  Normal- und Maximalzustand interaktiv bestaetigt.
+- XWayland-Splashfenster bleiben anhand ihres standardisierten Fenstertyps
+  rahmenlos. Blender und FreeCAD erhalten dagegen am normalen, implizit
+  maximierten Hauptfenster den Meridian-Frame; beide Faelle sind interaktiv
+  bestaetigt.
+- Der Icon-Cache schluesselt die konkrete Themefarbe mit ein. Die drei
+  Fensterbuttons bleiben damit nach beliebig vielen Hell-/Dunkelwechseln
+  kontrastreich. Design-, Groessen- und Workspace-Tests sind gruen.
 
 **Phase 2 — Kern-App-Inventar (Entscheidungsphase, kein Code):**
 - Pro Default-App-Kategorie aus `APP_STACK.md` einsortieren in: **Gleis A** (SSD

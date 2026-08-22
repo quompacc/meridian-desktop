@@ -18,7 +18,7 @@ use wayland_server::{Client, DisplayHandle};
 
 use crate::{utils::user_data::UserDataMap, wayland::compositor::CompositorClientState};
 
-use super::x11_sockets::{X11Lock, prepare_x11_sockets};
+use super::x11_sockets::{prepare_x11_sockets, X11Lock};
 
 /// A handle to a running XWayland process. Using XWayland as an xserver for
 /// X11-based clients requires two connections: one wayland socket, where
@@ -124,6 +124,39 @@ impl XWayland {
         V: AsRef<OsStr>,
         F: FnOnce(&UserDataMap),
     {
+        Self::spawn_with_fds(
+            dh,
+            display,
+            envs,
+            std::iter::empty::<BorrowedFd<'static>>(),
+            open_abstract_socket,
+            stdout,
+            stderr,
+            user_data,
+        )
+    }
+
+    /// Spawns XWayland while preserving an explicit, caller-owned set of file
+    /// descriptors across `exec`. The caller must keep them alive until this
+    /// function returns. All other spawn behavior is identical to [`Self::spawn`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn spawn_with_fds<'a, K, V, I, J, F>(
+        dh: &DisplayHandle,
+        display: impl Into<Option<u32>>,
+        envs: I,
+        inherited_fds: J,
+        open_abstract_socket: bool,
+        stdout: impl Into<std::process::Stdio>,
+        stderr: impl Into<std::process::Stdio>,
+        user_data: F,
+    ) -> std::io::Result<(Self, Client)>
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+        J: IntoIterator<Item = BorrowedFd<'a>>,
+        F: FnOnce(&UserDataMap),
+    {
         let (x_wm_x11, x_wm_me) = UnixStream::pair()?;
         let (wl_x11, wl_me) = UnixStream::pair()?;
 
@@ -164,6 +197,8 @@ impl XWayland {
         command.env("WAYLAND_SOCKET", format!("{}", wl_x11.as_raw_fd()));
         command.envs(envs);
 
+        let inherited_fds: Vec<_> = inherited_fds.into_iter().map(|fd| fd.as_raw_fd()).collect();
+
         unsafe {
             let wayland_socket_fd = wl_x11.as_raw_fd();
             let wm_socket_fd = x_wm_x11.as_raw_fd();
@@ -178,6 +213,9 @@ impl XWayland {
                 unset_cloexec(pipe_fd)?;
                 for &socket in socket_fds.iter() {
                     unset_cloexec(socket)?;
+                }
+                for &fd in inherited_fds.iter() {
+                    unset_cloexec(fd)?;
                 }
 
                 Ok(())

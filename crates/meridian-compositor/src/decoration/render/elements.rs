@@ -1,6 +1,7 @@
 use smallvec::SmallVec;
 
 use meridian_config::{Decorations, ThemeColors, ThemeSurface};
+use meridian_tokens::Interaction;
 use smithay::{
     backend::renderer::{
         element::{memory::MemoryRenderBufferRenderElement, solid::SolidColorRenderElement, Kind},
@@ -12,14 +13,7 @@ use smithay::{
 
 use crate::backend::drm::glass::GlassTitlebarInfo;
 
-// Tuning for the hover wash on the glass-titlebar window controls. The mockup
-// shows NO resting chrome — just clean grey ─□× glyphs — so the only per-button
-// treatment is the hovered control's neutral wash (and its frosted veil when
-// blur is on). Both are fractions of the theme's `glass_button_alpha` (capped),
-// kept in one named place instead of scattered literals in the render loop.
-// Final values are tuned on-screen against the reference mockup
-// (GUI_CENTRALIZATION_PLAN §6 phase 1).
-include!("elements/glass_buttons.rs");
+include!("elements/frame.rs");
 include!("elements/shaders.rs");
 impl DecorationManager {
     #[allow(clippy::too_many_arguments)]
@@ -110,11 +104,9 @@ impl DecorationManager {
         // border becomes a rounded outline, and the shadow radius follows. The
         // client content's bottom corners are clipped separately in the
         // backend (see `ClippedSurfaceRenderElement`). All disabled at radius 0.
-        let cr = theme.corner_radius as i32;
-        // Maximized windows are rounded too: they float as a card above the
-        // panel rather than touching the bottom edge (the work area reserves
-        // the panel's exclusive zone). should_draw() already excludes truly
-        // undecorated/fullscreen surfaces.
+        let cr = deco.corner_radius(theme);
+        // Maximized windows meet the output edges and visible panel island;
+        // square corners prevent wallpaper pinholes at those hard boundaries.
         let rounded = cr > 0 && rounded_quad_shader.is_some();
         let rphys = cr as f32 * ps as f32;
         let mut elements: SmallVec<[DecorationRenderElement; 32]> = SmallVec::new();
@@ -189,84 +181,46 @@ impl DecorationManager {
                 elements.push(DecorationRenderElement::Icon(icon));
             }
 
-            // Window-control chrome behind the glyphs. The mockup shows NO
-            // resting chrome — just clean grey ─□× glyphs — so at rest we draw
-            // nothing here; only the hovered control lifts with a soft neutral
-            // wash (frosted when glass_blur is on), close grey not red. The
-            // glass+blur pane itself stays on the titlebar (drawn below).
+            // Resting controls remain bare glyphs. Hover uses one quiet,
+            // inset cushion from the shared Interaction token; avoiding a
+            // second per-button glass pane keeps the titlebar calm and makes
+            // invalidation a single cached shader element.
             if let Some(ref prog) = rounded_quad_shader {
-                let pill = buttons.pill_rect;
                 let psf = ps as f32;
-                let pr = (pill.size.h as f32 / 2.0) * psf;
-                let docked_right_radius = rphys;
-                // Hover rect + per-corner rounding for each control. The cluster
-                // is docked to the top-right window corner: minimize rounds its
-                // left edge, close follows the window's outer corner radius.
-                let hover_target = |h: HoveredButton| match h {
-                    HoveredButton::Close => {
-                        (buttons.close_rect, (0.0, docked_right_radius, 0.0, 0.0))
-                    }
-                    HoveredButton::Maximize => (buttons.maximize_rect, (0.0, 0.0, 0.0, 0.0)),
-                    HoveredButton::Minimize => (buttons.minimize_rect, (pr, 0.0, 0.0, 0.0)),
+                let inset = super::super::BUTTON_HOVER_INSET;
+                let hover_radius = super::super::BUTTON_HOVER_RADIUS * psf;
+                let hover_rect = |rect: Rectangle<i32, Logical>| {
+                    Rectangle::new(
+                        (rect.loc.x + inset, rect.loc.y + inset).into(),
+                        (
+                            (rect.size.w - inset * 2).max(1),
+                            (rect.size.h - inset * 2).max(1),
+                        )
+                            .into(),
+                    )
                 };
-                if theme.glass {
-                    let hover_tone = colors.text;
-                    let hover_a = if theme.glass_blur {
-                        (theme.glass_button_alpha * glass_buttons::HOVER_FACTOR)
-                            .min(glass_buttons::HOVER_CAP)
+                if let Some(h) = hovered {
+                    let rect = hover_rect(match h {
+                        HoveredButton::Close => buttons.close_rect,
+                        HoveredButton::Maximize => buttons.maximize_rect,
+                        HoveredButton::Minimize => buttons.minimize_rect,
+                    });
+                    let tone = if matches!(h, HoveredButton::Close) {
+                        colors.error
                     } else {
-                        (theme.glass_button_alpha + 0.25).min(0.95)
+                        colors.text
                     };
-                    if let Some(h) = hovered {
-                        let (rect, radii) = hover_target(h);
-                        let [zr, zg, zb, _] = hover_tone.as_f32_array();
-                        elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
-                            prog,
-                            rect,
-                            [zr, zg, zb],
-                            radii,
-                            0.0,
-                            hover_a,
-                            psf,
-                        )));
-                        if theme.glass_blur {
-                            let button_tint = (theme.glass_button_alpha
-                                * glass_buttons::TINT_FACTOR)
-                                .min(glass_buttons::TINT_CAP);
-                            elements.push(DecorationRenderElement::Glass(GlassTitlebarInfo {
-                                rect,
-                                radius: [radii.0, radii.1, radii.2, radii.3],
-                                tint: [zr, zg, zb],
-                                tint_amount: button_tint,
-                                blur: theme.glass_blur_radius,
-                                // Opaque frosted base; the colour veil strength is
-                                // carried by tint_amount, not the pane opacity.
-                                fill_alpha: 1.0,
-                            }));
-                        }
-                    }
-                } else {
-                    // Tint-only fallback (no blur): same minimal grey controls —
-                    // a soft neutral highlight on the hovered zone only, no
-                    // resting pill or dividers; close kept grey like the mockup.
-                    if let Some(h) = hovered {
-                        let (rect, radii) = hover_target(h);
-                        let alpha = if matches!(h, HoveredButton::Close) {
-                            0.30f32
-                        } else {
-                            0.22f32
-                        };
-                        let [cr, cg, cb, _] = colors.text.as_f32_array();
-                        elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
-                            prog,
-                            rect,
-                            [cr, cg, cb],
-                            radii,
-                            0.0,
-                            alpha,
-                            psf,
-                        )));
-                    }
+                    let [r, g, b, _] = tone.as_f32_array();
+                    let hover_alpha = Interaction::DEFAULT.neutral_hover.as_f32_array()[3];
+                    elements.push(DecorationRenderElement::PixelShader(rounded_quad_element(
+                        prog,
+                        rect,
+                        [r, g, b],
+                        (hover_radius, hover_radius, hover_radius, hover_radius),
+                        0.0,
+                        hover_alpha,
+                        psf,
+                    )));
                 }
             }
 
@@ -274,7 +228,10 @@ impl DecorationManager {
                 elements.push(DecorationRenderElement::Solid(
                     SolidColorRenderElement::from_buffer(
                         &deco.buffers.title_separator,
-                        phys(x, y + TITLE_BAR_HEIGHT + bw - 2),
+                        phys(
+                            x + bw,
+                            y + TITLE_BAR_HEIGHT + bw - super::super::TITLE_SEPARATOR_HEIGHT,
+                        ),
                         scale,
                         1.0,
                         Kind::Unspecified,
@@ -339,7 +296,7 @@ impl DecorationManager {
                 elements.push(DecorationRenderElement::Solid(
                     SolidColorRenderElement::from_buffer(
                         &deco.buffers.titlebar,
-                        phys(x, y),
+                        phys(x + bw, y),
                         scale,
                         1.0,
                         Kind::Unspecified,

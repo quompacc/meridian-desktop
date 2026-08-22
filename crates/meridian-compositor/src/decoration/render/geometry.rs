@@ -4,7 +4,8 @@ use smithay::utils::{Logical, Point, Rectangle, Size};
 
 use super::super::{DecorationManager, BUTTON_WIDTH, TITLE_BAR_HEIGHT};
 
-pub(crate) const SSD_RESIZE_HANDLE_THICKNESS: i32 = 8;
+pub(crate) const SSD_RESIZE_HANDLE_THICKNESS: i32 =
+    meridian_tokens::WindowChrome::DEFAULT.resize_handle;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SsdFrameMetrics {
@@ -35,9 +36,12 @@ impl SsdFrameMetrics {
         let frame_size = Size::from((frame_w, frame_h));
         let frame_rect = Rectangle::new(frame_origin, frame_size);
         let client_rect = Rectangle::new(client_origin, client_size);
+        // The border outlines the window independently. Keep the visible
+        // titlebar aligned with the client body's left and right edges instead
+        // of letting its fill overhang by one border width on either side.
         let titlebar_rect = Rectangle::new(
-            frame_origin,
-            Size::from((frame_w, titlebar_height + border_width)),
+            (frame_origin.x + border_width, frame_origin.y).into(),
+            Size::from((client_size.w, titlebar_height + border_width)),
         );
 
         Self {
@@ -136,8 +140,8 @@ impl SsdChromeMetrics {
         // Full titlebar height so the controls fill the bar (glass look).
         let seg_h = self.frame.titlebar_height + self.frame.border_width;
         let pill_w = seg_w * 3;
-        let frame_right = self.frame.frame_origin.x + self.frame.frame_size.w;
-        let pill_x = frame_right - pill_w;
+        let titlebar_right = self.frame.titlebar_rect.loc.x + self.frame.titlebar_rect.size.w;
+        let pill_x = titlebar_right - pill_w;
         // Top-aligned: the controls span the full titlebar height.
         let seg_y = self.frame.frame_origin.y;
 
@@ -281,11 +285,12 @@ impl DecorationManager {
     /// `render::elements` (decorated, radius > 0).
     pub fn content_corner_radius(&self, surface: &WlSurface, theme: &Decorations) -> Option<u32> {
         let deco = self.decorations.get(&Self::key(surface))?;
-        if !deco.should_draw() || theme.corner_radius == 0 {
+        let corner_radius = deco.corner_radius(theme);
+        if !deco.should_draw() || corner_radius == 0 {
             return None;
         }
         let bw = deco.border_width(theme);
-        Some((theme.corner_radius as i32 - bw).max(0) as u32)
+        Some((corner_radius - bw).max(0) as u32)
     }
 }
 
@@ -307,8 +312,8 @@ mod tests {
         assert_eq!(metrics.frame_rect.size, Size::from((644, 436)));
         assert_eq!(metrics.client_rect.loc, Point::from((2, 34)));
         assert_eq!(metrics.client_rect.size, Size::from((640, 400)));
-        assert_eq!(metrics.titlebar_rect.loc, Point::from((0, 0)));
-        assert_eq!(metrics.titlebar_rect.size, Size::from((644, 34)));
+        assert_eq!(metrics.titlebar_rect.loc, Point::from((2, 0)));
+        assert_eq!(metrics.titlebar_rect.size, Size::from((640, 34)));
     }
 
     #[test]
@@ -326,8 +331,8 @@ mod tests {
 
         assert_eq!(metrics.client_origin, Point::from((12, 22)));
         assert_eq!(metrics.frame_size, Size::from((644, 404)));
-        assert_eq!(metrics.titlebar_rect.loc, Point::from((10, 20)));
-        assert_eq!(metrics.titlebar_rect.size, Size::from((644, 2)));
+        assert_eq!(metrics.titlebar_rect.loc, Point::from((12, 20)));
+        assert_eq!(metrics.titlebar_rect.size, Size::from((640, 2)));
     }
 
     #[test]
@@ -336,17 +341,17 @@ mod tests {
         let chrome = SsdChromeMetrics::new(frame);
         let buttons = chrome.button_metrics().expect("titlebar buttons");
 
-        // Three contiguous 32x34 segments at full titlebar height (titlebar 32
-        // + border 2), top-aligned and docked to a 644px-wide frame right edge:
-        // pill_x = 644 - 96 = 548.
-        assert_eq!(buttons.minimize_rect.loc, Point::from((548, 0)));
-        assert_eq!(buttons.maximize_rect.loc, Point::from((580, 0)));
-        assert_eq!(buttons.close_rect.loc, Point::from((612, 0)));
-        assert_eq!(buttons.close_rect.size, Size::from((32, 34)));
-        assert_eq!(buttons.maximize_rect.size, Size::from((32, 34)));
-        assert_eq!(buttons.minimize_rect.size, Size::from((32, 34)));
-        assert_eq!(buttons.pill_rect.loc, Point::from((548, 0)));
-        assert_eq!(buttons.pill_rect.size, Size::from((96, 34)));
+        // Three contiguous 38x34 segments at full titlebar height (titlebar 32
+        // + border 2), top-aligned and docked to the 640px-wide titlebar whose
+        // client-aligned right edge is x=642: pill_x = 642 - 114 = 528.
+        assert_eq!(buttons.minimize_rect.loc, Point::from((528, 0)));
+        assert_eq!(buttons.maximize_rect.loc, Point::from((566, 0)));
+        assert_eq!(buttons.close_rect.loc, Point::from((604, 0)));
+        assert_eq!(buttons.close_rect.size, Size::from((38, 34)));
+        assert_eq!(buttons.maximize_rect.size, Size::from((38, 34)));
+        assert_eq!(buttons.minimize_rect.size, Size::from((38, 34)));
+        assert_eq!(buttons.pill_rect.loc, Point::from((528, 0)));
+        assert_eq!(buttons.pill_rect.size, Size::from((114, 34)));
     }
 
     #[test]

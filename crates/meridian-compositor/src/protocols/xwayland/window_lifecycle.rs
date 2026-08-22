@@ -12,6 +12,10 @@ macro_rules! xwm_window_lifecycle_methods {
             window_id = window.window_id(),
             override_redirect = window.is_override_redirect(),
             geometry = ?window.geometry(),
+            title = %window.title(),
+            class = %window.class(),
+            window_type = ?window.window_type(),
+            transient_for = ?window.is_transient_for(),
             "xwayland window announced"
         );
     }
@@ -91,13 +95,19 @@ macro_rules! xwm_window_lifecycle_methods {
             return;
         }
         if let Some(wl_surface) = window.wl_surface() {
-            let is_maximized = window.is_maximized();
+            let window_type = window.window_type();
+            let uses_ssd = x11_window_uses_ssd(window_type);
+            let is_maximized = x11_window_is_effectively_maximized(self, &window);
             let is_fullscreen = window.is_fullscreen();
             let mut decoration_target = SurfaceDecorationSyncTarget {
                 decoration_manager: &mut self.decoration_manager,
                 wl_surface: &wl_surface,
             };
-            apply_managed_map_ssd(&mut decoration_target, is_maximized, is_fullscreen);
+            if uses_ssd {
+                apply_managed_map_ssd(&mut decoration_target, is_maximized, is_fullscreen);
+            } else {
+                apply_override_redirect_ssd(&mut decoration_target);
+            }
         }
         let geo = window.geometry();
         // Place at a sensible default if the window hasn't reported a size yet.
@@ -122,7 +132,7 @@ macro_rules! xwm_window_lifecycle_methods {
             })
             .unwrap_or((0, 0, 0, 0));
         let is_transient = window.is_transient_for().is_some();
-        let is_maximized = window.is_maximized();
+        let is_maximized = x11_window_is_effectively_maximized(self, &window);
         let is_fullscreen = window.is_fullscreen();
         let resolved_loc = output_geometry
             .map(|geometry| {
@@ -158,12 +168,17 @@ macro_rules! xwm_window_lifecycle_methods {
         self.workspaces
             .space_at_mut(active)
             .map_element(win, resolved_loc, true);
+        apply_initial_x11_maximized_geometry(self, &window);
         if let Some(wl_surface) = window.wl_surface() {
-            let is_maximized = window.is_maximized();
+            let window_type = window.window_type();
+            let uses_ssd = x11_window_uses_ssd(window_type);
+            let is_maximized = x11_window_is_effectively_maximized(self, &window);
             let is_fullscreen = window.is_fullscreen();
             info!(
                 event = "xwayland.ssd.applied_at_map_request",
                 window_id,
+                window_type = ?window_type,
+                uses_ssd,
                 maximized = is_maximized,
                 fullscreen = is_fullscreen,
                 wl_surface_id = wl_surface.id().protocol_id(),

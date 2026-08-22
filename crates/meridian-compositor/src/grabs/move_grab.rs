@@ -14,6 +14,7 @@ use smithay::{
     wayland::shell::xdg::XdgShellHandler,
 };
 
+use crate::protocols::xwayland::{apply_x11_unmaximize, x11_window_key};
 use crate::state::{
     clear_tiled_toplevel_states, half_snap_client_placement_from_output,
     maximized_client_loc_from_output, normal_window_workarea_from_output_geometry, window_id,

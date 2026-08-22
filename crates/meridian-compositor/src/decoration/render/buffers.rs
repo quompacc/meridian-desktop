@@ -1,6 +1,6 @@
 use meridian_config::{Decorations, ThemeColors};
 
-use super::super::model::{opaque, HoveredButton, WindowDecoration};
+use super::super::model::{opaque, WindowDecoration};
 
 /// Unfocused windows keep a softer shadow than focused ones. This is derived
 /// from the theme's (focused) `shadow_alpha` rather than a fixed literal, so a
@@ -39,22 +39,21 @@ pub(super) fn update_buffers(
     let transparent = [0.0f32; 4];
 
     if show_title {
-        // Focused windows get the brighter surface titlebar + an accent
-        // underline; unfocused windows dim to surface_alt with no accent so
-        // focus reads at a glance.
+        // Focused windows get the brighter surface titlebar plus a quiet
+        // neutral hairline; unfocused windows dim to surface_alt.
         let titlebar_col = if deco.is_focused {
             colors.surface
         } else {
             colors.surface_alt
         };
-        deco.buffers.titlebar.update(
-            (total_w.max(1), (title_h + bw).max(1)),
-            opaque(titlebar_col),
-        );
+        deco.buffers
+            .titlebar
+            .update((cw.max(1), (title_h + bw).max(1)), opaque(titlebar_col));
         if deco.is_focused {
-            deco.buffers
-                .title_separator
-                .update((total_w.max(1), 2), opaque(colors.accent));
+            deco.buffers.title_separator.update(
+                (cw.max(1), super::super::TITLE_SEPARATOR_HEIGHT),
+                opaque(colors.border),
+            );
         } else {
             deco.buffers.title_separator.update((1, 1), transparent);
         }
@@ -83,34 +82,6 @@ pub(super) fn update_buffers(
         deco.buffers.border_right.update((1, 1), transparent);
         deco.buffers.border_bottom.update((1, 1), transparent);
     }
-
-    let close_bg = if deco.hovered_button() == Some(HoveredButton::Close) {
-        opaque(colors.error)
-    } else {
-        transparent
-    };
-    let max_bg = if deco.hovered_button() == Some(HoveredButton::Maximize) {
-        opaque(colors.surface)
-    } else {
-        transparent
-    };
-    let min_bg = if deco.hovered_button() == Some(HoveredButton::Minimize) {
-        opaque(colors.surface)
-    } else {
-        transparent
-    };
-    deco.buffers.close_bg.update(
-        (super::super::BUTTON_WIDTH, super::super::BUTTON_HEIGHT),
-        close_bg,
-    );
-    deco.buffers.maximize_bg.update(
-        (super::super::BUTTON_WIDTH, super::super::BUTTON_HEIGHT),
-        max_bg,
-    );
-    deco.buffers.minimize_bg.update(
-        (super::super::BUTTON_WIDTH, super::super::BUTTON_HEIGHT),
-        min_bg,
-    );
 
     deco.last_content_size = (cw, ch);
     deco.last_bw = bw;

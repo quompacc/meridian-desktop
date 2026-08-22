@@ -18,12 +18,14 @@ pub use model::HoveredButton;
 use model::WindowDecoration;
 use render::icon_cache::IconCache;
 
-pub const TITLE_BAR_HEIGHT: i32 = 32;
-pub const BUTTON_WIDTH: i32 = 32;
-pub const BUTTON_HEIGHT: i32 = 28;
-pub const BUTTON_ICON_PX: u32 = 14;
-pub const BUTTON_STROKE_WIDTH: f32 = 1.25;
-pub const BUTTON_MARGIN: i32 = 8;
+const WINDOW_CHROME: meridian_tokens::WindowChrome = meridian_tokens::WindowChrome::DEFAULT;
+pub const TITLE_BAR_HEIGHT: i32 = WINDOW_CHROME.titlebar_height;
+pub const BUTTON_WIDTH: i32 = WINDOW_CHROME.button_width;
+pub const BUTTON_ICON_PX: u32 = WINDOW_CHROME.button_icon_size;
+pub const BUTTON_STROKE_WIDTH: f32 = WINDOW_CHROME.button_icon_stroke;
+pub const BUTTON_HOVER_INSET: i32 = WINDOW_CHROME.button_hover_inset;
+pub const BUTTON_HOVER_RADIUS: f32 = WINDOW_CHROME.button_hover_radius;
+pub const TITLE_SEPARATOR_HEIGHT: i32 = WINDOW_CHROME.separator_height;
 
 // CLAUDE.md-Regel 4 verbietet Heap-Alloc im Render-Loop. `render_elements()`
 // baut pro Frame eine SmallVec<DecorationRenderElement; 32> auf - Box um die

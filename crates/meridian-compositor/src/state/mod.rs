@@ -245,13 +245,11 @@ pub(crate) fn maximized_client_loc_from_output(
     ))
 }
 
-// Fixed bottom reservation for the window workarea. The floating panel's
-// layer-shell exclusive zone is 66px (meridian-shell PANEL_SURFACE_HEIGHT);
-// we reserve a bit more so a maximized window floats as a rounded card with a
-// clear gap above the panel instead of its shadow merging into the panel's.
-// TODO: derive the 66 from the actual layer-shell exclusive zone rather than
-// hardcoding the panel's height.
-pub(crate) const NORMAL_WINDOW_BOTTOM_RESERVED_PX: i32 = 84;
+// Stop maximized windows at the visible panel island. The layer surface also
+// contains transparent room above the island for its shadow; that canvas must
+// not become a visible gap below maximized windows.
+pub(crate) const NORMAL_WINDOW_BOTTOM_RESERVED_PX: i32 =
+    meridian_tokens::Panel::DEFAULT.window_reservation() as i32;
 
 pub(crate) fn normal_window_workarea_from_output_geometry(
     output_geometry: OutputGeometry,
@@ -276,6 +274,21 @@ pub(crate) fn normal_window_workarea_from_rect(
     Rectangle::new(
         (workarea.x, workarea.y).into(),
         (workarea.width, workarea.height).into(),
+    )
+}
+
+pub(crate) fn maximized_client_rect_from_frame(
+    frame: Rectangle<i32, Logical>,
+    decoration_inset: (i32, i32, i32, i32),
+) -> Rectangle<i32, Logical> {
+    let (left, top, right, bottom) = decoration_inset;
+    Rectangle::new(
+        (frame.loc.x + left, frame.loc.y + top).into(),
+        (
+            (frame.size.w - left - right).max(1),
+            (frame.size.h - top - bottom).max(1),
+        )
+            .into(),
     )
 }
 

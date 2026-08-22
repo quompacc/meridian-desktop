@@ -36,12 +36,13 @@
   --meridian-radius-xl: 14px;
   --meridian-decoration-border-width: 1px;
   --meridian-decoration-corner-radius: 10px;
+  --meridian-decoration-window-corner-radius: 8px;
   --meridian-layout-gap: 8px;
   --meridian-shadow-enabled: 1;
-  --meridian-shadow-radius: 22px;
-  --meridian-shadow-radius-top: 11px;
-  --meridian-shadow-alpha: 0.35;
-  --meridian-shadow-offset-y: 3px;
+  --meridian-shadow-radius: 18px;
+  --meridian-shadow-radius-top: 9px;
+  --meridian-shadow-alpha: 0.18;
+  --meridian-shadow-offset-y: 2px;
   --meridian-glass-enabled: 1;
   --meridian-glass-blur-enabled: 1;
   --meridian-glass-alpha: 0.92;
