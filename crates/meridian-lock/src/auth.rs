@@ -171,45 +171,47 @@ pub use pam_backend::authenticate;
 #[cfg(target_os = "openbsd")]
 mod openbsd_backend {
     use std::{
-        ffi::{c_char, c_int, CString},
-        ptr,
+        io::Write,
+        process::{Command, Stdio},
     };
 
     use zeroize::Zeroizing;
 
-    unsafe extern "C" {
-        fn auth_userokay(
-            name: *mut c_char,
-            style: *mut c_char,
-            auth_type: *mut c_char,
-            password: *mut c_char,
-        ) -> c_int;
-    }
+    use meridian_lock::auth_protocol::encode_password;
 
-    /// Authenticate against the user's default OpenBSD login.conf style.
-    pub fn authenticate(username: &str, password: &Zeroizing<String>) -> bool {
-        if username.is_empty() {
-            return false;
-        }
-        let Ok(user) = CString::new(username) else {
+    const AUTH_HELPER: &str = "/usr/local/libexec/meridian-openbsd-auth";
+
+    /// Ask the narrow setgid-auth helper to authenticate the real caller.
+    pub fn authenticate(_username: &str, password: &Zeroizing<String>) -> bool {
+        let Some(request) = encode_password(password.as_str()) else {
             return false;
         };
-        let Ok(pass) = CString::new(password.as_str()) else {
+        let Ok(mut child) = Command::new(AUTH_HELPER)
+            .env_clear()
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+        else {
             return false;
         };
-        let mut user = user.into_bytes_with_nul();
-        let mut pass = pass.into_bytes_with_nul();
 
-        // SAFETY: pointers are owned, writable C strings. auth_userokay(3)
-        // wipes the password buffer and does not retain either pointer.
-        unsafe {
-            auth_userokay(
-                user.as_mut_ptr().cast(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                pass.as_mut_ptr().cast(),
-            ) != 0
+        let Some(mut stdin) = child.stdin.take() else {
+            let _ = child.kill();
+            let _ = child.wait();
+            return false;
+        };
+        if stdin.write_all(&request).is_err() {
+            drop(stdin);
+            let _ = child.wait();
+            return false;
         }
+        drop(stdin);
+
+        let Ok(output) = child.wait_with_output() else {
+            return false;
+        };
+        output.status.success() && output.stdout.as_slice() == [1]
     }
 }
 

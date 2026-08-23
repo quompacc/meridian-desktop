@@ -188,7 +188,7 @@ Native Meridian build matrix on 2026-08-19:
 | `meridian-freetype` / `meridian-ui` | pass | built directly and as shell dependencies |
 | `meridian-wm` / `meridian-compositor` | pass | native OpenBSD build succeeds; DRM devices are enumerated from `/dev/dri`, keyboard/pointer input uses wscons directly, and `linux-drm-syncobj-v1` is target-disabled |
 | `meridian-shell` | pass | OpenBSD screencopy uses native `shm_mkstemp(3)` with explicit `FD_CLOEXEC`; 310 unit tests and the centralization guard pass |
-| `meridian-login` / `meridian-lock` | pass | OpenBSD password authentication uses native `auth_userokay(3)`; PAM remains target-scoped to non-OpenBSD systems; 52 login and 9 lock tests pass |
+| `meridian-login` / `meridian-lock` | pass | OpenBSD password authentication uses native `auth_userokay(3)` through a minimal setgid `auth` helper; the lock UI stays unprivileged and PAM remains target-scoped to non-OpenBSD systems; login, lock and bounded auth-protocol tests pass |
 | `meridian-polkit` | pass | retains PolicyKit's native setuid helper protocol and no longer declares its unused PAM dependency; 11 tests pass |
 
 `cargo check --workspace` now passes on OpenBSD. The Meridian workspace tests
@@ -316,7 +316,12 @@ the more workable platform. The decision and blockers belong in this file.
    acquired the session lock, accepted keyboard input, authenticated the real
    account and explicitly unlocked on the Intel reference machine. OpenBSD
    requires the release lock binary at `/usr/local/libexec/meridian-lock`, owned
-   by `root:auth` with mode `2555`; the compositor uses that absolute path.
+   by `root:wheel` with mode `0555`; the compositor uses that absolute path. The
+   UI passes a bounded password request to `/usr/local/libexec/meridian-openbsd-auth`,
+   the only setgid `auth` component (`root:auth`, mode `2555`). The helper derives
+   the account from the real caller UID instead of accepting a username. This
+   privilege split, real-password unlock and input performance were verified on
+   the reference hardware.
    Smartcard login still reports an explicit unsupported configuration instead
    of silently falling back, and the successful `meridian-login` session
    lifecycle remains untested. Polkit delegates authorization to

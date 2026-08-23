@@ -7,6 +7,10 @@ edition = "2021"
 name = "meridian-lock"
 path = "src/main.rs"
 
+[[bin]]
+name = "meridian-openbsd-auth"
+path = "src/bin/meridian-openbsd-auth.rs"
+
 [dependencies]
 meridian-config = { path = "../meridian-config" }
 meridian-tokens = { path = "../meridian-tokens" }

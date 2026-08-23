@@ -77,21 +77,26 @@ normal user, then install from a privileged, root-owned path:
 
 ```sh
 env LIBRARY_PATH=/usr/local/lib:/usr/X11R6/lib \
-    cargo build --release -p meridian-lock
+    cargo build --release -p meridian-lock --bins
 doas ./scripts/install-openbsd-lock
 ```
 
-The resulting `/usr/local/libexec/meridian-lock` must be owned by `root:auth`
-with mode `2555`, matching OpenBSD's `xlock` model. It is setgid `auth`, never
-setuid root. The compositor uses this absolute path on OpenBSD; a binary in a
-user-writable Cargo target directory must never receive the `auth` group bit.
+The resulting `/usr/local/libexec/meridian-lock` is the unprivileged Wayland/UI
+process and must be owned by `root:wheel` with mode `0555`. Only the narrow
+`/usr/local/libexec/meridian-openbsd-auth` helper is owned by `root:auth` with
+mode `2555`; it is setgid `auth`, never setuid root. The helper accepts only a
+bounded, length-prefixed password over a pipe and authenticates the real caller
+UID, so the UI cannot select another account. Neither binary is installed from
+or executed with special group privilege in a user-writable Cargo target path.
+
+This privilege split was installed and verified on the reference hardware on
+2026-08-23. `Super+L`, real-password authentication, explicit unlock and input
+latency remained correct with the UI running without the `auth` group bit.
 
 Still open before sandbox implementation: deliberately reject one bad password
 then accept a good retry, run repeated lock cycles, cover output/theme variants,
 execute the three real-hardware process-exit cases above, and route the remaining
-shell/menu lock entry points through the same compositor supervisor. A later
-privilege split should reduce the setgid surface to a minimal BSD Authentication
-helper and return the Wayland/UI lock process to a fully unprivileged identity.
+shell/menu lock entry points through the same compositor supervisor.
 
 ## Implementation method
 

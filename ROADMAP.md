@@ -71,9 +71,10 @@ use BSD Authentication through `auth_userokay(3)`, with PAM retained only on
 other targets; Polkit retains its native helper protocol without an unused PAM
 dependency. The compositor-supervised lock lifecycle, input, real-password
 authentication and explicit unlock are proven on the OpenBSD Intel reference
-machine. Its release binary is installed root-owned, setgid `auth` (not setuid
-root) under `/usr/local/libexec`; a future split will reduce that privilege to a
-minimal authentication helper. `cargo check --workspace` and all Meridian
+machine. The Wayland/UI lock process is installed root-owned without special
+group privilege; only the minimal `/usr/local/libexec/meridian-openbsd-auth`
+helper is setgid `auth` (never setuid root). This split is verified with the real
+account password on hardware. `cargo check --workspace` and all Meridian
 workspace tests pass on OpenBSD (the vendored Smithay example package is
 explicitly excluded). Interactive login and the remaining lock crash/retry
 matrix are the next runtime gaps.

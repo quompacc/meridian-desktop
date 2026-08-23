@@ -7,21 +7,32 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
-source_binary=${1:-target/release/meridian-lock}
-destination=/usr/local/libexec/meridian-lock
+lock_binary=${1:-target/release/meridian-lock}
+auth_binary=${2:-target/release/meridian-openbsd-auth}
+lock_destination=/usr/local/libexec/meridian-lock
+auth_destination=/usr/local/libexec/meridian-openbsd-auth
 
-if [ ! -f "$source_binary" ] || [ ! -x "$source_binary" ]; then
-    echo "install-openbsd-lock: missing executable: $source_binary" >&2
-    exit 1
-fi
+for source_binary in "$lock_binary" "$auth_binary"; do
+    if [ ! -f "$source_binary" ] || [ ! -x "$source_binary" ]; then
+        echo "install-openbsd-lock: missing executable: $source_binary" >&2
+        exit 1
+    fi
+done
 
 install -d -o root -g wheel -m 755 /usr/local/libexec
-install -o root -g auth -m 2555 "$source_binary" "$destination"
+install -o root -g auth -m 2555 "$auth_binary" "$auth_destination"
+install -o root -g wheel -m 0555 "$lock_binary" "$lock_destination"
 
-installed_mode=$(stat -f '%Su:%Sg %Sp' "$destination")
-if [ "$installed_mode" != "root:auth -r-xr-sr-x" ]; then
-    echo "install-openbsd-lock: unexpected installed identity/mode: $installed_mode" >&2
+lock_mode=$(stat -f '%Su:%Sg %Sp' "$lock_destination")
+auth_mode=$(stat -f '%Su:%Sg %Sp' "$auth_destination")
+if [ "$lock_mode" != "root:wheel -r-xr-xr-x" ]; then
+    echo "install-openbsd-lock: unexpected lock identity/mode: $lock_mode" >&2
+    exit 1
+fi
+if [ "$auth_mode" != "root:auth -r-xr-sr-x" ]; then
+    echo "install-openbsd-lock: unexpected auth identity/mode: $auth_mode" >&2
     exit 1
 fi
 
-echo "installed $destination ($installed_mode)"
+echo "installed $lock_destination ($lock_mode)"
+echo "installed $auth_destination ($auth_mode)"
