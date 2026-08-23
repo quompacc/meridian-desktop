@@ -31,6 +31,11 @@ fn main() -> std::process::ExitCode {
         return std::process::ExitCode::FAILURE;
     };
 
+    if let Err(error) = meridian_lock::openbsd_sandbox::auth_helper() {
+        eprintln!("meridian-openbsd-auth: failed to install sandbox: {error}");
+        return std::process::ExitCode::FAILURE;
+    }
+
     // SAFETY: getpwuid returns process-owned account data. Copy the login name
     // before invoking BSD Authentication. auth_userokay receives writable,
     // owned C strings and wipes the password buffer before returning.

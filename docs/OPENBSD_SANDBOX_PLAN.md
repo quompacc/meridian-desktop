@@ -1,7 +1,8 @@
 # OpenBSD Sandbox Plan
 
-> Status: agreed design, not yet implemented. This document defines the
-> fail-closed rollout of `pledge(2)` and `unveil(2)` for Meridian processes.
+> Status: `meridian-lock` pilot implemented and verified on reference hardware
+> on 2026-08-23. This document defines the continuing fail-closed rollout of
+> `pledge(2)` and `unveil(2)` for Meridian processes.
 
 ## Current assessment
 
@@ -10,9 +11,10 @@ and WebKit UI responsibilities into distinct processes with narrow typed IPC
 boundaries. OpenBSD authentication uses `auth_userokay(3)`, and the WebKit UI
 does not own raw DRM or input handles.
 
-No Meridian process currently applies `pledge(2)` or `unveil(2)`. The existing
-architecture is therefore the prerequisite for OpenBSD-style self-restriction,
-not its completion.
+The unprivileged `meridian-lock` UI and its narrow setgid authentication helper
+apply separate `pledge(2)` and `unveil(2)` profiles. Other Meridian processes
+remain unsandboxed until their own responsibilities and observed requirements
+have been inventoried; the lock pilot is not a generic profile to copy blindly.
 
 ## Non-negotiable failure model
 
@@ -109,6 +111,63 @@ paths passed on hardware through the compositor supervisor, including unlock in
 dark and light themes. The built-in Intel output is covered; a real multi-output
 lock run remains an expansion of the hardware matrix, not a reason to broaden
 the initial single-output sandbox profile.
+
+### Implemented lock profiles
+
+The unprivileged Wayland/UI process installs its sandbox after connecting to
+Wayland and resolving configuration, theme and account identity, but before it
+requests the session lock. It pledges:
+
+```text
+stdio rpath wpath cpath proc exec sendfd recvfd
+```
+
+`stdio` covers memory, polling and operations on existing descriptors;
+`sendfd`/`recvfd` cover Wayland descriptor transfer; and `proc exec` covers the
+fixed authentication helper. `rpath wpath cpath` remain only because OpenBSD's
+`shm_mkstemp(3)` uses a randomized backing object below `/tmp`. Its unveiled
+view is:
+
+```text
+/usr/local/libexec/meridian-openbsd-auth  x
+/dev/null                                  w
+/tmp                                       rwc
+/usr/libexec/ld.so                         rx
+/var/run/ld.so.hints                       r
+/usr/lib                                   r
+```
+
+`/dev/null` is required for the helper's suppressed standard error stream.
+The dynamic-loader paths permit execution of the fixed helper. The final
+`unveil(NULL, NULL)` call is checked before pledge is applied. The broadest
+remaining capability is `/tmp` access; replacing per-buffer `shm_mkstemp(3)`
+with a pre-opened, bounded framebuffer allocator is the next tightening
+opportunity, not a reason to conceal the current breadth.
+
+The single-request setgid helper reads the bounded password request before
+installing its own sandbox. It then unveils read-only `/etc/login.conf` and
+`/etc/login.conf.d`, the executable `/usr/libexec/auth/login_passwd`, and the
+same runtime-loader paths. It pledges:
+
+```text
+stdio rpath getpw proc exec
+```
+
+`getpw` is required for the protected account database, while `proc exec`
+supports `auth_userokay(3)` launching the machine's configured password
+authentication program. No profile uses the `error` promise and no
+`execpromises` are imposed: OpenBSD rejects execution of a setgid target under
+exec promises, and the helper immediately installs its own stricter profile.
+
+The hardware rollout found two initially missing unveiled paths through
+`ktrace`: `/tmp` for `shm_mkstemp(3)` and `/dev/null` for `Command::spawn`.
+Both were added for those named operations only. The final combined profile
+passed a real-password unlock, bad-password retry, three repeated cycles and
+normal input/performance checks. A non-executable UI left the unlocked desktop
+usable; a killed acquired client produced `LockedFailClosed`; an unavailable
+auth helper kept the lock screen active and successfully retried after mode
+`root:auth 2555` was restored. The live UI process reported both pledge and
+unveil state (`pU`) in `ps`.
 
 ## Implementation method
 

@@ -166,7 +166,13 @@ fn render_surface(state: &mut AppState, idx: usize, qh: &QueueHandle<AppState>) 
                 ls.buffer = Some(buf);
                 ls.background_initialized = false;
             }
-            None => return,
+            None => {
+                tracing::error!("cannot render lock surface without shared memory");
+                ls.needs_render = false;
+                state.finished = true;
+                state.running = false;
+                return;
+            }
         }
     }
 

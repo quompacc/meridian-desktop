@@ -252,10 +252,12 @@ process and network needs. Then design the smallest useful `pledge` and `unveil`
 profile. Keep privileged helpers separate and narrow. A sandbox profile is not
 accepted if it makes normal desktop behavior silently unreliable.
 
-The agreed fail-closed rollout, lock-process safety invariant, pilot procedure
-and process order are specified in `docs/OPENBSD_SANDBOX_PLAN.md`. Sandbox setup
-failure is fatal; Meridian never continues through an automatic unsandboxed
-runtime fallback.
+The fail-closed rollout, lock-process safety invariant, implemented pilot
+profiles and process order are specified in `docs/OPENBSD_SANDBOX_PLAN.md`.
+Both the lock UI and its setgid authentication helper now apply checked
+OpenBSD-only `pledge(2)`/`unveil(2)` restrictions. Sandbox setup failure is
+fatal; Meridian never continues through an automatic unsandboxed runtime
+fallback.
 
 ## Decision record
 
@@ -327,7 +329,12 @@ the more workable platform. The decision and blockers belong in this file.
    usable; every pending/locked case remained compositor-owned fail-closed until
    SSH recovery. The desktop context menu and launcher power menu use the same
    typed compositor-supervised path as `Super+L`; both passed real lock/unlock
-   cycles across dark and light themes on the built-in Intel output.
+   cycles across dark and light themes on the built-in Intel output. The first
+   `pledge(2)`/`unveil(2)` pilot is active for both the unprivileged lock UI and
+   its setgid helper. The final profile passed real-password unlock,
+   bad-password retry, three repeated cycles and the fail-closed hardware
+   matrix. An unavailable helper kept the screen locked and accepted a retry
+   after restoration; `ps` showed the live UI in pledged and unveiled state.
    Smartcard login still reports an explicit unsupported configuration instead
    of silently falling back, and the successful `meridian-login` session
    lifecycle remains untested. Polkit delegates authorization to

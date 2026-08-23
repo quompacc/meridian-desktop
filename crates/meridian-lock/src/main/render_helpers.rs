@@ -9,7 +9,18 @@ fn create_anonymous_shm() -> Option<libc::c_int> {
         // SAFETY: the template is writable, NUL-terminated, and has the six
         // trailing X characters required by OpenBSD's shm_mkstemp(3).
         let fd = unsafe { shm_mkstemp(template.as_mut_ptr().cast()) };
-        if fd < 0 || unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) } < 0 {
+        if fd < 0 {
+            tracing::error!(
+                error = %std::io::Error::last_os_error(),
+                "failed to create OpenBSD lock shared memory"
+            );
+            return None;
+        }
+        if unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) } < 0 {
+            tracing::error!(
+                error = %std::io::Error::last_os_error(),
+                "failed to mark OpenBSD lock shared memory close-on-exec"
+            );
             if fd >= 0 {
                 unsafe { libc::close(fd) };
             }
@@ -38,6 +49,10 @@ fn create_shm_buffer(
 
     let raw_fd = create_anonymous_shm()?;
     if unsafe { libc::ftruncate(raw_fd, size as libc::off_t) } != 0 {
+        tracing::error!(
+            error = %std::io::Error::last_os_error(),
+            "failed to size lock shared memory"
+        );
         unsafe { libc::close(raw_fd) };
         return None;
     }
@@ -52,6 +67,10 @@ fn create_shm_buffer(
         )
     };
     if ptr == libc::MAP_FAILED {
+        tracing::error!(
+            error = %std::io::Error::last_os_error(),
+            "failed to map lock shared memory"
+        );
         unsafe { libc::close(raw_fd) };
         return None;
     }

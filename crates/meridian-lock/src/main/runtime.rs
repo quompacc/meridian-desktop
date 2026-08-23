@@ -36,6 +36,12 @@ fn main() -> std::process::ExitCode {
         .roundtrip(&mut state)
         .expect("initial roundtrip");
 
+    #[cfg(target_os = "openbsd")]
+    if let Err(error) = meridian_lock::openbsd_sandbox::lock_ui() {
+        tracing::error!(%error, "failed to install OpenBSD lock sandbox");
+        return std::process::ExitCode::FAILURE;
+    }
+
     let lock_manager = state
         .lock_manager
         .take()

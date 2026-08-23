@@ -82,6 +82,11 @@ helper are proven on hardware. Interactive login and the remaining lock
 multi-output variant are the next runtime gaps. Super+L, the desktop context
 menu and the launcher power menu now share the compositor-owned lock supervisor;
 dark and light theme cycles pass through each typed entry path.
+The `meridian-lock` sandbox pilot is also complete on the reference hardware:
+the unprivileged UI and setgid auth helper install separate checked
+`pledge(2)`/`unveil(2)` profiles with no unsandboxed fallback. Normal unlock,
+bad-password retry, repeated cycles, helper failure/recovery and acquired-client
+loss passed; the latter remained compositor-owned `LockedFailClosed`.
 
 Port or isolate Linux assumptions without weakening the existing architecture:
 
