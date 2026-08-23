@@ -356,6 +356,14 @@ fn quit_command_roundtrip_is_supported() {
 }
 
 #[test]
+fn lock_session_command_roundtrip_is_supported() {
+    let command = ShellCommand::LockSession;
+    let bytes = encode_command(&command).expect("encode");
+    let decoded = decode_command(std::str::from_utf8(&bytes).expect("utf8")).expect("decode");
+    assert_eq!(decoded, command);
+}
+
+#[test]
 fn screenshot_bridge_request_supports_full_output_mode() {
     let request = ScreenshotBridgeRequest {
         request_id: "req-1".to_string(),

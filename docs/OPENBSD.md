@@ -325,7 +325,9 @@ the more workable platform. The decision and blockers belong in this file.
    controlled client loss before acquisition, while pending, after acquisition
    and during the auth-helper call also passed. The unlocked case remained
    usable; every pending/locked case remained compositor-owned fail-closed until
-   SSH recovery.
+   SSH recovery. The desktop context menu and launcher power menu use the same
+   typed compositor-supervised path as `Super+L`; both passed real lock/unlock
+   cycles across dark and light themes on the built-in Intel output.
    Smartcard login still reports an explicit unsupported configuration instead
    of silently falling back, and the successful `meridian-login` session
    lifecycle remains untested. Polkit delegates authorization to

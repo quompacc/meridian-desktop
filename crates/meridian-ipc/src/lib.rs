@@ -354,6 +354,7 @@ pub enum ShellCommand {
         #[serde(default)]
         terminal: bool,
     },
+    LockSession,
     ReloadConfig,
     Quit,
     CaptureWindowThumbnail {
@@ -397,6 +398,7 @@ impl ShellCommand {
             Self::PowerProfileSet { .. } => "power-profile-set",
             Self::FocusWindow { .. } => "focus-window",
             Self::LaunchApp { .. } => "launch-app",
+            Self::LockSession => "lock-session",
             Self::ReloadConfig => "reload-config",
             Self::Quit => "quit",
             Self::CaptureWindowThumbnail { .. } => "capture-window-thumbnail",

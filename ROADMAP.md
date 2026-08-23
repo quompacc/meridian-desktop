@@ -79,7 +79,9 @@ workspace tests pass on OpenBSD (the vendored Smithay example package is
 explicitly excluded). Bad-password retry, repeated cycles and fail-closed client
 loss before acquisition, while pending, after acquisition and during the auth
 helper are proven on hardware. Interactive login and the remaining lock
-output/theme variants are the next runtime gaps.
+multi-output variant are the next runtime gaps. Super+L, the desktop context
+menu and the launcher power menu now share the compositor-owned lock supervisor;
+dark and light theme cycles pass through each typed entry path.
 
 Port or isolate Linux assumptions without weakening the existing architecture:
 

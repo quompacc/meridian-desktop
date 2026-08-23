@@ -103,9 +103,12 @@ Pending window completes in roughly four milliseconds, debug builds expose the
 explicit `MERIDIAN_FAULT_INJECT_HOLD_LOCK_PENDING=1` test gate; release builds
 compile that gate out.
 
-Still open before sandbox implementation: cover the remaining output/theme
-variants and route the shell/menu lock entry points through the same compositor
-supervisor.
+The desktop context menu and launcher power menu now send the typed
+`LockSession` IPC command instead of spawning `meridian-lock` directly. Both
+paths passed on hardware through the compositor supervisor, including unlock in
+dark and light themes. The built-in Intel output is covered; a real multi-output
+lock run remains an expansion of the hardware matrix, not a reason to broaden
+the initial single-output sandbox profile.
 
 ## Implementation method
 

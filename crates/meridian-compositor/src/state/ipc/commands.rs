@@ -213,6 +213,9 @@ impl MeridianState {
 
                 super::launch::spawn_and_reap(launch, &spec.program, &spec.args);
             }
+            ShellCommand::LockSession => {
+                self.spawn_lock_screen();
+            }
             ShellCommand::ReloadConfig => {
                 self.reload_config();
             }

@@ -57,14 +57,22 @@ impl MeridianShell {
             WidgetAction::PowerLogout => "power-logout",
             _ => unreachable!("non power action routed to power dispatcher"),
         };
-        let command = power_action_command(action);
-
         if !self.try_consume_armed_power(id) {
             self.arm_power(qh, id);
             return;
         }
 
         self.close_launcher_after_launch(qh, RepaintReason::Pointer);
+        if matches!(action, WidgetAction::PowerLock) {
+            tracing::info!("power: lock requested through compositor supervisor");
+            if !self.ipc.send(&meridian_ipc::ShellCommand::LockSession) {
+                tracing::warn!("power: lock request failed - compositor IPC unavailable");
+                self.arm_power(qh, id);
+            }
+            return;
+        }
+
+        let command = power_action_command(action);
         if let Some((program, args)) = command {
             std::thread::spawn(move || {
                 let _ = std::process::Command::new(program).args(args).status();
@@ -194,14 +202,8 @@ impl MeridianShell {
                 self.open_settings_category(qh, crate::settings_view::SettingsCategory::Theme);
             }
             DesktopContextMenuAction::LockScreen => {
-                let wayland_display = std::env::var("WAYLAND_DISPLAY").unwrap_or_default();
-                let xdg_runtime = std::env::var("XDG_RUNTIME_DIR").unwrap_or_default();
-                if let Err(e) = std::process::Command::new("meridian-lock")
-                    .env("WAYLAND_DISPLAY", &wayland_display)
-                    .env("XDG_RUNTIME_DIR", &xdg_runtime)
-                    .spawn()
-                {
-                    tracing::warn!("failed to spawn meridian-lock: {}", e);
+                if !self.ipc.send(&meridian_ipc::ShellCommand::LockSession) {
+                    tracing::warn!("desktop lock request failed - compositor IPC unavailable");
                 }
             }
         }
