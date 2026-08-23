@@ -1,6 +1,6 @@
 # Meridian — Active Roadmap
 
-> Updated 2026-08-21. This is the forward-looking execution order for the
+> Updated 2026-08-23. This is the forward-looking execution order for the
 > BSD/WebKit strategy. Completed native-shell work remains documented in
 > `docs/PROJECT_STATUS.md`; older phase estimates are no longer scheduling
 > commitments.
@@ -100,6 +100,33 @@ Port or isolate Linux assumptions without weakening the existing architecture:
 
 Exit criterion: a minimal Meridian session renders, accepts input and can run a
 reference client, or the exact upstream blocker is documented.
+
+## Phase 2a — Boot and login experience
+
+Status: **required, not yet evaluated end to end on OpenBSD.** A polished boot
+is part of the desktop product, not an optional post-release detail. The normal
+path should move from firmware to Meridian login without visible diagnostic
+noise, avoid black gaps and unnecessary display-mode changes, and present a
+native Meridian splash or at minimum a restrained logo. The visual treatment
+must follow `docs/meridian_design_manifest.md` §12: boot and login are the
+deliberate branding moments; everyday shell UI remains unbranded.
+
+Work in this order:
+
+1. inventory the OpenBSD boot loader, kernel and `rc` output that can be hidden
+   through supported configuration rather than an unmaintainable kernel fork;
+2. preserve boot diagnostics in logs and document an explicit verbose/recovery
+   boot path before muting the normal console;
+3. bring up a cached, idle-free Meridian splash or static logo as early as the
+   supported graphics path allows;
+4. verify a clean handover from splash to `meridian-login`, then from login to
+   the user compositor, without an exposed console, black gap or input loss;
+5. test failure behavior so silent boot never turns a broken boot into an
+   unexplained permanent black screen.
+
+Exit criterion: a recorded cold boot on the OpenBSD reference machine reaches
+the greeter with no routine kernel/`rc` text in the normal path, the recovery
+path remains usable, and splash/login geometry and branding match the manifest.
 
 ## Phase 3 — WebKit UI platform spike
 

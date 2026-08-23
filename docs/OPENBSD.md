@@ -35,6 +35,25 @@ needs to be recorded before destructive experiments.
 Device serial number and system UUID were deliberately omitted from this
 repository document.
 
+### Boot experience requirement
+
+The release target is a quiet, coherent path from firmware through a Meridian
+bootsplash to `meridian-login` and the desktop. Routine boot-loader, kernel and
+`rc` output should be suppressed in the normal path wherever OpenBSD supports
+that without a private kernel fork. A native splash is preferred; a restrained
+Meridian logo is the minimum acceptable fallback. Its appearance is governed
+by `docs/meridian_design_manifest.md` §12.
+
+Silent boot must not remove observability or recovery. Kernel and service
+diagnostics remain available through the normal OpenBSD logs, and a documented
+verbose/recovery boot path must be proven before console output is muted. A
+failed splash, login or compositor start must expose a recoverable diagnostic
+state rather than an unexplained permanent black screen. The hardware gate is
+a recorded cold boot with no routine console text, no black handover gap or
+unnecessary display-mode change, and successful transition through login to the
+desktop. Feasibility and the exact supported OpenBSD controls remain to be
+measured on the reference machine.
+
 ## Phase A — Pre-install inventory
 
 Record:
