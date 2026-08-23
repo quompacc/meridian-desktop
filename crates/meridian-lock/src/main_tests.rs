@@ -135,3 +135,14 @@ fn typing_resets_failed_status_to_idle() {
     assert!(state.status == LockStatus::Idle);
     assert_eq!(state.password.as_str(), "a");
 }
+
+#[test]
+fn card_frame_is_bounded_and_reflects_password_length() {
+    let state = test_state();
+    let empty = render_card_frame(0, &state.username, &LockStatus::Idle, &state.style);
+    let typed = render_card_frame(3, &state.username, &LockStatus::Idle, &state.style);
+
+    assert_eq!(empty.len(), (CARD_W * CARD_H * 4.0) as usize);
+    assert_eq!(typed.len(), empty.len());
+    assert_ne!(typed, empty);
+}

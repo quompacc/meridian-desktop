@@ -50,6 +50,7 @@ pub fn handle_keyboard<I: InputBackend>(
         debug!("keyboard event ignored: seat has no keyboard");
         return;
     };
+    let lock_active = state.lock_manager.is_locked_or_pending();
 
     let match_result = keyboard.input::<KeyMatch, _>(
         state,
@@ -58,6 +59,11 @@ pub fn handle_keyboard<I: InputBackend>(
         serial,
         time,
         |data, modifiers, handle| {
+            // The lock surface owns all keyboard input while locking. In
+            // particular, compositor shortcuts must never run over it.
+            if lock_active {
+                return FilterResult::Forward;
+            }
             if key_state != KeyState::Pressed {
                 return FilterResult::Forward;
             }

@@ -309,15 +309,18 @@ the more workable platform. The decision and blockers belong in this file.
    end-to-end screenshot still needs an interactive run. The same smoke also
    exposed the next session-integration gap: no D-Bus session bus was present,
    so notification and status-notifier services disabled themselves cleanly.
-6. **The authentication compile boundary is resolved natively.** Login and lock
-   use OpenBSD `auth_userokay(3)` with the user's configured default BSD
-   Authentication style; their PAM implementation and dependency remain intact
-   on non-OpenBSD targets. Smartcard login reports an explicit unsupported
-   configuration on OpenBSD instead of silently falling back. Polkit already
-   delegates authorization to `polkit-agent-helper-1`, so its unused direct PAM
-   dependency was removed. The successful-password login/session lifecycle and
-   an actual unlock still require an interactive test; no password was supplied
-   to automated checks. The launcher uses a private, ownership-checked
+6. **The native lock lifecycle is proven; login remains to be proven.** Login
+   and lock use OpenBSD `auth_userokay(3)` with the user's configured default
+   BSD Authentication style; their PAM implementation and dependency remain
+   intact on non-OpenBSD targets. On 2026-08-23, `meridian-lock` successfully
+   acquired the session lock, accepted keyboard input, authenticated the real
+   account and explicitly unlocked on the Intel reference machine. OpenBSD
+   requires the release lock binary at `/usr/local/libexec/meridian-lock`, owned
+   by `root:auth` with mode `2555`; the compositor uses that absolute path.
+   Smartcard login still reports an explicit unsupported configuration instead
+   of silently falling back, and the successful `meridian-login` session
+   lifecycle remains untested. Polkit delegates authorization to
+   `polkit-agent-helper-1`. The launcher uses a private, ownership-checked
    `/tmp/meridian-runtime-<uid>` directory and includes `/usr/X11R6/bin` in the
    sanitized OpenBSD session `PATH`, so XWayland remains discoverable.
 7. **Graphics/WebKit runtime proof is complete for the first panel/launcher

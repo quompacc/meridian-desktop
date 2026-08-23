@@ -73,7 +73,7 @@ mod utils;
 mod workspace_output_state;
 
 pub use idle::IdleInhibitorSet;
-pub use lock::{LockManager, LockPhase};
+pub use lock::{LockClientFailureState, LockManager, LockPhase};
 pub use output_layout::{
     detect_output_reload_diff, parse_output_transform, ConnectedOutput, OutputLayout,
     OutputPlacement, OutputPosition, OutputReloadDiff, ResolvedOutput,

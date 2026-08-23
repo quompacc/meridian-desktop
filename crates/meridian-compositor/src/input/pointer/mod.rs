@@ -54,14 +54,19 @@ pub fn handle_pointer_motion_absolute<I: InputBackend>(
     if fallback_used {
         debug!("pointer absolute motion fallback: no output contains point");
     }
-    update_hover_cursor_feedback(state, pos);
+    let lock_active = state.lock_manager.is_locked_or_pending();
+    if !lock_active {
+        update_hover_cursor_feedback(state, pos);
+    }
 
     let serial = SERIAL_COUNTER.next_serial();
     let Some(pointer) = state.seat.get_pointer() else {
         debug!("pointer absolute motion ignored: seat has no pointer");
         return;
     };
-    let under = state.surface_under(pos);
+    // Keep the compositor-owned software cursor moving while locked, without
+    // exposing pointer focus or events to any surface hidden below the lock.
+    let under = (!lock_active).then(|| state.surface_under(pos)).flatten();
 
     pointer.motion(
         state,
@@ -129,10 +134,15 @@ pub fn handle_pointer_motion_relative<I: InputBackend>(
     if fallback_used {
         debug!("pointer relative motion fallback: no output contains point");
     }
-    update_hover_cursor_feedback(state, new_pos);
+    let lock_active = state.lock_manager.is_locked_or_pending();
+    if !lock_active {
+        update_hover_cursor_feedback(state, new_pos);
+    }
 
     let serial = SERIAL_COUNTER.next_serial();
-    let under = state.surface_under(new_pos);
+    let under = (!lock_active)
+        .then(|| state.surface_under(new_pos))
+        .flatten();
     pointer.motion(
         state,
         under,

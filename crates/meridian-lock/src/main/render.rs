@@ -1,29 +1,23 @@
-fn render_frame(
-    width: u32,
-    height: u32,
+fn render_card_frame(
     password_len: usize,
     username: &str,
     status: &LockStatus,
     style: &LockStyle,
 ) -> Vec<u8> {
-    let w = width;
-    let h = height;
+    let w = CARD_W as u32;
+    let h = CARD_H as u32;
     let mut pm = Pixmap::new(w, h).expect("pixmap");
     let mut pm_mut = pm.as_mut();
 
-    // Background
+    // Redrawing the complete card rectangle restores its rounded corners to
+    // the static lock background without repainting the full output.
     fill_rect(&mut pm_mut, 0.0, 0.0, w as f32, h as f32, 0.0, style.bg);
 
     let cx = w as f32 / 2.0;
-    let cy = h as f32 / 2.0;
-
-    // Card
-    let card_x = cx - CARD_W / 2.0;
-    let card_y = cy - CARD_H / 2.0;
     fill_rect(
         &mut pm_mut,
-        card_x,
-        card_y,
+        0.0,
+        0.0,
         CARD_W,
         CARD_H,
         style.card_radius,
@@ -31,24 +25,24 @@ fn render_frame(
     );
 
     // Lock icon
-    draw_lock_icon(&mut pm_mut, cx, card_y + 50.0, style.accent, style.bg);
+    draw_lock_icon(&mut pm_mut, cx, 50.0, style.accent, style.bg);
 
     // "Meridian Desktop" title
     draw_text_centered(
         &mut pm_mut,
         20.0,
         cx,
-        card_y + 82.0,
+        82.0,
         "Meridian Desktop",
         style.text,
     );
 
     // Username
-    draw_text_centered(&mut pm_mut, 14.0, cx, card_y + 114.0, username, style.dim);
+    draw_text_centered(&mut pm_mut, 14.0, cx, 114.0, username, style.dim);
 
     // Password field
     let field_x = cx - FIELD_W / 2.0;
-    let field_y = card_y + 150.0;
+    let field_y = 150.0;
     let field_border_col = if status == &LockStatus::Failed {
         style.err
     } else {
@@ -124,13 +118,16 @@ fn create_lock_surface(
     let lock = state.lock.as_ref().unwrap();
     let surface = compositor.create_surface(qh, ());
     let lock_surface = lock.get_lock_surface(&surface, output, qh, ());
-    surface.commit();
+    // ext-session-lock forbids committing before the first configure has been
+    // acknowledged. The configure handler schedules the initial render, whose
+    // buffer attach performs the first surface commit.
     state.lock_surfaces.push(LockSurface {
         surface,
         lock_surface,
         width: 1,
         height: 1,
         needs_render: false,
+        background_initialized: false,
         shm_ptr: std::ptr::null_mut(),
         shm_size: 0,
         buffer: None,
@@ -145,9 +142,7 @@ fn render_surface(state: &mut AppState, idx: usize, qh: &QueueHandle<AppState>) 
         return;
     }
 
-    let pixels = render_frame(
-        w,
-        h,
+    let card_pixels = render_card_frame(
         state.password.len(),
         &state.username,
         &state.status,
@@ -157,7 +152,8 @@ fn render_surface(state: &mut AppState, idx: usize, qh: &QueueHandle<AppState>) 
     let ls = &mut state.lock_surfaces[idx];
 
     // Allocate shm if needed
-    if ls.shm_ptr.is_null() || ls.shm_size != pixels.len() {
+    let output_size = (w as usize) * (h as usize) * 4;
+    if ls.shm_ptr.is_null() || ls.shm_size != output_size {
         if !ls.shm_ptr.is_null() {
             unsafe { libc::munmap(ls.shm_ptr as *mut _, ls.shm_size) };
         }
@@ -168,19 +164,62 @@ fn render_surface(state: &mut AppState, idx: usize, qh: &QueueHandle<AppState>) 
                 ls.shm_ptr = ptr;
                 ls.shm_size = sz;
                 ls.buffer = Some(buf);
+                ls.background_initialized = false;
             }
             None => return,
         }
     }
 
-    // Copy pixels into shm
-    let dst = unsafe { std::slice::from_raw_parts_mut(ls.shm_ptr, pixels.len().min(ls.shm_size)) };
-    dst.copy_from_slice(&pixels[..dst.len()]);
+    let initialize_background = !ls.background_initialized;
+    let dst = unsafe { std::slice::from_raw_parts_mut(ls.shm_ptr, ls.shm_size) };
+    if initialize_background {
+        let a = ((state.style.bg >> 24) & 0xff) as u16;
+        let premultiply = |channel: u32| -> u8 {
+            (((channel as u16) * a + 127) / 255) as u8
+        };
+        let bg_pixel = [
+            premultiply(state.style.bg & 0xff),
+            premultiply((state.style.bg >> 8) & 0xff),
+            premultiply((state.style.bg >> 16) & 0xff),
+            a as u8,
+        ];
+        for pixel in dst.chunks_exact_mut(4) {
+            pixel.copy_from_slice(&bg_pixel);
+        }
+        ls.background_initialized = true;
+    }
+
+    let card_w = CARD_W as u32;
+    let card_h = CARD_H as u32;
+    let card_x = (w as i64 - card_w as i64) / 2;
+    let card_y = (h as i64 - card_h as i64) / 2;
+    let src_x = (-card_x).max(0) as u32;
+    let src_y = (-card_y).max(0) as u32;
+    let dst_x = card_x.max(0) as u32;
+    let dst_y = card_y.max(0) as u32;
+    let copy_w = (card_w - src_x).min(w.saturating_sub(dst_x));
+    let copy_h = (card_h - src_y).min(h.saturating_sub(dst_y));
+    for row in 0..copy_h {
+        let src_start = (((src_y + row) * card_w + src_x) * 4) as usize;
+        let dst_start = (((dst_y + row) * w + dst_x) * 4) as usize;
+        let row_bytes = (copy_w * 4) as usize;
+        dst[dst_start..dst_start + row_bytes]
+            .copy_from_slice(&card_pixels[src_start..src_start + row_bytes]);
+    }
 
     // Attach + damage + commit
     let buf = ls.buffer.as_ref().unwrap();
     ls.surface.attach(Some(buf), 0, 0);
-    ls.surface.damage_buffer(0, 0, w as i32, h as i32);
+    if initialize_background {
+        ls.surface.damage_buffer(0, 0, w as i32, h as i32);
+    } else {
+        ls.surface.damage_buffer(
+            dst_x as i32,
+            dst_y as i32,
+            copy_w as i32,
+            copy_h as i32,
+        );
+    }
     ls.surface.commit();
     ls.needs_render = false;
 }

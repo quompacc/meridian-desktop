@@ -484,14 +484,32 @@ fn wscons_button_code(button: u32) -> u32 {
 }
 
 fn wscons_key_code(key: u32) -> u32 {
-    const EVDEV_MUTE: u32 = 113;
-    const EVDEV_VOLUME_DOWN: u32 = 114;
-    const EVDEV_VOLUME_UP: u32 = 115;
-
+    // OpenBSD pckbd uses extended XT positions for these keys while Smithay's
+    // backend contract expects Linux input-event codes. The ordinary key block
+    // is already numerically identical, so translate only the extended keys.
     match key {
-        160 => EVDEV_MUTE,
-        174 => EVDEV_VOLUME_DOWN,
-        176 => EVDEV_VOLUME_UP,
+        127 => 119,      // Pause
+        156 => 96,       // KP Enter
+        157 => 97,       // Right Ctrl
+        160 => 113,      // Mute
+        170 | 183 => 99, // Print Screen / SysRq
+        174 => 114,      // Volume Down
+        176 => 115,      // Volume Up
+        181 => 98,       // KP Divide
+        184 => 100,      // Right Alt
+        199 => 102,      // Home
+        200 => 103,      // Up
+        201 => 104,      // Page Up
+        203 => 105,      // Left
+        205 => 106,      // Right
+        207 => 107,      // End
+        208 => 108,      // Down
+        209 => 109,      // Page Down
+        210 => 110,      // Insert
+        211 => 111,      // Delete
+        219 => 125,      // Left Meta / Super
+        220 => 126,      // Right Meta / Super
+        221 => 127,      // Menu
         other => other,
     }
 }
@@ -509,10 +527,34 @@ mod tests {
     }
 
     #[test]
-    fn maps_pckbd_volume_keys_to_evdev_codes_expected_by_xkb() {
-        assert_eq!(wscons_key_code(160), 113);
-        assert_eq!(wscons_key_code(174), 114);
-        assert_eq!(wscons_key_code(176), 115);
+    fn maps_extended_pckbd_keys_to_evdev_codes_expected_by_xkb() {
+        for (wscons, evdev) in [
+            (127, 119),
+            (156, 96),
+            (157, 97),
+            (160, 113),
+            (170, 99),
+            (174, 114),
+            (176, 115),
+            (181, 98),
+            (183, 99),
+            (184, 100),
+            (199, 102),
+            (200, 103),
+            (201, 104),
+            (203, 105),
+            (205, 106),
+            (207, 107),
+            (208, 108),
+            (209, 109),
+            (210, 110),
+            (211, 111),
+            (219, 125),
+            (220, 126),
+            (221, 127),
+        ] {
+            assert_eq!(wscons_key_code(wscons), evdev);
+        }
         assert_eq!(wscons_key_code(30), 30);
     }
 

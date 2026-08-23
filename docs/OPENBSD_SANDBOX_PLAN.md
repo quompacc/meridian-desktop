@@ -48,6 +48,51 @@ compositor has accepted the lock, it stays locked or starts a controlled
 replacement lock process. This invariant must be covered before the sandbox is
 enabled.
 
+Local state-machine coverage was added before the sandbox work: the compositor
+reaper delivers `meridian-lock` termination back to the compositor event loop.
+An unsuccessful exit while the lock is pending or acquired preserves that
+phase, prunes dead client-owned lock surfaces, clears keyboard focus and
+requests a compositor-owned cleared frame. Only the protocol's explicit
+`unlock_and_destroy` request reaches the unlock transition. Lock refusal and a
+Wayland dispatch failure make `meridian-lock` exit unsuccessfully. Unit tests
+cover failure before acquisition, while pending and after acquisition. This is
+not a substitute for the real-hardware lifecycle and crash matrix above, which
+remains required before enabling `pledge` or `unveil`.
+
+OpenBSD reference verification on 2026-08-23: `cargo check --workspace`,
+`cargo build --workspace`, the lock-focused tests and
+`cargo test --workspace --exclude smithay` all passed. The exclusion is the
+documented vendored-Smithay example limitation, not a Meridian test failure.
+
+The same hardware run established the unsandboxed baseline for one Intel
+output: `Super+L` reaches the compositor-supervised lock client, the lock
+surface appears, keyboard input and the compositor-owned cursor remain usable,
+BSD Authentication accepts the real account password, and explicit protocol
+unlock returns to the WebKit desktop. Per-keystroke rendering now redraws only
+the 460x310 card over a once-initialized background; the installed release
+binary removed the visible input lag without adding idle work.
+
+OpenBSD installation is part of the authentication boundary. Build as the
+normal user, then install from a privileged, root-owned path:
+
+```sh
+env LIBRARY_PATH=/usr/local/lib:/usr/X11R6/lib \
+    cargo build --release -p meridian-lock
+doas ./scripts/install-openbsd-lock
+```
+
+The resulting `/usr/local/libexec/meridian-lock` must be owned by `root:auth`
+with mode `2555`, matching OpenBSD's `xlock` model. It is setgid `auth`, never
+setuid root. The compositor uses this absolute path on OpenBSD; a binary in a
+user-writable Cargo target directory must never receive the `auth` group bit.
+
+Still open before sandbox implementation: deliberately reject one bad password
+then accept a good retry, run repeated lock cycles, cover output/theme variants,
+execute the three real-hardware process-exit cases above, and route the remaining
+shell/menu lock entry points through the same compositor supervisor. A later
+privilege split should reduce the setgid surface to a minimal BSD Authentication
+helper and return the Wayland/UI lock process to a fully unprivileged identity.
+
 ## Implementation method
 
 1. Inventory actual filesystem, descriptor, authentication, Wayland, shared

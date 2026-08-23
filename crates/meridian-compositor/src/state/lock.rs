@@ -15,6 +15,13 @@ pub enum LockPhase {
     Locked,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum LockClientFailureState {
+    BeforeAcquisition,
+    PendingFailClosed,
+    LockedFailClosed,
+}
+
 /// Pure-data state. Side-effects (Smithay calls, render dirty
 /// flag) live in `MeridianState`; `LockManager` only tracks lock phase
 /// and per-output lock surface markers.
@@ -144,6 +151,19 @@ impl LockManager {
         before.saturating_sub(self.surfaces_by_output.len())
     }
 
+    /// Record loss of the lock client without ever relaxing compositor state.
+    /// Dead client-owned surfaces are discarded so the next frame is the
+    /// compositor-owned cleared background; live surfaces from another client
+    /// are preserved. Pending and Locked deliberately remain fail-closed.
+    pub fn handle_client_failure(&mut self) -> LockClientFailureState {
+        self.prune_dead_surfaces();
+        match self.phase {
+            LockPhase::Unlocked => LockClientFailureState::BeforeAcquisition,
+            LockPhase::Pending => LockClientFailureState::PendingFailClosed,
+            LockPhase::Locked => LockClientFailureState::LockedFailClosed,
+        }
+    }
+
     /// Drop lock surface for an output.
     pub fn drop_surface(&mut self, output_name: &str) -> bool {
         self.surfaces_by_output.remove(output_name).is_some()
@@ -201,7 +221,7 @@ impl MeridianState {
 
 #[cfg(test)]
 mod tests {
-    use super::{LockManager, LockPhase};
+    use super::{LockClientFailureState, LockManager, LockPhase};
 
     #[test]
     fn default_is_unlocked() {
@@ -313,5 +333,39 @@ mod tests {
         assert_eq!(manager.pending_target_count(), 0);
         assert!(!manager.has_pending_locker());
         assert_eq!(manager.phase(), &LockPhase::Unlocked);
+    }
+
+    #[test]
+    fn client_failure_before_acquisition_does_not_create_a_lock() {
+        let mut manager = LockManager::new();
+        assert_eq!(
+            manager.handle_client_failure(),
+            LockClientFailureState::BeforeAcquisition
+        );
+        assert_eq!(manager.phase(), &LockPhase::Unlocked);
+    }
+
+    #[test]
+    fn client_failure_while_pending_remains_fail_closed() {
+        let mut manager = LockManager::new();
+        assert!(manager.begin_pending_for_test(["out-0".to_string()]));
+        assert_eq!(
+            manager.handle_client_failure(),
+            LockClientFailureState::PendingFailClosed
+        );
+        assert_eq!(manager.phase(), &LockPhase::Pending);
+        assert_eq!(manager.pending_target_count(), 1);
+    }
+
+    #[test]
+    fn client_failure_after_acquisition_remains_locked() {
+        let mut manager = LockManager::new();
+        assert!(manager.begin_pending_for_test(["out-0".to_string()]));
+        assert!(manager.confirm_locked());
+        assert_eq!(
+            manager.handle_client_failure(),
+            LockClientFailureState::LockedFailClosed
+        );
+        assert_eq!(manager.phase(), &LockPhase::Locked);
     }
 }

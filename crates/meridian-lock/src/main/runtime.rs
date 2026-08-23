@@ -1,4 +1,4 @@
-fn main() {
+fn main() -> std::process::ExitCode {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
@@ -100,18 +100,39 @@ fn main() {
             break;
         }
 
-        // Flush + poll with 20 ms timeout so we can check auth_rx
+        // Flush + poll with 20 ms timeout so we can check auth_rx. A prepared
+        // read must exist before polling; readiness alone does not move Wayland
+        // messages into the event queue.
         let _ = conn.flush();
-        let wl_fd = conn.as_fd().as_raw_fd();
+        let Some(read_guard) = event_queue.prepare_read() else {
+            if let Err(e) = event_queue.dispatch_pending(&mut state) {
+                tracing::error!("dispatch error: {}", e);
+                state.finished = true;
+                break;
+            }
+            continue;
+        };
+        let wl_fd = read_guard.connection_fd().as_raw_fd();
         let mut pfd = libc::pollfd {
             fd: wl_fd,
             events: libc::POLLIN,
             revents: 0,
         };
-        unsafe { libc::poll(&mut pfd, 1, 20) };
+        let poll_result = unsafe { libc::poll(&mut pfd, 1, 20) };
+
+        if poll_result > 0 && pfd.revents & libc::POLLIN != 0 {
+            if let Err(e) = read_guard.read() {
+                tracing::error!("Wayland socket read error: {}", e);
+                state.finished = true;
+                break;
+            }
+        } else {
+            drop(read_guard);
+        }
 
         if let Err(e) = event_queue.dispatch_pending(&mut state) {
             tracing::error!("dispatch error: {}", e);
+            state.finished = true;
             break;
         }
     }
@@ -121,5 +142,11 @@ fn main() {
         if !ls.shm_ptr.is_null() {
             unsafe { libc::munmap(ls.shm_ptr as *mut _, ls.shm_size) };
         }
+    }
+
+    if state.finished {
+        std::process::ExitCode::FAILURE
+    } else {
+        std::process::ExitCode::SUCCESS
     }
 }

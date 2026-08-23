@@ -67,14 +67,16 @@ DMA-BUF formats instead of `llvmpipe`. Sustained performance remains unmeasured.
 The shared-memory boundary is also resolved: OpenBSD shell screencopy, lock and
 polkit surfaces use native `shm_mkstemp(3)` with close-on-exec semantics, while
 existing targets retain `memfd_create`; all 310 shell tests pass. Login and lock
-now use BSD Authentication through `auth_userokay(3)`, with PAM retained only on
+use BSD Authentication through `auth_userokay(3)`, with PAM retained only on
 other targets; Polkit retains its native helper protocol without an unused PAM
-dependency. `cargo check --workspace` and all Meridian workspace tests pass on
-OpenBSD (the vendored Smithay example package is explicitly excluded). A
-full-session smoke maps and configures the shell surfaces. Interactive
-login/unlock and the D-Bus session lifecycle are the next runtime gaps; the
-native launcher path already supplies the OpenBSD runtime directory and X11R6
-binary search path required for that test.
+dependency. The compositor-supervised lock lifecycle, input, real-password
+authentication and explicit unlock are proven on the OpenBSD Intel reference
+machine. Its release binary is installed root-owned, setgid `auth` (not setuid
+root) under `/usr/local/libexec`; a future split will reduce that privilege to a
+minimal authentication helper. `cargo check --workspace` and all Meridian
+workspace tests pass on OpenBSD (the vendored Smithay example package is
+explicitly excluded). Interactive login and the remaining lock crash/retry
+matrix are the next runtime gaps.
 
 Port or isolate Linux assumptions without weakening the existing architecture:
 

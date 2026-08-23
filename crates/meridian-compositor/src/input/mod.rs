@@ -24,7 +24,9 @@ impl MeridianState {
         }
         if self.lock_manager.is_locked_or_pending() {
             match &event {
-                InputEvent::Keyboard { .. } => {}
+                InputEvent::Keyboard { .. }
+                | InputEvent::PointerMotion { .. }
+                | InputEvent::PointerMotionAbsolute { .. } => {}
                 _ => {
                     tracing::trace!("input event suppressed (session locked/pending)");
                     return;

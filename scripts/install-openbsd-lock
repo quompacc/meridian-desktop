@@ -1,0 +1,27 @@
+#!/bin/ksh
+
+set -eu
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "install-openbsd-lock: run with doas" >&2
+    exit 1
+fi
+
+source_binary=${1:-target/release/meridian-lock}
+destination=/usr/local/libexec/meridian-lock
+
+if [ ! -f "$source_binary" ] || [ ! -x "$source_binary" ]; then
+    echo "install-openbsd-lock: missing executable: $source_binary" >&2
+    exit 1
+fi
+
+install -d -o root -g wheel -m 755 /usr/local/libexec
+install -o root -g auth -m 2555 "$source_binary" "$destination"
+
+installed_mode=$(stat -f '%Su:%Sg %Sp' "$destination")
+if [ "$installed_mode" != "root:auth -r-xr-sr-x" ]; then
+    echo "install-openbsd-lock: unexpected installed identity/mode: $installed_mode" >&2
+    exit 1
+fi
+
+echo "installed $destination ($installed_mode)"

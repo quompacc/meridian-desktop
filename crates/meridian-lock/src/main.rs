@@ -1,6 +1,5 @@
 mod auth;
 
-use std::os::fd::AsFd;
 use std::os::unix::io::{AsRawFd, BorrowedFd};
 use std::sync::mpsc;
 
@@ -89,6 +88,7 @@ struct LockSurface {
     width: u32,
     height: u32,
     needs_render: bool,
+    background_initialized: bool,
     shm_ptr: *mut u8,
     shm_size: usize,
     buffer: Option<wl_buffer::WlBuffer>,
@@ -426,6 +426,7 @@ impl Dispatch<ext_session_lock_surface_v1::ExtSessionLockSurfaceV1, ()> for AppS
                         ls.shm_size = 0;
                     }
                     ls.buffer = None;
+                    ls.background_initialized = false;
                     ls.width = w;
                     ls.height = h;
                 }
