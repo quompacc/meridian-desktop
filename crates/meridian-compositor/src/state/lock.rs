@@ -96,6 +96,13 @@ impl LockManager {
         if !matches!(self.phase, LockPhase::Pending) {
             return None;
         }
+        #[cfg(debug_assertions)]
+        if std::env::var_os("MERIDIAN_FAULT_INJECT_HOLD_LOCK_PENDING").is_some() {
+            // Debug-only hardware fault injection: keep the compositor in the
+            // fail-closed Pending phase so client-loss recovery can be tested
+            // deterministically. Release builds never contain this branch.
+            return None;
+        }
         self.pending_targets.remove(output_name);
         if self.pending_targets.is_empty() {
             self.pending_locker.take()

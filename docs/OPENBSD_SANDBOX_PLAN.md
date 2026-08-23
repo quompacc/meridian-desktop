@@ -93,10 +93,19 @@ This privilege split was installed and verified on the reference hardware on
 2026-08-23. `Super+L`, real-password authentication, explicit unlock and input
 latency remained correct with the UI running without the `auth` group bit.
 
-Still open before sandbox implementation: deliberately reject one bad password
-then accept a good retry, run repeated lock cycles, cover output/theme variants,
-execute the three real-hardware process-exit cases above, and route the remaining
-shell/menu lock entry points through the same compositor supervisor.
+The same hardware session passed a rejected bad password followed by a good
+retry and three consecutive lock/unlock cycles. Controlled `SIGKILL` tests then
+covered every supervisor phase: `BeforeAcquisition` left the still-unlocked
+desktop usable, while `PendingFailClosed` and `LockedFailClosed` kept the desktop
+in a compositor-owned secured state until explicit SSH recovery. The locked
+case was also repeated while the setgid auth helper was active. Because the real
+Pending window completes in roughly four milliseconds, debug builds expose the
+explicit `MERIDIAN_FAULT_INJECT_HOLD_LOCK_PENDING=1` test gate; release builds
+compile that gate out.
+
+Still open before sandbox implementation: cover the remaining output/theme
+variants and route the shell/menu lock entry points through the same compositor
+supervisor.
 
 ## Implementation method
 

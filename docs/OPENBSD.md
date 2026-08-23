@@ -321,7 +321,11 @@ the more workable platform. The decision and blockers belong in this file.
    the only setgid `auth` component (`root:auth`, mode `2555`). The helper derives
    the account from the real caller UID instead of accepting a username. This
    privilege split, real-password unlock and input performance were verified on
-   the reference hardware.
+   the reference hardware. A bad-password retry, three consecutive cycles and
+   controlled client loss before acquisition, while pending, after acquisition
+   and during the auth-helper call also passed. The unlocked case remained
+   usable; every pending/locked case remained compositor-owned fail-closed until
+   SSH recovery.
    Smartcard login still reports an explicit unsupported configuration instead
    of silently falling back, and the successful `meridian-login` session
    lifecycle remains untested. Polkit delegates authorization to

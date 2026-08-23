@@ -76,8 +76,10 @@ group privilege; only the minimal `/usr/local/libexec/meridian-openbsd-auth`
 helper is setgid `auth` (never setuid root). This split is verified with the real
 account password on hardware. `cargo check --workspace` and all Meridian
 workspace tests pass on OpenBSD (the vendored Smithay example package is
-explicitly excluded). Interactive login and the remaining lock crash/retry
-matrix are the next runtime gaps.
+explicitly excluded). Bad-password retry, repeated cycles and fail-closed client
+loss before acquisition, while pending, after acquisition and during the auth
+helper are proven on hardware. Interactive login and the remaining lock
+output/theme variants are the next runtime gaps.
 
 Port or isolate Linux assumptions without weakening the existing architecture:
 
