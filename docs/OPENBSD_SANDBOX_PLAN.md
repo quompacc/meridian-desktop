@@ -251,6 +251,68 @@ status 1. Killing the agent while `pkexec` awaited input removed the dialog and
 made `pkexec` report `not authorized`; no root action ran. A clean session
 restart restored the autostarted sandboxed agent.
 
+## Pilot: `meridian-portal`
+
+The third pilot separates the narrow Meridian policy backend from the broad
+filesystem view required by an interactive file chooser. On OpenBSD,
+`meridian-portal` publishes only Settings, Screenshot and Access. The official
+`xdg-desktop-portal-gtk` package owns FileChooser in a separate process;
+Meridian therefore does not unveil the user's home directory and does not keep
+`proc` or `exec` promises merely to launch a picker.
+
+Build and install the backend as the normal user plus the narrow root step:
+
+```sh
+env LIBRARY_PATH=/usr/local/lib:/usr/X11R6/lib \
+    cargo build --release -p meridian-portal
+doas pkg_add xdg-desktop-portal xdg-desktop-portal-gtk
+doas ./scripts/install-openbsd-portal
+```
+
+The installer requires both packaged portal daemons, installs the Meridian
+binary as `root:wheel 0555`, and installs D-Bus activation, the OpenBSD-only
+portal descriptor, routing config and both central theme tables as
+`root:wheel 0444`. Settings and Screenshot route to Meridian; FileChooser
+routes only to GTK.
+
+After acquiring its session-bus name, the backend verifies that the Meridian
+IPC path already exists as a real Unix socket, locks this unveiled view and
+fails startup on every setup error:
+
+```text
+~/.config/meridian                     r   (when present)
+~/.config/meridian/themes              r   (when present)
+~/.local/share/meridian/themes         r   (when present)
+$MERIDIAN_THEME_DIR(S)                 r   (existing entries only)
+$XDG_DATA_HOME/meridian/themes         r   (when configured and present)
+$XDG_DATA_DIRS/meridian/themes         r   (existing entries only)
+$XDG_RUNTIME_DIR/meridian.sock         rw  (required Unix socket)
+```
+
+It pledges:
+
+```text
+stdio rpath unix sendfd recvfd
+```
+
+`rpath` supports config/theme reloads; `unix` supports the established D-Bus
+connection and per-request compositor connections. Descriptor passing remains
+available to the D-Bus transport. There is no process execution, general
+write/create access, runtime-directory access or ambient home-directory view.
+
+A no-I/O `ktrace` inventory on 2026-08-24 confirmed the config/theme reads and
+D-Bus traffic. The installed release reports `pU` in `ps`; real
+`org.freedesktop.portal.Settings.ReadOne` returns the active dark value `1`,
+and a real frontend FileChooser request reaches the separate GTK backend and
+cancels visibly. Startup without the compositor socket and with a regular file
+substituted at its path both exit with status 1. A visible screenshot denial
+returned response code 1 without a result; the allow path returned code 0 and
+a valid local 1920x1080 PNG. The backend remained `pU`, and the temporary image
+was removed after type, ownership and size verification. A clean Meridian
+session restart with the production environment automatically activated the
+Meridian and GTK backends without display/proxy errors; Settings and a new
+FileChooser request still passed without any manual D-Bus environment update.
+
 ## Implementation method
 
 1. Inventory actual filesystem, descriptor, authentication, Wayland, shared
@@ -273,7 +335,7 @@ permission is added only for a named operation demonstrated by code or trace.
 
 1. `meridian-lock` (complete)
 2. `meridian-polkit` (complete)
-3. `meridian-portal`
+3. `meridian-portal` (complete)
 4. `meridian-ui-runtime`
 5. `meridian-login`
 6. `meridian-shell`

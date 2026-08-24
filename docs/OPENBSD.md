@@ -201,7 +201,7 @@ Native Meridian build matrix on 2026-08-19:
 | `meridian-tokens` | pass | `cargo check`; design guard test passes |
 | `meridian-ipc` | pass | `cargo check` |
 | `meridian-config` | pass | `cargo check`, including xkbcommon |
-| `meridian-portal` | pass | `cargo check` |
+| `meridian-portal` | pass | root-owned installed backend uses checked `pledge`/`unveil`, publishes Settings/Screenshot/Access only, and routes FileChooser to the separately packaged GTK backend; real frontend Settings, FileChooser cancel, fail-closed socket, screenshot deny/allow and clean-session activation paths pass |
 | `meridian-boot-common` | pass | `cargo check` |
 | `meridian-compass-render` | pass | `cargo check` |
 | `meridian-freetype` / `meridian-ui` | pass | built directly and as shell dependencies |

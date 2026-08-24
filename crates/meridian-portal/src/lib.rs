@@ -1,5 +1,8 @@
 mod access;
+#[cfg(not(target_os = "openbsd"))]
 mod file_chooser;
+#[cfg(target_os = "openbsd")]
+mod openbsd_sandbox;
 mod screenshot;
 mod settings;
 
@@ -10,14 +13,24 @@ pub const DBUS_NAME: &str = "org.freedesktop.impl.portal.desktop.meridian";
 pub const OBJECT_PATH: &str = "/org/freedesktop/portal/desktop";
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let conn = Builder::session()?
-        .name(DBUS_NAME)?
-        .serve_at(OBJECT_PATH, file_chooser::FileChooserImpl)?
+    let builder = Builder::session()?.name(DBUS_NAME)?;
+
+    // A child file picker would inherit unveil(2). Giving it arbitrary file
+    // access would also expose the user's complete home directory to this
+    // long-lived D-Bus backend. OpenBSD therefore routes FileChooser to the
+    // separately packaged GTK portal and keeps this process tightly unveiled.
+    #[cfg(not(target_os = "openbsd"))]
+    let builder = builder.serve_at(OBJECT_PATH, file_chooser::FileChooserImpl)?;
+
+    let conn = builder
         .serve_at(OBJECT_PATH, screenshot::ScreenshotImpl)?
         .serve_at(OBJECT_PATH, access::AccessImpl)?
         .serve_at(OBJECT_PATH, settings::SettingsImpl)?
         .build()
         .await?;
+
+    #[cfg(target_os = "openbsd")]
+    openbsd_sandbox::install()?;
 
     info!("portal service ready: name={DBUS_NAME} path={OBJECT_PATH}");
 

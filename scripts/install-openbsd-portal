@@ -1,0 +1,91 @@
+#!/bin/ksh
+
+set -eu
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "install-openbsd-portal: run with doas" >&2
+    exit 1
+fi
+
+portal_binary=${1:-target/release/meridian-portal}
+portal_destination=/usr/local/bin/meridian-portal
+service_source=packaging/dbus-1/services/org.freedesktop.impl.portal.desktop.meridian.service
+service_destination=/usr/local/share/dbus-1/services/org.freedesktop.impl.portal.desktop.meridian.service
+descriptor_source=packaging/xdg-desktop-portal/portals/meridian-openbsd.portal
+descriptor_destination=/usr/local/share/xdg-desktop-portal/portals/meridian.portal
+config_source=packaging/xdg-desktop-portal/meridian-openbsd-portals.conf
+config_destination=/etc/xdg/xdg-desktop-portal/meridian-portals.conf
+
+if [ ! -f "$portal_binary" ] || [ ! -x "$portal_binary" ]; then
+    echo "install-openbsd-portal: missing executable: $portal_binary" >&2
+    exit 1
+fi
+for source in "$service_source" "$descriptor_source" "$config_source"; do
+    if [ ! -f "$source" ]; then
+        echo "install-openbsd-portal: missing packaging file: $source" >&2
+        exit 1
+    fi
+done
+for theme in dark light; do
+    if [ ! -f "themes/$theme/theme.toml" ]; then
+        echo "install-openbsd-portal: missing theme: themes/$theme/theme.toml" >&2
+        exit 1
+    fi
+done
+for dependency in \
+    /usr/local/libexec/xdg-desktop-portal \
+    /usr/local/libexec/xdg-desktop-portal-gtk; do
+    if [ ! -x "$dependency" ]; then
+        echo "install-openbsd-portal: missing dependency: $dependency" >&2
+        exit 1
+    fi
+done
+
+rendered=$(mktemp /tmp/meridian-portal-service.XXXXXXXXXX)
+trap 'rm -f "$rendered"' EXIT HUP INT TERM
+sed 's|@PREFIX@|/usr/local|g' "$service_source" >"$rendered"
+
+install -d -o root -g wheel -m 0755 \
+    /usr/local/bin \
+    /usr/local/share/dbus-1/services \
+    /usr/local/share/xdg-desktop-portal/portals \
+    /etc/xdg/xdg-desktop-portal
+install -o root -g wheel -m 0555 "$portal_binary" "$portal_destination"
+install -o root -g wheel -m 0444 "$rendered" "$service_destination"
+install -o root -g wheel -m 0444 "$descriptor_source" "$descriptor_destination"
+install -o root -g wheel -m 0444 "$config_source" "$config_destination"
+install -d -o root -g wheel -m 0555 \
+    /usr/local/share/meridian/themes/dark \
+    /usr/local/share/meridian/themes/light
+for theme in dark light; do
+    install -o root -g wheel -m 0444 \
+        "themes/$theme/theme.toml" \
+        "/usr/local/share/meridian/themes/$theme/theme.toml"
+done
+
+for destination in \
+    "$portal_destination" \
+    "$service_destination" \
+    "$descriptor_destination" \
+    "$config_destination"; do
+    identity=$(stat -f '%Su:%Sg %Sp' "$destination")
+    case "$destination" in
+        "$portal_destination") expected='root:wheel -r-xr-xr-x' ;;
+        *) expected='root:wheel -r--r--r--' ;;
+    esac
+    if [ "$identity" != "$expected" ]; then
+        echo "install-openbsd-portal: unexpected identity/mode: $destination: $identity" >&2
+        exit 1
+    fi
+    echo "installed $destination ($identity)"
+done
+
+for theme in dark light; do
+    destination="/usr/local/share/meridian/themes/$theme/theme.toml"
+    identity=$(stat -f '%Su:%Sg %Sp' "$destination")
+    if [ "$identity" != 'root:wheel -r--r--r--' ]; then
+        echo "install-openbsd-portal: unexpected identity/mode: $destination: $identity" >&2
+        exit 1
+    fi
+    echo "installed $destination ($identity)"
+done

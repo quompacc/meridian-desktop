@@ -4,7 +4,7 @@
 > Broad new portal/UI work is deferred behind the WebKit vertical slice unless
 > required for its security boundary or basic daily-driver validation.
 
-Stand: 2026-06-05, auditiert gegen `crates/meridian-portal`.
+Stand: 2026-08-24, auditiert gegen `crates/meridian-portal` und OpenBSD-Hardware.
 
 ## Ziel
 
@@ -16,9 +16,10 @@ Prompts nicht in den Compositor-Render-/Input-Hotpath wandern.
 - Binary: `meridian-portal`.
 - D-Bus Name: `org.freedesktop.impl.portal.desktop.meridian`.
 - Object Path: `/org/freedesktop/portal/desktop`.
-- Implementiert sind die Impl-Portale `FileChooser`, `Screenshot` und `Access`.
+- Implementiert sind die Impl-Portale `FileChooser`, `Screenshot`, `Access`
+  und `Settings`.
 - `PickColor` antwortet kontrolliert mit Response-Code `2`.
-- `ScreenCast`, Settings/Appearance und OpenURI sind offen.
+- `ScreenCast` und OpenURI sind offen.
 - Installationsmetadaten liegen unter `packaging/`:
   - D-Bus service file
   - systemd user unit
@@ -54,6 +55,14 @@ Rueckgaben:
 - Cancel: Response-Code `1`.
 - Picker-Fehler: Response-Code `2`.
 
+Auf OpenBSD wird diese Schnittstelle bewusst nicht vom Meridian-Prozess
+exportiert. `packaging/xdg-desktop-portal/meridian-openbsd-portals.conf` routet
+FileChooser exklusiv an das separat paketierte `xdg-desktop-portal-gtk`.
+Andernfalls wuerde dessen beliebiger Dateizugriff die enge `unveil(2)`-Sicht
+des lang laufenden Meridian-Backends auf das gesamte Home-Verzeichnis
+aufweiten. Der echte Frontend-Aufruf und sichtbare Cancel-Pfad sind auf der
+Referenzhardware verifiziert.
+
 ## Screenshot
 
 Implementierte Methoden:
@@ -77,10 +86,12 @@ Datenpfad:
 
 Offene Validierung:
 
-- echter `xdg-desktop-portal`-Client in einer installierten Meridian-Session
-- Cancel-/Deny-/Allow-Pfade mit sichtbarem Shell-Modal
 - Region-Picker auf echter DRM-Hardware und Multi-Output
 - Winit-/Nicht-DRM-Verhalten fuer Portal-Screenshot, falls benoetigt
+
+Der installierte OpenBSD-Frontendpfad ist fuer Consent verifiziert: sichtbares
+Ablehnen liefert Code `1` ohne Ergebnis, sichtbares Erlauben Code `0` mit einer
+gueltigen lokalen 1920x1080-PNG. Die Testdatei wurde danach entfernt.
 
 ## Access
 
@@ -97,19 +108,24 @@ Screenshot-Implementierung schon beim Backend-Scan verwirft.
   Allow-Default.
 - FileChooser darf extern delegieren; ScreenCast braucht eine eigene PipeWire-
   Session- und Permission-Architektur.
+- Auf OpenBSD ist der GTK-FileChooser eine ausdrueckliche separate
+  Sicherheitsgrenze; `meridian-portal` besitzt dort weder `proc`/`exec` noch
+  allgemeinen Zugriff auf Nutzerdateien.
+- Das OpenBSD-Backend startet nur mit einem bereits vorhandenen echten
+  `$XDG_RUNTIME_DIR/meridian.sock`; fehlender Socket oder eine normale Datei an
+  dessen Stelle fuehren kontrolliert zu Exit-Status `1`.
 
 ## Offene Slices
 
-1. FileChooser haerten:
-   - echte `xdg-desktop-portal`-Clients testen
+1. FileChooser weiter haerten:
    - Filter/Current-folder/Modal-Optionen auswerten
-   - Cancel-/Fehlerpfade dokumentieren
+   - Erfolgs- und Backend-Ausfallpfad zusaetzlich zum verifizierten Cancel testen
 2. Screenshot produktionshaerten:
-   - installierten Portal-Pfad gegen xdg-desktop-portal testen
-   - Consent-/Region-Picker auf echter Hardware validieren
+   - interaktiven Region-Picker auf echter Hardware validieren
    - Multi-Output-Auswahl und Output-Aufloesung spezifizieren
 3. Settings/Appearance read-only:
-   - Theme/Accent/Color-Scheme aus Meridian-Config ableiten
+   - Color-Scheme ist aus Meridian-Config abgeleitet und live signalisiert
+   - weitere standardisierte Appearance-Werte nur bei realem Clientbedarf
 4. ScreenCast:
    - PipeWire
    - Session-Lifecycle, Revoke/Stop

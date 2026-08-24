@@ -95,6 +95,16 @@ setuid helper path. Real bad/good-password handling, three repeated
 authorizations, missing-session startup and agent loss during an outstanding
 request passed; client loss returned `not authorized` and never ran the root
 action. The packaged helper remains an explicit upstream privileged boundary.
+The third `meridian-portal` pilot is complete. Its installed OpenBSD backend owns
+only Settings, Screenshot and Access, runs with a checked `pledge(2)`/`unveil(2)`
+profile and requires the live compositor socket before entering its event loop.
+FileChooser is deliberately routed to OpenBSD's separate GTK portal backend so
+the Meridian D-Bus process never receives ambient access to the user's files.
+Real frontend Settings, visible FileChooser-cancel, missing-socket,
+non-socket-substitution and screenshot consent/deny/allow tests pass. The allow
+path produced a valid local 1920x1080 PNG while the backend remained `pU`.
+A clean session restart also reactivated both portal backends automatically and
+repeated the Settings and FileChooser frontend paths without manual repair.
 
 Port or isolate Linux assumptions without weakening the existing architecture:
 
@@ -104,7 +114,8 @@ Port or isolate Linux assumptions without weakening the existing architecture:
 - validate Wayland clients and XWayland, if available
 - define OpenBSD process boundaries using `pledge`, `unveil` and privilege
   separation where they improve the trusted base; the fail-closed rollout begins
-  with the completed `meridian-lock` and `meridian-polkit` pilots in
+  with the completed `meridian-lock`, `meridian-polkit` and `meridian-portal`
+  pilots in
   `docs/OPENBSD_SANDBOX_PLAN.md`
 
 Exit criterion: a minimal Meridian session renders, accepts input and can run a
