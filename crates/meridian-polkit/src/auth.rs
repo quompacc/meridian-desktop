@@ -34,6 +34,7 @@ use std::time::Duration;
 use zeroize::Zeroizing;
 
 const HELPER_PATHS: &[&str] = &[
+    "/usr/local/lib/polkit-1/polkit-agent-helper-1",
     "/usr/lib/polkit-1/polkit-agent-helper-1",
     "/usr/libexec/polkit-agent-helper-1",
     "/usr/lib/policykit-1/polkit-agent-helper-1",
@@ -41,6 +42,15 @@ const HELPER_PATHS: &[&str] = &[
 const HELPER_IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
 fn find_helper() -> Option<&'static str> {
+    #[cfg(target_os = "openbsd")]
+    {
+        // The sandbox grants execute-only access to the fixed package helper.
+        // A preceding Path::exists() would require read-path metadata access
+        // and would also introduce a check/use race.
+        return HELPER_PATHS.first().copied();
+    }
+
+    #[cfg(not(target_os = "openbsd"))]
     HELPER_PATHS
         .iter()
         .copied()
@@ -180,4 +190,17 @@ pub fn authenticate_via_helper(username: &str, cookie: &str, password: &Zeroizin
     let _ = child.kill();
     let _ = child.wait();
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn helper_candidates_include_openbsd_package_path() {
+        assert_eq!(
+            HELPER_PATHS.first().copied(),
+            Some("/usr/local/lib/polkit-1/polkit-agent-helper-1")
+        );
+    }
 }

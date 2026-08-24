@@ -11,12 +11,17 @@
 // uses to actually grant the action.
 
 use std::collections::HashMap;
+use std::io;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use smithay_client_toolkit::reexports::calloop::channel as cchannel;
 use tokio::sync::oneshot;
 use tracing::{debug, error, info, warn};
-use zbus::{interface, proxy, zvariant::OwnedValue, zvariant::Value};
+use zbus::{
+    interface, proxy,
+    zvariant::{OwnedObjectPath, OwnedValue, Value},
+};
 
 pub const AGENT_OBJECT_PATH: &str = "/org/freedesktop/PolicyKit1/AuthenticationAgent";
 
@@ -171,6 +176,15 @@ trait Authority {
     ) -> zbus::Result<()>;
 }
 
+#[proxy(
+    interface = "org.freedesktop.ConsoleKit.Manager",
+    default_service = "org.freedesktop.ConsoleKit",
+    default_path = "/org/freedesktop/ConsoleKit/Manager"
+)]
+trait ConsoleKitManager {
+    fn get_session_for_cookie(&self, cookie: &str) -> zbus::Result<OwnedObjectPath>;
+}
+
 fn unix_session_subject(session_id: &str) -> (String, HashMap<String, Value<'static>>) {
     let mut details: HashMap<String, Value<'static>> = HashMap::new();
     details.insert(
@@ -201,9 +215,17 @@ fn parse_identities(raw: &[(String, HashMap<String, OwnedValue>)]) -> Vec<Identi
 /// runtime, same pattern as meridian-shell's notifications daemon).
 /// Returns the calloop receiver end that the UI loop should drain.
 ///
-/// `session_id` is the polkit subject id — typically `XDG_SESSION_ID`.
-pub fn spawn(session_id: String, locale: String) -> std::io::Result<cchannel::Channel<DbusEvent>> {
+/// `session_id` is the polkit subject id, normally `XDG_SESSION_ID`. OpenBSD's
+/// `ck-launch-session` instead supplies `XDG_SESSION_COOKIE`, which is resolved
+/// against ConsoleKit on the system bus before registration.
+pub fn spawn(
+    session_id: Option<String>,
+    session_cookie: Option<String>,
+    locale: String,
+) -> std::io::Result<cchannel::Channel<DbusEvent>> {
     let (tx, rx) = cchannel::channel::<DbusEvent>();
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel::<Result<(), String>>();
+    let failure_tx = ready_tx.clone();
     std::thread::Builder::new()
         .name("polkit-dbus".to_string())
         .spawn(move || {
@@ -213,23 +235,40 @@ pub fn spawn(session_id: String, locale: String) -> std::io::Result<cchannel::Ch
             {
                 Ok(rt) => rt,
                 Err(e) => {
+                    let _ = failure_tx.send(Err(e.to_string()));
                     error!(error = %e, "polkit: tokio runtime build failed; agent disabled");
                     return;
                 }
             };
             rt.block_on(async move {
-                if let Err(e) = run(tx, session_id, locale).await {
+                if let Err(e) = run(tx, session_id, session_cookie, locale, ready_tx).await {
+                    let _ = failure_tx.send(Err(e.to_string()));
                     error!(error = %e, "polkit: dbus serve failed; agent disabled");
                 }
             });
         })?;
-    Ok(rx)
+    match ready_rx.recv_timeout(Duration::from_secs(10)) {
+        Ok(Ok(())) => Ok(rx),
+        Ok(Err(error)) => Err(io::Error::other(format!(
+            "polkit D-Bus registration failed: {error}"
+        ))),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "polkit D-Bus registration timed out",
+        )),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "polkit D-Bus registration thread stopped",
+        )),
+    }
 }
 
 async fn run(
     tx: cchannel::Sender<DbusEvent>,
-    session_id: String,
+    session_id: Option<String>,
+    session_cookie: Option<String>,
     locale: String,
+    ready_tx: std::sync::mpsc::Sender<Result<(), String>>,
 ) -> zbus::Result<()> {
     let service = AgentService {
         tx,
@@ -245,6 +284,7 @@ async fn run(
         .build()
         .await?;
 
+    let session_id = resolve_session_id(&conn, session_id, session_cookie).await?;
     let proxy = AuthorityProxy::new(&conn).await?;
     let subject = unix_session_subject(&session_id);
     proxy
@@ -259,11 +299,32 @@ async fn run(
         POLKIT_OBJECT_PATH,
         "polkit: agent registered"
     );
+    let _ = ready_tx.send(Ok(()));
 
     // Park forever. Unregistration on shutdown would be nicer; for now
     // polkitd reaps stale agents when the bus name disappears.
     std::future::pending::<()>().await;
     Ok(())
+}
+
+async fn resolve_session_id(
+    conn: &zbus::Connection,
+    session_id: Option<String>,
+    session_cookie: Option<String>,
+) -> zbus::Result<String> {
+    if let Some(session_id) = session_id {
+        return Ok(session_id);
+    }
+    let cookie = session_cookie.ok_or(zbus::Error::MissingParameter("XDG_SESSION_COOKIE"))?;
+    let proxy = ConsoleKitManagerProxy::new(conn).await?;
+    let path = proxy.get_session_for_cookie(&cookie).await?;
+    consolekit_session_id(path.as_str())
+        .ok_or_else(|| zbus::Error::Failure(format!("invalid ConsoleKit session path: {path}")))
+}
+
+fn consolekit_session_id(path: &str) -> Option<String> {
+    path.starts_with("/org/freedesktop/ConsoleKit/Session")
+        .then(|| path.to_string())
 }
 
 #[cfg(test)]
@@ -282,6 +343,15 @@ mod tests {
             details.get("session-id"),
             Some(&Value::from("c2".to_string()))
         );
+    }
+
+    #[test]
+    fn consolekit_object_path_is_the_polkit_session_id() {
+        assert_eq!(
+            consolekit_session_id("/org/freedesktop/ConsoleKit/Session1").as_deref(),
+            Some("/org/freedesktop/ConsoleKit/Session1")
+        );
+        assert_eq!(consolekit_session_id("/"), None);
     }
 
     #[test]

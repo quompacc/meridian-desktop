@@ -87,6 +87,14 @@ the unprivileged UI and setgid auth helper install separate checked
 `pledge(2)`/`unveil(2)` profiles with no unsandboxed fallback. Normal unlock,
 bad-password retry, repeated cycles, helper failure/recovery and acquired-client
 loss passed; the latter remained compositor-owned `LockedFailClosed`.
+The second `meridian-polkit` pilot is complete as well. Its root-owned but
+unprivileged XDG-autostart binary resolves the OpenBSD ConsoleKit cookie,
+requires successful polkit registration and Wayland bootstrap before applying
+its checked `pledge(2)`/`unveil(2)` profile, and can execute only the packaged
+setuid helper path. Real bad/good-password handling, three repeated
+authorizations, missing-session startup and agent loss during an outstanding
+request passed; client loss returned `not authorized` and never ran the root
+action. The packaged helper remains an explicit upstream privileged boundary.
 
 Port or isolate Linux assumptions without weakening the existing architecture:
 
@@ -96,7 +104,8 @@ Port or isolate Linux assumptions without weakening the existing architecture:
 - validate Wayland clients and XWayland, if available
 - define OpenBSD process boundaries using `pledge`, `unveil` and privilege
   separation where they improve the trusted base; the fail-closed rollout begins
-  with the `meridian-lock` pilot in `docs/OPENBSD_SANDBOX_PLAN.md`
+  with the completed `meridian-lock` and `meridian-polkit` pilots in
+  `docs/OPENBSD_SANDBOX_PLAN.md`
 
 Exit criterion: a minimal Meridian session renders, accepts input and can run a
 reference client, or the exact upstream blocker is documented.

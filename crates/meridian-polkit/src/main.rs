@@ -5,6 +5,8 @@
 
 mod auth;
 mod dbus;
+#[cfg(target_os = "openbsd")]
+mod openbsd_sandbox;
 mod ui;
 mod wayland;
 
@@ -70,14 +72,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt().with_env_filter(env_filter).init();
     install_panic_logger();
 
-    let session_id = std::env::var("XDG_SESSION_ID").unwrap_or_else(|_| {
-        warn!("XDG_SESSION_ID not set; falling back to \"c1\"");
-        "c1".to_string()
-    });
+    let session_id = std::env::var("XDG_SESSION_ID")
+        .ok()
+        .filter(|value| !value.is_empty());
+    let session_cookie = std::env::var("XDG_SESSION_COOKIE")
+        .ok()
+        .filter(|value| !value.is_empty());
+    if session_id.is_none() && session_cookie.is_none() {
+        return Err("neither XDG_SESSION_ID nor XDG_SESSION_COOKIE is set".into());
+    }
     let locale = std::env::var("LANG").unwrap_or_else(|_| "en_US.UTF-8".to_string());
 
     info!(
-        session_id = %session_id,
+        session_id = session_id.as_deref().unwrap_or("<resolve via ConsoleKit>"),
         locale = %locale,
         "meridian-polkit-agent starting"
     );
@@ -106,16 +113,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!(theme = %theme_manager.current().name, "theme loaded");
 
     // D-Bus thread sends BeginAuth/Cancel events to us.
-    let dbus_rx = dbus::spawn(session_id, locale)?;
+    let dbus_rx = dbus::spawn(session_id, session_cookie, locale)?;
 
     // PAM worker threads send their results back via this channel.
     let (pam_tx, pam_rx) = cchannel::<PamResult>();
 
     // Wayland setup. AppState holds the wayland globals (filled in by the
     // registry callback) plus all UI state.
-    let (conn, event_queue) = wayland::connect()?;
+    let (conn, mut event_queue) = wayland::connect()?;
     let qh = event_queue.handle();
     let mut state = AppState::new(theme, pam_tx);
+    event_queue.roundtrip(&mut state)?;
+    event_queue.roundtrip(&mut state)?;
+    state.ensure_required_globals()?;
+
+    #[cfg(target_os = "openbsd")]
+    openbsd_sandbox::install()?;
 
     let mut event_loop: EventLoop<'static, AppState> = EventLoop::try_new()?;
     let loop_handle = event_loop.handle();

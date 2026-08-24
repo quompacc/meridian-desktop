@@ -208,7 +208,7 @@ Native Meridian build matrix on 2026-08-19:
 | `meridian-wm` / `meridian-compositor` | pass | native OpenBSD build succeeds; DRM devices are enumerated from `/dev/dri`, keyboard/pointer input uses wscons directly, and `linux-drm-syncobj-v1` is target-disabled |
 | `meridian-shell` | pass | OpenBSD screencopy uses native `shm_mkstemp(3)` with explicit `FD_CLOEXEC`; 310 unit tests and the centralization guard pass |
 | `meridian-login` / `meridian-lock` | pass | OpenBSD password authentication uses native `auth_userokay(3)` through a minimal setgid `auth` helper; the lock UI stays unprivileged and PAM remains target-scoped to non-OpenBSD systems; login, lock and bounded auth-protocol tests pass |
-| `meridian-polkit` | pass | retains PolicyKit's native setuid helper protocol and no longer declares its unused PAM dependency; 11 tests pass |
+| `meridian-polkit` | pass | resolves `ck-launch-session` cookies through ConsoleKit, registers fail-closed, runs as a root-owned XDG-autostart binary with active `pledge`/`unveil`, and retains PolicyKit's packaged setuid helper boundary; 13 tests pass plus real bad/good-password, repeated and crash-denial hardware runs |
 
 `cargo check --workspace` now passes on OpenBSD. The Meridian workspace tests
 also pass when the excluded vendored Smithay package is omitted explicitly with
@@ -356,8 +356,14 @@ the more workable platform. The decision and blockers belong in this file.
    after restoration; `ps` showed the live UI in pledged and unveiled state.
    Smartcard login still reports an explicit unsupported configuration instead
    of silently falling back, and the successful `meridian-login` session
-   lifecycle remains untested. Polkit delegates authorization to
-   `polkit-agent-helper-1`. The launcher uses a private, ownership-checked
+   lifecycle remains untested. Polkit delegates authorization to the packaged
+   `/usr/local/lib/polkit-1/polkit-agent-helper-1`. Its unprivileged UI is the
+   second completed `pledge(2)`/`unveil(2)` pilot: XDG autostart keeps it inside
+   the ConsoleKit graphical session, registration and sandbox setup fail
+   closed, and `ps` reports `pU`. Bad/good-password handling, three repeated
+   authorizations and agent loss during an outstanding request passed on
+   2026-08-24; the crash produced `not authorized`, never a root action. The
+   launcher uses a private, ownership-checked
    `/tmp/meridian-runtime-<uid>` directory and includes `/usr/X11R6/bin` in the
    sanitized OpenBSD session `PATH`, so XWayland remains discoverable.
 7. **Graphics/WebKit runtime proof is complete for the first panel/launcher

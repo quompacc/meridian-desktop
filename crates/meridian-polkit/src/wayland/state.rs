@@ -15,6 +15,22 @@ impl AppState {
         }
     }
 
+    pub fn ensure_required_globals(&self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.compositor.is_none() {
+            return Err("Wayland compositor global is unavailable".into());
+        }
+        if self.shm.is_none() {
+            return Err("Wayland shared-memory global is unavailable".into());
+        }
+        if self.seat.is_none() {
+            return Err("Wayland seat global is unavailable".into());
+        }
+        if self.layer_shell.is_none() {
+            return Err("Wayland layer-shell global is unavailable".into());
+        }
+        Ok(())
+    }
+
     pub fn on_auth_request(&mut self, req: AuthRequest, qh: &QueueHandle<Self>) {
         // First-come-first-served. If a popup is already up, decline the
         // new one — polkit will retry. Most desktops queue; we'll add a

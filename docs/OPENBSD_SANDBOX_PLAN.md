@@ -1,8 +1,9 @@
 # OpenBSD Sandbox Plan
 
-> Status: `meridian-lock` pilot implemented and verified on reference hardware
-> on 2026-08-23. This document defines the continuing fail-closed rollout of
-> `pledge(2)` and `unveil(2)` for Meridian processes.
+> Status: `meridian-lock` and `meridian-polkit` pilots implemented and verified
+> on reference hardware on 2026-08-23 and 2026-08-24. This document defines the
+> continuing fail-closed rollout of `pledge(2)` and `unveil(2)` for Meridian
+> processes.
 
 ## Current assessment
 
@@ -169,6 +170,87 @@ auth helper kept the lock screen active and successfully retried after mode
 `root:auth 2555` was restored. The live UI process reported both pledge and
 unveil state (`pU`) in `ps`.
 
+## Pilot: `meridian-polkit`
+
+The second pilot keeps the long-lived Wayland authentication UI unprivileged
+and retains polkit's packaged setuid helper protocol. On OpenBSD the package
+helper is `/usr/local/lib/polkit-1/polkit-agent-helper-1`; the agent grants
+execute-only access to that fixed path and does not probe alternative paths
+after installing its sandbox.
+
+OpenBSD graphical sessions must be created through `ck-launch-session`.
+ConsoleKit supplies `XDG_SESSION_COOKIE`, not a usable `XDG_SESSION_ID`, so the
+agent resolves the cookie through `org.freedesktop.ConsoleKit.Manager` and
+registers the complete `/org/freedesktop/ConsoleKit/SessionN` object path with
+polkit. Registration is now a synchronous startup condition with a ten-second
+bound: missing session identity, registration failure, timeout, missing
+Wayland globals or sandbox installation all terminate the process with a
+non-zero status. There is no guessed `c1` fallback and no registered-but-dead
+UI process.
+
+Build and install on OpenBSD as the normal user plus the narrow root install
+step:
+
+```sh
+env LIBRARY_PATH=/usr/local/lib:/usr/X11R6/lib \
+    cargo build --release -p meridian-polkit
+doas ./scripts/install-openbsd-polkit
+```
+
+The installer places `/usr/local/bin/meridian-polkit-agent` as
+`root:wheel 0555`, installs both Meridian theme tables read-only below
+`/usr/local/share/meridian/themes`, and renders the existing XDG autostart
+entry to `/etc/xdg/autostart/meridian-polkit-agent.desktop` as
+`root:wheel 0444`. Starting through the shell's XDG autostart path is part of
+correctness: an SSH-launched process is not a member of the graphical
+ConsoleKit session and polkit rejects its registration.
+
+After D-Bus registration, two Wayland roundtrips and required-global checks,
+the agent locks this unveiled view:
+
+```text
+/usr/local/lib/polkit-1/polkit-agent-helper-1  x
+/dev/null                                      w
+/tmp                                           rwc
+~/.config/meridian                             r   (when present)
+~/.local/share/meridian/themes                 r   (when present)
+$MERIDIAN_THEME_DIR(S)                         r   (existing entries only)
+$XDG_DATA_DIRS/meridian/themes                 r   (existing entries only)
+/usr/libexec/ld.so                             rx
+/var/run/ld.so.hints                           r
+/usr/lib                                       r
+/usr/local/lib                                 r
+```
+
+Optional config/theme paths are collected before the first `unveil()` call;
+probing them afterwards would incorrectly see still-hidden paths as absent.
+The broad `/tmp` entry remains necessary for OpenBSD `shm_mkstemp(3)`. The
+runtime-loader paths are required to execute the packaged dynamic helper. The
+agent pledges:
+
+```text
+stdio rpath wpath cpath getpw proc exec sendfd recvfd
+```
+
+`getpw` resolves polkit's authorised Unix identities, `proc exec` launches the
+fixed helper, and descriptor passing remains required by Wayland. No
+`execpromises` are set because OpenBSD blocks setuid execution when they are
+present. The packaged setuid helper starts outside Meridian's pledge profile
+and owns its protected BSD Authentication and system-D-Bus access. Those paths
+cannot be pre-unveiled by the unprivileged UI (`/usr/libexec/auth` is not
+traversable by it); this is an explicit upstream trust boundary and residual
+risk, not hidden UI access.
+
+Reference-hardware verification on 2026-08-24 used a no-I/O `ktrace` inventory,
+13 passing crate tests and a release build. The installed agent registered for
+the real ConsoleKit session, loaded and live-reloaded the installed dark theme,
+and reported pledged/unveiled state (`pU`) in `ps`. A rejected bad password
+followed by the real password passed, as did three consecutive successful
+authorizations. Starting without either XDG session variable exited with
+status 1. Killing the agent while `pkexec` awaited input removed the dialog and
+made `pkexec` report `not authorized`; no root action ran. A clean session
+restart restored the autostarted sandboxed agent.
+
 ## Implementation method
 
 1. Inventory actual filesystem, descriptor, authentication, Wayland, shared
@@ -189,8 +271,8 @@ permission is added only for a named operation demonstrated by code or trace.
 
 ## Rollout order
 
-1. `meridian-lock`
-2. `meridian-polkit`
+1. `meridian-lock` (complete)
+2. `meridian-polkit` (complete)
 3. `meridian-portal`
 4. `meridian-ui-runtime`
 5. `meridian-login`

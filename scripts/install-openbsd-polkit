@@ -1,0 +1,59 @@
+#!/bin/ksh
+
+set -eu
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "install-openbsd-polkit: run with doas" >&2
+    exit 1
+fi
+
+agent_binary=${1:-target/release/meridian-polkit-agent}
+agent_destination=/usr/local/bin/meridian-polkit-agent
+autostart_source=packaging/xdg-autostart/meridian-polkit-agent.desktop
+autostart_destination=/etc/xdg/autostart/meridian-polkit-agent.desktop
+
+if [ ! -f "$agent_binary" ] || [ ! -x "$agent_binary" ]; then
+    echo "install-openbsd-polkit: missing executable: $agent_binary" >&2
+    exit 1
+fi
+if [ ! -f "$autostart_source" ]; then
+    echo "install-openbsd-polkit: missing template: $autostart_source" >&2
+    exit 1
+fi
+for theme in dark light; do
+    if [ ! -f "themes/$theme/theme.toml" ]; then
+        echo "install-openbsd-polkit: missing theme: themes/$theme/theme.toml" >&2
+        exit 1
+    fi
+done
+
+rendered=$(mktemp /tmp/meridian-polkit-autostart.XXXXXXXXXX)
+trap 'rm -f "$rendered"' EXIT HUP INT TERM
+sed 's|@PREFIX@|/usr/local|g' "$autostart_source" >"$rendered"
+
+install -d -o root -g wheel -m 0755 /usr/local/bin /etc/xdg/autostart
+install -o root -g wheel -m 0555 "$agent_binary" "$agent_destination"
+install -o root -g wheel -m 0444 "$rendered" "$autostart_destination"
+
+install -d -o root -g wheel -m 0555 \
+    /usr/local/share/meridian/themes/dark \
+    /usr/local/share/meridian/themes/light
+for theme in dark light; do
+    install -o root -g wheel -m 0444 \
+        "themes/$theme/theme.toml" \
+        "/usr/local/share/meridian/themes/$theme/theme.toml"
+done
+
+agent_mode=$(stat -f '%Su:%Sg %Sp' "$agent_destination")
+autostart_mode=$(stat -f '%Su:%Sg %Sp' "$autostart_destination")
+if [ "$agent_mode" != "root:wheel -r-xr-xr-x" ]; then
+    echo "install-openbsd-polkit: unexpected agent identity/mode: $agent_mode" >&2
+    exit 1
+fi
+if [ "$autostart_mode" != "root:wheel -r--r--r--" ]; then
+    echo "install-openbsd-polkit: unexpected autostart identity/mode: $autostart_mode" >&2
+    exit 1
+fi
+
+echo "installed $agent_destination ($agent_mode)"
+echo "installed $autostart_destination ($autostart_mode)"
