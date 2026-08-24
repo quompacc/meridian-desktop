@@ -10,6 +10,9 @@ mod document;
 mod gtk_host;
 mod icon_service;
 mod ipc;
+#[cfg(target_os = "openbsd")]
+#[allow(unsafe_code)]
+mod openbsd_sandbox;
 
 use document::ThemeChoice;
 
@@ -111,6 +114,11 @@ fn require_wayland_backend() -> Result<(), String> {
     } else {
         std::env::set_var("GDK_BACKEND", "wayland");
     }
+    // GtkFileChooserNative delegates to the separately sandboxed portal
+    // backend on OpenBSD. Set this before GTK initialises so the UI host never
+    // needs an ambient view of the user's files for wallpaper selection.
+    #[cfg(target_os = "openbsd")]
+    std::env::set_var("GTK_USE_PORTAL", "1");
     Ok(())
 }
 

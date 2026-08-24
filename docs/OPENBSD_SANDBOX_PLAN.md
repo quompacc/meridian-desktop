@@ -349,6 +349,46 @@ process responsibilities. If a useful profile remains too broad, split the
 responsibility into a smaller helper instead of presenting a weak profile as
 complete isolation.
 
+### `meridian-ui-runtime`: staged process boundary
+
+The runtime creates one GTK host, one WebKit web process and one WebKit network
+process for each persistent surface. WebKitGTK's sandbox switch is enabled as
+defence in depth, but the OpenBSD package does not give these processes native
+`pledge(2)` or `unveil(2)` state. Meridian does not count that switch as an OS
+sandbox.
+
+The first stage restricts only the GTK host after its first document has
+finished loading and its WebKit children exist. A no-I/O hardware trace found
+that the steady-state host creates, maps and immediately unlinks randomized
+shared-memory files below `/tmp`; the wallpaper chooser itself runs in the
+separate GTK portal and gives the host only the selected path. The host unveils
+`/tmp` as `rwc` plus the packaged GTK icon, MIME and pixmap data below
+`/usr/local/share` as read-only, locks the view, then pledges:
+
+```text
+stdio rpath wpath cpath unix sendfd recvfd
+```
+
+`proc` and `exec` are deliberately absent. A WebKit child failure must therefore
+fail closed through the existing host-exit/native-panel fallback or creation of
+a fresh runtime, rather than silently spawning an unsandboxed replacement from
+the restricted host. Sandbox installation failure terminates that runtime.
+
+This stage does not claim that the already-running web and network children are
+sandboxed. They require separate observed profiles: the web process uses JIT
+memory, shared-memory files and kernel memory queries, while the network process
+has a different responsibility. Combining those needs into the GTK host profile
+would create a broad policy that hides rather than enforces the process split.
+
+The real-hardware rollout confirmed all three GTK hosts as `pU`. The first run
+also confirmed fail-closed startup when the removed `tmppath` promise returned
+`EINVAL`; the documented OpenBSD replacement is `rpath wpath cpath` together
+with `/tmp` unveiled as `rwc`. A traced wallpaper request then exposed GTK's
+lazy read of packaged icon, MIME and pixmap data. Those three system data roots
+were added read-only; user icon, MIME and recent-file paths remain hidden. The
+portal-backed dialog opens and cancels visibly while all three hosts remain
+`pU`.
+
 ## Definition of done per process
 
 - required promises and paths are recorded with their reasons;

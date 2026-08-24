@@ -1,16 +1,13 @@
 use gtk::prelude::*;
 
 pub(super) fn open(parent: &gtk::ApplicationWindow) {
-    let dialog = gtk::FileChooserDialog::with_buttons(
+    let dialog = gtk::FileChooserNative::new(
         Some("Hintergrund auswählen"),
         Some(parent),
         gtk::FileChooserAction::Open,
-        &[
-            ("Abbrechen", gtk::ResponseType::Cancel),
-            ("Auswählen", gtk::ResponseType::Accept),
-        ],
+        Some("Auswählen"),
+        Some("Abbrechen"),
     );
-    dialog.set_modal(true);
     let filter = gtk::FileFilter::new();
     filter.set_name(Some("Bilder"));
     for mime_type in ["image/jpeg", "image/png", "image/webp"] {
@@ -28,7 +25,7 @@ pub(super) fn open(parent: &gtk::ApplicationWindow) {
                 }
             }
         }
-        dialog.close();
+        dialog.destroy();
     });
     dialog.show();
 }

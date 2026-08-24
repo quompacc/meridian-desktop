@@ -7,28 +7,29 @@ use std::{
     time::Instant,
 };
 
-use gtk::glib::object::Cast;
+#[cfg(target_os = "openbsd")]
+use std::cell::Cell;
+
 use gtk::prelude::*;
 use gtk_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use meridian_app_catalog::DesktopApp;
 use meridian_tokens::{Color, Elevation, Launcher, Panel, QuickSettings};
 use webkit2gtk::{
-    LoadEvent, NavigationPolicyDecision, NavigationPolicyDecisionExt, PolicyDecisionExt,
-    PolicyDecisionType, SettingsExt, URIRequestExt, UserContentManager, UserContentManagerExt,
-    WebContext, WebContextExt, WebView, WebViewExt, WebViewExtManual,
+    LoadEvent, UserContentManager, UserContentManagerExt, WebContext, WebContextExt, WebView,
+    WebViewExt, WebViewExtManual,
 };
 
 use crate::bridge::{self, Command};
 use crate::{
-    document::{
-        diagnostic_html, is_allowed_top_level_uri, panel_html, quick_settings_html, ThemeChoice,
-    },
+    document::{diagnostic_html, panel_html, quick_settings_html, ThemeChoice},
     icon_service, ipc, SurfaceChoice,
 };
 
 mod control_state;
 use control_state::{canonical_launcher_state, canonical_quick_settings_state};
 mod wallpaper_picker;
+mod web_security;
+use web_security::{harden_settings, install_navigation_policy};
 
 pub(crate) fn run(theme: ThemeChoice, surface: SurfaceChoice, persistent_surface: bool) {
     let application_id = match surface {
@@ -88,6 +89,8 @@ fn build_window(
         catalog_started.elapsed().as_millis()
     );
     let context = WebContext::new_ephemeral();
+    #[cfg(target_os = "openbsd")]
+    context.set_sandbox_enabled(true);
     context.set_automation_allowed(false);
     icon_service::install(&context, &apps, window.scale_factor());
     let content_manager = UserContentManager::new();
@@ -109,12 +112,22 @@ fn build_window(
     install_navigation_policy(&webview);
 
     let started = Instant::now();
+    #[cfg(target_os = "openbsd")]
+    let sandbox_installed = Cell::new(false);
     webview.connect_load_changed(move |_, event| {
         if event == LoadEvent::Finished {
             eprintln!(
                 "meridian-ui-runtime: first {surface:?} document load finished in {} ms",
                 started.elapsed().as_millis()
             );
+            #[cfg(target_os = "openbsd")]
+            if !sandbox_installed.replace(true) {
+                if let Err(error) = crate::openbsd_sandbox::install() {
+                    eprintln!("meridian-ui-runtime: cannot install OpenBSD sandbox: {error}");
+                    std::process::exit(1);
+                }
+                eprintln!("meridian-ui-runtime: OpenBSD host sandbox installed");
+            }
         }
     });
     let (html, base_uri) = match surface {
@@ -556,44 +569,4 @@ fn install_transparent_host_style(window: &gtk::ApplicationWindow) {
     window
         .style_context()
         .add_provider(&provider, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
-}
-
-fn harden_settings(settings: &webkit2gtk::Settings) {
-    settings.set_enable_javascript(true);
-    settings.set_enable_developer_extras(false);
-    settings.set_enable_dns_prefetching(false);
-    settings.set_enable_html5_database(false);
-    settings.set_enable_html5_local_storage(false);
-    settings.set_enable_media_stream(false);
-    settings.set_javascript_can_access_clipboard(false);
-    settings.set_javascript_can_open_windows_automatically(false);
-}
-
-fn install_navigation_policy(webview: &WebView) {
-    webview.connect_decide_policy(|_, decision, decision_type| {
-        if decision_type == PolicyDecisionType::NewWindowAction {
-            decision.ignore();
-            return true;
-        }
-        if decision_type != PolicyDecisionType::NavigationAction {
-            return false;
-        }
-        let Some(navigation) = decision.dynamic_cast_ref::<NavigationPolicyDecision>() else {
-            decision.ignore();
-            return true;
-        };
-        let uri = navigation
-            .navigation_action()
-            .and_then(|action| action.request())
-            .and_then(|request| request.uri());
-        if uri
-            .as_deref()
-            .is_some_and(|uri| is_allowed_top_level_uri(uri))
-        {
-            return false;
-        }
-        eprintln!("meridian-ui-runtime: denied top-level navigation to {uri:?}");
-        decision.ignore();
-        true
-    });
 }

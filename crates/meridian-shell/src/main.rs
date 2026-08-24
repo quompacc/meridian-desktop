@@ -207,6 +207,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut event_loop = EventLoop::try_new()?;
     let (mut shell, qh) = wayland::initialize(&mut event_loop)?;
+    // GTK/WebKit may activate xdg-desktop-portal as soon as its first process
+    // starts. Publish the Wayland session environment before spawning any of
+    // those hosts so D-Bus-activated GTK backends can connect immediately.
+    activate_user_session();
     let mut web_panel = if shell.web_panel_enabled {
         match web_panel::WebPanelProcess::spawn(shell.theme.appearance_is_light()) {
             Ok(process) => Some(process),
@@ -226,9 +230,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The appearance portal alone does not make Breeze/KColorScheme apps (e.g.
     // Gwenview) follow the dark theme; they need kdeglobals at their own start.
     theme_export::export_theme(&shell.theme);
-    // After the panel/launcher surfaces exist: wire up the user session so the
-    // portals start. Must NOT block the panel — uses --no-block (see fn).
-    activate_user_session();
     autostart::launch_autostart_apps();
 
     insert_ipc_event_source(&mut event_loop, qh.clone(), &shell)?;
@@ -271,11 +272,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Make the systemd --user manager and D-Bus activation aware of the Wayland
-/// session environment, then pull up `graphical-session.target` so user
-/// services (xdg-desktop-portal + the Meridian portal backend) start. Without
-/// this the portal never runs, so apps can't read the appearance/color-scheme
-/// and render un-themed. Best-effort: all commands no-op on systems without a
-/// systemd --user instance (e.g. FreeBSD).
+/// session environment before any GTK/WebKit host can activate a portal, then
+/// pull up `graphical-session.target` so user services start. Without this the
+/// portal never runs, so apps can't read the appearance/color-scheme and render
+/// un-themed. Best-effort: all commands no-op on systems without a systemd
+/// --user instance (e.g. BSD).
 fn activate_user_session() {
     use std::process::Command;
     const VARS: &[&str] = &["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE"];
