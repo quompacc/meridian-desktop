@@ -1,7 +1,6 @@
 // ── PanelWindowChip ─────────────────────────────────────────────────────────
 
 #[cfg(test)]
-
 struct PanelWindowChip {
     window_id: Box<str>,
     title: Box<str>,

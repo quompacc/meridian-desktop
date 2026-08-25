@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     ffi::{c_char, c_int, c_long, c_uchar, c_uint, c_ulong, c_ushort, c_void},
     ptr,
 };
@@ -115,6 +116,7 @@ extern "C" {
     fn FT_Load_Char(face: FtFace, char_code: c_ulong, load_flags: c_int) -> FtError;
 }
 
+#[derive(Clone)]
 pub struct Glyph {
     pub width: usize,
     pub height: usize,
@@ -128,6 +130,7 @@ pub struct Font {
     library: FtLibrary,
     face: FtFace,
     _bytes: &'static [u8],
+    glyph_cache: HashMap<(char, u32), Glyph>,
 }
 
 unsafe impl Send for Font {}
@@ -151,6 +154,7 @@ impl Font {
             library,
             face,
             _bytes: bytes,
+            glyph_cache: HashMap::new(),
         })
     }
 
@@ -160,6 +164,10 @@ impl Font {
     }
 
     pub fn rasterize(&mut self, ch: char, size_px: f32) -> Option<Glyph> {
+        let size = size_px.round().clamp(1.0, 512.0) as u32;
+        if let Some(glyph) = self.glyph_cache.get(&(ch, size)) {
+            return Some(glyph.clone());
+        }
         if !self.set_size(size_px) {
             return None;
         }
@@ -191,14 +199,16 @@ impl Font {
                 }
             }
         }
-        Some(Glyph {
+        let glyph = Glyph {
             width,
             height,
             left: slot_ref.bitmap_left,
             top: slot_ref.bitmap_top,
             advance_x: slot_ref.advance.x as f32 / 64.0,
             bitmap: pixels,
-        })
+        };
+        self.glyph_cache.insert((ch, size), glyph.clone());
+        Some(glyph)
     }
 
     pub fn measure_text(&mut self, text: &str, size_px: f32) -> Option<(i32, i32)> {

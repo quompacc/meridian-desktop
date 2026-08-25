@@ -245,6 +245,14 @@ scripts/smoke-drm.sh
 - Für manuelle Launcher-/UX-Tests ohne Timeout:
   - `scripts/smoke-drm.sh run`
   - oder: `MERIDIAN_SMOKE_MODE=run scripts/smoke-drm.sh`
+- OpenBSD-Hardwaretests sind nur aus `target/release` performance-aussagekräftig.
+  Der Release-Compositor startet automatisch die danebenliegende
+  `target/release/meridian-shell`. `target/debug/meridian` darf für visuelle
+  Performance-Abnahmen nicht verwendet werden.
+- Für eine schnelle Shell-Aktualisierung in einer bereits laufenden
+  Release-Sitzung: `ksh scripts/restart-openbsd-shell.ksh`. Das Skript baut nur die
+  Shell optimiert und lässt sie durch den Compositor-Watchdog neu starten. Bei
+  einem Debug-Compositor bricht es absichtlich ab.
 - Logpfad steuerbar über `MERIDIAN_SMOKE_LOG` (Default `/tmp/meridian-smoke-drm.log`).
 
 ### Guter Zustand

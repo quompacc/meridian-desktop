@@ -127,6 +127,20 @@ pub struct Launcher {
     pub panel_gap: i32,
     /// Raster size requested for application icons in logical pixels.
     pub app_icon_size: i32,
+    pub header_height: i32,
+    pub footer_height: i32,
+    pub sidebar_width: i32,
+    pub outer_pad: i32,
+    pub content_pad: i32,
+    pub search_height: i32,
+    pub sidebar_heading_height: i32,
+    pub favorite_row_height: i32,
+    pub app_heading_height: i32,
+    pub app_card_height: i32,
+    pub grid_gap: i32,
+    pub grid_columns: i32,
+    pub footer_button_size: i32,
+    pub footer_button_gap: i32,
     /// Outer band behind the grid (0 = fully transparent: the compositor glass shows).
     pub band_alpha: u8,
     /// Resting cell background (0 = transparent).
@@ -153,6 +167,20 @@ impl Launcher {
         height: 620,
         panel_gap: 2,
         app_icon_size: 32,
+        header_height: 76,
+        footer_height: 64,
+        sidebar_width: 224,
+        outer_pad: 16,
+        content_pad: 24,
+        search_height: 44,
+        sidebar_heading_height: 36,
+        favorite_row_height: 48,
+        app_heading_height: 56,
+        app_card_height: 68,
+        grid_gap: 8,
+        grid_columns: 2,
+        footer_button_size: 36,
+        footer_button_gap: 4,
         band_alpha: 0,
         cell_alpha: 0,
         hover_alpha: 42,
@@ -177,6 +205,17 @@ pub struct QuickSettings {
     pub width: i32,
     pub height: i32,
     pub panel_gap: i32,
+    pub outer_pad: i32,
+    pub header_height: i32,
+    pub tile_height: i32,
+    pub tile_gap: i32,
+    pub section_gap: i32,
+    pub audio_height: i32,
+    pub status_height: i32,
+    pub footer_height: i32,
+    pub control_radius: i32,
+    pub slider_height: i32,
+    pub icon_size: i32,
 }
 
 impl QuickSettings {
@@ -184,6 +223,17 @@ impl QuickSettings {
         width: 384,
         height: 468,
         panel_gap: 2,
+        outer_pad: 18,
+        header_height: 50,
+        tile_height: 74,
+        tile_gap: 10,
+        section_gap: 12,
+        audio_height: 126,
+        status_height: 70,
+        footer_height: 46,
+        control_radius: 10,
+        slider_height: 5,
+        icon_size: 20,
     };
 }
 
@@ -224,6 +274,8 @@ mod tests {
         assert_eq!(Launcher::DEFAULT.height, 620);
         assert_eq!(Launcher::DEFAULT.panel_gap, 2);
         assert_eq!(Launcher::DEFAULT.app_icon_size, 32);
+        assert_eq!(Launcher::DEFAULT.sidebar_width, 224);
+        assert_eq!(Launcher::DEFAULT.grid_columns, 2);
         assert_eq!(Panel::DEFAULT.surface_height(), 66);
         assert_eq!(Panel::DEFAULT.window_reservation(), 50);
         assert_eq!(Panel::DEFAULT.control_height, 32);
@@ -236,6 +288,8 @@ mod tests {
         assert_eq!(Launcher::DEFAULT.search_focus_alpha, 52);
         assert_eq!(Launcher::DEFAULT.divider_alpha, 44);
         assert_eq!(Mask::DEFAULT.dim_alpha, 160);
+        assert_eq!(QuickSettings::DEFAULT.width, 384);
+        assert_eq!(QuickSettings::DEFAULT.height, 468);
     }
 
     #[test]

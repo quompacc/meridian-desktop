@@ -130,6 +130,7 @@ impl MeridianShell {
                     LAUNCHER_HEIGHT,
                     &self.pinned_apps,
                     &self.launcher_state.apps,
+                    self.launcher_state.category,
                     &self.search_query,
                     self.app_view_scroll_y,
                     self.launcher_selected_idx,
@@ -161,8 +162,11 @@ impl MeridianShell {
                 );
             }
 
-            // Round the launcher's outer corners so it matches the panel island.
-            round_buffer_corners(&mut content, lw, lh, 12);
+            let launcher_radius = crate::ui::tokens::surface_radius_from_config(
+                &self.theme,
+                meridian_config::ThemeSurface::Launcher,
+            );
+            round_buffer_corners(&mut content, lw, lh, launcher_radius);
 
             if self.launcher_is_fullscreen {
                 // Blit LAUNCHER_WxH content into the full-screen canvas at visual offset.
@@ -180,7 +184,7 @@ impl MeridianShell {
                     vy as i32,
                     lw as i32,
                     lh as i32,
-                    12.0,
+                    launcher_radius as f32,
                     meridian_tokens::Elevation::LAUNCHER.blur,
                     meridian_tokens::Elevation::LAUNCHER.alpha,
                     meridian_tokens::Elevation::LAUNCHER.offset_y,

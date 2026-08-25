@@ -1,16 +1,14 @@
 # Meridian — Active Roadmap
 
-> Updated 2026-08-23. This is the forward-looking execution order for the
-> BSD/WebKit strategy. Completed native-shell work remains documented in
-> `docs/PROJECT_STATUS.md`; older phase estimates are no longer scheduling
-> commitments.
+> Updated 2026-08-25. This is the forward-looking execution order for the
+> BSD-first native-Rust strategy. `docs/NATIVE_UI_PLAN.md` is binding for UI;
+> older WebKit phases are retained only as historical evidence.
 
 ## Guiding constraint
 
-No new large desktop feature comes before the UI platform proof. Existing
-compositor, protocol, login, portal and FreeBSD work is maintained, but product
-expansion waits until the runtime → bridge → panel → launcher → Quick Settings
-slice is credible.
+No new large desktop feature comes before the native panel → launcher → Quick
+Settings quality round. Existing compositor, protocol, login, portal and
+FreeBSD work remains maintained.
 
 ## Phase 0 — Acer hardware inventory
 
@@ -148,61 +146,32 @@ Exit criterion: a recorded cold boot on the OpenBSD reference machine reaches
 the greeter with no routine kernel/`rc` text in the normal path, the recovery
 path remains usable, and splash/login geometry and branding match the manifest.
 
-## Phase 3 — WebKit UI platform spike
+## Phase 3 — WebKit prototype (closed)
 
-Status: **working vertical proof on OpenBSD since 2026-08-20.** The versioned
-CSS-token export, ephemeral WebKitGTK 4.1 runtime, bundled assets and typed
-deny-by-default bridge are live. The shell supervises a Web panel process and
-falls back to its native panel if that process exits. The panel toggles a
-separate Web launcher process through authenticated IPC; catalogue loading,
-category filtering, search and app activation are wired. Both surfaces render
-on the Acer in the live DRM session.
+Status: **completed as an experiment and retired from production on
+2026-08-25.** GTK3/WebKitGTK 4.1 and GTK4/WebKitGTK 6 proved that the desired
+panel, launcher and Quick Settings design is practical on OpenBSD. Measurements
+also exposed the maintenance and memory cost of a browser stack on the BSD-first
+path. The runtime, bridge, CSS exporter and compositor workarounds are no longer
+part of the Cargo workspace.
 
-Launcher cold-start was measured on 2026-08-21: catalogue loading costs 1 ms,
-while a newly spawned WebKit document costs 362-469 ms. The managed path now
-prewarms one hidden launcher and reuses it; toggle-to-layer-map dropped to
-0.18-5.1 ms across repeated opens. Its stdin control is event-driven, with no
-polling or hidden animation. Remaining performance work is to set a memory
-budget: the resident launcher currently accounts for roughly 77 MiB host,
-92 MiB Web process and 51 MiB network-process RSS (shared pages included).
-Evaluate process consolidation only with proportional-memory evidence.
+The accepted assets and hardware screenshots remain under
+`docs/design-reference/webkit-prototype/` as a read-only visual reference.
 
-Build the smallest runtime that can prove the architecture:
+## Phase 4 — Native UI quality round
 
-1. create and manage a WebKit-backed Wayland surface;
-2. load bundled HTML/CSS/components without an HTTP server;
-3. expose one typed, capability-scoped Rust bridge operation;
-4. export light/dark CSS variables from Meridian's central tokens;
-5. demonstrate deterministic lifecycle, crash handling and diagnostics;
-6. measure cold start, steady idle CPU/GPU, memory and input-to-paint latency.
+Status: **active.** The native Rust panel, launcher, popups and Settings path are
+again the only product implementation. There is no runtime flag or toolkit
+fallback. Work follows `docs/NATIVE_UI_PLAN.md`:
 
-Tauri may be reused only if its required subset is maintainable on the chosen
-BSD target. Meridian will not recreate Tauri wholesale.
+1. align native panel composition with the accepted reference;
+2. polish native launcher layout, search and keyboard behavior;
+3. rebuild the combined Quick Settings card natively on the proven network,
+   audio, battery and power backends;
+4. validate both themes, scaling, repeated input cycles and idle performance.
 
-Exit criterion: the spike works on the selected BSD reference path and meets a
-written performance/security budget.
-
-## Phase 4 — First vertical slice
-
-Status: **daily-testable on OpenBSD.** Panel, launcher and Quick Settings are
-available together behind `MERIDIAN_WEB_UI_PANEL=1`; appearance, real status
-data, volume controls, hardware audio keys and context-aware navigation into
-Settings are wired. Hidden persistent popups are input-transparent. The native
-panel/launcher paths remain fallback while runtime compatibility and visual
-polish are completed.
-
-Migrate in this order:
-
-1. panel/taskbar;
-2. launcher;
-3. Quick Settings.
-
-Each component must use shared Web Components and generated design tokens. The
-native Rust shell remains the fallback until the complete slice is functional.
-Render order, compositor policy and IPC compatibility must remain stable.
-
-Exit criterion: all three components can be daily-tested together, survive a
-runtime restart and look/behave consistently in both themes.
+Exit criterion: all three native surfaces are daily-testable on OpenBSD, match
+the manifest and remain idle when their state does not change.
 
 The secure OpenBSD XWayland server acceleration path is operational. Meridian
 opens only the active primary/render pair through seatd and passes those
@@ -224,8 +193,8 @@ Only after Phase 4 succeeds:
 - system monitor
 - notifications and overview migration
 
-Privileged work remains in small Rust services/helpers. UI processes receive
-only the capabilities and data required for the active view.
+Privileged work remains in small Rust services/helpers. The native shell
+receives only the capabilities and data required for the active view.
 
 ## Continuous tracks
 
@@ -249,14 +218,13 @@ accepted without an idle-cost and cache strategy.
 
 ### Security
 
-Keep WebKit and untrusted content outside privileged processes. The bridge is
-deny-by-default, typed and auditable. Remote navigation and arbitrary command
-execution are not implicit runtime features.
+Keep the native shell unprivileged. Privileged actions cross small typed,
+deny-by-default service/helper boundaries; platform sandboxing stays explicit.
 
-## Deferred until the vertical slice is proven
+## Deferred until the native quality round is proven
 
 - new large settings categories
 - package-manager or storage-manager product work
-- broad visual rewrites of the native shell
+- broad visual rewrites outside panel, launcher and Quick Settings
 - toolkit-specific compatibility hacks without protocol evidence
 - a final choice between OpenBSD and FreeBSD based on preference alone

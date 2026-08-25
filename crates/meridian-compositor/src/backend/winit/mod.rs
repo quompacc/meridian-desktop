@@ -20,7 +20,6 @@ use smithay::{
 };
 
 use crate::{
-    backend::non_opaque_surface::NonOpaqueSurfaceRenderElement,
     state::{
         MeridianState, OutputModeInfo, OutputPowerMode, OutputReconfigure, OutputRegistration,
     },
@@ -41,7 +40,6 @@ render_elements! {
     ClippedSurface=crate::backend::clipped_surface::ClippedSurfaceRenderElement,
     Wallpaper=TextureRenderElement<GlesTexture>,
     Layer=WaylandSurfaceRenderElement<GlesRenderer>,
-    NonOpaqueLayer=NonOpaqueSurfaceRenderElement,
 }
 
 #[derive(Default)]

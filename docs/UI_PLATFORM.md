@@ -1,8 +1,10 @@
-# Meridian UI Platform
+# Meridian WebKit UI Prototype (Archived)
 
-> **STATUS: TARGET ARCHITECTURE.** Updated 2026-08-19. The native Rust shell is
-> still the current implementation. This document defines the proof and
-> migration target; it does not claim that the runtime already exists.
+> **STATUS: RETIRED PROTOTYPE.** Since 2026-08-25 Meridian's binding product
+> direction is fully native Rust UI. This document preserves design and security
+> reasoning only; it does not define build, runtime or migration requirements.
+> See `NATIVE_UI_PLAN.md`. Visual artifacts live under
+> `design-reference/webkit-prototype/` and are nonnormative.
 
 ## Purpose
 

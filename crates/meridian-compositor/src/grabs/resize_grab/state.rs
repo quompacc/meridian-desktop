@@ -198,9 +198,11 @@ pub fn handle_commit(space: &mut Space<Window>, surface: &WlSurface) -> Option<(
     let (new_loc, clear_preview): (Point<Option<i32>, Logical>, bool) =
         ResizeSurfaceState::with(surface, |state| {
             state.record_commit(geometry.size, now);
-            let anchored_loc = (state.phase != ResizePhase::Idle)
-                .then(|| anchored_location(state.edges, state.initial_rect, geometry.size))
-                .unwrap_or_default();
+            let anchored_loc = if state.phase != ResizePhase::Idle {
+                anchored_location(state.edges, state.initial_rect, geometry.size)
+            } else {
+                Default::default()
+            };
             let clear = state.phase == ResizePhase::WaitingForLastCommit;
             if clear {
                 state.phase = ResizePhase::Idle;

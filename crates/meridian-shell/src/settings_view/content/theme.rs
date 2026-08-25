@@ -7,13 +7,13 @@ fn build_theme_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
             .available_themes
             .iter()
             .take(THEME_WIDGET_IDS.len())
-            .any(|t| t.to_lowercase().contains(&ctx.query));
+            .any(|t| t.to_lowercase().contains(ctx.query));
     let rows: Vec<Box<dyn Widget>> = ctx
         .available_themes
         .iter()
         .take(THEME_WIDGET_IDS.len())
         .enumerate()
-        .filter(|(_, name)| !name_hit || name.to_lowercase().contains(&ctx.query))
+        .filter(|(_, name)| !name_hit || name.to_lowercase().contains(ctx.query))
         .map(|(i, name)| {
             Box::new(ThemeRow {
                 index: i,

@@ -24,7 +24,7 @@ legacy or incompatible clients
                       Meridian
 ```
 
-The WebKit UI platform is for Meridian-owned surfaces and tools. It does not
+Meridian-owned surfaces and tools use the native Rust shell. Meridian does not
 embed, replace or restyle arbitrary external applications.
 
 ## Compatibility policy
@@ -78,4 +78,4 @@ toolkits share identical geometry. The binding visual system applies to
 Meridian-owned UI; external clients retain their toolkit conventions.
 
 See `FRAME_STRATEGY.md` for the historical decoration findings and
-`UI_PLATFORM.md` for Meridian-owned UI.
+`NATIVE_UI_PLAN.md` for Meridian-owned UI.

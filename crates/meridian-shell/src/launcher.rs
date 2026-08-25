@@ -4,15 +4,58 @@ pub use meridian_app_catalog::DesktopApp;
 use meridian_ipc::ShellCommand;
 use tracing::{info, warn};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LauncherCategory {
+    Favorites,
+    All,
+    Internet,
+    Office,
+    Development,
+    Graphics,
+    System,
+    Utilities,
+}
+
+impl LauncherCategory {
+    pub const ALL: [Self; 8] = [
+        Self::Favorites,
+        Self::All,
+        Self::Internet,
+        Self::Office,
+        Self::Development,
+        Self::Graphics,
+        Self::System,
+        Self::Utilities,
+    ];
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Favorites => "Favoriten",
+            Self::All => "Alle Anwendungen",
+            Self::Internet => "Internet",
+            Self::Office => "Büro",
+            Self::Development => "Entwicklung",
+            Self::Graphics => "Grafik",
+            Self::System => "System",
+            Self::Utilities => "Dienstprogramme",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LauncherState {
     pub open: bool,
     pub apps: Vec<DesktopApp>,
+    pub category: LauncherCategory,
 }
 
 impl LauncherState {
     pub fn new_with_apps(apps: Vec<DesktopApp>) -> Self {
-        Self { open: false, apps }
+        Self {
+            open: false,
+            apps,
+            category: LauncherCategory::Favorites,
+        }
     }
 
     /// Flip the launcher open/closed. Does NOT rescan the desktop entries:

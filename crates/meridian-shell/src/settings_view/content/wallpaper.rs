@@ -42,10 +42,10 @@ fn build_wallpaper_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> 
             && ctx
                 .available_wallpapers
                 .iter()
-                .any(|w| w.display_name.to_lowercase().contains(&ctx.query));
+                .any(|w| w.display_name.to_lowercase().contains(ctx.query));
         let mut shown = 0usize;
         for (i, entry) in ctx.available_wallpapers.iter().enumerate() {
-            if name_hit && !entry.display_name.to_lowercase().contains(&ctx.query) {
+            if name_hit && !entry.display_name.to_lowercase().contains(ctx.query) {
                 continue;
             }
             if shown >= entry_slots {

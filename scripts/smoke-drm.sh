@@ -5,6 +5,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${REPO_ROOT}"
 
+if [[ "$(uname -s)" == "OpenBSD" ]]; then
+  export LIBRARY_PATH="${LIBRARY_PATH:-/usr/local/lib:/usr/X11R6/lib}"
+  export RUSTFLAGS="${RUSTFLAGS:--L native=/usr/X11R6/lib}"
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/meridian-runtime-$(id -u)}"
+  mkdir -p "${XDG_RUNTIME_DIR}"
+  chmod 700 "${XDG_RUNTIME_DIR}"
+fi
+
+RUNNER=(target/release/meridian)
+if command -v dbus-run-session >/dev/null 2>&1; then
+  RUNNER=(dbus-run-session -- "${RUNNER[@]}")
+fi
+if [[ "$(uname -s)" == "OpenBSD" ]] && command -v ck-launch-session >/dev/null 2>&1; then
+  RUNNER=(ck-launch-session "${RUNNER[@]}")
+fi
+
 LOG_FILE="${MERIDIAN_SMOKE_LOG:-/tmp/meridian-smoke-drm.log}"
 TIMEOUT_SECONDS="${MERIDIAN_SMOKE_TIMEOUT:-20}"
 MODE="${MERIDIAN_SMOKE_MODE:-smoke}"
@@ -54,23 +70,38 @@ fi
 echo "[smoke-drm] building release..."
 cargo build --release --workspace
 
-echo "[smoke-drm] stopping old processes (if any)..."
-pkill -f 'target/release/meridian|meridian-shell|cargo run.*meridian' || true
+echo "[smoke-drm] stopping old Meridian session processes (if any)..."
+pkill -x meridian-shell 2>/dev/null || true
+pkill -x meridian 2>/dev/null || true
+for _ in {1..50}; do
+  if ! pgrep -x meridian-shell >/dev/null 2>&1 && ! pgrep -x meridian >/dev/null 2>&1; then
+    break
+  fi
+  sleep 0.1
+done
+if pgrep -x meridian-shell >/dev/null 2>&1 || pgrep -x meridian >/dev/null 2>&1; then
+  echo "[smoke-drm] old session did not stop cleanly" >&2
+  exit 1
+fi
+# seatd/libdrm can outlive the process table transition briefly while the old
+# DRM master and atomic state are released.
+sleep 1
 
 echo "[smoke-drm] running compositor..."
+echo "[smoke-drm] runtime profile: release (compositor and shell)"
 set +e
 if [[ "${MODE}" == "smoke" ]]; then
   MERIDIAN_DRM_TIMING=1 \
   MERIDIAN_DIRTY_STATS=1 \
   MERIDIAN_SHELL_RENDER_STATS=1 \
   RUST_LOG=info \
-  timeout "${TIMEOUT_SECONDS}s" target/release/meridian 2>&1 | tee "${LOG_FILE}"
+  timeout "${TIMEOUT_SECONDS}s" "${RUNNER[@]}" 2>&1 | tee "${LOG_FILE}"
 else
   MERIDIAN_DRM_TIMING=1 \
   MERIDIAN_DIRTY_STATS=1 \
   MERIDIAN_SHELL_RENDER_STATS=1 \
   RUST_LOG=info \
-  target/release/meridian 2>&1 | tee "${LOG_FILE}"
+  "${RUNNER[@]}" 2>&1 | tee "${LOG_FILE}"
 fi
 run_exit="${PIPESTATUS[0]}"
 set -e

@@ -1,21 +1,18 @@
-# Meridian — BSD and UI Platform Master Plan
+# Meridian — BSD and Native UI Master Plan
 
-> **STATUS: ACTIVE.** Updated 2026-08-19 from
+> **STATUS: ACTIVE.** Updated 2026-08-25 from
 > `Meridian - BSD - Übergabe für ChatGPT Desktop.md`. This replaces the former
 > Arch/KDE-based MeridianOS proposal. Meridian's own compositor is not parked.
 
 ## 1. North star
 
 Meridian is a polished Unix desktop with a small, understandable native core
-and one coherent UI platform. Its product quality should approach modern
+and one coherent Rust UI platform. Its product quality should approach modern
 macOS/Windows surfaces without trading away Wayland correctness, security or
 idle efficiency.
 
-**Native where it matters. Web where it shines.**
-
-Rust owns the operating-system-facing and trusted parts. HTML/CSS owns the
-Meridian-specific presentation layer where a single developer benefits from
-the browser layout and styling model.
+Rust owns both the operating-system-facing core and Meridian's product UI.
+External applications remain free to use their own toolkits.
 
 ## 2. Architecture decision
 
@@ -30,22 +27,13 @@ the browser layout and styling model.
 
 ### Shared Meridian UI platform
 
-- WebKit-backed runtime
-- bundled HTML/CSS assets, without requiring a local HTTP server
-- reusable Web Components
-- minimal TypeScript/JavaScript
-- typed Rust↔UI bridge
-- shared icons, typography, animations and component behavior
-- CSS variables generated from `meridian-tokens` and `meridian-config`
+- reusable native layout, widgets, effects and input behavior in `meridian-ui`
+- panel, launcher, Quick Settings, notifications, overview and Settings
+- shared icons and typography from the central design system
+- direct consumption of `meridian-tokens` and `meridian-config`
 
-This applies to panel, launcher, Quick Settings, notifications, overview,
-Settings and future Meridian-owned system tools. Login and bootsplash remain on
-their current native path during the first vertical slice; moving authentication
-UI into WebKit requires a separate security decision and is not implied here.
-
-Meridian is not rebuilding Tauri. A compatible Tauri subset may be used if it
-works cleanly on the chosen BSD, otherwise the runtime exposes only Meridian's
-required APIs.
+The archived WebKit prototype is evidence and a design reference only. It is
+not a fallback, optional runtime or future target.
 
 ## 3. External applications
 
@@ -82,7 +70,7 @@ before installation.
 ### FreeBSD alternative
 
 FreeBSD remains a serious target and already has repository-specific installer
-work. If OpenBSD is blocked by hardware or desktop/WebKit compatibility,
+work. If OpenBSD is blocked by hardware or desktop compatibility,
 Meridian will use FreeBSD's own mechanisms—Capsicum, jails, MAC, securelevel,
 ZFS and privilege separation—rather than emulating OpenBSD.
 
@@ -96,8 +84,8 @@ commitment.
 
 VMs provide fast regression tests, architecture experiments and reproducible
 environments. The Acer provides authoritative evidence for DRM/KMS, pageflips,
-cursor, input, touchpad, displays, suspend/resume, hotplug, audio, WLAN, browser,
-WebKit and perceived performance.
+cursor, input, touchpad, displays, suspend/resume, hotplug, audio, WLAN, browsers
+and perceived performance.
 
 The main PC remains untouched during the initial evaluation.
 
@@ -105,53 +93,47 @@ The main PC remains untouched during the initial evaluation.
 
 1. inventory and back up the Acer;
 2. install OpenBSD and validate base hardware;
-3. validate browsers, GTK, Qt and WebKit;
+3. validate representative browsers, GTK and Qt clients;
 4. establish the Rust toolchain and Meridian/Smithay path;
-5. prove the minimal UI runtime and bridge;
-6. migrate panel, launcher and Quick Settings;
+5. polish the native panel, launcher and Quick Settings vertical slice;
+6. validate the native UI performance and input path on OpenBSD;
 7. decide OpenBSD versus FreeBSD from recorded evidence;
-8. migrate Settings and other system tools.
+8. expand native Settings and other system tools.
 
 Detailed exit criteria live in `ROADMAP.md` and `docs/OPENBSD.md`.
 
-## 7. UI platform acceptance gates
+## 7. Native UI acceptance gates
 
-The runtime must demonstrate all of the following before broad migration:
-
-- packaged/offline assets and deterministic startup
-- no arbitrary remote navigation or ambient filesystem/process access
-- typed capability permissions per surface/application
-- clean crash containment and restart behavior
+- deterministic startup without an optional toolkit runtime
 - light/dark themes from the single Rust token source
 - cached icons/assets and explicit invalidation
 - measured cold start, resident memory, idle CPU/GPU and interaction latency
 - correct Wayland sizing, scale, input and lifecycle behavior
-- a BSD maintenance story that a small project can sustain
+- small auditable modules and platform boundaries a small project can sustain
 
-## 8. First vertical slice
+## 8. Native quality round
 
 ```text
 Meridian compositor
        │ typed IPC / policy
        ▼
-Meridian UI runtime
-       │ generated tokens + shared components
+native meridian-shell
+       │ meridian-ui + direct Rust tokens
        ├── panel
        ├── launcher
        └── Quick Settings
 ```
 
-The existing native shell remains available until this full slice is proven.
-Migration is incremental and must not silently break compositor/shell IPC.
+The native shell is the product implementation. Work is incremental and must
+not silently break compositor/shell IPC.
 
 ## 9. Security model
 
-- WebKit runs unprivileged and never owns DRM, input devices or authentication.
+- The native shell runs unprivileged and never owns DRM devices or authentication.
 - Privileged actions cross a narrow Rust service/helper boundary.
-- Bridge methods validate types, caller capability, object identity and state.
-- Filesystem and network access are absent unless explicitly granted.
+- IPC methods validate types, caller capability, object identity and state.
 - OpenBSD sandbox profiles and FreeBSD capability models are platform-specific.
-- UI compromise must not imply compositor or root compromise.
+- Shell compromise must not imply root compromise.
 
 ## 10. Performance model
 
@@ -168,5 +150,5 @@ Migration is incremental and must not silently break compositor/shell IPC.
 - rendering third-party application UIs inside Meridian
 - replacing Wayland with a private window protocol
 - choosing a BSD by ideology without hardware evidence
-- broad new features before the vertical slice
-- a second independent CSS design-token source
+- broad new features before the native quality round
+- a second independent design-token source

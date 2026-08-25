@@ -156,10 +156,6 @@ impl MeridianShell {
         }
     }
     pub(crate) fn draw_panel(&mut self, _qh: &QueueHandle<Self>, reason: RepaintReason) {
-        if self.web_panel_enabled {
-            self.panel_dirty = false;
-            return;
-        }
         debug!(
             "draw_panel: reason={:?} configured={} width={} panel_dirty={} launcher_open={} commit_expected={}",
             reason,
@@ -312,17 +308,4 @@ impl MeridianShell {
         }
     }
 
-    pub(crate) fn activate_native_panel_fallback(&mut self) {
-        if !self.web_panel_enabled {
-            return;
-        }
-        self.web_panel_enabled = false;
-        self.panel.set_size(0, crate::PANEL_SURFACE_HEIGHT);
-        self.panel
-            .set_exclusive_zone(crate::PANEL_SURFACE_HEIGHT as i32);
-        self.panel_dirty = true;
-        self.panel_last_signature = None;
-        self.commit_surface(CommitSurfaceKind::Panel, CommitReason::InitialCreate);
-        warn!("WebKit panel unavailable; native panel fallback committed");
-    }
 }

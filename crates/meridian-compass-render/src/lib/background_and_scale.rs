@@ -4,7 +4,6 @@
 ///
 /// 0..1.6s: ease-out cubic spin ending at 1080° (= 0° mod 360, i.e. North).
 /// 1.6s..:  damped oscillation around 1080° plus a gentle breathing term.
-
 pub fn needle_angle_deg(t: f32) -> f32 {
     let spin = 1.6_f32;
     let breath = 1.4 * (t * 1.1).sin();

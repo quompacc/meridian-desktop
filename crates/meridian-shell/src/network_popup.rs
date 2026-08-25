@@ -3,11 +3,14 @@ use std::cell::{Cell, RefCell};
 use meridian_config::ThemeConfig;
 
 use crate::{
-    network::{ConnectionKind, NetworkState, WifiNetwork},
+    audio::AudioSnapshot,
+    battery::BatterySnapshot,
+    network::{NetworkState, WifiNetwork},
     popup_card::{
-        draw_card_body, draw_card_title, draw_footer_link, draw_kv_row, draw_status_row, PAD_X,
-        ROW_HEIGHT, ROW_TEXT_BASELINE_OFFSET,
+        draw_card_body, draw_card_title, draw_footer_link, PAD_X, ROW_HEIGHT,
+        ROW_TEXT_BASELINE_OFFSET,
     },
+    power_profile::PowerProfile,
     ui::tokens::{glass_dim_from_config, glass_foreground_from_config},
     Painter, Rect, TextRenderer, NETWORK_POPUP_HEIGHT, NETWORK_POPUP_WIDTH,
 };
@@ -26,6 +29,18 @@ pub enum NetworkPopupHit {
     Tab(NetworkTab),
     /// A Wi-Fi list row; the index is into the popup's `wifi_networks` slice.
     WifiNetwork(usize),
+    Quick(crate::quick_settings_popup::QuickSettingsHit),
+}
+
+pub struct NetworkPopupState<'a> {
+    pub network: &'a NetworkState,
+    pub audio: &'a AudioSnapshot,
+    pub battery: &'a BatterySnapshot,
+    pub power_profile: Option<PowerProfile>,
+    pub theme_name: &'a str,
+    pub power_armed: bool,
+    pub active_tab: NetworkTab,
+    pub wifi_networks: &'a [WifiNetwork],
 }
 
 /// Top of the tab strip, just under the title rule.
@@ -42,83 +57,48 @@ thread_local! {
     static TAB_STATUS_RECT: Cell<Rect> = const { Cell::new(Rect { x: 0, y: 0, w: 0, h: 0 }) };
     static TAB_WIFI_RECT: Cell<Rect> = const { Cell::new(Rect { x: 0, y: 0, w: 0, h: 0 }) };
     static WIFI_ROW_RECTS: RefCell<Vec<Rect>> = const { RefCell::new(Vec::new()) };
+    static QUICK_SETTINGS_ACTIVE: Cell<bool> = const { Cell::new(false) };
 }
 
 pub fn draw_network_popup(
     painter: &mut Painter<'_>,
     font: &RefCell<Option<TextRenderer>>,
     theme: &ThemeConfig,
-    state: &NetworkState,
-    active_tab: NetworkTab,
-    wifi_networks: &[WifiNetwork],
+    state: &NetworkPopupState<'_>,
 ) {
-    let height = NETWORK_POPUP_HEIGHT as i32;
-
-    draw_card_body(painter, theme);
-    draw_card_title(painter, font, theme, "Netzwerk");
-
-    draw_tabs(painter, font, theme, active_tab);
-
-    match active_tab {
+    match state.active_tab {
         NetworkTab::Status => {
+            QUICK_SETTINGS_ACTIVE.with(|active| active.set(true));
             // No stale Wi-Fi row hit targets while the status tab is shown.
             WIFI_ROW_RECTS.with(|r| r.borrow_mut().clear());
-            draw_status_tab(painter, font, theme, state);
+            crate::quick_settings_popup::draw(
+                painter,
+                font,
+                theme,
+                crate::quick_settings_popup::QuickSettingsState {
+                    network: state.network,
+                    audio: state.audio,
+                    battery: state.battery,
+                    power_profile: state.power_profile,
+                    theme_name: state.theme_name,
+                    power_armed: state.power_armed,
+                },
+            );
         }
-        NetworkTab::Wifi => draw_wifi_tab(painter, font, theme, wifi_networks),
-    }
-
-    let link_rect = draw_footer_link(painter, font, theme, height, "Netzwerkeinstellungen");
-    SETTINGS_LINK_RECT.with(|r| r.set(link_rect));
-}
-
-fn draw_status_tab(
-    painter: &mut Painter<'_>,
-    font: &RefCell<Option<TextRenderer>>,
-    theme: &ThemeConfig,
-    state: &NetworkState,
-) {
-    let colors = &theme.colors;
-    let mut row_y = CONTENT_TOP;
-
-    let (status_text, dot_color) = match state {
-        NetworkState::Connected { .. } => ("Aktiv", colors.success),
-        NetworkState::Disconnected => ("Aus", colors.error),
-        NetworkState::Offline => ("Nicht verfügbar", colors.text_dim),
-    };
-    draw_status_row(
-        painter,
-        font,
-        theme,
-        "Status",
-        status_text,
-        dot_color,
-        row_y,
-    );
-    row_y += ROW_HEIGHT;
-
-    if let NetworkState::Connected {
-        kind,
-        connection_name,
-    } = state
-    {
-        let kind_label = match kind {
-            ConnectionKind::Ethernet => "Ethernet",
-            ConnectionKind::Wifi { .. } => "WLAN",
-            ConnectionKind::Vpn => "VPN",
-            ConnectionKind::Other => "Sonstige",
-        };
-        draw_kv_row(painter, font, theme, "Typ", kind_label, row_y);
-        row_y += ROW_HEIGHT;
-
-        draw_kv_row(painter, font, theme, "Verbindung", connection_name, row_y);
-        row_y += ROW_HEIGHT;
-
-        if let ConnectionKind::Wifi { signal } = kind {
-            let signal_text = signal
-                .map(|v| format!("{v}%"))
-                .unwrap_or_else(|| "\u{2014}".to_string());
-            draw_kv_row(painter, font, theme, "Signal", &signal_text, row_y);
+        NetworkTab::Wifi => {
+            QUICK_SETTINGS_ACTIVE.with(|active| active.set(false));
+            draw_card_body(painter, theme);
+            draw_card_title(painter, font, theme, "Netzwerk");
+            draw_tabs(painter, font, theme, state.active_tab);
+            draw_wifi_tab(painter, font, theme, state.wifi_networks);
+            let link_rect = draw_footer_link(
+                painter,
+                font,
+                theme,
+                NETWORK_POPUP_HEIGHT as i32,
+                "Netzwerkeinstellungen",
+            );
+            SETTINGS_LINK_RECT.with(|r| r.set(link_rect));
         }
     }
 }
@@ -283,6 +263,10 @@ pub fn popup_hit_test(width: u32, height: u32, x: f64, y: f64) -> Option<Network
     if !bounds.contains(x, y) {
         return None;
     }
+    if QUICK_SETTINGS_ACTIVE.with(Cell::get) {
+        return crate::quick_settings_popup::hit_test(width, height, x, y)
+            .map(NetworkPopupHit::Quick);
+    }
     if TAB_STATUS_RECT.with(|r| r.get()).contains(x, y) {
         return Some(NetworkPopupHit::Tab(NetworkTab::Status));
     }
@@ -303,8 +287,13 @@ pub fn popup_hit_test(width: u32, height: u32, x: f64, y: f64) -> Option<Network
 
 #[cfg(test)]
 mod tests {
-    use super::{draw_network_popup, popup_hit_test, NetworkPopupHit, NetworkTab};
-    use crate::network::{NetworkState, WifiNetwork};
+    use super::{
+        draw_network_popup, popup_hit_test, NetworkPopupHit, NetworkPopupState, NetworkTab,
+    };
+    use crate::{
+        audio::AudioSnapshot,
+        network::{NetworkState, WifiNetwork},
+    };
 
     fn render(active_tab: NetworkTab, nets: &[WifiNetwork]) {
         let width = crate::NETWORK_POPUP_WIDTH as i32;
@@ -317,9 +306,16 @@ mod tests {
             &mut painter,
             &font,
             &theme,
-            &NetworkState::Offline,
-            active_tab,
-            nets,
+            &NetworkPopupState {
+                network: &NetworkState::Offline,
+                audio: &AudioSnapshot::unavailable(),
+                battery: &crate::battery::BatterySnapshot::default(),
+                power_profile: None,
+                theme_name: "meridian-dark",
+                power_armed: false,
+                active_tab,
+                wifi_networks: nets,
+            },
         );
     }
 
@@ -337,27 +333,31 @@ mod tests {
         render(NetworkTab::Status, &[]);
         let w = crate::NETWORK_POPUP_WIDTH;
         let h = crate::NETWORK_POPUP_HEIGHT;
-        assert_eq!(popup_hit_test(w, h, 5.0, 5.0), Some(NetworkPopupHit::Card));
+        assert!(matches!(
+            popup_hit_test(w, h, 5.0, 5.0),
+            Some(NetworkPopupHit::Quick(
+                crate::quick_settings_popup::QuickSettingsHit::Card
+            ))
+        ));
         assert_eq!(popup_hit_test(w, h, -1.0, 5.0), None);
         assert_eq!(popup_hit_test(w, h, 1000.0, 5.0), None);
     }
 
     #[test]
-    fn popup_hit_test_returns_settings_link_in_footer() {
-        render(NetworkTab::Status, &[]);
-        let w = crate::NETWORK_POPUP_WIDTH;
+    fn popup_hit_test_returns_settings_link_in_network_detail_footer() {
+        render(NetworkTab::Wifi, &[]);
         let h = crate::NETWORK_POPUP_HEIGHT;
-        let probe_x = (w as f64) - 30.0;
+        let probe_x = (crate::popup_card::POPUP_WIDTH as f64) - 30.0;
         let probe_y = (h as f64) - 18.0;
         assert_eq!(
-            popup_hit_test(w, h, probe_x, probe_y),
+            popup_hit_test(crate::NETWORK_POPUP_WIDTH, h, probe_x, probe_y),
             Some(NetworkPopupHit::SettingsLink)
         );
     }
 
     #[test]
     fn tabs_are_hit_testable() {
-        render(NetworkTab::Status, &[]);
+        render(NetworkTab::Wifi, &[]);
         let w = crate::NETWORK_POPUP_WIDTH;
         let h = crate::NETWORK_POPUP_HEIGHT;
         // The Status tab sits at the left of the tab strip; the WLAN tab to its

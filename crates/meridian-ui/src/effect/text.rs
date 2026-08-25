@@ -90,6 +90,35 @@ pub fn blend_text_sample(px: &mut [u8], ink: TextInk, coverage: u8, rgb: [usize;
     px[3] = (out_a.clamp(0.0, 1.0) * 255.0).round() as u8;
 }
 
+struct BlendSampleCache {
+    keys: [u32; 256],
+    values: [[u8; 4]; 256],
+    valid: [bool; 256],
+}
+
+impl BlendSampleCache {
+    fn new() -> Self {
+        Self {
+            keys: [0; 256],
+            values: [[0; 4]; 256],
+            valid: [false; 256],
+        }
+    }
+
+    fn blend(&mut self, px: &mut [u8], ink: TextInk, coverage: u8) {
+        let idx = coverage as usize;
+        let key = u32::from_ne_bytes([px[0], px[1], px[2], px[3]]);
+        if self.valid[idx] && self.keys[idx] == key {
+            px[..4].copy_from_slice(&self.values[idx]);
+            return;
+        }
+        blend_text_sample(px, ink, coverage, [0, 1, 2]);
+        self.keys[idx] = key;
+        self.values[idx].copy_from_slice(&px[..4]);
+        self.valid[idx] = true;
+    }
+}
+
 static UI_FONT_DEFAULT: OnceLock<Font> = OnceLock::new();
 static UI_FONT_OVERRIDE: RwLock<Option<&'static Font>> = RwLock::new(None);
 static FREETYPE_FONT: OnceLock<Mutex<Option<FreeTypeFont>>> = OnceLock::new();
@@ -203,6 +232,7 @@ pub fn paint_text(
     let data = canvas.data_mut();
 
     let ink = TextInk::new(color);
+    let mut blend_cache = BlendSampleCache::new();
 
     let mut pen_x = x as f32;
     for c in text.chars() {
@@ -227,7 +257,7 @@ pub fn paint_text(
                     continue;
                 }
                 let idx = dy as usize * stride + dx as usize * 4;
-                blend_text_sample(&mut data[idx..idx + 4], ink, alpha, [0, 1, 2]);
+                blend_cache.blend(&mut data[idx..idx + 4], ink, alpha);
             }
         }
 
@@ -255,6 +285,7 @@ fn paint_text_freetype(
     let stride = canvas_w as usize * 4;
     let data = canvas.data_mut();
     let ink = TextInk::new(color);
+    let mut blend_cache = BlendSampleCache::new();
     let mut pen_x = x as f32;
     let mut drew = false;
 
@@ -279,7 +310,7 @@ fn paint_text_freetype(
                     continue;
                 }
                 let idx = dy as usize * stride + dx as usize * 4;
-                blend_text_sample(&mut data[idx..idx + 4], ink, alpha, [0, 1, 2]);
+                blend_cache.blend(&mut data[idx..idx + 4], ink, alpha);
                 drew = true;
             }
         }

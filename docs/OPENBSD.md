@@ -161,18 +161,22 @@ Meridian hardware run also proved display creation, Wayland layer-shell
 integration and interactive panel/launcher rendering. Detailed steady-state
 GPU/memory and launcher-start performance budgets remain open.
 
-### WebKit diagnostic runtime
+### Historical WebKit diagnostic runtime (removed)
 
-`meridian-ui-runtime` provides the Rust panel and launcher surface proof. Run a
-standalone surface from an existing Meridian Wayland session so
-`WAYLAND_DISPLAY` and `XDG_RUNTIME_DIR` refer to that session:
+> Evidence only. `meridian-ui-runtime` and `MERIDIAN_WEB_UI_PANEL` were removed
+> from the product on 2026-08-25 when Meridian committed to native Rust UI. The
+> commands below describe the retired prototype and no longer work at HEAD.
+
+`meridian-ui-runtime` provided the Rust panel and launcher surface proof. A
+standalone surface was run from an existing Meridian Wayland session so
+`WAYLAND_DISPLAY` and `XDG_RUNTIME_DIR` referred to that session:
 
 ```sh
 cargo run -p meridian-ui-runtime -- --surface=panel --theme=dark
 cargo run -p meridian-ui-runtime -- --surface=launcher --theme=light
 ```
 
-For the managed integration, start the session with
+For the former managed integration, the session was started with
 `MERIDIAN_WEB_UI_PANEL=1`; `meridian-shell` then owns the panel runtime and
 launcher lifecycle. Expected evidence:
 
@@ -251,6 +255,33 @@ seinen Zustand genau einmal, damit der Audio-Pfad beobachtbar ist).
 
 Do not paper over failures with broad `cfg` removal. Classify each dependency as
 portable core, Linux adapter, OpenBSD adapter or currently unsupported.
+
+### Verbindlicher Hardware-Session-Ablauf
+
+Manuelle DRM-, Eingabe- und UI-Performance-Tests laufen ausschließlich als
+optimierter Build:
+
+```sh
+scripts/smoke-drm.sh run
+```
+
+Das Skript setzt auf OpenBSD die benötigten Linkpfade, baut den Workspace mit
+`--release` und startet `target/release/meridian`. Der Compositor-Watchdog wählt
+dadurch ausschließlich die danebenliegende `target/release/meridian-shell`.
+Ein Lauf aus `target/debug` ist für Performance-Abnahmen ungültig; der native
+Pixelpfad kann dort um mehr als eine Größenordnung langsamer sein.
+
+Für inkrementelle Shell-Änderungen innerhalb einer bereits laufenden
+Release-Sitzung:
+
+```sh
+ksh scripts/restart-openbsd-shell.ksh
+```
+
+Der Helfer baut `meridian-shell` erneut mit `--release` und beendet nur die
+alte Shell. Der bestehende Compositor startet den neuen Build über seinen
+Watchdog. Läuft der Compositor nicht selbst aus `target/release`, verweigert
+das Skript den Austausch fail-closed.
 
 ## Phase F — Meridian core smoke
 

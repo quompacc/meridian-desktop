@@ -1,8 +1,7 @@
 # Testing Guide
 
-> Updated 2026-08-19. Existing sections cover the current native Rust
-> implementation. OpenBSD and WebKit checks below are additive and must not be
-> reported as passing until the corresponding platform/runtime exists.
+> Updated 2026-08-25. Meridian's product UI and its test requirements are fully
+> native Rust. OpenBSD results must not be claimed from another platform.
 
 ## Standardchecks
 Diese Checks sind die Baseline und werden vom pre-push-Hook
@@ -34,36 +33,20 @@ cargo test -p meridian-tokens --test source_size_guard
 - Nach Login-Änderungen: Standardchecks + Login-Unit-Tests + passenden uinput-Smoke.
 - Nach Portal-Änderungen: Standardchecks + Portal-Unit-Tests + D-Bus/Picker-Smoke.
 - Nach Render-Z-Order-Änderungen: Standardchecks + manuelle Sichtbarkeits-/Layer-Reihenfolge-Checks.
-- Nach Web-UI-Änderungen: generierte Token-Snapshots, Component-/Accessibility-
-  Tests, Bridge-Schema-/Capability-Tests und Idle-/Interaktionsmessung.
+- Nach nativen UI-Änderungen: Design-Guard, Component-/Accessibility-Tests,
+  IPC-Schema-/Capability-Tests und Idle-/Interaktionsmessung.
 - Nach Plattformänderungen: betroffenen OS-Adapter prüfen; Linux/VM-Ergebnis
   nicht als OpenBSD-/FreeBSD-Hardwareergebnis ausgeben.
 
-## Zieltests für die WebKit-Plattform
+## Zieltests für die native UI
 
-Vor dem ersten produktiven Vertical Slice sind mindestens abzudecken:
-
-- deterministische CSS-Generierung aus `meridian-tokens`/`meridian-config`
-- Guard gegen lokale Produktionsfarben, Alpha, Radien, Mix- und Geometriewerte
-- Bridge-Roundtrip, Versionierung, ungültige Payloads und Capability-Denial
-- Verbot externer Top-Level-Navigation und privilegierter Remote-Bridge-Nutzung
-- Tastatur, Pointer, Focus, Screenreader-Semantik und Reduced Motion
+- Guard gegen lokale Produktionsfarben, Alpha, Radien und Geometriewerte
+- IPC-Roundtrip, Versionierung, ungültige Payloads und Capability-Denial
+- Tastatur, Pointer, Fokus, Screenreader-Semantik und Reduced Motion
 - Scale-/Theme-Wechsel ohne Layoutunterschied zwischen hell/dunkel
-- Runtime-/Document-Crash ohne Compositor-Crash, inklusive Restart/Fallback
-- Panel/Launcher/Quick-Settings-Parität gegen die vereinbarten IPC-Semantiken
+- Shell-Neustart ohne Compositor-Absturz oder verlorene Sitzung
+- Panel/Launcher/Quick-Settings-Parität gegen die IPC-Semantiken
 - Cold start, first paint, Input-to-Paint, Idle CPU/GPU und RSS auf dem Acer
-
-Aktueller erster Smoke auf OpenBSD, innerhalb einer Meridian-Sitzung:
-
-```sh
-cargo test -p meridian-ui-runtime
-cargo run -p meridian-ui-runtime -- --theme=dark
-cargo run -p meridian-ui-runtime -- --theme=light
-```
-
-Der automatisierte Test prueft lokale Assets, Theme-Auswahl und Navigation-
-Denylist. Der manuelle Lauf ist weiterhin erforderlich, weil nur er einen
-tatsaechlich gerenderten WebKit-/Wayland-Frame beweist.
 
 ## Plattformmatrix
 

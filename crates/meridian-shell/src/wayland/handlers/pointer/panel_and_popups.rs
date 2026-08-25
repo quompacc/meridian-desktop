@@ -262,6 +262,83 @@ macro_rules! handle_panel_and_popups_pointer {
                         let card_w = $shell.network_width.saturating_sub(pad2);
                         let card_h = $shell.network_height.saturating_sub(pad2);
                         match crate::network_popup::popup_hit_test(card_w, card_h, px, py) {
+                            Some(crate::network_popup::NetworkPopupHit::Quick(hit)) => {
+                                use crate::quick_settings_popup::QuickSettingsHit;
+                                match hit {
+                                    QuickSettingsHit::Settings | QuickSettingsHit::Appearance => {
+                                        $shell.settings_category =
+                                            crate::settings_view::SettingsCategory::Theme;
+                                        $shell.handle_panel_click(
+                                            $qh,
+                                            crate::wayland::ClickAction::ToggleSettings,
+                                        );
+                                        $shell.draw_panel($qh, RepaintReason::Pointer);
+                                        if $shell.launcher_state.open {
+                                            $shell.draw_launcher($qh, RepaintReason::Pointer);
+                                        }
+                                    }
+                                    QuickSettingsHit::Network => {
+                                        $shell.switch_network_tab(
+                                            $qh,
+                                            crate::network_popup::NetworkTab::Wifi,
+                                        );
+                                    }
+                                    QuickSettingsHit::AudioMute => {
+                                        crate::audio::toggle_default_sink_mute();
+                                        $shell.audio_snapshot = crate::audio::AudioSnapshot::poll();
+                                        $shell.draw_network_popup($qh, RepaintReason::Pointer);
+                                        $shell.draw_panel($qh, RepaintReason::Pointer);
+                                    }
+                                    QuickSettingsHit::Volume(volume) => {
+                                        crate::audio::set_default_sink_volume(volume);
+                                        $shell.audio_snapshot = crate::audio::AudioSnapshot::poll();
+                                        $shell.draw_network_popup($qh, RepaintReason::Pointer);
+                                        $shell.draw_panel($qh, RepaintReason::Pointer);
+                                    }
+                                    QuickSettingsHit::PowerProfile => {
+                                        use crate::power_profile::{self, PowerProfile};
+                                        let current = power_profile::current()
+                                            .unwrap_or(PowerProfile::Standard);
+                                        let idx = PowerProfile::ALL
+                                            .iter()
+                                            .position(|profile| *profile == current)
+                                            .unwrap_or(0);
+                                        let next = PowerProfile::ALL
+                                            [(idx + 1) % PowerProfile::ALL.len()];
+                                        if power_profile::set(next) {
+                                            $shell.power_profile = Some(next);
+                                        }
+                                        $shell.draw_network_popup($qh, RepaintReason::Pointer);
+                                        $shell.draw_panel($qh, RepaintReason::Pointer);
+                                    }
+                                    QuickSettingsHit::Lock => {
+                                        $shell.close_network_popup(
+                                            crate::wayland::CommitReason::Input,
+                                        );
+                                        if !$shell.ipc.send(
+                                            &meridian_ipc::ShellCommand::LockSession,
+                                        ) {
+                                            tracing::warn!(
+                                                "quick settings: compositor lock IPC unavailable"
+                                            );
+                                        }
+                                    }
+                                    QuickSettingsHit::PowerOff => {
+                                        $shell.dispatch_widget_action(
+                                            $qh,
+                                            crate::widget_action::WidgetAction::PowerOff,
+                                        );
+                                        if $shell.network_popup_open {
+                                            $shell.draw_network_popup(
+                                                $qh,
+                                                RepaintReason::Pointer,
+                                            );
+                                        }
+                                    }
+                                    QuickSettingsHit::Card => {}
+                                }
+                                None
+                            }
                             Some(crate::network_popup::NetworkPopupHit::SettingsLink) => {
                                 Some(crate::wayland::ClickAction::OpenNetworkSettings)
                             }

@@ -15,9 +15,20 @@ impl MeridianShell {
                 &mut painter,
                 &self.font,
                 &self.theme,
-                self.network_controller.state(),
-                self.network_popup_tab,
-                &self.wifi_networks,
+                &network_popup::NetworkPopupState {
+                    network: self.network_controller.state(),
+                    audio: &self.audio_snapshot,
+                    battery: &self.battery_snapshot,
+                    power_profile: self.power_profile,
+                    theme_name: &self.theme_name,
+                    power_armed: self
+                        .armed_power
+                        .as_ref()
+                        .map(|(id, _)| id == "power-off")
+                        .unwrap_or(false),
+                    active_tab: self.network_popup_tab,
+                    wifi_networks: &self.wifi_networks,
+                },
             );
         }
         round_buffer_corners(

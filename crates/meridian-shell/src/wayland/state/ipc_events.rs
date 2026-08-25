@@ -139,24 +139,26 @@ impl MeridianShell {
                 self.toggle_launcher();
             }
             ShellEvent::ToggleQuickSettings => {
-                self.toggle_web_quick_settings();
+                // Until the native combined Quick Settings card is rebuilt,
+                // preserve the public toggle by opening the native network
+                // status popup. Panel audio and power controls stay native.
+                self.toggle_network_popup(CommitReason::Input);
             }
             ShellEvent::OpenSystemSettings => {
-                self.open_web_system_settings();
+                self.open_system_settings_from_ipc();
             }
             ShellEvent::SettingsRefresh => {
-                self.refresh_web_settings();
+                self.launcher_dirty = true;
             }
             ShellEvent::AppearanceRefresh => {
-                self.refresh_web_appearance();
+                self.launcher_dirty = true;
+                self.panel_dirty = true;
             }
             ShellEvent::AppearanceThemeSet { theme } => {
                 let name = theme.config_name();
                 if self.theme_name != name {
                     meridian_config::MeridianConfig::save_theme(name);
                     self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
-                } else {
-                    self.refresh_web_appearance();
                 }
             }
             ShellEvent::AppearanceWallpaperSet { path } => {
@@ -165,7 +167,6 @@ impl MeridianShell {
                     meridian_config::MeridianConfig::save_wallpaper(&path, mode);
                     self.wallpaper_path = Some(path);
                     self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
-                    self.refresh_web_appearance();
                 } else {
                     tracing::warn!("appearance rejected missing wallpaper file");
                 }
@@ -196,12 +197,11 @@ impl MeridianShell {
                     self.wallpaper_mode = mode;
                     meridian_config::MeridianConfig::save_wallpaper(&path, mode);
                     self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
-                    self.refresh_web_appearance();
                 }
             }
             ShellEvent::QuickSettingsNetworkRefresh => {
                 self.refresh_quick_settings_network();
-                self.refresh_web_quick_settings();
+                self.network_dirty = self.network_popup_open;
             }
             ShellEvent::QuickSettingsNetworkConnect { ssid, password } => {
                 let Some(network) = self
@@ -250,26 +250,26 @@ impl MeridianShell {
                 self.audio_snapshot = crate::audio::AudioSnapshot::poll();
                 self.panel_dirty = true;
                 self.volume_osd_pending = true;
-                self.refresh_web_quick_settings();
+                self.audio_dirty = self.audio_popup_open;
             }
             ShellEvent::AudioVolumeSet { percent } => {
                 crate::audio::set_default_sink_volume(percent.min(100));
                 self.audio_snapshot = crate::audio::AudioSnapshot::poll();
                 self.panel_dirty = true;
-                self.refresh_web_quick_settings();
+                self.audio_dirty = self.audio_popup_open;
             }
             ShellEvent::AudioMuteToggle => {
                 crate::audio::toggle_default_sink_mute();
                 self.audio_snapshot = crate::audio::AudioSnapshot::poll();
                 self.panel_dirty = true;
                 self.volume_osd_pending = true;
-                self.refresh_web_quick_settings();
+                self.audio_dirty = self.audio_popup_open;
             }
             ShellEvent::QuickSettingsAudioMuteToggle => {
                 crate::audio::toggle_default_sink_mute();
                 self.audio_snapshot = crate::audio::AudioSnapshot::poll();
                 self.panel_dirty = true;
-                self.refresh_web_quick_settings();
+                self.audio_dirty = self.audio_popup_open;
             }
             ShellEvent::PowerProfileSet { profile } => {
                 use crate::power_profile::{self, PowerProfile};
@@ -286,7 +286,6 @@ impl MeridianShell {
                     self.power_profile = power_profile::current();
                 }
                 self.panel_dirty = true;
-                self.refresh_web_quick_settings();
             }
             ShellEvent::DesktopContextMenu { x, y } => {
                 self.open_desktop_context_menu_from_ipc(x, y);
@@ -389,10 +388,6 @@ impl MeridianShell {
                 self.network_dirty = true;
                 self.audio_dirty = true;
                 self.thumbnail_dirty |= self.thumbnail_popup_open;
-                if theme_changed {
-                    self.sync_web_theme();
-                }
-                self.refresh_web_appearance();
                 debug!("shell config reload succeeded");
             }
             Err(err) => {
@@ -444,7 +439,7 @@ impl MeridianShell {
                 &theme_name,
                 &symbolic_color,
                 &names,
-                &[22, 24],
+                &[22, 24, 32],
             );
             let _ = tx.send(batch);
         });
@@ -492,6 +487,12 @@ impl MeridianShell {
             let _ = tx.send(crate::launcher::DesktopApp::load_system());
         });
         self.launcher_apps_rx = Some(rx);
+    }
+
+    pub(crate) fn refresh_quick_settings_network(&mut self) {
+        self.network_controller.poll();
+        self.network_profiles = crate::network::list_saved_connections();
+        self.wifi_networks = crate::network::scan_wifi_networks();
     }
 
     /// Apply a finished background app-list rescan, if one has arrived. Called

@@ -10,12 +10,7 @@ pub(in crate::wayland) fn build_icon_cache(
     // Only warm icons needed immediately by the panel and tray. Launcher grid
     // icons remain lazy so SVG decoding cannot delay the first panel frame.
     icon_cache.warm(
-        &[
-            "utilities-terminal",
-            "chromium",
-            "firefox",
-            "org.kde.dolphin",
-        ],
+        &["utilities-terminal", "chrome", "firefox", "org.kde.dolphin"],
         22,
     );
     icon_cache.warm(
@@ -40,7 +35,7 @@ pub(in crate::wayland) fn build_icon_cache(
     icon_cache.warm(
         &[
             "thunderbird",
-            "chromium",
+            "chrome",
             "system-file-manager",
             "gwenview",
             "amarok",
@@ -72,6 +67,7 @@ pub(in crate::wayland) fn build_icon_cache(
     if !pinned_icons.is_empty() {
         icon_cache.warm(&pinned_icons, 22);
         icon_cache.warm(&pinned_icons, 24);
+        icon_cache.warm(&pinned_icons, 32);
         icon_cache.warm(&pinned_icons, 48);
     }
 

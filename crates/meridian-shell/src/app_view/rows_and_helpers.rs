@@ -6,12 +6,31 @@ fn draw_app_row_content(
     icon_cache: &IconCache,
     pal: &meridian_ui::style::Palette,
 ) {
+    let icon_box = Rect {
+        x: icon_x,
+        y: row_y + (LAUNCHER_LAYOUT.app_card_height - 44) / 2,
+        width: 44,
+        height: 44,
+    };
+    fill_round_rect(
+        pm,
+        icon_box,
+        with_alpha(pal.surface_alt, LAUNCHER_SEARCH_FIELD_ALPHA),
+        meridian_tokens::Radius::DEFAULT.md,
+    );
+    draw_round_border(
+        pm,
+        icon_box,
+        pal.border,
+        meridian_tokens::Radius::DEFAULT.md,
+    );
     if let Some(name) = app.icon_name.as_deref() {
-        if let Some(img) = icon_cache.lookup(name, 24) {
+        if let Some(img) = icon_cache.lookup(name, LAUNCHER_LAYOUT.app_icon_size as u32) {
             if let Some(pix) = icon_image_to_pixmap(img) {
-                let iy = row_y + (CP_APP_ROW_H - pix.height() as i32) / 2;
+                let ix = icon_box.x + (icon_box.width - pix.width() as i32) / 2;
+                let iy = icon_box.y + (icon_box.height - pix.height() as i32) / 2;
                 pm.draw_pixmap(
-                    icon_x,
+                    ix,
                     iy,
                     pix.as_ref(),
                     &PixmapPaint::default(),
@@ -21,17 +40,21 @@ fn draw_app_row_content(
             }
         }
     }
-    let tx = icon_x + 24 + 8;
-    let ty = row_y + CP_APP_ROW_H - 10;
-    let max_w = 240;
-    let label = truncate_to_fit(&app.name, max_w, 13.0);
-    paint_text(pm, &label, tx, ty, 13.0, pal.text);
+    let tx = icon_box.x + icon_box.width + 12;
+    let max_w = CP_CARD_W - (tx - icon_x) - 10;
+    let body_size = f32::from(meridian_tokens::Typography::DEFAULT.body_size);
+    let caption_size = f32::from(meridian_tokens::Typography::DEFAULT.caption_size);
+    let label = truncate_to_fit(&app.name, max_w, body_size);
+    paint_text(pm, &label, tx, row_y + 29, body_size, pal.text);
+    let detail = truncate_to_fit(&app.program, max_w, caption_size);
+    paint_text(pm, &detail, tx, row_y + 49, caption_size, pal.text_dim);
 }
 
 fn draw_power_footer(
     pm: &mut PixmapMut<'_>,
     width: u32,
     launcher_h: u32,
+    settings_hovered: bool,
     hovered_idx: Option<usize>,
     armed_power: Option<(&str, f32)>,
     pal: &meridian_ui::style::Palette,
@@ -61,6 +84,71 @@ fn draw_power_footer(
 
     let btn_y = footer_y + (CP_FOOTER_H - CP_PWR_BTN_SIZE) / 2;
 
+    let avatar = Rect {
+        x: LAUNCHER_LAYOUT.outer_pad,
+        y: btn_y,
+        width: CP_PWR_BTN_SIZE,
+        height: CP_PWR_BTN_SIZE,
+    };
+    fill_round_rect(
+        pm,
+        avatar,
+        with_alpha(pal.surface_alt, LAUNCHER_SEARCH_FIELD_ALPHA),
+        meridian_tokens::Radius::DEFAULT.xl,
+    );
+    draw_round_border(
+        pm,
+        avatar,
+        pal.border,
+        meridian_tokens::Radius::DEFAULT.xl,
+    );
+    draw_user_symbol(
+        pm,
+        avatar.x + avatar.width / 2,
+        avatar.y + avatar.height / 2,
+        pal.text_dim,
+    );
+    paint_text(
+        pm,
+        "Benutzer",
+        avatar.x + avatar.width + 10,
+        footer_y + 27,
+        f32::from(meridian_tokens::Typography::DEFAULT.body_size),
+        pal.text,
+    );
+    paint_text(
+        pm,
+        "Lokale Sitzung",
+        avatar.x + avatar.width + 10,
+        footer_y + 45,
+        f32::from(meridian_tokens::Typography::DEFAULT.caption_size),
+        pal.text_dim,
+    );
+
+    let settings_x = cp_settings_btn_x(width);
+    if settings_hovered {
+        fill_round_rect(
+            pm,
+            Rect {
+                x: settings_x,
+                y: btn_y,
+                width: CP_HDR_ICON_W,
+                height: CP_HDR_ICON_H,
+            },
+            with_alpha(
+                Interaction::DEFAULT.hover(pal.surface),
+                LAUNCHER_HOVER_ALPHA,
+            ),
+            meridian_tokens::Radius::DEFAULT.md,
+        );
+    }
+    draw_settings_symbol(
+        pm,
+        settings_x + CP_HDR_ICON_W / 2,
+        btn_y + CP_HDR_ICON_H / 2,
+        if settings_hovered { pal.text } else { pal.text_dim },
+    );
+
     #[allow(clippy::needless_range_loop)]
     for i in 0..5usize {
         let bx = CP_PWR_START_X + i as i32 * CP_PWR_BTN_STRIDE;
@@ -87,7 +175,7 @@ fn draw_power_footer(
                     height: CP_PWR_BTN_SIZE,
                 },
                 bg,
-                8,
+                meridian_tokens::Radius::DEFAULT.md,
             );
         }
 
@@ -123,6 +211,32 @@ fn draw_power_footer(
                 );
             }
         }
+    }
+}
+
+fn draw_user_symbol(pm: &mut PixmapMut<'_>, cx: i32, cy: i32, col: Color) {
+    let mut paint = SkPaint::default();
+    paint.set_color(tiny_skia::Color::from_rgba8(col.r, col.g, col.b, col.a));
+    paint.anti_alias = true;
+    let stroke = Stroke {
+        width: 1.5,
+        line_cap: LineCap::Round,
+        line_join: LineJoin::Round,
+        ..Stroke::default()
+    };
+    let mut path = PathBuilder::new();
+    path.push_circle(cx as f32, cy as f32 - 5.0, 4.0);
+    path.move_to(cx as f32 - 7.0, cy as f32 + 8.0);
+    path.cubic_to(
+        cx as f32 - 6.0,
+        cy as f32 + 2.0,
+        cx as f32 + 6.0,
+        cy as f32 + 2.0,
+        cx as f32 + 7.0,
+        cy as f32 + 8.0,
+    );
+    if let Some(path) = path.finish() {
+        pm.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
     }
 }
 
@@ -324,7 +438,7 @@ fn section_label(pm: &mut PixmapMut<'_>, label: &str, y: i32, pal: &meridian_ui:
     paint_text(
         pm,
         label,
-        CP_GUTTER,
+        CP_SECTION_PAD,
         y + CP_SECTION_LABEL_H - 6,
         10.0,
         pal.text,

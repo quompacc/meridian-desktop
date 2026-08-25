@@ -220,7 +220,8 @@ mod tests {
 
     #[test]
     fn decode_svg_uses_custom_symbolic_color() {
-        let svg = br##"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+        let svg =
+            br##"<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
             <defs><style>.ColorScheme-Text { color:#232629; }</style></defs>
             <rect width="10" height="10" style="fill:currentColor" class="ColorScheme-Text"/>
         </svg>"##;

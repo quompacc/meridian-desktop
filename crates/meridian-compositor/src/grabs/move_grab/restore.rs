@@ -124,7 +124,7 @@ fn maybe_restore_maximized_drag(
         return restore_maximized_xdg_drag(
             data,
             window,
-            &toplevel,
+            toplevel,
             initial_window_location,
             drag_start_location,
             current_pointer_location,
@@ -145,13 +145,13 @@ fn maybe_restore_maximized_drag(
     );
     let restore = data
         .maximize_restore_locations
-        .get(&x11_window_key(&x11))
+        .get(&x11_window_key(x11))
         .copied();
     let restore_client_size = restore
         .and_then(|geometry| geometry.client_size)
         .unwrap_or(window.geometry().size);
 
-    apply_x11_unmaximize(data, &x11);
+    apply_x11_unmaximize(data, x11);
     let floating_insets = data
         .decoration_manager
         .decoration_inset(&wl_surface, &theme);

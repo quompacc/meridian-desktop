@@ -1,7 +1,7 @@
 # Meridian Architecture
 
-> Updated 2026-08-19. Sections explicitly distinguish the current native-shell
-> implementation from the target WebKit UI platform.
+> Updated 2026-08-25. Meridian's product UI is implemented natively in Rust.
+> The retired WebKit prototype is retained only as a visual reference.
 
 ## Stable system boundary
 
@@ -39,7 +39,7 @@ Important workspace responsibilities:
 
 The exact source inventory is generated in `CODE_INDEX.md`.
 
-## Target UI architecture
+## Product UI architecture
 
 ```text
 Meridian compositor
@@ -49,34 +49,26 @@ Meridian compositor
 └─ typed IPC and supervision
           │
           ▼
-Meridian UI runtime (unprivileged)
-├─ WebKit lifecycle and Wayland surface integration
-├─ capability-scoped Rust bridge
-├─ packaged/offline assets
-└─ crash containment and diagnostics
-          │
-          ▼
-Meridian UI framework
-├─ CSS generated from meridian-tokens/config
-├─ Web Components and shared icons
-└─ minimal TypeScript state adapters
+native meridian-shell (unprivileged)
+├─ Wayland surface lifecycle and input
+├─ meridian-ui primitives and shared icons
+├─ direct meridian-tokens/config consumption
+└─ typed IPC to compositor and small system helpers
           ├─ panel
           ├─ launcher
           ├─ Quick Settings
           └─ later Meridian system tools
 ```
 
-The new runtime is an additional unprivileged client, not a compositor plugin
-and not a privileged web view. Detailed requirements are in `UI_PLATFORM.md`.
+The shell is a separate unprivileged Wayland client, not a compositor plugin.
+Detailed sequencing and acceptance gates are in `NATIVE_UI_PLAN.md`.
 
-## Migration boundary
+## UI boundary
 
-The native shell remains the fallback and behavioral reference until the full
-panel/launcher/Quick Settings vertical slice is proven. Migration may extend IPC
-additively but must not silently break existing native-shell decoding.
-
-Login and bootsplash stay native during the first slice. Authentication UI is a
-separate security decision; the WebKit direction does not automatically move it.
+Panel, launcher and Quick Settings share native primitives and the central Rust
+tokens. IPC may grow additively but must not silently break existing decoding.
+Login, lock and bootsplash also remain native and keep their narrower security
+boundaries.
 
 ## Compositor / shell / IPC contract
 

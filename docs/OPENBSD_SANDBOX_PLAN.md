@@ -7,10 +7,10 @@
 
 ## Current assessment
 
-Meridian already separates authentication, policy, portal, shell, compositor
-and WebKit UI responsibilities into distinct processes with narrow typed IPC
-boundaries. OpenBSD authentication uses `auth_userokay(3)`, and the WebKit UI
-does not own raw DRM or input handles.
+Meridian separates authentication, policy, portal, native shell and compositor
+responsibilities into distinct processes with narrow typed IPC boundaries.
+OpenBSD authentication uses `auth_userokay(3)`. The native shell does not own
+raw DRM or input handles.
 
 The unprivileged `meridian-lock` UI and its narrow setgid authentication helper
 apply separate `pledge(2)` and `unveil(2)` profiles. Other Meridian processes
@@ -336,20 +336,21 @@ permission is added only for a named operation demonstrated by code or trace.
 1. `meridian-lock` (complete)
 2. `meridian-polkit` (complete)
 3. `meridian-portal` (complete)
-4. `meridian-ui-runtime`
-5. `meridian-login`
-6. `meridian-shell`
-7. Meridian compositor
+4. `meridian-login`
+5. `meridian-shell`
+6. Meridian compositor
 
-Polkit and the portal refine the process and tooling before the WebKit runtime,
-whose JIT memory, GTK/font access and subprocess model make it the most complex
-unprivileged candidate. Login, shell and compositor follow later because they
+Polkit and the portal refine the process and tooling before login, shell and
+compositor, which follow later because they
 change identities, launch arbitrary session programs or own broad device and
 process responsibilities. If a useful profile remains too broad, split the
 responsibility into a smaller helper instead of presenting a weak profile as
 complete isolation.
 
-### `meridian-ui-runtime`: staged process boundary
+### Historical `meridian-ui-runtime` prototype (retired)
+
+> This completed experiment is retained as sandbox evidence only. The runtime
+> was removed from the workspace on 2026-08-25 and is no longer in rollout.
 
 The runtime creates one GTK host, one WebKit web process and one WebKit network
 process for each persistent surface. WebKitGTK's sandbox switch is enabled as

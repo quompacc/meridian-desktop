@@ -1,5 +1,5 @@
 use meridian_config::ThemeSurface;
-use meridian_tokens::{Elevation, Interaction};
+use meridian_tokens::{Elevation, Interaction, Panel as PanelTokens, Typography};
 use meridian_ui::{
     compute_layout,
     effect::{measure_text, paint_fill, paint_text, rounded_rect_path},
@@ -24,29 +24,21 @@ use crate::{
     PANEL_SURFACE_HEIGHT, PANEL_TOP_SHADOW,
 };
 
-const CHIP_H: i32 = 28;
-// Chip widths sized to comfortably hold a single 22px icon (ICON_SIZE)
-// with breathing room — earlier values left a tray that fit the network
-// icon three times.
-const LAUNCHER_W: i32 = 40;
-const PINNED_W: i32 = 30;
-const TRAY_W: i32 = 30;
+const CHIP_H: i32 = PanelTokens::DEFAULT.control_height as i32;
+const LAUNCHER_W: i32 = PanelTokens::DEFAULT.control_width as i32;
+const PINNED_W: i32 = PanelTokens::DEFAULT.control_width as i32;
+const TRAY_W: i32 = PanelTokens::DEFAULT.control_width as i32 * 4 / 5;
 const AUDIO_W: i32 = TRAY_W;
-// Battery chip needs room for the icon plus a "100%" label.
-const BATTERY_W: i32 = 52;
-const SNI_W: i32 = 30;
-const SCREENSHOT_W: i32 = 30;
-// Launcher gets a reduced, themed Meridian start symbol that sits visually
-// raised above the chip outline (no bg fill, no accent strip) so it reads as
-// the entry point rather than just another tile (manifest §9).
-const LAUNCHER_ICON_SIZE: u32 = 36;
-const WS_W: i32 = 56;
-const CLOCK_PAD: i32 = 8;
-const ICON_SIZE: u32 = 22;
+const SNI_W: i32 = TRAY_W;
+const SCREENSHOT_W: i32 = PanelTokens::DEFAULT.control_width as i32;
+const LAUNCHER_ICON_SIZE: u32 = PanelTokens::DEFAULT.control_width / 2;
+const WS_W: i32 = PanelTokens::DEFAULT.control_width as i32 * 7 / 5;
+const CLOCK_W: i32 = PanelTokens::DEFAULT.clock_width as i32;
+const ICON_SIZE: u32 = PanelTokens::DEFAULT.app_icon_size as u32;
 const PANEL_H: i32 = PANEL_HEIGHT as i32;
 
-const LEFT_PADDING: i32 = 8;
-const RIGHT_PADDING: i32 = 10;
+const LEFT_PADDING: i32 = meridian_ui::style::Spacing::DEFAULT.xs;
+const RIGHT_PADDING: i32 = meridian_ui::style::Spacing::DEFAULT.xs;
 // Soft rounded highlight behind active/hovered chips (matches the island/launcher).
 const CHIP_HL_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.md;
 
@@ -55,10 +47,6 @@ const CHIP_HL_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.md;
 // language, manifest §9). Named once instead of inline magic.
 /// Segment divider hairline (over the theme text colour).
 const SEGMENT_DIVIDER_OPACITY: u8 = 38;
-/// Idle (no running window) accent indicator line.
-const IDLE_INDICATOR_OPACITY: u8 = 55;
-/// Focused single-window indicator dot (over the theme text colour).
-const FOCUSED_DOT_OPACITY: u8 = 220;
 const GAP: i32 = 4;
 
 // Floating island
@@ -67,77 +55,45 @@ const BOTTOM_GAP: i32 = PANEL_BOTTOM_GAP as i32;
 const SURFACE_H: i32 = PANEL_SURFACE_HEIGHT as i32;
 const ISLAND_TOP: i32 = PANEL_TOP_SHADOW as i32;
 // Segment divider chrome
-const DIVIDER_W: i32 = 11;
+const DIVIDER_W: i32 = meridian_ui::style::Spacing::DEFAULT.md + 1;
 // Frosted-glass island: transparent shell tint over the compositor-owned
 // live backdrop blur. Noise stays off so the real blurred scene remains legible.
 const PANEL_NOISE_STRENGTH: i32 = 0;
 
-const FONT_SIZE: f32 = 14.0;
+const FONT_SIZE: f32 = Typography::DEFAULT.body_size as f32;
+const CAPTION_SIZE: f32 = Typography::DEFAULT.caption_size as f32;
 const ACCENT_LINE_H: i32 = 2;
 
-/// Reduced Meridian start-symbol: a calm accent ring with a single north
-/// pointer and a centre navigation dot. Per the design manifest §9 the start
-/// button is "kein buntes Logo" — an abstract, themed mark (not the old faceted
-/// compass badge); every colour comes from the theme so it flips with light/dark.
+/// Neutral application-grid symbol. Branding is deliberately absent from the
+/// everyday panel (design manifest §9).
 fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
-    use tiny_skia::{FillRule, Paint, PathBuilder, Stroke, Transform};
+    use tiny_skia::{Paint, PathBuilder};
+
     let size = LAUNCHER_ICON_SIZE;
-    let cx = (size as f32) / 2.0;
-    let cy = (size as f32) / 2.0;
     let mut pm = Pixmap::new(size, size)?;
-    let palette = &theme.palette;
-    let ring_r = (size as f32) / 2.0 - 3.0;
-    let waist = 2.6_f32;
-
-    let paint_for = |color: Color| {
-        let mut p = Paint {
-            anti_alias: true,
-            ..Paint::default()
-        };
-        p.set_color_rgba8(color.r, color.g, color.b, color.a);
-        p
+    let mut paint = Paint {
+        anti_alias: true,
+        ..Paint::default()
     };
-
-    // Calm accent ring — the "reduzierter Meridian-Kreis".
-    if let Some(ref path) = PathBuilder::from_circle(cx, cy, ring_r) {
-        let stroke = Stroke {
-            width: 2.0,
-            ..Stroke::default()
-        };
-        pm.as_mut().stroke_path(
-            path,
-            &paint_for(palette.accent),
-            &stroke,
-            Transform::identity(),
-            None,
-        );
-    }
-
-    // Single north pointer — the clear axis / navigation direction (abstract).
-    let mut needle = PathBuilder::new();
-    needle.move_to(cx, cy - ring_r + 1.0);
-    needle.line_to(cx - waist, cy);
-    needle.line_to(cx + waist, cy);
-    needle.close();
-    if let Some(ref path) = needle.finish() {
-        pm.as_mut().fill_path(
-            path,
-            &paint_for(palette.accent),
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
-    }
-
-    // Centre navigation dot.
-    if let Some(ref path) = PathBuilder::from_circle(cx, cy, 2.2) {
-        pm.as_mut().fill_path(
-            path,
-            &paint_for(palette.accent),
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
+    let color = theme.palette.text;
+    paint.set_color_rgba8(color.r, color.g, color.b, color.a);
+    let inset = theme.spacing.xs as f32;
+    let step = (size as f32 - inset * 2.0) / 2.0;
+    let radius = step / 4.0;
+    for row in 0..2 {
+        for column in 0..2 {
+            let center_x = inset + step * (column as f32 + 0.5);
+            let center_y = inset + step * (row as f32 + 0.5);
+            if let Some(path) = PathBuilder::from_circle(center_x, center_y, radius) {
+                pm.as_mut().fill_path(
+                    &path,
+                    &paint,
+                    tiny_skia::FillRule::Winding,
+                    Transform::identity(),
+                    None,
+                );
+            }
+        }
     }
 
     Some(pm)
@@ -241,8 +197,7 @@ fn action_for_id_as_click(id: &str) -> Option<ClickAction> {
     match id {
         "panel-launcher" => Some(ClickAction::ToggleLauncher),
         "panel-network" => Some(ClickAction::ToggleNetworkPopup),
-        "panel-sound" => Some(ClickAction::ToggleAudioPopup),
-        "panel-battery" => Some(ClickAction::CyclePowerProfile),
+        "panel-sound" | "panel-battery" => Some(ClickAction::ToggleNetworkPopup),
         "panel-workspace" => Some(ClickAction::ToggleWorkspacePopup),
         "panel-screenshot" => Some(ClickAction::TakeScreenshot),
         "panel-clock" => Some(ClickAction::Clock),

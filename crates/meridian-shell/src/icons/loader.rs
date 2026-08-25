@@ -239,6 +239,15 @@ impl IconLoader {
         if !fallback.is_empty() && fallback != "hicolor" && !visited.contains(fallback) {
             chain.push(fallback.to_string());
         }
+        // Some BSD packages keep the Freedesktop generic application icons in
+        // AdwaitaLegacy without declaring it as an inherited theme. Keep these
+        // standards-based fallbacks ahead of hicolor so generic launcher names
+        // remain portable across Linux and BSD installations.
+        for supplemental in ["Adwaita", "AdwaitaLegacy"] {
+            if !chain.iter().any(|theme| theme == supplemental) {
+                chain.push(supplemental.to_string());
+            }
+        }
         chain.push("hicolor".to_string());
         chain
     }
@@ -344,6 +353,7 @@ impl IconLoader {
 fn icon_aliases(name: &str) -> &'static [&'static str] {
     match name {
         "mini.xterm" | "xterm" | "uxterm" => &["utilities-terminal"],
+        "chromium" => &["chrome"],
         _ => &[],
     }
 }

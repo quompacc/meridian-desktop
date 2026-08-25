@@ -120,6 +120,7 @@ include!("init/build.rs");
 include!("init/layout.rs");
 include!("init/hotplug.rs");
 include!("init/event_sources.rs");
+#[allow(clippy::items_after_test_module)] // Split test submodule precedes this entry point.
 pub fn init_drm(
     event_loop: &mut EventLoop<MeridianState>,
     state: &mut MeridianState,

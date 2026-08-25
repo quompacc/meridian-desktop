@@ -160,7 +160,6 @@ impl MeridianShell {
         self.wallpaper_path = Some(path);
         self.wallpaper_mode = mode;
         self.ipc.send(&meridian_ipc::ShellCommand::ReloadConfig);
-        self.refresh_web_appearance();
         tracing::info!(
             "Wallpaper applied: path={:?} mode={:?}",
             self.wallpaper_path,

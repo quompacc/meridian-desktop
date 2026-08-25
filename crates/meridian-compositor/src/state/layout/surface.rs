@@ -178,7 +178,7 @@ mod tests {
             ));
         }
         assert!(super::layer_accepts_pointer(
-            "meridian-panel-web",
+            "meridian-panel",
             KeyboardInteractivity::None
         ));
     }

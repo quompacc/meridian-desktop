@@ -356,8 +356,13 @@ impl KeyboardHandler for MeridianShell {
 
         // ── Command palette keyboard input ────────────────────────────────────
         let is_backspace = event.keysym == Keysym::BackSpace;
-        let is_down = event.keysym == Keysym::Down;
-        let is_up = event.keysym == Keysym::Up;
+        let grid_direction = match event.keysym {
+            Keysym::Left => Some(crate::app_view::GridDirection::Left),
+            Keysym::Right => Some(crate::app_view::GridDirection::Right),
+            Keysym::Up => Some(crate::app_view::GridDirection::Up),
+            Keysym::Down => Some(crate::app_view::GridDirection::Down),
+            _ => None,
+        };
         let is_enter = event.keysym == Keysym::Return || event.keysym == Keysym::KP_Enter;
 
         if is_escape {
@@ -380,31 +385,23 @@ impl KeyboardHandler for MeridianShell {
             return;
         }
 
-        if is_down || is_up {
+        if let Some(direction) = grid_direction {
             let filtered = crate::app_view::collect_palette_apps(
                 &self.launcher_state.apps,
                 &self.search_query,
-                &self.icon_cache,
                 &self.hidden_execs,
+                self.launcher_state.category,
+                &self.pinned_apps,
             );
             let n = filtered.len();
-            if n > 0 {
-                self.launcher_selected_idx = Some(match self.launcher_selected_idx {
-                    None => {
-                        if is_down {
-                            0
-                        } else {
-                            n - 1
-                        }
-                    }
-                    Some(i) => {
-                        if is_down {
-                            (i + 1).min(n - 1)
-                        } else {
-                            i.saturating_sub(1)
-                        }
-                    }
-                });
+            self.launcher_selected_idx =
+                crate::app_view::next_grid_selection(self.launcher_selected_idx, n, direction);
+            if let Some(selected_idx) = self.launcher_selected_idx {
+                self.app_view_scroll_y = crate::app_view::scroll_grid_selection_into_view(
+                    self.app_view_scroll_y,
+                    selected_idx,
+                    n,
+                );
             }
             self.draw_launcher(qh, RepaintReason::Keyboard);
             return;
@@ -414,8 +411,9 @@ impl KeyboardHandler for MeridianShell {
             let filtered = crate::app_view::collect_palette_apps(
                 &self.launcher_state.apps,
                 &self.search_query,
-                &self.icon_cache,
                 &self.hidden_execs,
+                self.launcher_state.category,
+                &self.pinned_apps,
             );
             let idx = self.launcher_selected_idx.unwrap_or(0);
             if let Some(app) = filtered.get(idx) {

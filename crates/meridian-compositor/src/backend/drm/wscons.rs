@@ -341,7 +341,7 @@ fn read_events(fd: BorrowedFd<'_>) -> io::Result<Vec<WsconsEvent>> {
     }
 
     let bytes_read = bytes_read as usize;
-    if bytes_read % size_of::<WsconsEvent>() != 0 {
+    if !bytes_read.is_multiple_of(size_of::<WsconsEvent>()) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "partial wscons_event record",
@@ -367,7 +367,13 @@ fn dispatch_keyboard_events(
         match event.event_type {
             EVENT_KEY_DOWN if event.value >= 0 => {
                 let key = event.value as u32;
-                pressed_keys.insert(key);
+                // wscons repeats held keys as additional DOWN records. Wayland
+                // clients perform key repeat from repeat_info themselves, while
+                // forwarding these records would retrigger compositor shortcuts
+                // such as Super+Space on every repeat tick.
+                if !pressed_keys.insert(key) {
+                    continue;
+                }
                 state.process_input_event(InputEvent::<WsconsInput>::Keyboard {
                     event: WsconsKeyboardEvent {
                         time,

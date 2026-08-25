@@ -15,7 +15,8 @@ fn panel_chip_style_returns_correct_size() {
 fn tray_chip_widths_match() {
     assert_eq!(AUDIO_W, TRAY_W);
     assert_eq!(SNI_W, TRAY_W);
-    assert_eq!(SCREENSHOT_W, TRAY_W);
+    assert_eq!(SCREENSHOT_W, PanelTokens::DEFAULT.control_width as i32);
+    const { assert!(TRAY_W < SCREENSHOT_W) };
 }
 
 #[test]
@@ -167,6 +168,6 @@ fn action_for_id_as_click_screenshot() {
     ));
     assert!(matches!(
         action_for_id_as_click("panel-sound"),
-        Some(ClickAction::ToggleAudioPopup)
+        Some(ClickAction::ToggleNetworkPopup)
     ));
 }

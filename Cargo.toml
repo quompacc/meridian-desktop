@@ -15,7 +15,6 @@ members = [
     "crates/meridian-polkit",
     "crates/meridian-compass-render",
     "crates/meridian-boot-common",
-    "crates/meridian-ui-runtime",
     "crates/meridian-app-catalog",
     "crates/meridian-xwayland-drm-bridge",
 ]

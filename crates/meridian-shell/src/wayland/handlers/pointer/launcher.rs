@@ -65,12 +65,11 @@ macro_rules! handle_launcher_pointer {
                 if let PointerEventKind::Motion { .. } = $event.kind {
                     if !$shell.launcher_settings_open {
                         let search_active = !$shell.search_query.is_empty();
-                        let n_pinned = $shell.pinned_apps.len();
                         let new_bento = if !search_active {
                             crate::app_view::hit_bento_tile(
                                 local_pos.0 as i32,
                                 local_pos.1 as i32,
-                                n_pinned,
+                                crate::launcher::LauncherCategory::ALL.len(),
                             )
                         } else {
                             None
@@ -86,8 +85,9 @@ macro_rules! handle_launcher_pointer {
                             let filtered = crate::app_view::collect_palette_apps(
                                 &$shell.launcher_state.apps,
                                 &$shell.search_query,
-                                &$shell.icon_cache,
                                 &$shell.hidden_execs,
+                                $shell.launcher_state.category,
+                                &$shell.pinned_apps,
                             );
                             hit.filter(|&i| i < filtered.len())
                         };
@@ -110,7 +110,6 @@ macro_rules! handle_launcher_pointer {
                             $shell.hovered_app_card_idx = new_app;
                             $shell.settings_hovered = new_settings;
                             $shell.hovered_power_btn = new_pwr;
-                            $shell.draw_launcher($qh, RepaintReason::Pointer);
                         }
                     }
                 }
@@ -123,8 +122,9 @@ macro_rules! handle_launcher_pointer {
                         let filtered = crate::app_view::collect_palette_apps(
                             &$shell.launcher_state.apps,
                             &$shell.search_query,
-                            &$shell.icon_cache,
                             &$shell.hidden_execs,
+                            $shell.launcher_state.category,
+                            &$shell.pinned_apps,
                         );
                         let hit = crate::app_view::hit_app_row(
                             local_pos.0 as i32,
@@ -290,27 +290,25 @@ macro_rules! handle_launcher_pointer {
                     if !$shell.launcher_settings_open {
                         let step_px: i32 = 60;
                         let delta_px = if vertical.discrete != 0 {
-                            vertical.discrete * step_px
+                            $shell.launcher_scroll_remainder = 0.0;
+                            -vertical.discrete * step_px
                         } else {
-                            vertical.absolute as i32
+                            $shell.launcher_scroll_remainder += -vertical.absolute * 4.0;
+                            if $shell.launcher_scroll_remainder.abs() < 6.0 {
+                                0
+                            } else {
+                                let delta = $shell.launcher_scroll_remainder.trunc() as i32;
+                                $shell.launcher_scroll_remainder -= f64::from(delta);
+                                delta
+                            }
                         };
                         let max_scroll = crate::app_view::max_scroll_for_palette(
                             &$shell.launcher_state.apps,
                             &$shell.search_query,
-                            &$shell.icon_cache,
                             &$shell.hidden_execs,
+                            $shell.launcher_state.category,
+                            &$shell.pinned_apps,
                             crate::LAUNCHER_HEIGHT,
-                        );
-                        // info! (temp) — diagnosing "scroll unusable": shows
-                        // whether touchpad `absolute` truncates to ~0 via `as i32`,
-                        // or whether max_scroll is 0 (no scrollable range computed).
-                        tracing::info!(
-                            "launcher scroll: discrete={} absolute={:.3} delta_px={} cur={} max_scroll={}",
-                            vertical.discrete,
-                            vertical.absolute,
-                            delta_px,
-                            $shell.app_view_scroll_y,
-                            max_scroll
                         );
                         if delta_px != 0 {
                             let new_scroll =
@@ -330,18 +328,21 @@ macro_rules! handle_launcher_pointer {
                         let cy = local_pos.1 as i32;
                         let search_active = !$shell.search_query.is_empty();
 
-                        // Bento strip
+                        // Category strip
                         if let Some(idx) =
-                            crate::app_view::hit_bento_tile(cx, cy, $shell.pinned_apps.len())
+                            crate::app_view::hit_bento_tile(
+                                cx,
+                                cy,
+                                crate::launcher::LauncherCategory::ALL.len(),
+                            )
                         {
-                            if let Some(app) = $shell.pinned_apps.get(idx).cloned() {
-                                $shell.dispatch_widget_action(
-                                    $qh,
-                                    crate::widget_action::WidgetAction::LaunchApp {
-                                        program: app.program.clone(),
-                                        args: app.args.clone(),
-                                    },
-                                );
+                            if let Some(category) =
+                                crate::launcher::LauncherCategory::ALL.get(idx).copied()
+                            {
+                                $shell.launcher_state.category = category;
+                                $shell.app_view_scroll_y = 0;
+                                $shell.launcher_selected_idx = None;
+                                $shell.draw_launcher($qh, RepaintReason::Pointer);
                                 continue;
                             }
                         }
@@ -357,8 +358,9 @@ macro_rules! handle_launcher_pointer {
                             let filtered = crate::app_view::collect_palette_apps(
                                 &$shell.launcher_state.apps,
                                 &$shell.search_query,
-                                &$shell.icon_cache,
                                 &$shell.hidden_execs,
+                                $shell.launcher_state.category,
+                                &$shell.pinned_apps,
                             );
                             if let Some(app) = filtered.get(idx) {
                                 crate::launcher::LauncherState::launch_desktop_app(

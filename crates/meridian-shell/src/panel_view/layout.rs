@@ -170,9 +170,6 @@ pub(crate) fn build_panel_widget_tree(
     );
 
     // Right cluster
-    let (clock_text_w, _) = measure_text(clock, FONT_SIZE);
-    let clock_w = (clock_text_w + 2 * CLOCK_PAD).max(40);
-    let ws_text: Box<str> = format!("{}/{}", active_workspace, total_workspaces.max(1)).into();
     let mut right_children: Vec<Box<dyn Widget>> = Vec::new();
     for (idx, item) in status_notifier_items
         .iter()
@@ -195,14 +192,16 @@ pub(crate) fn build_panel_widget_tree(
     if !right_children.is_empty() {
         right_children.push(Box::new(PanelDivider));
     }
-    right_children.extend([
-        Box::new(PanelChip::new(
-            "panel-screenshot",
-            "📷".into(),
-            screenshot_icon,
-            SCREENSHOT_W,
-            false,
-        )) as Box<dyn Widget>,
+    right_children.push(Box::new(PanelChip::new(
+        "panel-screenshot",
+        "📷".into(),
+        screenshot_icon,
+        SCREENSHOT_W,
+        false,
+    )));
+    right_children.push(Box::new(PanelDivider));
+
+    let mut status_children: Vec<Box<dyn Widget>> = vec![
         Box::new(PanelChip::new(
             "panel-network",
             "NET".into(),
@@ -217,32 +216,37 @@ pub(crate) fn build_panel_widget_tree(
             AUDIO_W,
             audio_popup_open,
         )),
-    ]);
+    ];
     if battery.present {
-        right_children.push(Box::new(PanelChip::new(
+        status_children.push(Box::new(PanelChip::new(
             "panel-battery",
             battery.label().into_boxed_str(),
             battery_icon,
-            BATTERY_W,
+            TRAY_W,
             false,
         )));
     }
+    right_children.push(Box::new(Container::new(
+        WidgetStyle {
+            flex_direction: FlexDirection::Row,
+            align_items: Some(AlignItems::Center),
+            gap: UiSize {
+                width: ui_length(0.0),
+                height: ui_length(0.0),
+            },
+            ..Default::default()
+        },
+        status_children,
+    )));
     right_children.extend([
         Box::new(PanelDivider) as Box<dyn Widget>,
-        Box::new(PanelChip::new(
-            "panel-workspace",
-            ws_text,
-            None,
-            WS_W,
-            false,
-        )),
-        Box::new(PanelChip::new(
-            "panel-clock",
-            clock.to_string().into_boxed_str(),
-            None,
-            clock_w,
-            false,
-        )),
+        Box::new(PanelWorkspaceChip {
+            active: active_workspace,
+            total: total_workspaces,
+        }),
+        Box::new(PanelClockChip {
+            value: clock.into(),
+        }),
     ]);
     let right_cluster = Container::new(
         WidgetStyle {

@@ -47,7 +47,7 @@ fn find_helper() -> Option<&'static str> {
         // The sandbox grants execute-only access to the fixed package helper.
         // A preceding Path::exists() would require read-path metadata access
         // and would also introduce a check/use race.
-        return HELPER_PATHS.first().copied();
+        HELPER_PATHS.first().copied()
     }
 
     #[cfg(not(target_os = "openbsd"))]

@@ -20,14 +20,6 @@ use smithay::{
 use tracing::{debug, warn};
 
 use super::MeridianRenderElements;
-use crate::backend::non_opaque_surface::NonOpaqueSurfaceRenderElement;
-
-const LAUNCHER_NAMESPACE: &str = "meridian-launcher";
-const QUICK_SETTINGS_NAMESPACE: &str = "meridian-quick-settings";
-
-fn needs_transparent_layer_composition(namespace: &str) -> bool {
-    matches!(namespace, LAUNCHER_NAMESPACE | QUICK_SETTINGS_NAMESPACE)
-}
 
 #[derive(Debug)]
 struct LayerRenderState {
@@ -204,17 +196,11 @@ pub(super) fn render_layer_elements(
             layer.layer(),
             layer_elements.len()
         );
-        if needs_transparent_layer_composition(&layer.namespace()) {
-            out.extend(layer_elements.into_iter().map(|element| {
-                MeridianRenderElements::NonOpaqueLayer(NonOpaqueSurfaceRenderElement::new(element))
-            }));
-        } else {
-            out.extend(
-                layer_elements
-                    .into_iter()
-                    .map(MeridianRenderElements::Layer),
-            );
-        }
+        out.extend(
+            layer_elements
+                .into_iter()
+                .map(MeridianRenderElements::Layer),
+        );
     }
 }
 

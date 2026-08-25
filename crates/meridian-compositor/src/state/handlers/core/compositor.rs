@@ -173,19 +173,6 @@ impl CompositorHandler for MeridianState {
                         has_buffer
                     );
                 }
-                if namespace == "meridian-panel-web" && !initial_configure_sent {
-                    tracing::info!(
-                        "web panel initial layer state: output={} layer={:?} anchor={:?} margin={:?} exclusive_zone={:?} requested_size={:?} geometry={:?} has_buffer={}",
-                        output_name,
-                        layer_kind,
-                        anchor,
-                        margin,
-                        exclusive_zone,
-                        requested_size,
-                        layer_geometry,
-                        has_buffer
-                    );
-                }
                 if wants_focus && has_buffer {
                     if matches!(layer_kind, WlrLayer::Background) {
                         tracing::debug!(

@@ -6,22 +6,18 @@
 > `AGENTS.md` und `CLAUDE.md`. Zentralität wird durch den Guard-Test
 > `cargo test -p meridian-tokens --test design_guard` erzwungen.
 
-> **Renderer-neutral:** Das Manifest gilt gleichermaßen für die aktuelle native
-> Rust-Shell und die Zielplattform aus WebKit/HTML/CSS/Web Components. Ein
-> Rendererwechsel ändert keine visuelle Regel und erlaubt kein zweites
-> Designsystem.
+> **Nativer Produktpfad:** Meridian-eigene UI wird in Rust gerendert. Der
+> archivierte WebKit-Prototyp ist nur eine visuelle Referenz; er ist weder
+> normativ noch Teil des Builds und erlaubt kein zweites Designsystem.
 
 ### Verbindliche Token-Pipeline
 
 `meridian-tokens` (`Palette`, `Interaction`, `Elevation`, `Radius`) plus
 `meridian-config` (`Decorations`) bleiben die einzige editierbare Designquelle.
 Native Renderer konsumieren diese Werte direkt; Web-UI konsumiert daraus
-generierte CSS Custom Properties. Produktions-CSS darf keine unabhängigen
-Farb-, Alpha-, Radius-, Mix- oder Geometriewerte definieren.
-
-Vor der ersten produktiven Web-UI-Migration muss der Guard auch HTML/CSS/TS
-abdecken. Marken-Assets und Tests bleiben nur mit expliziter Begründung
-ausgenommen.
+generierte CSS Custom Properties nur innerhalb der archivierten Referenz.
+Produktive UI konsumiert die Rust-Tokens direkt. Marken-Assets und Tests bleiben
+nur mit expliziter Begründung ausgenommen.
 
 ## 1. Grundidee
 

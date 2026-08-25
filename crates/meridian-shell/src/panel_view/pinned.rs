@@ -57,12 +57,13 @@ impl Widget for PanelPinnedChip {
             }
         }
 
-        // Icon (centered, shifted up slightly to leave room for indicator)
+        // Icon stays optically centred; the running indicator occupies only
+        // the bottom edge and does not push the application mark upward.
         if let Some(ref icon) = self.icon {
             let iw = icon.width() as i32;
             let ih = icon.height() as i32;
             let x = area.x + (area.width - iw) / 2;
-            let y = area.y + (area.height - ACCENT_LINE_H - ih) / 2;
+            let y = area.y + (area.height - ih) / 2;
             canvas.draw_pixmap(
                 x,
                 y,
@@ -74,84 +75,24 @@ impl Widget for PanelPinnedChip {
         } else {
             let (text_w, _) = measure_text(&self.label, FONT_SIZE);
             let tx = area.x + (area.width - text_w) / 2;
-            let ty = area.y + (area.height - ACCENT_LINE_H) / 2 + 5;
+            let ty = area.y + area.height / 2 + theme.spacing.xs;
             paint_text(canvas, &self.label, tx, ty, FONT_SIZE, theme.palette.text);
         }
 
-        // Indicator: dot or pill at the bottom of the chip
-        let chip_cx = (area.x + area.width / 2) as f32;
-        let indicator_cy = (area.y + area.height - 2) as f32; // 2px from chip bottom
-
-        match self.window_count {
-            0 => {
-                // No running window: dim accent line (subtle, just chip chrome)
-                let dim = Color::rgba(
-                    theme.palette.accent.r,
-                    theme.palette.accent.g,
-                    theme.palette.accent.b,
-                    IDLE_INDICATOR_OPACITY,
-                );
-                let line = Rect {
-                    x: area.x + 4,
-                    y: area.y + area.height - ACCENT_LINE_H,
-                    width: area.width - 8,
-                    height: ACCENT_LINE_H,
-                };
-                if let Some(ref path) = rounded_rect_path(line, 1) {
-                    paint_fill(canvas, path, dim);
-                }
-            }
-            1 => {
-                // Single window: small dot
-                let dot_color = if self.has_focused {
-                    Color::rgba(
-                        theme.palette.text.r,
-                        theme.palette.text.g,
-                        theme.palette.text.b,
-                        FOCUSED_DOT_OPACITY,
-                    )
-                } else {
-                    theme.palette.accent
-                };
-                draw_circle(canvas, chip_cx, indicator_cy, 2.5, dot_color);
-            }
-            n => {
-                // Multiple windows: pill with count
-                let dot_color = if self.has_focused {
-                    theme.palette.text
-                } else {
-                    theme.palette.accent
-                };
-                let label: Box<str> = if n > 9 {
-                    "9+".into()
-                } else {
-                    n.to_string().into()
-                };
-                let (text_w, _) = measure_text(&label, 9.0);
-                let pill_w = (text_w + 8).max(14);
-                let pill_h = 9;
-                let pill_x = area.x + (area.width - pill_w) / 2;
-                let pill_y = area.y + area.height - pill_h - 1;
-                if let Some(ref path) = rounded_rect_path(
-                    Rect {
-                        x: pill_x,
-                        y: pill_y,
-                        width: pill_w,
-                        height: pill_h,
-                    },
-                    4,
-                ) {
-                    paint_fill(canvas, path, dot_color);
-                }
-                let text_color = theme.palette.background;
-                paint_text(
-                    canvas,
-                    &label,
-                    pill_x + (pill_w - text_w) / 2,
-                    pill_y + pill_h - 1,
-                    9.0,
-                    text_color,
-                );
+        if self.window_count > 0 {
+            let line_w = if self.has_focused {
+                theme.spacing.xl + theme.spacing.sm
+            } else {
+                theme.spacing.xl
+            };
+            let line = Rect {
+                x: area.x + (area.width - line_w) / 2,
+                y: area.y + area.height - ACCENT_LINE_H,
+                width: line_w,
+                height: ACCENT_LINE_H,
+            };
+            if let Some(path) = rounded_rect_path(line, meridian_tokens::Radius::DEFAULT.sm) {
+                paint_fill(canvas, &path, theme.palette.accent);
             }
         }
     }

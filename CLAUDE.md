@@ -20,17 +20,17 @@ Nur `design_guard` (reiner Text-Scan in `meridian-tokens`) läuft notfalls lokal
 OpenBSD-/FreeBSD-Ergebnisse stets mit OS/Hardware kennzeichnen; ein VM- oder
 Linux-Pass ist kein BSD-Hardware-Pass.
 
-## Aktive Produktstrategie (2026-08-19)
+## Aktive Produktstrategie (2026-08-25)
 
 - Meridian bleibt eigener Rust-Wayland-Compositor.
 - OpenBSD wird auf Acer/Intel HD 620 evaluiert; FreeBSD bleibt Alternative.
-- Meridian-eigene Alltags-UI migriert nach einem Proof auf WebKit + HTML/CSS +
-  Web Components + kleine TypeScript-Schicht + typisierte Rust-Bridge.
+- Meridian-eigene Alltags-UI bleibt vollständig nativ in Rust. Der archivierte
+  WebKit-Prototyp dient ausschließlich als visuelle Designreferenz.
 - Reihenfolge: Hardware-Inventar -> OpenBSD-Baseline -> Meridian-Core ->
-  Runtime/Bridge -> Panel -> Launcher -> Quick Settings.
-- Keine großen neuen Features vor diesem Vertical Slice.
-- WebKit bleibt unprivilegiert; privilegierte Aktionen bleiben in kleinen
-  Rust-Services/Helpern.
+  natives Panel -> nativer Launcher -> native Quick Settings.
+- Keine großen neuen Features vor dieser nativen Qualitätsrunde.
+- Privilegierte Aktionen bleiben in kleinen Rust-Services/Helpern; die Shell
+  bleibt unprivilegiert.
 
 ## ⛔ ABSOLUTES TABU — KEINE AUR-PAKETE. NIEMALS.
 **NUR offizielle Repos** (Arch `core`/`extra`, Distro-Repos). **DAS AUR IST
@@ -59,8 +59,8 @@ wählen oder nachfragen. Niemals `yay`/`paru`/`makepkg` o. Ä. ausführen.
   (Manifest §3.4/§9/§14).
 - Guard grün halten: `cargo test -p meridian-tokens --test design_guard`.
 - Definition of Done: `docs/GUI_CENTRALIZATION_PLAN.md` §9.
-- Web-CSS wird aus `meridian-tokens` + `meridian-config` generiert; niemals eine
-  zweite handgepflegte Tokenquelle einführen.
+- Archivierte Mockups sind nicht normativ; Produkt-UI konsumiert ausschließlich
+  `meridian-tokens` + `meridian-config`.
 
 ## Vor jedem Commit:
 - cargo test --workspace grün

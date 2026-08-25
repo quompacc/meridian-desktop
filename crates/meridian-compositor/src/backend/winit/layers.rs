@@ -15,14 +15,6 @@ use smithay::{
 };
 
 use super::WinitRenderElements;
-use crate::backend::non_opaque_surface::NonOpaqueSurfaceRenderElement;
-
-const LAUNCHER_NAMESPACE: &str = "meridian-launcher";
-const QUICK_SETTINGS_NAMESPACE: &str = "meridian-quick-settings";
-
-fn needs_transparent_layer_composition(namespace: &str) -> bool {
-    matches!(namespace, LAUNCHER_NAMESPACE | QUICK_SETTINGS_NAMESPACE)
-}
 
 pub(super) type LayerRenderData = (LayerSurface, Rectangle<i32, Logical>);
 
@@ -93,13 +85,7 @@ pub(super) fn render_layer_elements(
             1.0,
             Kind::Unspecified,
         );
-        if needs_transparent_layer_composition(&layer.namespace()) {
-            out.extend(elements.into_iter().map(|element| {
-                WinitRenderElements::NonOpaqueLayer(NonOpaqueSurfaceRenderElement::new(element))
-            }));
-        } else {
-            out.extend(elements.into_iter().map(WinitRenderElements::Layer));
-        }
+        out.extend(elements.into_iter().map(WinitRenderElements::Layer));
     }
 }
 

@@ -32,6 +32,7 @@ mod popup_card;
 mod power_profile;
 mod printers;
 mod process;
+mod quick_settings_popup;
 mod region_picker;
 mod screenshot_consent;
 mod settings_view;
@@ -45,7 +46,6 @@ mod ui;
 mod updates;
 mod users;
 mod wayland;
-mod web_panel;
 mod widget_action;
 mod widget_traversal;
 mod wifi_password_modal;
@@ -77,11 +77,9 @@ pub const CALENDAR_POPUP_WIDTH: u32 = 280;
 pub const CALENDAR_POPUP_HEIGHT: u32 = 220;
 pub const WORKSPACE_POPUP_WIDTH: u32 = 280;
 pub const WORKSPACE_POPUP_HEIGHT: u32 = 184;
-pub const NETWORK_POPUP_WIDTH: u32 = 280;
-// Tall enough for the tab strip + up to 6 Wi-Fi rows + footer link; the Status
-// tab leaves the lower area empty. Both tabs share one fixed height so the
-// shared `network_layer` surface never has to be re-sized between tabs.
-pub const NETWORK_POPUP_HEIGHT: u32 = 320;
+pub const NETWORK_POPUP_WIDTH: u32 = meridian_tokens::QuickSettings::DEFAULT.width as u32;
+// The quick-settings overview and network detail share one fixed layer surface.
+pub const NETWORK_POPUP_HEIGHT: u32 = meridian_tokens::QuickSettings::DEFAULT.height as u32;
 pub const AUDIO_POPUP_WIDTH: u32 = 280;
 pub const AUDIO_POPUP_HEIGHT: u32 = 200;
 pub const AUDIO_POPUP_RIGHT_MARGIN: i32 = 126;
@@ -108,7 +106,9 @@ pub const fn popup_surface_w(card_w: u32) -> u32 {
 pub const fn popup_surface_h(card_h: u32) -> u32 {
     card_h + 2 * POPUP_SHADOW_PAD as u32
 }
-pub const NETWORK_POPUP_RIGHT_MARGIN: i32 = 220;
+// The layer includes transparent shadow padding. Subtract that padding so the
+// visible card edge aligns with the panel island's tokenized right edge.
+pub const NETWORK_POPUP_RIGHT_MARGIN: i32 = PANEL_SIDE_MARGIN as i32 - POPUP_SHADOW_PAD;
 pub const NOTIFICATION_WIDTH: u32 = 360;
 pub const NOTIFICATION_HEIGHT: u32 = 90;
 pub const NOTIFICATION_TOP_MARGIN: i32 = 20;
@@ -141,7 +141,7 @@ pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
             program: "chromium".to_string(),
             args: vec![],
             terminal: false,
-            icon_name: Some("chromium".to_string()),
+            icon_name: Some("chrome".to_string()),
         },
         PinnedApp {
             label: "Files".to_string(),
@@ -207,24 +207,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut event_loop = EventLoop::try_new()?;
     let (mut shell, qh) = wayland::initialize(&mut event_loop)?;
-    // GTK/WebKit may activate xdg-desktop-portal as soon as its first process
-    // starts. Publish the Wayland session environment before spawning any of
-    // those hosts so D-Bus-activated GTK backends can connect immediately.
     activate_user_session();
-    let mut web_panel = if shell.web_panel_enabled {
-        match web_panel::WebPanelProcess::spawn(shell.theme.appearance_is_light()) {
-            Ok(process) => Some(process),
-            Err(error) => {
-                tracing::error!("failed to start managed WebKit panel: {error}");
-                shell.activate_native_panel_fallback();
-                None
-            }
-        }
-    } else {
-        None
-    };
-    shell.prewarm_web_launcher();
-    shell.prewarm_web_quick_settings();
     // THEME-1: write the legacy theme files (kdeglobals / gtk settings.ini /
     // gsettings) that KDE/GTK apps read at startup, BEFORE any app launches.
     // The appearance portal alone does not make Breeze/KColorScheme apps (e.g.
@@ -242,41 +225,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     while !shell.exit {
         event_loop.dispatch(Duration::from_millis(500), &mut shell)?;
-        if let Some(light_theme) = shell.web_panel_theme_refresh.take() {
-            if let Some(process) = web_panel.as_mut() {
-                if let Err(error) = process.set_theme(light_theme) {
-                    tracing::error!("failed to update WebKit panel theme: {error}");
-                    web_panel = None;
-                    shell.activate_native_panel_fallback();
-                }
-            }
-        }
-        let exited = match web_panel.as_mut().map(|process| process.try_wait()) {
-            Some(Ok(Some(status))) => {
-                tracing::error!("managed WebKit panel exited: {status}");
-                true
-            }
-            Some(Err(error)) => {
-                tracing::error!("failed to monitor managed WebKit panel: {error}");
-                true
-            }
-            _ => false,
-        };
-        if exited {
-            web_panel = None;
-            shell.activate_native_panel_fallback();
-        }
     }
 
     Ok(())
 }
 
 /// Make the systemd --user manager and D-Bus activation aware of the Wayland
-/// session environment before any GTK/WebKit host can activate a portal, then
-/// pull up `graphical-session.target` so user services start. Without this the
-/// portal never runs, so apps can't read the appearance/color-scheme and render
-/// un-themed. Best-effort: all commands no-op on systems without a systemd
-/// --user instance (e.g. BSD).
+/// session environment, then pull up `graphical-session.target` so user
+/// services start. Without this the portal never runs, so apps cannot read the
+/// appearance/color-scheme and render consistently. Best-effort: all commands
+/// no-op on systems without a systemd --user instance (e.g. BSD).
 fn activate_user_session() {
     use std::process::Command;
     const VARS: &[&str] = &["WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE"];
@@ -585,7 +543,7 @@ mod tests {
         assert_eq!(pinned[0].icon_name.as_deref(), Some("utilities-terminal"));
         assert_eq!(pinned[1].label, "Web");
         assert_eq!(pinned[1].program, "chromium");
-        assert_eq!(pinned[1].icon_name.as_deref(), Some("chromium"));
+        assert_eq!(pinned[1].icon_name.as_deref(), Some("chrome"));
         assert_eq!(pinned[2].label, "Files");
         assert_eq!(pinned[2].program, "nemo");
         assert_eq!(pinned[2].icon_name.as_deref(), Some("system-file-manager"));

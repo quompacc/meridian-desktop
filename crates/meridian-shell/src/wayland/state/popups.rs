@@ -1,9 +1,15 @@
 impl MeridianShell {
-    fn toggle_launcher(&mut self) {
-        if self.web_panel_enabled {
-            self.toggle_web_launcher();
-            return;
+    pub(crate) fn open_system_settings_from_ipc(&mut self) {
+        if !self.launcher_state.open {
+            self.toggle_launcher();
         }
+        self.launcher_settings_open = true;
+        self.settings_category = crate::settings_view::SettingsCategory::SystemOverview;
+        self.launcher_dirty = true;
+        self.panel_dirty = true;
+    }
+
+    fn toggle_launcher(&mut self) {
         let open_before = self.launcher_state.open;
         if !open_before && self.calendar_popup_open {
             self.close_calendar_popup(CommitReason::Input);

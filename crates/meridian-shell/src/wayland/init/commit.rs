@@ -8,13 +8,8 @@ pub(super) fn commit_initial_surfaces(shell: &mut MeridianShell) {
     info!("Desktop background surface committed without input buffer");
     shell.desktop_menu_layer.commit();
     info!("Desktop menu surface created and committed");
-    if shell.web_panel_enabled {
-        shell.commit_surface(CommitSurfaceKind::Panel, CommitReason::InitialCreate);
-        info!("Native panel committed as bufferless work-area reservation for WebKit");
-    } else {
-        shell.commit_surface(CommitSurfaceKind::Panel, CommitReason::InitialCreate);
-        info!("Panel surface created and committed");
-    }
+    shell.commit_surface(CommitSurfaceKind::Panel, CommitReason::InitialCreate);
+    info!("Panel surface created and committed");
     shell.commit_surface(CommitSurfaceKind::Launcher, CommitReason::InitialCreate);
     info!("Launcher surface created and committed");
     shell.calendar_layer.commit();

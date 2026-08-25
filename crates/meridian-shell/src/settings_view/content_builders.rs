@@ -47,6 +47,7 @@ struct SettingsContentContext<'a> {
     pal: &'a meridian_ui::style::Palette,
 }
 
+#[allow(clippy::too_many_arguments)] // Existing flat settings-state boundary; refactor separately.
 pub(crate) fn build_settings_widget_tree(
     width: u32,
     height: u32,
