@@ -317,6 +317,9 @@ pub(crate) struct MeridianShell {
     /// True while the pointer is dragging the volume slider in the volume OSD, so
     /// motion events keep updating the level until the button is released.
     pub(crate) audio_volume_dragging: bool,
+    /// Latest locally-previewed Quick Settings volume while the pointer is
+    /// dragging. The mixer is updated once on release to keep motion smooth.
+    pub(crate) quick_settings_volume_pending: Option<u8>,
     /// Compact volume OSD (centred, bottom) shown on volume-key activity. Shares
     /// the network_layer surface with the network/audio popups.
     pub(crate) volume_osd_open: bool,

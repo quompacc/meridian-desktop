@@ -264,6 +264,10 @@ impl MeridianShell {
         self.theme_name = name.clone();
         self.available_themes = theme_manager.available_themes();
         self.icon_cache = super::init::assets::build_icon_cache(&self.theme, &self.pinned_apps);
+        crate::panel_view::warm_status_notifier_icons(
+            &mut self.icon_cache,
+            &self.status_notifier_items,
+        );
         self.launcher_icons_warmed = false;
         meridian_config::MeridianConfig::save_theme(&name);
         // THEME-1: KDE/Qt (Breeze/KColorScheme) and GTK apps read legacy config

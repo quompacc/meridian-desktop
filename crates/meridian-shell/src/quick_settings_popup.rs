@@ -415,6 +415,23 @@ fn draw_slider(
             q.slider_height,
         );
     }
+    let thumb_size = q.slider_thumb_size;
+    let thumb_center = bar.x + bar.w * i32::from(volume.min(100)) / 100;
+    painter.roundish_rect_with_radius(
+        Rect {
+            x: (thumb_center - thumb_size / 2)
+                .clamp(bar.x - thumb_size / 2, bar.x + bar.w - thumb_size / 2),
+            y: hit_rect.y + (hit_rect.h - thumb_size) / 2,
+            w: thumb_size,
+            h: thumb_size,
+        },
+        if muted {
+            glass_dim_from_config(theme)
+        } else {
+            theme.colors.accent
+        },
+        thumb_size,
+    );
 }
 
 fn text(
@@ -476,10 +493,21 @@ pub fn hit_test(width: u32, height: u32, x: f64, y: f64) -> Option<QuickSettings
     }
     let volume = VOLUME.with(Cell::get);
     if volume.contains(x, y) {
-        let fraction = ((x - f64::from(volume.x)) / f64::from(volume.w)).clamp(0.0, 1.0);
-        return Some(QuickSettingsHit::Volume((fraction * 100.0).round() as u8));
+        return Some(QuickSettingsHit::Volume(volume_from_slider_x(volume, x)));
     }
     Some(QuickSettingsHit::Card)
+}
+
+/// Map a card-local pointer x to the current slider value. During a drag the
+/// pointer may leave the bar horizontally, so the value is clamped at 0/100.
+pub fn volume_from_x(x: f64) -> Option<u8> {
+    let volume = VOLUME.with(Cell::get);
+    (volume.w > 0).then(|| volume_from_slider_x(volume, x))
+}
+
+fn volume_from_slider_x(volume: Rect, x: f64) -> u8 {
+    let fraction = ((x - f64::from(volume.x)) / f64::from(volume.w)).clamp(0.0, 1.0);
+    (fraction * 100.0).round() as u8
 }
 
 #[cfg(test)]
@@ -489,5 +517,20 @@ mod tests {
     #[test]
     fn outside_is_not_a_hit() {
         assert_eq!(hit_test(384, 468, -1.0, 10.0), None);
+    }
+
+    #[test]
+    fn slider_x_maps_and_clamps_to_percent() {
+        let slider = Rect {
+            x: 100,
+            y: 0,
+            w: 200,
+            h: 28,
+        };
+        assert_eq!(volume_from_slider_x(slider, 100.0), 0);
+        assert_eq!(volume_from_slider_x(slider, 200.0), 50);
+        assert_eq!(volume_from_slider_x(slider, 300.0), 100);
+        assert_eq!(volume_from_slider_x(slider, 40.0), 0);
+        assert_eq!(volume_from_slider_x(slider, 500.0), 100);
     }
 }

@@ -124,33 +124,32 @@ pub const THUMBNAIL_OPEN_TIMEOUT_MS: u128 = 1200;
 pub const POWER_ARM_TIMEOUT_MS: u128 = 4000;
 
 pub const THUMBNAIL_MAX_WINDOWS: usize = 3;
+
+#[cfg(target_os = "openbsd")]
+const DEFAULT_PINNED_PROGRAMS: [(&str, &str, &str); 3] = [
+    ("Term", "foot", "utilities-terminal"),
+    ("Web", "firefox", "org.mozilla.firefox"),
+    ("Files", "thunar", "system-file-manager"),
+];
+
+#[cfg(not(target_os = "openbsd"))]
+const DEFAULT_PINNED_PROGRAMS: [(&str, &str, &str); 3] = [
+    ("Term", "alacritty", "utilities-terminal"),
+    ("Web", "chromium", "chrome"),
+    ("Files", "nemo", "system-file-manager"),
+];
+
 pub(crate) fn default_pinned_apps() -> Vec<PinnedApp> {
-    // Defaults must point at apps the Meridian app stack actually ships
-    // (Cinnamon/GTK + alacritty), NOT the old KDE set (konsole/dolphin were not
-    // installed → the panel buttons silently did nothing). See APP_STACK.md.
-    vec![
-        PinnedApp {
-            label: "Term".to_string(),
-            program: "alacritty".to_string(),
+    DEFAULT_PINNED_PROGRAMS
+        .into_iter()
+        .map(|(label, program, icon)| PinnedApp {
+            label: label.to_string(),
+            program: program.to_string(),
             args: vec![],
             terminal: false,
-            icon_name: Some("utilities-terminal".to_string()),
-        },
-        PinnedApp {
-            label: "Web".to_string(),
-            program: "chromium".to_string(),
-            args: vec![],
-            terminal: false,
-            icon_name: Some("chrome".to_string()),
-        },
-        PinnedApp {
-            label: "Files".to_string(),
-            program: "nemo".to_string(),
-            args: vec![],
-            terminal: false,
-            icon_name: Some("system-file-manager".to_string()),
-        },
-    ]
+            icon_name: Some(icon.to_string()),
+        })
+        .collect()
 }
 
 fn install_panic_logger() {
@@ -343,6 +342,7 @@ fn insert_status_notifier_source(
             match event {
                 ChEvent::Msg(status_notifier::DbusEvent::ItemsChanged(items)) => {
                     tracing::info!(count = items.len(), "status-notifier: items changed");
+                    panel_view::warm_status_notifier_icons(&mut shell.icon_cache, &items);
                     shell.status_notifier_items = items;
                     shell.status_notifier_menu = None;
                     shell.panel_dirty = true;
@@ -539,13 +539,29 @@ mod tests {
         let pinned = default_pinned_apps();
         assert_eq!(pinned.len(), 3);
         assert_eq!(pinned[0].label, "Term");
-        assert_eq!(pinned[0].program, "alacritty");
         assert_eq!(pinned[0].icon_name.as_deref(), Some("utilities-terminal"));
         assert_eq!(pinned[1].label, "Web");
-        assert_eq!(pinned[1].program, "chromium");
-        assert_eq!(pinned[1].icon_name.as_deref(), Some("chrome"));
         assert_eq!(pinned[2].label, "Files");
-        assert_eq!(pinned[2].program, "nemo");
         assert_eq!(pinned[2].icon_name.as_deref(), Some("system-file-manager"));
+
+        #[cfg(target_os = "openbsd")]
+        {
+            assert_eq!(
+                pinned
+                    .iter()
+                    .map(|app| app.program.as_str())
+                    .collect::<Vec<_>>(),
+                ["foot", "firefox", "thunar"]
+            );
+            assert_eq!(pinned[1].icon_name.as_deref(), Some("org.mozilla.firefox"));
+        }
+        #[cfg(not(target_os = "openbsd"))]
+        assert_eq!(
+            pinned
+                .iter()
+                .map(|app| app.program.as_str())
+                .collect::<Vec<_>>(),
+            ["alacritty", "chromium", "nemo"]
+        );
     }
 }

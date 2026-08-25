@@ -39,6 +39,8 @@ pub struct Panel {
     pub control_height: u32,
     /// Raster size requested for pinned application icons.
     pub app_icon_size: i32,
+    /// Compact raster size for system and status-notifier icons.
+    pub status_icon_size: i32,
     /// Resting control width for launcher and pinned applications.
     pub control_width: u32,
     /// Wider status control used by the clock.
@@ -59,6 +61,7 @@ impl Panel {
         top_shadow: 16,
         control_height: 32,
         app_icon_size: 22,
+        status_icon_size: 18,
         control_width: 40,
         clock_width: 88,
         hover_alpha: 30,
@@ -215,6 +218,7 @@ pub struct QuickSettings {
     pub footer_height: i32,
     pub control_radius: i32,
     pub slider_height: i32,
+    pub slider_thumb_size: i32,
     pub icon_size: i32,
 }
 
@@ -233,6 +237,7 @@ impl QuickSettings {
         footer_height: 46,
         control_radius: 10,
         slider_height: 5,
+        slider_thumb_size: 14,
         icon_size: 20,
     };
 }
@@ -280,6 +285,7 @@ mod tests {
         assert_eq!(Panel::DEFAULT.window_reservation(), 50);
         assert_eq!(Panel::DEFAULT.control_height, 32);
         assert_eq!(Panel::DEFAULT.app_icon_size, 22);
+        assert_eq!(Panel::DEFAULT.status_icon_size, 18);
         assert_eq!(WindowChrome::DEFAULT.titlebar_height, 34);
         assert_eq!(WindowChrome::DEFAULT.button_width, 38);
         assert_eq!(WindowChrome::DEFAULT.button_icon_size, 13);
@@ -290,6 +296,7 @@ mod tests {
         assert_eq!(Mask::DEFAULT.dim_alpha, 160);
         assert_eq!(QuickSettings::DEFAULT.width, 384);
         assert_eq!(QuickSettings::DEFAULT.height, 468);
+        assert_eq!(QuickSettings::DEFAULT.slider_thumb_size, 14);
     }
 
     #[test]

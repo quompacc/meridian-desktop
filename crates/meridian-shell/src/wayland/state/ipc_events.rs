@@ -380,6 +380,10 @@ impl MeridianShell {
                 // than the launcher-grid decode that LAUNCH-3 offloaded.
                 self.icon_cache =
                     super::init::assets::build_icon_cache(&self.theme, &self.pinned_apps);
+                crate::panel_view::warm_status_notifier_icons(
+                    &mut self.icon_cache,
+                    &self.status_notifier_items,
+                );
                 self.launcher_icons_warmed = false;
                 self.panel_dirty = true;
                 self.launcher_dirty = true;

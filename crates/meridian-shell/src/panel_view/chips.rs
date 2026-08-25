@@ -35,6 +35,92 @@ struct PanelChip {
     active: bool,
 }
 
+struct PanelStatusIcon {
+    label: Box<str>,
+    icon: Option<Pixmap>,
+}
+
+impl Widget for PanelStatusIcon {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(TRAY_W as f32),
+                height: ui_length(CHIP_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+        if let Some(ref icon) = self.icon {
+            let x = area.x + (area.width - icon.width() as i32) / 2;
+            let y = area.y + (area.height - icon.height() as i32) / 2;
+            canvas.draw_pixmap(
+                x,
+                y,
+                icon.as_ref(),
+                &PixmapPaint::default(),
+                Transform::identity(),
+                None,
+            );
+        } else {
+            let (text_w, _) = measure_text(&self.label, FONT_SIZE);
+            paint_text(
+                canvas,
+                &self.label,
+                area.x + (area.width - text_w) / 2,
+                area.y + area.height / 2 + theme.spacing.xs,
+                FONT_SIZE,
+                theme.palette.text,
+            );
+        }
+    }
+}
+
+struct PanelStatusGroup {
+    active: bool,
+    children: Vec<Box<dyn Widget>>,
+}
+
+impl Widget for PanelStatusGroup {
+    fn id(&self) -> Option<&'static str> {
+        Some("panel-status")
+    }
+
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            flex_direction: FlexDirection::Row,
+            align_items: Some(AlignItems::Center),
+            size: UiSize {
+                width: ui_length((TRAY_W * self.children.len() as i32) as f32),
+                height: ui_length(CHIP_H as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
+        let highlight = if self.active {
+            Some(Interaction::DEFAULT.accent_idle(theme.palette.accent))
+        } else {
+            match state {
+                WidgetState::Idle => None,
+                WidgetState::Hovered => Some(Interaction::DEFAULT.neutral_hover),
+                WidgetState::Pressed => Some(Interaction::DEFAULT.neutral_pressed),
+            }
+        };
+        if let Some(color) = highlight {
+            if let Some(path) = rounded_rect_path(area, CHIP_HL_RADIUS) {
+                paint_fill(canvas, &path, color);
+            }
+        }
+    }
+
+    fn children(&self) -> &[Box<dyn Widget>] {
+        &self.children
+    }
+}
+
 impl PanelChip {
     fn new(
         id: &'static str,

@@ -4,6 +4,7 @@ impl MeridianShell {
             return false;
         }
         self.network_popup_open = false;
+        self.quick_settings_volume_pending = None;
         self.network_layer
             .set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
         self.unmap_network_popup(reason);
@@ -14,6 +15,28 @@ impl MeridianShell {
             self.keyboard_focus
         );
         true
+    }
+
+    /// Update only the in-memory value while dragging. Rendering is immediate;
+    /// the comparatively expensive platform mixer command runs once on release.
+    pub(crate) fn preview_quick_settings_volume(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        percent: u8,
+    ) {
+        let percent = percent.min(100);
+        self.quick_settings_volume_pending = Some(percent);
+        if let Some(device) = self.audio_snapshot.default_output.as_mut() {
+            device.volume_percent = Some(percent);
+        }
+        self.draw_network_popup(qh, RepaintReason::Pointer);
+        self.draw_panel(qh, RepaintReason::Pointer);
+    }
+
+    pub(crate) fn commit_quick_settings_volume(&mut self) {
+        if let Some(percent) = self.quick_settings_volume_pending.take() {
+            crate::audio::set_default_sink_volume(percent);
+        }
     }
 
     pub(super) fn toggle_audio_popup(&mut self, reason: CommitReason) {

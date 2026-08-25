@@ -243,13 +243,16 @@ impl MeridianShell {
             let panel_active_w = panel_active_workspace;
             let state_fn = |path: &[usize]| -> meridian_ui::WidgetState {
                 match self.panel_widget_state.as_ref() {
-                    Some((p, s)) if p.as_slice() == path => *s,
+                    Some((p, s)) if p.as_slice().starts_with(path) => *s,
                     _ => meridian_ui::WidgetState::Idle,
                 }
             };
             let screenshot_icon = self
                 .icon_cache
-                .lookup("camera-photo-symbolic", 22)
+                .lookup(
+                    "camera-photo-symbolic",
+                    meridian_tokens::Panel::DEFAULT.status_icon_size as u32,
+                )
                 .and_then(crate::icons::icon_image_to_pixmap);
 
             crate::panel_view::draw_panel_ui(

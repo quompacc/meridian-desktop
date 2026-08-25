@@ -419,6 +419,7 @@ pub(crate) fn initialize(
         default_apps_loaded: false,
         audio_popup_open: false,
         audio_volume_dragging: false,
+        quick_settings_volume_pending: None,
         volume_osd_open: false,
         volume_osd_pending: false,
         volume_osd_hide_at: None,

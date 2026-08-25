@@ -180,6 +180,48 @@ macro_rules! handle_panel_and_popups_pointer {
             }
         }
 
+        // Quick Settings volume: preview every motion locally and invoke the
+        // platform mixer only once on release. Spawning mixerctl for each
+        // pointer event makes dragging visibly stall on OpenBSD.
+        if $shell.network_popup_open && $shell.pointer_surface == SurfaceKind::NetworkPopup {
+            let pad = crate::POPUP_SHADOW_PAD as f64;
+            let pad2 = 2 * crate::POPUP_SHADOW_PAD as u32;
+            let px = $event.position.0 - pad;
+            let py = $event.position.1 - pad;
+            match $event.kind {
+                PointerEventKind::Press { button: 0x110, .. }
+                    if !$shell.status_notifier_menu_open && !$shell.audio_popup_open =>
+                {
+                    let card_w = $shell.network_width.saturating_sub(pad2);
+                    let card_h = $shell.network_height.saturating_sub(pad2);
+                    if let Some(crate::network_popup::NetworkPopupHit::Quick(
+                        crate::quick_settings_popup::QuickSettingsHit::Volume(percent),
+                    )) = crate::network_popup::popup_hit_test(card_w, card_h, px, py)
+                    {
+                        $shell.preview_quick_settings_volume($qh, percent);
+                        continue;
+                    }
+                }
+                PointerEventKind::Motion { .. }
+                    if $shell.quick_settings_volume_pending.is_some() =>
+                {
+                    if let Some(percent) = crate::quick_settings_popup::volume_from_x(px) {
+                        if $shell.quick_settings_volume_pending != Some(percent) {
+                            $shell.preview_quick_settings_volume($qh, percent);
+                        }
+                    }
+                    continue;
+                }
+                PointerEventKind::Release { button: 0x110, .. }
+                    if $shell.quick_settings_volume_pending.is_some() =>
+                {
+                    $shell.commit_quick_settings_volume();
+                    continue;
+                }
+                _ => {}
+            }
+        }
+
         if let PointerEventKind::Press { button: 0x112, .. } = $event.kind {
             if $shell.pointer_surface == SurfaceKind::Panel {
                 let action = $shell

@@ -81,20 +81,29 @@ pub(crate) fn build_panel_widget_tree(
     theme: &Theme,
 ) -> Box<dyn Widget> {
     let network_icon = icon_cache
-        .lookup(network_state.icon_name(), ICON_SIZE)
-        .and_then(icon_image_to_pixmap);
-    let audio_icon = icon_cache
-        .lookup(audio_snapshot.icon_name(), ICON_SIZE)
+        .lookup(network_state.icon_name(), STATUS_ICON_SIZE)
         .and_then(icon_image_to_pixmap)
+        .map(|mut icon| {
+            tint_pixmap_premul(&mut icon, theme.palette.text_dim);
+            icon
+        });
+    let audio_icon = icon_cache
+        .lookup(audio_snapshot.icon_name(), STATUS_ICON_SIZE)
+        .and_then(icon_image_to_pixmap)
+        .map(|mut icon| {
+            tint_pixmap_premul(&mut icon, theme.palette.text_dim);
+            icon
+        })
         .or_else(|| build_audio_icon(audio_snapshot, theme));
     // Battery icon, tinted by the active power profile so the choice is visible
     // at a glance: Eco = green, Performance = amber, Standard = neutral (default
     // text tint). Colours come from the theme palette (centralised).
     let battery_icon = icon_cache
-        .lookup(battery.icon_name(), ICON_SIZE)
+        .lookup(battery.icon_name(), STATUS_ICON_SIZE)
         .and_then(icon_image_to_pixmap)
         .map(|mut pm| {
             use crate::power_profile::PowerProfile;
+            tint_pixmap_premul(&mut pm, theme.palette.text_dim);
             let tint = match power_profile {
                 Some(PowerProfile::Eco) => Some(theme.palette.success),
                 Some(PowerProfile::Performance) => Some(theme.palette.warning),
@@ -124,7 +133,7 @@ pub(crate) fn build_panel_widget_tree(
         let icon = app
             .icon_name
             .as_deref()
-            .and_then(|name| icon_cache.lookup(name, ICON_SIZE))
+            .and_then(|name| icon_cache.lookup(name, APP_ICON_SIZE))
             .and_then(icon_image_to_pixmap);
         left_children.push(Box::new(PanelPinnedChip {
             idx,
@@ -179,8 +188,12 @@ pub(crate) fn build_panel_widget_tree(
         let icon = item
             .icon_name
             .as_deref()
-            .and_then(|name| icon_cache.lookup(name, ICON_SIZE))
-            .and_then(icon_image_to_pixmap);
+            .and_then(|name| icon_cache.lookup(name, STATUS_ICON_SIZE))
+            .and_then(icon_image_to_pixmap)
+            .map(|mut icon| {
+                tint_pixmap_premul(&mut icon, theme.palette.text_dim);
+                icon
+            });
         right_children.push(Box::new(PanelChip::new(
             SNI_PANEL_IDS[idx],
             status_notifier_label(item).into_boxed_str(),
@@ -192,6 +205,10 @@ pub(crate) fn build_panel_widget_tree(
     if !right_children.is_empty() {
         right_children.push(Box::new(PanelDivider));
     }
+    let screenshot_icon = screenshot_icon.map(|mut icon| {
+        tint_pixmap_premul(&mut icon, theme.palette.text_dim);
+        icon
+    });
     right_children.push(Box::new(PanelChip::new(
         "panel-screenshot",
         "📷".into(),
@@ -202,42 +219,25 @@ pub(crate) fn build_panel_widget_tree(
     right_children.push(Box::new(PanelDivider));
 
     let mut status_children: Vec<Box<dyn Widget>> = vec![
-        Box::new(PanelChip::new(
-            "panel-network",
-            "NET".into(),
-            network_icon,
-            TRAY_W,
-            network_popup_open,
-        )),
-        Box::new(PanelChip::new(
-            "panel-sound",
-            audio_snapshot.panel_label().into_boxed_str(),
-            audio_icon,
-            AUDIO_W,
-            audio_popup_open,
-        )),
+        Box::new(PanelStatusIcon {
+            label: "NET".into(),
+            icon: network_icon,
+        }),
+        Box::new(PanelStatusIcon {
+            label: audio_snapshot.panel_label().into_boxed_str(),
+            icon: audio_icon,
+        }),
     ];
     if battery.present {
-        status_children.push(Box::new(PanelChip::new(
-            "panel-battery",
-            battery.label().into_boxed_str(),
-            battery_icon,
-            TRAY_W,
-            false,
-        )));
+        status_children.push(Box::new(PanelStatusIcon {
+            label: battery.label().into_boxed_str(),
+            icon: battery_icon,
+        }));
     }
-    right_children.push(Box::new(Container::new(
-        WidgetStyle {
-            flex_direction: FlexDirection::Row,
-            align_items: Some(AlignItems::Center),
-            gap: UiSize {
-                width: ui_length(0.0),
-                height: ui_length(0.0),
-            },
-            ..Default::default()
-        },
-        status_children,
-    )));
+    right_children.push(Box::new(PanelStatusGroup {
+        active: network_popup_open || audio_popup_open,
+        children: status_children,
+    }));
     right_children.extend([
         Box::new(PanelDivider) as Box<dyn Widget>,
         Box::new(PanelWorkspaceChip {

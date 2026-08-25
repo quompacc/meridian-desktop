@@ -6,12 +6,14 @@ pub(in crate::wayland) fn build_icon_cache(
     theme: &ThemeConfig,
     pinned_apps: &[panel::PinnedApp],
 ) -> IconCache {
+    let app_icon_size = meridian_tokens::Panel::DEFAULT.app_icon_size as u32;
+    let status_icon_size = meridian_tokens::Panel::DEFAULT.status_icon_size as u32;
     let mut icon_cache = IconCache::new_for_theme(&theme.icons.theme, &theme.colors.text.to_hex());
     // Only warm icons needed immediately by the panel and tray. Launcher grid
     // icons remain lazy so SVG decoding cannot delay the first panel frame.
     icon_cache.warm(
         &["utilities-terminal", "chrome", "firefox", "org.kde.dolphin"],
-        22,
+        app_icon_size,
     );
     icon_cache.warm(
         &[
@@ -29,9 +31,9 @@ pub(in crate::wayland) fn build_icon_cache(
             "audio-volume-low-symbolic",
             "audio-volume-muted-symbolic",
         ],
-        22,
+        status_icon_size,
     );
-    icon_cache.warm(crate::battery::ICON_NAMES, 22);
+    icon_cache.warm(crate::battery::ICON_NAMES, status_icon_size);
     icon_cache.warm(
         &[
             "thunderbird",
@@ -65,7 +67,7 @@ pub(in crate::wayland) fn build_icon_cache(
         .filter(|name| !name.is_empty())
         .collect();
     if !pinned_icons.is_empty() {
-        icon_cache.warm(&pinned_icons, 22);
+        icon_cache.warm(&pinned_icons, app_icon_size);
         icon_cache.warm(&pinned_icons, 24);
         icon_cache.warm(&pinned_icons, 32);
         icon_cache.warm(&pinned_icons, 48);

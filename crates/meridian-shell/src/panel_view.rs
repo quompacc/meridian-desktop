@@ -28,13 +28,13 @@ const CHIP_H: i32 = PanelTokens::DEFAULT.control_height as i32;
 const LAUNCHER_W: i32 = PanelTokens::DEFAULT.control_width as i32;
 const PINNED_W: i32 = PanelTokens::DEFAULT.control_width as i32;
 const TRAY_W: i32 = PanelTokens::DEFAULT.control_width as i32 * 4 / 5;
-const AUDIO_W: i32 = TRAY_W;
 const SNI_W: i32 = TRAY_W;
 const SCREENSHOT_W: i32 = PanelTokens::DEFAULT.control_width as i32;
 const LAUNCHER_ICON_SIZE: u32 = PanelTokens::DEFAULT.control_width / 2;
 const WS_W: i32 = PanelTokens::DEFAULT.control_width as i32 * 7 / 5;
 const CLOCK_W: i32 = PanelTokens::DEFAULT.clock_width as i32;
-const ICON_SIZE: u32 = PanelTokens::DEFAULT.app_icon_size as u32;
+const APP_ICON_SIZE: u32 = PanelTokens::DEFAULT.app_icon_size as u32;
+const STATUS_ICON_SIZE: u32 = PanelTokens::DEFAULT.status_icon_size as u32;
 const PANEL_H: i32 = PANEL_HEIGHT as i32;
 
 const LEFT_PADDING: i32 = meridian_ui::style::Spacing::DEFAULT.xs;
@@ -102,7 +102,7 @@ fn build_launcher_icon(theme: &Theme) -> Option<Pixmap> {
 fn build_audio_icon(snapshot: &AudioSnapshot, theme: &Theme) -> Option<Pixmap> {
     use tiny_skia::{FillRule, Paint, PathBuilder, Stroke};
 
-    let mut pm = Pixmap::new(ICON_SIZE, ICON_SIZE)?;
+    let mut pm = Pixmap::new(STATUS_ICON_SIZE, STATUS_ICON_SIZE)?;
     let palette = &theme.palette;
     let output = snapshot.default_output.as_ref();
     let muted = output
@@ -128,7 +128,7 @@ fn build_audio_icon(snapshot: &AudioSnapshot, theme: &Theme) -> Option<Pixmap> {
         paint
     };
 
-    let icon_paint = paint_for(palette.text);
+    let icon_paint = paint_for(palette.text_dim);
     let accent_paint = paint_for(palette.accent);
     let stroke = Stroke {
         width: 1.6,
@@ -196,8 +196,7 @@ fn action_for_id_as_click(id: &str) -> Option<ClickAction> {
     }
     match id {
         "panel-launcher" => Some(ClickAction::ToggleLauncher),
-        "panel-network" => Some(ClickAction::ToggleNetworkPopup),
-        "panel-sound" | "panel-battery" => Some(ClickAction::ToggleNetworkPopup),
+        "panel-status" => Some(ClickAction::ToggleNetworkPopup),
         "panel-workspace" => Some(ClickAction::ToggleWorkspacePopup),
         "panel-screenshot" => Some(ClickAction::TakeScreenshot),
         "panel-clock" => Some(ClickAction::Clock),
@@ -227,6 +226,17 @@ fn status_notifier_label(item: &StatusNotifierItem) -> String {
         "TR".to_string()
     } else {
         label
+    }
+}
+
+pub(crate) fn warm_status_notifier_icons(icon_cache: &mut IconCache, items: &[StatusNotifierItem]) {
+    let names: Vec<&str> = items
+        .iter()
+        .filter_map(|item| item.icon_name.as_deref())
+        .filter(|name| !name.is_empty())
+        .collect();
+    if !names.is_empty() {
+        icon_cache.warm(&names, STATUS_ICON_SIZE);
     }
 }
 
