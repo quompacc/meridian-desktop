@@ -10,7 +10,7 @@ use crate::{
     AUDIO_POPUP_HEIGHT, AUDIO_POPUP_RIGHT_MARGIN, AUDIO_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT,
     CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT,
     NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, SNI_MENU_RIGHT_MARGIN, WORKSPACE_POPUP_HEIGHT,
-    WORKSPACE_POPUP_WIDTH,
+    WORKSPACE_POPUP_RIGHT_MARGIN, WORKSPACE_POPUP_WIDTH,
 };
 
 impl LayerShellHandler for MeridianShell {
@@ -299,8 +299,12 @@ impl LayerShellHandler for MeridianShell {
             );
             self.workspace_layer
                 .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
-            self.workspace_layer
-                .set_margin(0, 160, crate::SHELL_POPUP_BOTTOM_MARGIN, 0);
+            self.workspace_layer.set_margin(
+                0,
+                WORKSPACE_POPUP_RIGHT_MARGIN,
+                crate::SHELL_POPUP_BOTTOM_MARGIN,
+                0,
+            );
             self.workspace_layer.set_exclusive_zone(0);
             self.workspace_layer.set_size(surface_w, surface_h);
             self.workspace_configured = true;

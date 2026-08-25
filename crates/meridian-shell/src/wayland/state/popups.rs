@@ -249,7 +249,12 @@ impl MeridianShell {
         self.workspace_layer
             .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
         self.workspace_layer
-            .set_margin(0, 160, crate::SHELL_POPUP_BOTTOM_MARGIN, 0);
+            .set_margin(
+                0,
+                crate::WORKSPACE_POPUP_RIGHT_MARGIN,
+                crate::SHELL_POPUP_BOTTOM_MARGIN,
+                0,
+            );
         self.workspace_layer.set_exclusive_zone(0);
         self.workspace_layer.set_size(
             crate::popup_surface_w(crate::WORKSPACE_POPUP_WIDTH),

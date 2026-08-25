@@ -17,7 +17,9 @@ pub mod interaction;
 pub mod radius;
 pub mod typography;
 
-pub use chrome::{Launcher, Mask, Panel, QuickSettings, Scrollbar, WindowChrome};
+pub use chrome::{
+    Launcher, Mask, Panel, QuickSettings, Scrollbar, WindowChrome, WorkspaceSwitcher,
+};
 pub use color::{contrast_text, relative_luminance, Color, Palette};
 pub use elevation::Elevation;
 pub use interaction::Interaction;

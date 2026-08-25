@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 
 use meridian_config::ThemeConfig;
+use meridian_tokens::{Interaction, Radius, WorkspaceSwitcher};
 
 use crate::{
     popup_card::{draw_card_body, draw_card_title, BODY_TOP, PAD_BOTTOM, PAD_X},
@@ -9,8 +10,8 @@ use crate::{
     WORKSPACE_POPUP_WIDTH,
 };
 
-const GAP: i32 = 6;
-const TILE_RADIUS: i32 = meridian_tokens::Radius::DEFAULT.sm;
+const LAYOUT: WorkspaceSwitcher = WorkspaceSwitcher::DEFAULT;
+const CELL_COUNT: usize = (LAYOUT.columns * LAYOUT.rows) as usize;
 
 pub struct WorkspacePopupState {
     pub clicks: Vec<ClickZone>,
@@ -37,19 +38,19 @@ fn grid_geometry() -> (i32, i32, i32, i32) {
     let grid_w = width - 2 * PAD_X;
     let grid_bottom = height - PAD_BOTTOM;
     let grid_h = grid_bottom - grid_top;
-    let tile_w = (grid_w - 2 * GAP) / 3;
-    let tile_h = (grid_h - 2 * GAP) / 3;
+    let tile_w = (grid_w - (LAYOUT.columns - 1) * LAYOUT.tile_gap) / LAYOUT.columns;
+    let tile_h = (grid_h - (LAYOUT.rows - 1) * LAYOUT.tile_gap) / LAYOUT.rows;
     (grid_left, grid_top, tile_w, tile_h)
 }
 
 pub fn workspace_popup_hover_idx(x: f64, y: f64) -> Option<usize> {
     let (left, top, tile_w, tile_h) = grid_geometry();
-    for i in 0_usize..9 {
-        let col = (i % 3) as i32;
-        let row = (i / 3) as i32;
+    for i in 0..CELL_COUNT {
+        let col = i as i32 % LAYOUT.columns;
+        let row = i as i32 / LAYOUT.columns;
         let rect = Rect {
-            x: left + col * (tile_w + GAP),
-            y: top + row * (tile_h + GAP),
+            x: left + col * (tile_w + LAYOUT.tile_gap),
+            y: top + row * (tile_h + LAYOUT.tile_gap),
             w: tile_w,
             h: tile_h,
         };
@@ -76,13 +77,13 @@ pub fn draw_workspace_popup(
 
     let (left, top, tile_w, tile_h) = grid_geometry();
 
-    for i in 0_usize..9 {
+    for i in 0..CELL_COUNT {
         let ws_id = (i + 1) as u32;
-        let col = (i % 3) as i32;
-        let row = (i / 3) as i32;
+        let col = i as i32 % LAYOUT.columns;
+        let row = i as i32 / LAYOUT.columns;
         let rect = Rect {
-            x: left + col * (tile_w + GAP),
-            y: top + row * (tile_h + GAP),
+            x: left + col * (tile_w + LAYOUT.tile_gap),
+            y: top + row * (tile_h + LAYOUT.tile_gap),
             w: tile_w,
             h: tile_h,
         };
@@ -91,29 +92,77 @@ pub fn draw_workspace_popup(
         let is_occupied = input.occupied[i];
         let is_hovered = input.hovered_idx == Some(i);
 
-        let bg = if is_active {
-            colors.surface
-        } else if is_hovered {
-            colors.border
+        let resting_bg = if is_active {
+            Interaction::DEFAULT.selection(
+                colors.surface_alt,
+                colors.accent,
+                Interaction::SELECTION_ACTIVE,
+            )
         } else if is_occupied {
-            colors.surface
+            Interaction::DEFAULT.selection(
+                colors.surface_alt,
+                colors.accent,
+                Interaction::SELECTION_FOCUSED,
+            )
         } else {
             colors.surface_alt
         };
-        painter.roundish_rect_with_radius(rect, bg, TILE_RADIUS);
+        let bg = if is_hovered {
+            Interaction::DEFAULT.hover(resting_bg)
+        } else {
+            resting_bg
+        };
+        painter.roundish_rect_with_radius(rect, bg, Radius::DEFAULT.sm);
 
         if is_active {
             draw_active_indicator(painter, rect, ActiveIndicatorEdge::Top, theme);
         }
 
-        let text_color = if is_active {
+        let text_color = if is_active || is_occupied || is_hovered {
             colors.text
-        } else if is_occupied {
-            colors.accent
         } else {
             colors.text_dim
         };
-        painter.text_centered(font, &ws_id.to_string(), rect, text_color);
+        painter.text_clipped(
+            font,
+            &ws_id.to_string(),
+            rect.x + LAYOUT.tile_pad,
+            rect.y + LAYOUT.tile_pad + 10,
+            rect.w - 2 * LAYOUT.tile_pad,
+            text_color,
+        );
+        let state_label = if is_active {
+            "AKTIV"
+        } else if is_occupied {
+            "BELEGT"
+        } else {
+            "FREI"
+        };
+        painter.text_clipped(
+            font,
+            state_label,
+            rect.x + LAYOUT.tile_pad,
+            rect.y + rect.h - LAYOUT.tile_pad,
+            rect.w - 2 * LAYOUT.tile_pad,
+            if is_active {
+                colors.accent
+            } else {
+                colors.text_dim
+            },
+        );
+        if is_occupied && !is_active {
+            let dot_size = LAYOUT.occupied_dot_size;
+            painter.roundish_rect_with_radius(
+                Rect {
+                    x: rect.x + rect.w - LAYOUT.tile_pad - dot_size,
+                    y: rect.y + rect.h - LAYOUT.tile_pad - dot_size,
+                    w: dot_size,
+                    h: dot_size,
+                },
+                colors.accent,
+                dot_size,
+            );
+        }
         state.clicks.push(ClickZone {
             id: Some(format!("workspace-popup-{ws_id}")),
             rect,
@@ -173,5 +222,15 @@ mod tests {
         let probe_y = crate::popup_card::BODY_TOP as f64 + 4.0;
         assert_eq!(workspace_popup_hover_idx(probe_x, probe_y), Some(0));
         assert_eq!(workspace_popup_hover_idx(0.0, 0.0), None);
+    }
+
+    #[test]
+    fn workspace_grid_uses_central_geometry() {
+        let (left, top, tile_w, tile_h) = super::grid_geometry();
+        let layout = meridian_tokens::WorkspaceSwitcher::DEFAULT;
+        assert_eq!(left, crate::popup_card::PAD_X);
+        assert_eq!(top, crate::popup_card::BODY_TOP);
+        assert!(tile_w > 0 && tile_h > 0);
+        assert_eq!(layout.columns * layout.rows, 9);
     }
 }

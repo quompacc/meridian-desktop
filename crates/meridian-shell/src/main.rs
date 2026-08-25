@@ -75,8 +75,8 @@ pub const LAUNCHER_WIDTH: u32 = meridian_tokens::Launcher::DEFAULT.width as u32;
 pub const LAUNCHER_HEIGHT: u32 = meridian_tokens::Launcher::DEFAULT.height as u32;
 pub const CALENDAR_POPUP_WIDTH: u32 = 280;
 pub const CALENDAR_POPUP_HEIGHT: u32 = 220;
-pub const WORKSPACE_POPUP_WIDTH: u32 = 280;
-pub const WORKSPACE_POPUP_HEIGHT: u32 = 184;
+pub const WORKSPACE_POPUP_WIDTH: u32 = meridian_tokens::WorkspaceSwitcher::DEFAULT.width as u32;
+pub const WORKSPACE_POPUP_HEIGHT: u32 = meridian_tokens::WorkspaceSwitcher::DEFAULT.height as u32;
 pub const NETWORK_POPUP_WIDTH: u32 = meridian_tokens::QuickSettings::DEFAULT.width as u32;
 // The quick-settings overview and network detail share one fixed layer surface.
 pub const NETWORK_POPUP_HEIGHT: u32 = meridian_tokens::QuickSettings::DEFAULT.height as u32;
@@ -109,6 +109,7 @@ pub const fn popup_surface_h(card_h: u32) -> u32 {
 // The layer includes transparent shadow padding. Subtract that padding so the
 // visible card edge aligns with the panel island's tokenized right edge.
 pub const NETWORK_POPUP_RIGHT_MARGIN: i32 = PANEL_SIDE_MARGIN as i32 - POPUP_SHADOW_PAD;
+pub const WORKSPACE_POPUP_RIGHT_MARGIN: i32 = NETWORK_POPUP_RIGHT_MARGIN;
 pub const NOTIFICATION_WIDTH: u32 = 360;
 pub const NOTIFICATION_HEIGHT: u32 = 90;
 pub const NOTIFICATION_TOP_MARGIN: i32 = 20;
@@ -532,7 +533,12 @@ fn insert_network_poll_timer(
 
 #[cfg(test)]
 mod tests {
-    use super::default_pinned_apps;
+    use super::{default_pinned_apps, NETWORK_POPUP_RIGHT_MARGIN, WORKSPACE_POPUP_RIGHT_MARGIN};
+
+    #[test]
+    fn workspace_and_quick_settings_share_right_anchor() {
+        assert_eq!(WORKSPACE_POPUP_RIGHT_MARGIN, NETWORK_POPUP_RIGHT_MARGIN);
+    }
 
     #[test]
     fn default_pinned_apps_contains_expected_entries() {

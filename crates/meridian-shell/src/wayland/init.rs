@@ -26,7 +26,8 @@ use crate::{
     AUDIO_POPUP_HEIGHT, AUDIO_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH,
     LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT, NETWORK_POPUP_RIGHT_MARGIN,
     NETWORK_POPUP_WIDTH, SHELL_POPUP_BOTTOM_MARGIN, THUMBNAIL_POPUP_HEIGHT,
-    THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_WIDTH,
+    THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_RIGHT_MARGIN,
+    WORKSPACE_POPUP_WIDTH,
 };
 
 use super::{calendar::CalendarDisplayPolicy, CommitStats, IpcClient, MeridianShell, SurfaceKind};
@@ -212,7 +213,8 @@ pub(crate) fn initialize(
         None,
     );
     workspace_layer.set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
-    workspace_layer.set_margin(0, 160, SHELL_POPUP_BOTTOM_MARGIN, 0);
+    let workspace_right = WORKSPACE_POPUP_RIGHT_MARGIN;
+    workspace_layer.set_margin(0, workspace_right, SHELL_POPUP_BOTTOM_MARGIN, 0);
     workspace_layer.set_size(
         crate::popup_surface_w(WORKSPACE_POPUP_WIDTH),
         crate::popup_surface_h(WORKSPACE_POPUP_HEIGHT),
@@ -220,10 +222,11 @@ pub(crate) fn initialize(
     workspace_layer.set_exclusive_zone(0);
     workspace_layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
     debug!(
-        "Workspace popup surface created: namespace=meridian-workspace-popup layer=Overlay anchor=Bottom|Right size={}x{} margin_bottom={} margin_right=160 exclusive_zone=0 keyboard_interactivity=OnDemand",
+        "Workspace popup surface created: namespace=meridian-workspace-popup layer=Overlay anchor=Bottom|Right size={}x{} margin_bottom={} margin_right={} exclusive_zone=0 keyboard_interactivity=OnDemand",
         WORKSPACE_POPUP_WIDTH,
         WORKSPACE_POPUP_HEIGHT,
-        SHELL_POPUP_BOTTOM_MARGIN
+        SHELL_POPUP_BOTTOM_MARGIN,
+        WORKSPACE_POPUP_RIGHT_MARGIN
     );
 
     let network_surface = compositor.create_surface(&qh);

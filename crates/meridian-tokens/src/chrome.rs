@@ -87,6 +87,36 @@ impl Default for Panel {
     }
 }
 
+/// Geometry for the compact 3x3 workspace switcher popup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WorkspaceSwitcher {
+    pub width: i32,
+    pub height: i32,
+    pub columns: i32,
+    pub rows: i32,
+    pub tile_gap: i32,
+    pub tile_pad: i32,
+    pub occupied_dot_size: i32,
+}
+
+impl WorkspaceSwitcher {
+    pub const DEFAULT: WorkspaceSwitcher = WorkspaceSwitcher {
+        width: 320,
+        height: 248,
+        columns: 3,
+        rows: 3,
+        tile_gap: 10,
+        tile_pad: 10,
+        occupied_dot_size: 6,
+    };
+}
+
+impl Default for WorkspaceSwitcher {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 /// Geometry for compositor-owned server-side window decorations.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct WindowChrome {
@@ -286,6 +316,12 @@ mod tests {
         assert_eq!(Panel::DEFAULT.control_height, 32);
         assert_eq!(Panel::DEFAULT.app_icon_size, 22);
         assert_eq!(Panel::DEFAULT.status_icon_size, 18);
+        assert_eq!(WorkspaceSwitcher::DEFAULT.width, 320);
+        assert_eq!(WorkspaceSwitcher::DEFAULT.height, 248);
+        assert_eq!(WorkspaceSwitcher::DEFAULT.columns, 3);
+        assert_eq!(WorkspaceSwitcher::DEFAULT.rows, 3);
+        assert_eq!(WorkspaceSwitcher::DEFAULT.tile_pad, 10);
+        assert_eq!(WorkspaceSwitcher::DEFAULT.occupied_dot_size, 6);
         assert_eq!(WindowChrome::DEFAULT.titlebar_height, 34);
         assert_eq!(WindowChrome::DEFAULT.button_width, 38);
         assert_eq!(WindowChrome::DEFAULT.button_icon_size, 13);
