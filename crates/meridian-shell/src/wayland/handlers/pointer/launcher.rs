@@ -110,6 +110,7 @@ macro_rules! handle_launcher_pointer {
                             $shell.hovered_app_card_idx = new_app;
                             $shell.settings_hovered = new_settings;
                             $shell.hovered_power_btn = new_pwr;
+                            $shell.draw_launcher($qh, RepaintReason::Pointer);
                         }
                     }
                 }
