@@ -236,6 +236,24 @@ macro_rules! handle_panel_and_popups_pointer {
             }
         }
 
+        if $shell.pointer_surface == SurfaceKind::WorkspacePopup
+            && workspace_click_activation(&$event.kind)
+        {
+            let pad = crate::POPUP_SHADOW_PAD as f64;
+            let px = $event.position.0 - pad;
+            let py = $event.position.1 - pad;
+            if let Some(action) = $shell
+                .workspace_state
+                .clicks
+                .iter()
+                .find(|zone| zone.rect.contains(px, py))
+                .map(|zone| zone.action.clone())
+            {
+                $shell.handle_workspace_click($qh, action);
+            }
+            continue;
+        }
+
         if let PointerEventKind::Press { button: 0x110, .. } = $event.kind {
             let action = match $shell.pointer_surface {
                 SurfaceKind::Panel => $shell
@@ -245,17 +263,7 @@ macro_rules! handle_panel_and_popups_pointer {
                     .find(|zone| zone.rect.contains($event.position.0, $event.position.1))
                     .map(|zone| zone.action.clone()),
                 SurfaceKind::Launcher => None,
-                SurfaceKind::WorkspacePopup => {
-                    let pad = crate::POPUP_SHADOW_PAD as f64;
-                    let px = $event.position.0 - pad;
-                    let py = $event.position.1 - pad;
-                    $shell
-                        .workspace_state
-                        .clicks
-                        .iter()
-                        .find(|zone| zone.rect.contains(px, py))
-                        .map(|zone| zone.action.clone())
-                }
+                SurfaceKind::WorkspacePopup => None,
                 SurfaceKind::NetworkPopup => {
                     let pad = crate::POPUP_SHADOW_PAD as f64;
                     let pad2 = 2 * crate::POPUP_SHADOW_PAD as u32;

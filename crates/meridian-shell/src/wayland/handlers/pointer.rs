@@ -12,7 +12,10 @@ use crate::{
     workspaces,
 };
 
-use super::{pointer_translate::translate_pointer_event, MeridianShell};
+use super::{
+    pointer_translate::{translate_pointer_event, workspace_click_activation},
+    MeridianShell,
+};
 
 include!("pointer/overlays_and_desktop.rs");
 include!("pointer/launcher.rs");

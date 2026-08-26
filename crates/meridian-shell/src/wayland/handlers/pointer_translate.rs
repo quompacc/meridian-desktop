@@ -42,11 +42,24 @@ pub(super) fn translate_pointer_event(
     }
 }
 
+pub(super) fn workspace_click_activation(kind: &PointerEventKind) -> bool {
+    // Switching on press races the compositor's implicit pointer grab. The
+    // release is delivered after that grab ends, so the workspace command is
+    // accepted deterministically.
+    matches!(
+        kind,
+        PointerEventKind::Release {
+            button: BTN_LEFT,
+            ..
+        }
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use smithay_client_toolkit::seat::pointer::{AxisScroll, PointerEventKind};
 
-    use super::{translate_pointer_button, translate_pointer_event};
+    use super::{translate_pointer_button, translate_pointer_event, workspace_click_activation};
 
     #[test]
     fn translate_button_left() {
@@ -185,6 +198,29 @@ mod tests {
                 button: meridian_ui::PointerButton::Left,
             }
         );
+    }
+
+    #[test]
+    fn workspace_click_activates_only_on_left_release() {
+        let press = PointerEventKind::Press {
+            time: 0,
+            button: 0x110,
+            serial: 1,
+        };
+        let release = PointerEventKind::Release {
+            time: 0,
+            button: 0x110,
+            serial: 2,
+        };
+        let right_release = PointerEventKind::Release {
+            time: 0,
+            button: 0x111,
+            serial: 3,
+        };
+
+        assert!(!workspace_click_activation(&press));
+        assert!(workspace_click_activation(&release));
+        assert!(!workspace_click_activation(&right_release));
     }
 
     #[test]

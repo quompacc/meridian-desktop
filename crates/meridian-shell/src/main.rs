@@ -278,6 +278,12 @@ fn redraw_after_ipc(
     if shell.workspace_popup_open {
         shell.draw_workspace_popup(qh, RepaintReason::Ipc);
     }
+    if shell.network_popup_open {
+        shell.draw_network_popup(qh, RepaintReason::Ipc);
+    }
+    if shell.audio_popup_open {
+        shell.draw_audio_popup(qh, RepaintReason::Ipc);
+    }
     if shell.desktop_menu_open {
         shell.draw_desktop_menu(qh, RepaintReason::Ipc);
     }

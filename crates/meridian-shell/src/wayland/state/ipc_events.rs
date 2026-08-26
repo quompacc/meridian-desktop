@@ -139,9 +139,9 @@ impl MeridianShell {
                 self.toggle_launcher();
             }
             ShellEvent::ToggleQuickSettings => {
-                // Until the native combined Quick Settings card is rebuilt,
-                // preserve the public toggle by opening the native network
-                // status popup. Panel audio and power controls stay native.
+                // The combined native Quick Settings card shares the network
+                // popup surface; redraw_after_ipc commits it after this state
+                // transition just like the direct panel-click path.
                 self.toggle_network_popup(CommitReason::Input);
             }
             ShellEvent::OpenSystemSettings => {
