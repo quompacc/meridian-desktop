@@ -21,6 +21,26 @@ use crate::protocols::xdg_shell::handle_commit;
 
 use super::super::super::{client_compositor_state, MeridianState};
 
+fn layer_surface_has_buffer(surface: &WlSurface) -> bool {
+    with_states(surface, |states| {
+        states
+            .data_map
+            .get::<RendererSurfaceStateUserData>()
+            .map(|renderer_state| renderer_state.lock().unwrap().buffer().is_some())
+            .unwrap_or(false)
+    })
+}
+
+fn should_send_layer_configure(
+    initial_configure_sent: bool,
+    had_buffer_before_commit: bool,
+    has_buffer_after_commit: bool,
+    remap_requested: bool,
+) -> bool {
+    !initial_configure_sent
+        || (remap_requested && !had_buffer_before_commit && !has_buffer_after_commit)
+}
+
 impl BufferHandler for MeridianState {
     fn buffer_destroyed(&mut self, _buffer: &WlBuffer) {}
 }
@@ -38,6 +58,7 @@ impl CompositorHandler for MeridianState {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
+        let had_buffer_before_commit = layer_surface_has_buffer(surface);
         on_commit_buffer_handler::<Self>(surface);
         self.mark_all_outputs_dirty("surface-commit");
 
@@ -93,6 +114,7 @@ impl CompositorHandler for MeridianState {
                 );
                 return;
             };
+            let has_buffer_after_commit = layer_surface_has_buffer(surface);
 
             if initial_configure_sent {
                 tracing::trace!(
@@ -116,15 +138,6 @@ impl CompositorHandler for MeridianState {
                     .map(|layer| {
                         let cached = layer.cached_state();
                         let layer_geometry = map.layer_geometry(layer);
-                        let has_buffer = with_states(surface, |states| {
-                            states
-                                .data_map
-                                .get::<RendererSurfaceStateUserData>()
-                                .map(|renderer_state| {
-                                    renderer_state.lock().unwrap().buffer().is_some()
-                                })
-                                .unwrap_or(false)
-                        });
                         (
                             layer.namespace().to_string(),
                             layer.layer(),
@@ -134,9 +147,14 @@ impl CompositorHandler for MeridianState {
                             cached.exclusive_zone,
                             cached.size,
                             layer_geometry.map(|geo| format!("{:?}", geo)),
-                            has_buffer,
+                            has_buffer_after_commit,
                         )
                     });
+            let remap_requested = focus_target.as_ref().is_some_and(
+                |(_, _, keyboard_interactivity, _, _, _, _, _, _)| {
+                    *keyboard_interactivity == KeyboardInteractivity::Exclusive
+                },
+            );
 
             if let Some((
                 namespace,
@@ -242,7 +260,16 @@ impl CompositorHandler for MeridianState {
                 }
             }
 
-            if !initial_configure_sent {
+            // A null-buffer commit unmaps a layer surface. Smithay keeps
+            // `initial_configure_sent` set across that cycle, so a later
+            // bufferless commit must explicitly trigger the configure needed
+            // to remap the persistent shell surface.
+            if should_send_layer_configure(
+                initial_configure_sent,
+                had_buffer_before_commit,
+                has_buffer_after_commit,
+                remap_requested,
+            ) {
                 if let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::ALL) {
                     tracing::info!("Sending layer surface configure: output={}", output_name);
                     layer.layer_surface().send_configure();
@@ -260,5 +287,20 @@ impl CompositorHandler for MeridianState {
         if self.wm_workspaces[active].mode == WorkspaceMode::Tiling {
             self.tile_workspace(active);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_send_layer_configure;
+
+    #[test]
+    fn configures_new_and_remapping_layer_surfaces() {
+        assert!(should_send_layer_configure(false, false, false, false));
+        assert!(should_send_layer_configure(true, false, false, true));
+        assert!(!should_send_layer_configure(true, false, false, false));
+        assert!(!should_send_layer_configure(true, true, false, true));
+        assert!(!should_send_layer_configure(true, false, true, true));
+        assert!(!should_send_layer_configure(true, true, true, true));
     }
 }
