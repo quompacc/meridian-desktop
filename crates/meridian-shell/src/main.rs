@@ -40,6 +40,7 @@ mod soft_shadow;
 mod status_notifier;
 mod status_notifier_popup;
 mod sysinfo;
+mod system_power;
 mod theme_export;
 mod thumbnail_popup;
 mod ui;

@@ -72,11 +72,12 @@ impl MeridianShell {
             return;
         }
 
-        let command = power_action_command(action);
-        if let Some((program, args)) = command {
-            std::thread::spawn(move || {
-                let _ = std::process::Command::new(program).args(args).status();
-            });
+        if let Some(action) = system_power_action(action) {
+            tracing::info!(?action, "power: request through platform session service");
+            if !crate::system_power::request(action) {
+                tracing::warn!(?action, "power: worker thread creation failed");
+                self.arm_power(qh, id);
+            }
             return;
         }
 
