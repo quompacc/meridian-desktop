@@ -348,21 +348,14 @@ pub(crate) fn draw_command_palette(
 
     let theme = glass_theme_from_config(theme_config);
     let pal = theme.palette;
-    // The compositor renders the launcher's glass backdrop at the theme's
-    // fill_alpha (see `themed_layer_glass_info`). When glass is on, painting an
-    // opaque body here too would DOUBLE the opacity and hide the blur — so keep
-    // the body transparent and let the compositor glass provide the translucency,
-    // exactly like the popups and the launcher's own settings page. Only the
-    // non-glass fallback paints a solid body so the launcher stays legible.
-    let glass = theme_config.decorations.glass && theme_config.decorations.glass_blur;
-    let body_alpha = if glass {
-        0
-    } else {
-        theme_config
-            .decorations
-            .surface_treatment(meridian_config::ThemeSurface::Launcher)
-            .fill_alpha
-    };
+    // The shell supplies the token-driven tint while the compositor supplies
+    // the cached live blur behind it. Keeping the tint in this buffer also
+    // makes the colour swap reliable on DRM paths where a custom glass shader
+    // cannot be applied to an overlay plane.
+    let body_alpha = theme_config
+        .decorations
+        .surface_treatment(meridian_config::ThemeSurface::Launcher)
+        .fill_alpha;
     pixmap.fill(to_tiny_skia_color(with_alpha(pal.surface_alt, body_alpha)));
 
     {

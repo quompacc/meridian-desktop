@@ -143,16 +143,13 @@ pub(crate) fn draw_panel_ui(
     // wallpaper shows through the side margins and the bottom gap.
     pixmap.fill(tiny_skia::Color::TRANSPARENT);
 
-    // Frosted-glass island. The compositor owns the live blurred backdrop AND
-    // renders it at the theme's fill_alpha; so when glass is on the shell must
-    // NOT paint an opaque body on top (that would double the opacity and hide
-    // the blur — the panel would read as solid). Keep the body transparent and
-    // let the compositor glass show, exactly like the popups. The non-glass
-    // fallback still paints a solid island so it stays legible.
+    // The shell supplies the token-driven tint while the compositor supplies
+    // the cached live blur behind it. Keeping the tint in this buffer also
+    // makes the colour swap reliable on DRM paths where a custom glass shader
+    // cannot be applied to an overlay plane.
     let inner_w = (width as i32 - 2 * SIDE_MARGIN).max(0);
     let base = theme.palette.surface_alt;
-    let glass = theme_config.decorations.glass && theme_config.decorations.glass_blur;
-    let body_alpha = if glass { 0 } else { treatment.fill_alpha };
+    let body_alpha = treatment.fill_alpha;
     let body_col = Color::rgba(base.r, base.g, base.b, body_alpha);
     let outline = Rect {
         x: SIDE_MARGIN,
