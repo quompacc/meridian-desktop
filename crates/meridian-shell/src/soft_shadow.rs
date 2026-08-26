@@ -85,9 +85,9 @@ pub(crate) fn draw_soft_shadow(
     offset_y: i32,
     // When true (translucent surfaces like the panel island) the shadow is
     // only painted outside the rect, so it never bleeds dark through the glass.
-    // When false (opaque surfaces like the launcher) the shadow is drawn across
-    // the whole footprint and the opaque content covers the inner part — this
-    // avoids the transparent gap an offset would otherwise leave below the rect.
+    // When false (strictly opaque surfaces) the shadow is drawn across the whole
+    // footprint and the opaque content covers the inner part. Translucent glass
+    // surfaces must pass true so the shadow cannot darken their backdrop.
     clip_inside: bool,
 ) {
     if w <= 0 || h <= 0 || blur <= 0.0 || alpha <= 0.0 {

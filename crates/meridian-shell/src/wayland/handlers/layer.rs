@@ -8,9 +8,9 @@ use wayland_client::{Connection, QueueHandle};
 use crate::wayland::{MeridianShell, RepaintReason};
 use crate::{
     AUDIO_POPUP_HEIGHT, AUDIO_POPUP_RIGHT_MARGIN, AUDIO_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT,
-    CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT,
-    NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, SNI_MENU_RIGHT_MARGIN, WORKSPACE_POPUP_HEIGHT,
-    WORKSPACE_POPUP_RIGHT_MARGIN, WORKSPACE_POPUP_WIDTH,
+    CALENDAR_POPUP_RIGHT_MARGIN, CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH,
+    NETWORK_POPUP_HEIGHT, NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, SNI_MENU_RIGHT_MARGIN,
+    WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_RIGHT_MARGIN, WORKSPACE_POPUP_WIDTH,
 };
 
 impl LayerShellHandler for MeridianShell {
@@ -277,8 +277,12 @@ impl LayerShellHandler for MeridianShell {
             );
             self.calendar_layer
                 .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
-            self.calendar_layer
-                .set_margin(0, 12, crate::SHELL_POPUP_BOTTOM_MARGIN, 0);
+            self.calendar_layer.set_margin(
+                0,
+                CALENDAR_POPUP_RIGHT_MARGIN,
+                crate::SHELL_POPUP_BOTTOM_MARGIN,
+                0,
+            );
             self.calendar_layer.set_exclusive_zone(0);
             self.calendar_layer.set_size(surface_w, surface_h);
             self.calendar_configured = true;

@@ -185,8 +185,12 @@ impl MeridianShell {
         self.calendar_popup_open = true;
         self.calendar_layer
             .set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
-        self.calendar_layer
-            .set_margin(0, 12, crate::SHELL_POPUP_BOTTOM_MARGIN, 0);
+        self.calendar_layer.set_margin(
+            0,
+            crate::CALENDAR_POPUP_RIGHT_MARGIN,
+            crate::SHELL_POPUP_BOTTOM_MARGIN,
+            0,
+        );
         self.calendar_layer.set_exclusive_zone(0);
         self.calendar_layer.set_size(
             crate::popup_surface_w(crate::CALENDAR_POPUP_WIDTH),

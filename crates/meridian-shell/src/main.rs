@@ -73,8 +73,8 @@ pub const PANEL_TOP_SHADOW: u32 = meridian_tokens::Panel::DEFAULT.top_shadow;
 pub const PANEL_SURFACE_HEIGHT: u32 = meridian_tokens::Panel::DEFAULT.surface_height();
 pub const LAUNCHER_WIDTH: u32 = meridian_tokens::Launcher::DEFAULT.width as u32;
 pub const LAUNCHER_HEIGHT: u32 = meridian_tokens::Launcher::DEFAULT.height as u32;
-pub const CALENDAR_POPUP_WIDTH: u32 = 280;
-pub const CALENDAR_POPUP_HEIGHT: u32 = 220;
+pub const CALENDAR_POPUP_WIDTH: u32 = meridian_tokens::Calendar::DEFAULT.width as u32;
+pub const CALENDAR_POPUP_HEIGHT: u32 = meridian_tokens::Calendar::DEFAULT.height as u32;
 pub const WORKSPACE_POPUP_WIDTH: u32 = meridian_tokens::WorkspaceSwitcher::DEFAULT.width as u32;
 pub const WORKSPACE_POPUP_HEIGHT: u32 = meridian_tokens::WorkspaceSwitcher::DEFAULT.height as u32;
 pub const NETWORK_POPUP_WIDTH: u32 = meridian_tokens::QuickSettings::DEFAULT.width as u32;
@@ -109,6 +109,7 @@ pub const fn popup_surface_h(card_h: u32) -> u32 {
 // The layer includes transparent shadow padding. Subtract that padding so the
 // visible card edge aligns with the panel island's tokenized right edge.
 pub const NETWORK_POPUP_RIGHT_MARGIN: i32 = PANEL_SIDE_MARGIN as i32 - POPUP_SHADOW_PAD;
+pub const CALENDAR_POPUP_RIGHT_MARGIN: i32 = NETWORK_POPUP_RIGHT_MARGIN;
 pub const WORKSPACE_POPUP_RIGHT_MARGIN: i32 = NETWORK_POPUP_RIGHT_MARGIN;
 pub const NOTIFICATION_WIDTH: u32 = 360;
 pub const NOTIFICATION_HEIGHT: u32 = 90;
@@ -274,6 +275,9 @@ fn redraw_after_ipc(
     } else if shell.launcher_dirty {
         shell.unmap_launcher(CommitReason::EventLoopTick);
         shell.launcher_dirty = false;
+    }
+    if shell.calendar_popup_open {
+        shell.draw_calendar_popup(qh, RepaintReason::Ipc);
     }
     if shell.workspace_popup_open {
         shell.draw_workspace_popup(qh, RepaintReason::Ipc);

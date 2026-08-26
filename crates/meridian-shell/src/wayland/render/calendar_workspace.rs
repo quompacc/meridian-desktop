@@ -54,11 +54,18 @@ impl MeridianShell {
                     h: (card.h - crate::popup_card::BODY_TOP - crate::popup_card::PAD_BOTTOM)
                         .max(1),
                 };
+                let layout = meridian_tokens::Calendar::DEFAULT;
                 let weekday_y = content.y;
-                let weekday_h = 18;
+                let weekday_h = layout.weekday_height;
                 for (col, label) in labels.iter().enumerate() {
-                    let x0 = content.x + (col as i32 * content.w) / 7;
-                    let x1 = content.x + (((col + 1) as i32 * content.w) / 7);
+                    let col = col as i32;
+                    let cells_w = content.w - (layout.columns - 1) * layout.cell_gap;
+                    let x0 = content.x
+                        + (col * cells_w) / layout.columns
+                        + col * layout.cell_gap;
+                    let x1 = content.x
+                        + ((col + 1) * cells_w) / layout.columns
+                        + col * layout.cell_gap;
                     painter.text_centered(
                         &self.font,
                         label,
@@ -71,20 +78,30 @@ impl MeridianShell {
                         crate::ui::tokens::glass_dim_from_config(&self.theme),
                     );
                 }
-                let grid_y = weekday_y + weekday_h + 6;
+                let grid_y = weekday_y + weekday_h + layout.weekday_gap;
                 let grid_h = (content.y + content.h) - grid_y;
-                for row in 0_usize..6 {
+                let cells_h = grid_h - (layout.rows - 1) * layout.cell_gap;
+                let cells_w = content.w - (layout.columns - 1) * layout.cell_gap;
+                for row in 0..layout.rows as usize {
                     let row_i32 = row as i32;
-                    let y0 = grid_y + (row_i32 * grid_h) / 6;
-                    let y1 = grid_y + (((row_i32 + 1) * grid_h) / 6);
-                    for col in 0_usize..7 {
-                        let idx = row * 7 + col;
+                    let y0 = grid_y
+                        + (row_i32 * cells_h) / layout.rows
+                        + row_i32 * layout.cell_gap;
+                    let y1 = grid_y
+                        + ((row_i32 + 1) * cells_h) / layout.rows
+                        + row_i32 * layout.cell_gap;
+                    for col in 0..layout.columns as usize {
+                        let idx = row * layout.columns as usize + col;
                         let Some(day) = model.cells[idx] else {
                             continue;
                         };
                         let col_i32 = col as i32;
-                        let x0 = content.x + (col_i32 * content.w) / 7;
-                        let x1 = content.x + (((col_i32 + 1) * content.w) / 7);
+                        let x0 = content.x
+                            + (col_i32 * cells_w) / layout.columns
+                            + col_i32 * layout.cell_gap;
+                        let x1 = content.x
+                            + ((col_i32 + 1) * cells_w) / layout.columns
+                            + col_i32 * layout.cell_gap;
                         let cell_rect = Rect {
                             x: x0,
                             y: y0,
@@ -94,14 +111,19 @@ impl MeridianShell {
                         let is_today = model.today_day == Some(day);
                         let day_text = day.to_string();
                         if is_today {
+                            let inset = layout.today_inset;
                             let highlight = Rect {
-                                x: cell_rect.x + 3,
-                                y: cell_rect.y + 2,
-                                w: (cell_rect.w - 6).max(0),
-                                h: (cell_rect.h - 4).max(0),
+                                x: cell_rect.x + inset,
+                                y: cell_rect.y + inset,
+                                w: (cell_rect.w - 2 * inset).max(0),
+                                h: (cell_rect.h - 2 * inset).max(0),
                             };
                             if highlight.w > 0 && highlight.h > 0 {
-                                painter.rect(highlight, self.theme.colors.accent);
+                                painter.roundish_rect_with_radius(
+                                    highlight,
+                                    self.theme.colors.accent,
+                                    meridian_tokens::Radius::DEFAULT.sm,
+                                );
                             }
                             painter.text_centered(
                                 &self.font,

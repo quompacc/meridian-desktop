@@ -23,11 +23,11 @@ use wayland_protocols::ext::{
 
 use crate::{
     default_pinned_apps, launcher, network::NetworkController, panel, TextRenderer,
-    AUDIO_POPUP_HEIGHT, AUDIO_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_WIDTH,
-    LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT, NETWORK_POPUP_RIGHT_MARGIN,
-    NETWORK_POPUP_WIDTH, SHELL_POPUP_BOTTOM_MARGIN, THUMBNAIL_POPUP_HEIGHT,
-    THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT, WORKSPACE_POPUP_RIGHT_MARGIN,
-    WORKSPACE_POPUP_WIDTH,
+    AUDIO_POPUP_HEIGHT, AUDIO_POPUP_WIDTH, CALENDAR_POPUP_HEIGHT, CALENDAR_POPUP_RIGHT_MARGIN,
+    CALENDAR_POPUP_WIDTH, LAUNCHER_HEIGHT, LAUNCHER_WIDTH, NETWORK_POPUP_HEIGHT,
+    NETWORK_POPUP_RIGHT_MARGIN, NETWORK_POPUP_WIDTH, SHELL_POPUP_BOTTOM_MARGIN,
+    THUMBNAIL_POPUP_HEIGHT, THUMBNAIL_POPUP_MAX_WIDTH, WORKSPACE_POPUP_HEIGHT,
+    WORKSPACE_POPUP_RIGHT_MARGIN, WORKSPACE_POPUP_WIDTH,
 };
 
 use super::{calendar::CalendarDisplayPolicy, CommitStats, IpcClient, MeridianShell, SurfaceKind};
@@ -180,8 +180,7 @@ pub(crate) fn initialize(
     );
 
     let calendar_surface = compositor.create_surface(&qh);
-    // Calendar stays Overlay, but needs its own namespace so compositor-side
-    // launcher glass can identify the actual launcher surface.
+    // Dedicated overlay namespace keeps compositor glass classification exact.
     let calendar_layer = layer_shell.create_layer_surface(
         &qh,
         calendar_surface,
@@ -190,7 +189,8 @@ pub(crate) fn initialize(
         None,
     );
     calendar_layer.set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
-    calendar_layer.set_margin(0, 12, SHELL_POPUP_BOTTOM_MARGIN, 0);
+    let calendar_right = CALENDAR_POPUP_RIGHT_MARGIN;
+    calendar_layer.set_margin(0, calendar_right, SHELL_POPUP_BOTTOM_MARGIN, 0);
     calendar_layer.set_size(
         crate::popup_surface_w(CALENDAR_POPUP_WIDTH),
         crate::popup_surface_h(CALENDAR_POPUP_HEIGHT),
@@ -198,10 +198,11 @@ pub(crate) fn initialize(
     calendar_layer.set_exclusive_zone(0);
     calendar_layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
     debug!(
-        "Calendar popup surface created: namespace=meridian-calendar-popup layer=Overlay anchor=Bottom|Right size={}x{} margin_bottom={} margin_right=12 exclusive_zone=0 keyboard_interactivity=OnDemand",
+        "Calendar popup surface created: namespace=meridian-calendar-popup layer=Overlay anchor=Bottom|Right size={}x{} margin_bottom={} margin_right={} exclusive_zone=0 keyboard_interactivity=OnDemand",
         CALENDAR_POPUP_WIDTH,
         CALENDAR_POPUP_HEIGHT,
-        SHELL_POPUP_BOTTOM_MARGIN
+        SHELL_POPUP_BOTTOM_MARGIN,
+        calendar_right
     );
 
     let workspace_surface = compositor.create_surface(&qh);

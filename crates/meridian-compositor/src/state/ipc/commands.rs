@@ -389,7 +389,11 @@ impl MeridianState {
         let previous_outputs = std::mem::take(&mut self.output_config_entries);
         self.output_config_entries = config.outputs.clone();
         self.output_layout = OutputLayout::from_config_entries(&self.output_config_entries);
-        self.reapply_output_layout(&previous_outputs);
+        if previous_outputs != self.output_config_entries {
+            self.reapply_output_layout(&previous_outputs);
+        } else {
+            tracing::debug!("output config unchanged; skipping live output reconfiguration");
+        }
         self.keybind_config = config.keybinds;
         self.idle_timeout = config
             .general

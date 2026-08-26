@@ -174,8 +174,9 @@ impl MeridianShell {
                 let vx = self.launcher_visual_x.max(0) as usize;
                 let vy = self.launcher_visual_y.max(0) as usize;
                 canvas.fill(0);
-                // Soft drop shadow around the rounded launcher, painted before
-                // the content so the rounded corners keep their shadow.
+                // Soft drop shadow around the rounded glass launcher. Keep the
+                // card interior clear so its transparent body cannot reveal a
+                // dark shadow veil over the compositor-owned glass backdrop.
                 crate::soft_shadow::draw_soft_shadow(
                     canvas,
                     width as i32,
@@ -188,7 +189,7 @@ impl MeridianShell {
                     meridian_tokens::Elevation::LAUNCHER.blur,
                     meridian_tokens::Elevation::LAUNCHER.alpha,
                     meridian_tokens::Elevation::LAUNCHER.offset_y,
-                    false,
+                    true,
                 );
                 // Composite the (premultiplied) content over the shadow so the
                 // transparent rounded corners reveal the shadow underneath.

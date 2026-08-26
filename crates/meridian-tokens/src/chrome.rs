@@ -87,6 +87,38 @@ impl Default for Panel {
     }
 }
 
+/// Geometry for the calendar popup anchored to the panel's right edge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Calendar {
+    pub width: i32,
+    pub height: i32,
+    pub columns: i32,
+    pub rows: i32,
+    pub weekday_height: i32,
+    pub weekday_gap: i32,
+    pub cell_gap: i32,
+    pub today_inset: i32,
+}
+
+impl Calendar {
+    pub const DEFAULT: Calendar = Calendar {
+        width: 384,
+        height: 356,
+        columns: 7,
+        rows: 6,
+        weekday_height: 24,
+        weekday_gap: 8,
+        cell_gap: 4,
+        today_inset: 3,
+    };
+}
+
+impl Default for Calendar {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 /// Geometry for the compact 3x3 workspace switcher popup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorkspaceSwitcher {
@@ -316,6 +348,10 @@ mod tests {
         assert_eq!(Panel::DEFAULT.control_height, 32);
         assert_eq!(Panel::DEFAULT.app_icon_size, 22);
         assert_eq!(Panel::DEFAULT.status_icon_size, 18);
+        assert_eq!(Calendar::DEFAULT.width, 384);
+        assert_eq!(Calendar::DEFAULT.height, 356);
+        assert_eq!(Calendar::DEFAULT.columns, 7);
+        assert_eq!(Calendar::DEFAULT.rows, 6);
         assert_eq!(WorkspaceSwitcher::DEFAULT.width, 320);
         assert_eq!(WorkspaceSwitcher::DEFAULT.height, 248);
         assert_eq!(WorkspaceSwitcher::DEFAULT.columns, 3);
@@ -338,6 +374,7 @@ mod tests {
     #[test]
     fn defaults_via_default_trait_match_consts() {
         assert_eq!(Scrollbar::default(), Scrollbar::DEFAULT);
+        assert_eq!(Calendar::default(), Calendar::DEFAULT);
         assert_eq!(Launcher::default(), Launcher::DEFAULT);
         assert_eq!(Mask::default(), Mask::DEFAULT);
     }
