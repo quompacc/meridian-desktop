@@ -287,6 +287,10 @@ impl MeridianShell {
                 }
                 self.panel_dirty = true;
             }
+            ShellEvent::PowerSleepPrepared => {
+                // Consumed by the short-lived system-power IPC client. The
+                // main shell connection receives the broadcast as well.
+            }
             ShellEvent::DesktopContextMenu { x, y } => {
                 self.open_desktop_context_menu_from_ipc(x, y);
             }

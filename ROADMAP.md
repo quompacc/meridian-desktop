@@ -1,6 +1,6 @@
 # Meridian — Active Roadmap
 
-> Updated 2026-08-25. This is the forward-looking execution order for the
+> Updated 2026-08-26. This is the forward-looking execution order for the
 > BSD-first native-Rust strategy. `docs/NATIVE_UI_PLAN.md` is binding for UI;
 > older WebKit phases are retained only as historical evidence.
 
@@ -33,8 +33,9 @@ backup/recovery plan.
 Status: **development baseline active.** OpenBSD patches `001`–`009`, Rust
 1.94.1, Wayland/input/seat libraries, XWayland and WebKitGTK 4.1 are installed.
 `seatd` and D-Bus are enabled. Accelerated Meridian rendering, the OpenBSD
-audio backend and WebKitGTK panel/launcher rendering are proven on hardware;
-suspend and external-display tests remain.
+audio backend and native panel/launcher rendering are proven on hardware.
+Suspend is now classified as an OpenBSD `pms(4)`/Elantech hardware blocker by
+a direct `zzz` control run without Meridian; external-display tests remain.
 
 Install OpenBSD on the Acer and validate the base system before Meridian:
 
@@ -48,6 +49,12 @@ VM runs remain useful for repeatability, but hardware results are authoritative.
 
 Exit criterion: a completed pass/fail matrix with blockers classified as
 hardware, OS, port/package, upstream protocol or Meridian issues.
+
+The suspend/input classification, all rejected Meridian workarounds and the
+support boundary are recorded in
+`docs/OPENBSD_SUSPEND_INPUT_2026-08-26.md`. Suspend remains unsupported on the
+reference laptop until the OpenBSD/firmware failure is resolved; it is no
+longer an unclassified Meridian task.
 
 ## Phase 2 — Meridian core on OpenBSD
 

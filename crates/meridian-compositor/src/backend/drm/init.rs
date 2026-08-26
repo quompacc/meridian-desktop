@@ -161,17 +161,7 @@ pub fn init_drm(
         info!("drm mode index override requested: {}", index);
     }
 
-    event_loop
-        .handle()
-        .insert_source(session_notifier, |event, _, state| {
-            if let SessionEvent::ActivateSession = event {
-                if let Some(drm) = &mut state.drm_backend {
-                    for out in &mut drm.outputs {
-                        out.compositor.reset_state().ok();
-                    }
-                }
-            }
-        })?;
+    register_session_event_source(event_loop, session_notifier)?;
 
     let gpu_path = select_gpu(&mut session, &seat_name)?;
     let is_primary_node = gpu_path

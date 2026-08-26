@@ -1,3 +1,26 @@
+fn register_session_event_source<Source>(
+    event_loop: &mut EventLoop<MeridianState>,
+    session_notifier: Source,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    Source: smithay::reexports::calloop::EventSource<Event = SessionEvent, Ret = ()> + 'static,
+    Source::Metadata: 'static,
+    Source::Error: std::error::Error + 'static,
+{
+    event_loop
+        .handle()
+        .insert_source(session_notifier, |event, _, state| {
+            if let SessionEvent::ActivateSession = event {
+                if let Some(drm) = &mut state.drm_backend {
+                    for output in &mut drm.outputs {
+                        output.compositor.reset_state().ok();
+                    }
+                }
+            }
+        })?;
+    Ok(())
+}
+
 fn configure_repaint_interval(
     drm_outputs: &[DrmOutput],
     first_selected_mode_refresh_millihz: Option<i32>,

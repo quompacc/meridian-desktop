@@ -277,6 +277,7 @@ pub enum ShellEvent {
     PowerProfileSet {
         profile: QuickSettingsPowerProfile,
     },
+    PowerSleepPrepared,
     DesktopContextMenu {
         x: i32,
         y: i32,
@@ -355,6 +356,8 @@ pub enum ShellCommand {
         terminal: bool,
     },
     LockSession,
+    PowerPrepareSleep,
+    PowerResume,
     ReloadConfig,
     Quit,
     CaptureWindowThumbnail {
@@ -399,6 +402,8 @@ impl ShellCommand {
             Self::FocusWindow { .. } => "focus-window",
             Self::LaunchApp { .. } => "launch-app",
             Self::LockSession => "lock-session",
+            Self::PowerPrepareSleep => "power-prepare-sleep",
+            Self::PowerResume => "power-resume",
             Self::ReloadConfig => "reload-config",
             Self::Quit => "quit",
             Self::CaptureWindowThumbnail { .. } => "capture-window-thumbnail",

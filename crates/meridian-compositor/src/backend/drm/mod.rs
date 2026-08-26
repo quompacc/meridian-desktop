@@ -32,11 +32,18 @@ pub(crate) mod mode_selection;
 pub(crate) mod openbsd_privsep;
 mod render;
 #[cfg(target_os = "openbsd")]
+mod sleep_lifecycle;
+#[cfg(target_os = "openbsd")]
 mod wscons;
 
 pub use init::init_drm;
 pub(crate) use render::render_outputs_from_idle;
 pub use render::{layer_role, render_stack_order, RenderStackRole};
+
+#[cfg(target_os = "openbsd")]
+pub(crate) fn resume_after_sleep(state: &mut crate::state::MeridianState) {
+    sleep_lifecycle::resume_after_sleep(state);
+}
 
 pub type GbmDrmCompositor =
     DrmCompositor<GbmAllocator<DrmDeviceFd>, GbmFramebufferExporter<DrmDeviceFd>, (), DrmDeviceFd>;

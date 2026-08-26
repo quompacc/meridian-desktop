@@ -33,6 +33,14 @@ fn quick_settings_control_commands_roundtrip() {
 }
 
 #[test]
+fn power_sleep_prepared_event_roundtrip() {
+    let event = ShellEvent::PowerSleepPrepared;
+    let bytes = encode_event(&event).expect("encode");
+    let decoded = decode_event(std::str::from_utf8(&bytes).expect("utf8")).expect("decode");
+    assert_eq!(decoded, event);
+}
+
+#[test]
 fn appearance_control_commands_roundtrip() {
     for command in [
         ShellCommand::AppearanceRefresh,

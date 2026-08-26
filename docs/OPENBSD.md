@@ -5,7 +5,9 @@
 > OpenBSD support is not yet claimed: the native compositor now completes an
 > atomic KMS frame with Intel hardware acceleration and opens wscons input on
 > the reference laptop. Native shared memory and BSD Authentication adapters
-> are in place; full interactive login and daily-driver validation remain.
+> are in place. Suspend/resume is blocked on the reference laptop by a
+> reproduced OpenBSD `pms(4)`/Elantech wake failure; see
+> `OPENBSD_SUSPEND_INPUT_2026-08-26.md`.
 
 ## Reference hardware
 
@@ -106,7 +108,7 @@ Use `pass`, `partial`, `fail`, `not available` or `not tested`, with evidence.
 | accelerated graphics | pass (first frame) | EGL/GBM 25.0.7 selects Intel HD Graphics 620 as user `eduard`; 99 DMA-BUF formats and the first atomic KMS frame are proven |
 | hardware cursor | not tested | |
 | keyboard | partial | `pckbd0`/`wskbd0` attached; desktop interaction test pending |
-| touchpad move/click/scroll | partial | Elantech v4 attached as `pms0`/`wsmouse0`; gestures pending |
+| touchpad move/click/scroll | partial | Move and click pass before suspend; after resume clicks remain but pointer motion fails in `pms0`; see `OPENBSD_SUSPEND_INPUT_2026-08-26.md` |
 | WLAN | fail | QCA9377 is present but `not configured`; no WLAN interface |
 | Ethernet | pass | `re0`, active 1000baseT full duplex, IPv4/IPv6 configured |
 | audio output/input | partial | ALC255 mixer/play/record paths exposed; audible playback/record pending |
@@ -114,7 +116,7 @@ Use `pass`, `partial`, `fail`, `not available` or `not tested`, with evidence.
 | webcam | pass (detection) | Realtek device attaches as `uvideo0`/`video0` |
 | external display | not tested | |
 | display hotplug | not tested | |
-| suspend/resume | not tested | `apmd` is not enabled/running yet |
+| suspend/resume | fail (hardware/OS blocker) | Direct `zzz` with zero Meridian processes reproduces `pms0` disable/enable/reset errors and loss of pointer motion; reboot recovers |
 | lid close/open | not tested | |
 
 ## Phase D — Desktop/toolkit matrix
@@ -330,8 +332,13 @@ the more workable platform. The decision and blockers belong in this file.
    only network path.
 2. **Bluetooth is also unavailable in the baseline.** Its USB function is only
    exposed through the generic USB driver.
-3. **Suspend is unknown, not failed.** `apmd` has not been enabled, so a
-   controlled test with SSH/console recovery is required.
+3. **Suspend fails on the reference hardware below Meridian.** On 2026-08-26,
+   both the Meridian path and a direct `doas /usr/sbin/zzz` control run with
+   zero Meridian processes produced the same `pms0` disable/enable/reset
+   errors. Keyboard and clicks survived, pointer motion did not, and only a
+   reboot recovered it. The attempted wscons close/reopen/timing workarounds
+   did not help and were removed. Full evidence and the support boundary are
+   recorded in `OPENBSD_SUSPEND_INPUT_2026-08-26.md`.
 4. **The Smithay DRM syncobj compile blocker is resolved natively.** Meridian's
    pinned Smithay port layer does not compile or advertise
    `linux-drm-syncobj-v1` on OpenBSD because its kernel contract requires

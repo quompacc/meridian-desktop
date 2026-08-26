@@ -216,6 +216,14 @@ impl MeridianState {
             ShellCommand::LockSession => {
                 self.spawn_lock_screen();
             }
+            ShellCommand::PowerPrepareSleep => {
+                #[cfg(target_os = "openbsd")]
+                self.ipc.broadcast(&ShellEvent::PowerSleepPrepared);
+            }
+            ShellCommand::PowerResume => {
+                #[cfg(target_os = "openbsd")]
+                crate::backend::drm::resume_after_sleep(self);
+            }
             ShellCommand::ReloadConfig => {
                 self.reload_config();
             }
