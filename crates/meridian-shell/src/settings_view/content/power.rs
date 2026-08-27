@@ -1,5 +1,5 @@
 fn build_power_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
-    let row_w = ctx.content_w as i32;
+    let row_w = settings_group_inner_width(ctx.content_w);
     let btn = |id: &'static str, label: &'static str, color| {
         Box::new(Button::with_id(id, label, color, row_w, 44)) as Box<dyn Widget>
     };
@@ -16,13 +16,12 @@ fn build_power_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
             Box::new(Button::with_id(id, label, accent, 80, 32)) as Box<dyn Widget>
         })
         .collect();
-    Box::new(Container::top_viewport(
+    build_settings_group_page(
         ctx.content_w,
         ctx.content_h,
-        14,
-        16,
-        8,
-        vec![Box::new(Container::column(
+        "Leerlauf und Sitzung",
+        "Bildschirmverhalten und sichere Sitzungsaktionen.",
+        Box::new(Container::column(
             8,
             vec![
                 Box::new(SidebarSectionLabel {
@@ -42,6 +41,6 @@ fn build_power_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
                 btn("power-restart", "Neu starten", ctx.pal.error),
                 btn("power-off", "Ausschalten", ctx.pal.error),
             ],
-        )) as Box<dyn Widget>],
-    ))
+        )),
+    )
 }

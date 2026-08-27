@@ -87,24 +87,6 @@ pub(crate) fn build_settings_widget_tree(
 ) -> Box<dyn Widget> {
     let pal = theme.palette;
 
-    let title_width = width as i32
-        - SETTINGS_CHROME.header_pad * 2
-        - SETTINGS_CHROME.back_width
-        - SETTINGS_CHROME.search_width
-        - SETTINGS_CHROME.header_gap * 2;
-
-    let header = Box::new(SettingsHeaderBar {
-        width: width as i32,
-        children: vec![
-            Box::new(SettingsBackButton) as Box<dyn Widget>,
-            Box::new(SettingsTitle { width: title_width }) as Box<dyn Widget>,
-            Box::new(SettingsSearchField {
-                width: SETTINGS_CHROME.search_width,
-                query: search.into(),
-            }) as Box<dyn Widget>,
-        ],
-    }) as Box<dyn Widget>;
-
     let divider_color = Color::rgba(
         pal.accent.r,
         pal.accent.g,
@@ -113,9 +95,7 @@ pub(crate) fn build_settings_widget_tree(
     );
     // No root tabs anymore — the two groups live as labelled sections inside
     // one full-height sidebar.
-    let content_h = height.saturating_sub(
-        (SETTINGS_CHROME.header_height + SETTINGS_CHROME.divider_size) as u32,
-    );
+    let content_h = height.saturating_sub(SETTINGS_CHROME.header_height as u32);
     let content_w = width.saturating_sub(
         (SETTINGS_CHROME.sidebar_width + SETTINGS_CHROME.divider_size) as u32,
     );
@@ -126,28 +106,7 @@ pub(crate) fn build_settings_widget_tree(
     // Widened match: category label, static keywords, and dynamic content
     // (theme / wallpaper names) so the search reflects intent.
     let cat_matches = |cat: &SettingsCategory| -> bool {
-        if query.is_empty() {
-            return true;
-        }
-        if cat.label().to_lowercase().contains(&query) {
-            return true;
-        }
-        if cat
-            .search_keywords()
-            .iter()
-            .any(|kw| kw.contains(query.as_str()))
-        {
-            return true;
-        }
-        match cat {
-            SettingsCategory::Theme => available_themes
-                .iter()
-                .any(|t| t.to_lowercase().contains(&query)),
-            SettingsCategory::Wallpaper => available_wallpapers
-                .iter()
-                .any(|w| w.display_name.to_lowercase().contains(&query)),
-            _ => false,
-        }
+        settings_category_matches(*cat, &query, available_themes, available_wallpapers)
     };
     // While searching, preview the first matching category if the stored
     // selection was filtered out — the whole view follows the query.
@@ -161,7 +120,14 @@ pub(crate) fn build_settings_widget_tree(
             .find(|cat| cat_matches(cat))
             .unwrap_or(selected)
     };
-    let mut sidebar_children: Vec<Box<dyn Widget>> = Vec::new();
+    let mut sidebar_children: Vec<Box<dyn Widget>> = vec![
+        Box::new(SettingsBackButton {
+            width: SETTINGS_CHROME.sidebar_width,
+        }) as Box<dyn Widget>,
+        Box::new(SettingsSidebarBrand {
+            width: SETTINGS_CHROME.sidebar_width,
+        }) as Box<dyn Widget>,
+    ];
     let groups: [(&str, &[SettingsCategory], i32); 4] = [
         ("ERSCHEINUNGSBILD", SettingsCategory::APPEARANCE, 0),
         (
@@ -210,13 +176,13 @@ pub(crate) fn build_settings_widget_tree(
     }
     let sidebar = Box::new(SidebarPanel {
         width: SETTINGS_CHROME.sidebar_width,
-        height: content_h as i32,
-        bg: with_alpha(pal.surface_alt, SETTINGS_CHROME.sidebar_alpha),
+        height: height as i32,
+        bg: pal.surface_alt,
         children: sidebar_children,
     }) as Box<dyn Widget>;
 
     let vsep = Box::new(VerticalDivider {
-        height: content_h as i32,
+        height: height as i32,
         color: divider_color,
     }) as Box<dyn Widget>;
 
@@ -270,14 +236,25 @@ pub(crate) fn build_settings_widget_tree(
         SettingsCategory::Cursor => build_cursor_content(&content_ctx),
     };
 
-    let body = Box::new(Container::row(0, vec![sidebar, vsep, content])) as Box<dyn Widget>;
-
-    // No footer: the header back arrow handles "return to launcher". The body
-    // (sidebar + content) runs to the bottom edge for a grounded look.
-    let divider = Box::new(Divider {
-        width: width as i32,
-        color: divider_color,
+    let title_width = content_w as i32
+        - SETTINGS_CHROME.header_pad * 2
+        - SETTINGS_CHROME.search_width
+        - SETTINGS_CHROME.header_gap;
+    let header = Box::new(SettingsHeaderBar {
+        width: content_w as i32,
+        children: vec![
+            Box::new(SettingsTitle {
+                width: title_width,
+                label: effective_selected.label().into(),
+            }) as Box<dyn Widget>,
+            Box::new(SettingsSearchField {
+                width: SETTINGS_CHROME.search_width,
+                query: search.into(),
+            }) as Box<dyn Widget>,
+        ],
     }) as Box<dyn Widget>;
+    let content_column =
+        Box::new(Container::column(0, vec![header, content])) as Box<dyn Widget>;
 
-    Box::new(Container::column(0, vec![header, divider, body]))
+    Box::new(Container::row(0, vec![sidebar, vsep, content_column]))
 }

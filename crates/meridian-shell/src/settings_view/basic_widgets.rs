@@ -2,16 +2,12 @@ fn with_alpha(color: Color, alpha: u8) -> Color {
     Color::rgba(color.r, color.g, color.b, alpha)
 }
 
-fn settings_glass_theme_from_config(config: &ThemeConfig) -> Theme {
-    let mut theme = glass_theme_from_config(config);
-    theme.palette.background = with_alpha(theme.palette.background, 0);
-    theme.palette.surface = with_alpha(theme.palette.surface, SETTINGS_CHROME.card_alpha);
-    theme.palette.surface_alt = with_alpha(theme.palette.surface_alt, SETTINGS_CHROME.card_alpha);
-    theme
+fn settings_theme_from_config(config: &ThemeConfig) -> Theme {
+    theme_from_config(config)
 }
 
-/// Header bar: paints the surface background and lays out the back button +
-/// search field as a centred row. Matches the command palette header height.
+/// Content heading matching the accepted WebKit hierarchy: page identity on
+/// the left, persistent settings search on the right.
 struct SettingsHeaderBar {
     width: i32,
     children: Vec<Box<dyn Widget>>,
@@ -40,11 +36,7 @@ impl Widget for SettingsHeaderBar {
         }
     }
 
-    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
-        if let Some(path) = rounded_rect_path(area, 0) {
-            paint_fill(canvas, &path, theme.palette.surface);
-        }
-    }
+    fn paint(&self, _area: Rect, _canvas: &mut PixmapMut<'_>, _theme: &Theme, _state: WidgetState) {}
 
     fn children(&self) -> &[Box<dyn Widget>] {
         &self.children
@@ -53,7 +45,9 @@ impl Widget for SettingsHeaderBar {
 
 /// Clickable back arrow that returns to the command palette. Shares the
 /// "show-tile-view" id so it dispatches ToggleSettings like the footer button.
-struct SettingsBackButton;
+struct SettingsBackButton {
+    width: i32,
+}
 
 impl Widget for SettingsBackButton {
     fn id(&self) -> Option<&'static str> {
@@ -63,8 +57,8 @@ impl Widget for SettingsBackButton {
     fn style(&self) -> WidgetStyle {
         WidgetStyle {
             size: UiSize {
-                width: ui_length(SETTINGS_CHROME.back_width as f32),
-                height: ui_length(SETTINGS_CHROME.search_height as f32),
+                width: ui_length(self.width as f32),
+                height: ui_length(SETTINGS_CHROME.sidebar_back_height as f32),
             },
             ..Default::default()
         }
@@ -81,22 +75,62 @@ impl Widget for SettingsBackButton {
         let col = if hot {
             theme.palette.text
         } else {
-            theme.palette.accent
+            theme.palette.text_dim
         };
-        let baseline = area.y + (area.height + Typography::DEFAULT.title_size as i32) / 2;
+        let baseline = area.y + (area.height + Typography::DEFAULT.body_size as i32) / 2;
         paint_text(
             canvas,
-            "\u{2190}",
-            area.x + 11,
+            "\u{2190}  Zurück",
+            area.x + SETTINGS_CHROME.sidebar_content_pad,
             baseline,
-            Typography::DEFAULT.title_size as f32,
+            Typography::DEFAULT.body_size as f32,
             col,
+        );
+    }
+}
+
+struct SettingsSidebarBrand {
+    width: i32,
+}
+
+impl Widget for SettingsSidebarBrand {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.width as f32),
+                height: ui_length(SETTINGS_CHROME.sidebar_brand_height as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+        let x = area.x + SETTINGS_CHROME.sidebar_content_pad;
+        let eyebrow_y = area.y + Typography::DEFAULT.caption_size as i32;
+        paint_text(
+            canvas,
+            "MERIDIAN",
+            x,
+            eyebrow_y,
+            Typography::DEFAULT.caption_size as f32,
+            theme.palette.text_dim,
+        );
+        paint_text(
+            canvas,
+            "Einstellungen",
+            x,
+            eyebrow_y
+                + SETTINGS_CHROME.header_gap
+                + Typography::DEFAULT.title_size as i32,
+            Typography::DEFAULT.title_size as f32,
+            theme.palette.text,
         );
     }
 }
 
 struct SettingsTitle {
     width: i32,
+    label: Box<str>,
 }
 
 impl Widget for SettingsTitle {
@@ -104,20 +138,28 @@ impl Widget for SettingsTitle {
         WidgetStyle {
             size: UiSize {
                 width: ui_length(self.width as f32),
-                height: ui_length(SETTINGS_CHROME.search_height as f32),
+                height: ui_length(SETTINGS_CHROME.heading_height as f32),
             },
             ..Default::default()
         }
     }
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
-        let baseline = area.y + (area.height + Typography::DEFAULT.title_size as i32) / 2;
+        let eyebrow_y = area.y + Typography::DEFAULT.caption_size as i32;
         paint_text(
             canvas,
-            "Einstellungen",
+            "SYSTEMEINSTELLUNGEN",
             area.x,
-            baseline,
-            Typography::DEFAULT.title_size as f32,
+            eyebrow_y,
+            Typography::DEFAULT.caption_size as f32,
+            theme.palette.text_dim,
+        );
+        paint_text(
+            canvas,
+            &self.label,
+            area.x,
+            eyebrow_y + SETTINGS_CHROME.header_gap + Typography::DEFAULT.display_size as i32,
+            Typography::DEFAULT.display_size as f32,
             theme.palette.text,
         );
     }
@@ -253,6 +295,29 @@ struct SettingsSidebarRow {
     row_width: i32,
 }
 
+fn settings_category_matches(
+    cat: SettingsCategory,
+    query: &str,
+    available_themes: &[String],
+    available_wallpapers: &[WallpaperEntry],
+) -> bool {
+    if query.is_empty()
+        || cat.label().to_lowercase().contains(query)
+        || cat.search_keywords().iter().any(|kw| kw.contains(query))
+    {
+        return true;
+    }
+    match cat {
+        SettingsCategory::Theme => available_themes
+            .iter()
+            .any(|theme| theme.to_lowercase().contains(query)),
+        SettingsCategory::Wallpaper => available_wallpapers
+            .iter()
+            .any(|wallpaper| wallpaper.display_name.to_lowercase().contains(query)),
+        _ => false,
+    }
+}
+
 impl Widget for SettingsSidebarRow {
     fn id(&self) -> Option<&'static str> {
         Some(self.cat.chip_id())
@@ -281,9 +346,9 @@ impl Widget for SettingsSidebarRow {
             WidgetState::Pressed => Interaction::DEFAULT.pressed(base),
         };
         let row_area = Rect {
-            x: area.x + 8,
+            x: area.x + SETTINGS_CHROME.sidebar_row_inset,
             y: area.y,
-            width: area.width - 16,
+            width: area.width - SETTINGS_CHROME.sidebar_row_inset * 2,
             height: area.height,
         };
         if let Some(path) = rounded_rect_path(row_area, theme.radius.sm) {
@@ -336,71 +401,6 @@ impl Widget for VerticalDivider {
         if let Some(path) = rounded_rect_path(area, 0) {
             paint_fill(canvas, &path, self.color);
         }
-    }
-}
-
-struct ThemeRow {
-    index: usize,
-    name: Box<str>,
-    is_selected: bool,
-    accent: Color,
-    row_width: i32,
-}
-
-impl Widget for ThemeRow {
-    fn id(&self) -> Option<&'static str> {
-        THEME_WIDGET_IDS.get(self.index).copied()
-    }
-
-    fn style(&self) -> WidgetStyle {
-        WidgetStyle {
-            size: UiSize {
-                width: ui_length(self.row_width as f32),
-                height: ui_length(THEME_ROW_H as f32),
-            },
-            ..Default::default()
-        }
-    }
-
-    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, state: WidgetState) {
-        let bg = match state {
-            WidgetState::Idle => {
-                if self.is_selected {
-                    Interaction::DEFAULT.selected_tint(theme.palette.surface)
-                } else {
-                    theme.palette.surface
-                }
-            }
-            WidgetState::Hovered => Interaction::DEFAULT.hover(theme.palette.surface),
-            WidgetState::Pressed => Interaction::DEFAULT.pressed(theme.palette.surface),
-        };
-        if let Some(path) = rounded_rect_path(area, THEME_ROW_CORNER) {
-            paint_fill(canvas, &path, bg);
-        }
-        if self.is_selected {
-            let strip = Rect {
-                x: area.x + 4,
-                y: area.y + 8,
-                width: 3,
-                height: area.height - 16,
-            };
-            if let Some(path) = rounded_rect_path(strip, 1) {
-                paint_fill(canvas, &path, self.accent);
-            }
-        }
-        let text_color = if self.is_selected {
-            self.accent
-        } else {
-            theme.palette.text
-        };
-        paint_text(
-            canvas,
-            &self.name,
-            area.x + 16,
-            area.y + area.height - 14,
-            13.0,
-            text_color,
-        );
     }
 }
 

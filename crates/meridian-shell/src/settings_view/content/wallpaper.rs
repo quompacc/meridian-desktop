@@ -1,4 +1,6 @@
 fn build_wallpaper_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
+    let row_w = settings_group_inner_width(ctx.content_w);
+    let body_h = settings_group_body_height(ctx.content_h);
     let mode_chips: Vec<Box<dyn Widget>> = [
         ("wallpaper-mode-fill", "Fill", WallpaperMode::Fill),
         ("wallpaper-mode-fit", "Fit", WallpaperMode::Fit),
@@ -16,14 +18,13 @@ fn build_wallpaper_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> 
     })
     .collect();
     let mode_bar = Container::centered_viewport(
-        ctx.content_w,
+        row_w as u32,
         WALLPAPER_MODE_BAR_H,
         vec![Box::new(Container::row(8, mode_chips)) as Box<dyn Widget>],
     );
-    let list_h = ctx.content_h.saturating_sub(WALLPAPER_MODE_BAR_H);
+    let list_h = body_h.saturating_sub(WALLPAPER_MODE_BAR_H);
     let max_visible = ((list_h + 2) / (WALLPAPER_ROW_H as u32 + 2))
         .min(WALLPAPER_WIDGET_IDS.len() as u32) as usize;
-    let row_w = ctx.content_w as i32;
     let mut rows: Vec<Box<dyn Widget>> = Vec::new();
     rows.push(Box::new(WallpaperBrowseRow {
         row_width: row_w,
@@ -63,19 +64,17 @@ fn build_wallpaper_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> 
             shown += 1;
         }
     }
-    let wallpaper_list = Container::top_viewport(
+    build_settings_group_page(
         ctx.content_w,
-        list_h,
-        0,
-        16,
-        2,
-        vec![Box::new(Container::column(2, rows)) as Box<dyn Widget>],
-    );
-    Box::new(Container::column(
-        0,
-        vec![
-            Box::new(mode_bar) as Box<dyn Widget>,
-            Box::new(wallpaper_list) as Box<dyn Widget>,
-        ],
-    ))
+        ctx.content_h,
+        "Hintergrund",
+        "Das Bild bleibt der visuelle Mittelpunkt des Desktops.",
+        Box::new(Container::column(
+            2,
+            vec![
+                Box::new(mode_bar) as Box<dyn Widget>,
+                Box::new(Container::column(2, rows)) as Box<dyn Widget>,
+            ],
+        )),
+    )
 }

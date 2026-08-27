@@ -2,7 +2,7 @@
 
 use meridian_tokens::{Interaction, Settings, Typography};
 use meridian_ui::{
-    effect::{paint_fill, paint_text, rounded_rect_path},
+    effect::{paint_border, paint_fill, paint_text, rounded_rect_path},
     style::Color,
     ui_length,
     widget::{Button, Container, Widget},
@@ -23,7 +23,7 @@ use crate::sysinfo::SystemInfo;
 use meridian_config::{ThemeConfig, WallpaperEntry, WallpaperMode};
 use meridian_ipc::{OutputModeState, OutputWorkspaceState};
 
-use crate::ui::tokens::glass_theme_from_config;
+use crate::ui::tokens::theme_from_config;
 
 // Settings-local design constants. Shared design values live in `meridian_tokens`;
 // these are single-purpose to this view (named once instead of inline magic).
@@ -273,9 +273,6 @@ const THEME_ROW_CORNER: i32 = 4;
 const PINNED_ROW_H: i32 = 44;
 const PINNED_BTN_W: i32 = 30;
 const PINNED_MAX: usize = 16;
-const DISPLAY_CARD_H: i32 = 104;
-const DISPLAY_PRIMARY_BTN_W: i32 = 104;
-const DISPLAY_MODE_COMBO_W: i32 = 188;
 const DISPLAY_MODE_OPTION_H: i32 = 34;
 const DISPLAY_MODE_OPTION_MAX: usize = 8;
 const DISPLAY_OUTPUT_MAX: usize = 16;
@@ -454,6 +451,7 @@ pub(crate) const WALLPAPER_WIDGET_IDS: &[&str] = &[
 
 include!("settings_view/ids.rs");
 include!("settings_view/basic_widgets.rs");
+include!("settings_view/group_widgets.rs");
 include!("settings_view/appearance_widgets.rs");
 include!("settings_view/audio_system_widgets.rs");
 include!("settings_view/network_device_widgets.rs");
@@ -486,12 +484,12 @@ mod tests {
             .map(|group| group.len() as i32)
             .sum::<i32>();
         let required = SETTINGS_CHROME.sidebar_top_pad
+            + SETTINGS_CHROME.sidebar_back_height
+            + SETTINGS_CHROME.sidebar_brand_height
             + group_count * SETTINGS_CHROME.sidebar_section_height
             + (group_count - 1) * SETTINGS_CHROME.sidebar_group_gap
             + category_count * SETTINGS_CHROME.sidebar_row_height;
-        let available = meridian_tokens::Launcher::DEFAULT.height
-            - SETTINGS_CHROME.header_height
-            - SETTINGS_CHROME.divider_size;
+        let available = meridian_tokens::Launcher::DEFAULT.height;
 
         assert!(required <= available, "navigation requires {required}px");
     }

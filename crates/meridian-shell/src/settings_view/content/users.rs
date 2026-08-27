@@ -1,5 +1,5 @@
 fn build_users_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
-    let row_w = ctx.content_w as i32;
+    let row_w = settings_group_inner_width(ctx.content_w);
     let rows: Vec<Box<dyn Widget>> = crate::users::UserAccounts::gather()
         .rows()
         .into_iter()
@@ -11,12 +11,11 @@ fn build_users_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
             }) as Box<dyn Widget>
         })
         .collect();
-    Box::new(Container::top_viewport(
+    build_settings_group_page(
         ctx.content_w,
         ctx.content_h,
-        14,
-        16,
-        4,
-        vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
-    ))
+        "Lokale Konten",
+        "Benutzer und ihre aktive Meridian-Sitzung.",
+        Box::new(Container::column(4, rows)),
+    )
 }

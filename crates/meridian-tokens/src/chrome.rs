@@ -300,6 +300,7 @@ impl Default for Greeter {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Settings {
     pub header_height: i32,
+    pub heading_height: i32,
     pub header_pad: i32,
     pub header_gap: i32,
     pub back_width: i32,
@@ -307,19 +308,36 @@ pub struct Settings {
     pub search_height: i32,
     pub sidebar_width: i32,
     pub sidebar_top_pad: i32,
+    pub sidebar_content_pad: i32,
+    pub sidebar_back_height: i32,
+    pub sidebar_brand_height: i32,
+    pub content_pad: i32,
+    pub group_pad: i32,
+    pub group_gap: i32,
+    pub group_heading_height: i32,
+    pub appearance_group_height: i32,
+    pub option_gap: i32,
+    pub theme_option_height: i32,
+    pub theme_preview_width: i32,
+    pub theme_preview_height: i32,
+    pub display_identity_height: i32,
+    pub display_mode_height: i32,
+    pub display_control_height: i32,
+    pub display_control_gap: i32,
     pub sidebar_row_height: i32,
     pub sidebar_section_height: i32,
     pub sidebar_group_gap: i32,
+    pub sidebar_row_inset: i32,
     pub selection_inset: i32,
     pub selection_bar_width: i32,
     pub divider_size: i32,
     pub wallpaper_thumbnail_width: u32,
     pub wallpaper_thumbnail_height: u32,
-    /// Quiet internal card fill over the compositor-owned launcher glass.
+    /// Internal settings cards are opaque like the archived reference.
     pub card_alpha: u8,
-    /// Navigation-band fill over the compositor-owned launcher glass.
+    /// Navigation-band opacity; Settings must not expose launcher blur.
     pub sidebar_alpha: u8,
-    /// Search-field fill over the compositor-owned launcher glass.
+    /// Search-field opacity on the opaque settings surface.
     pub search_alpha: u8,
     /// Hairline separator over `Palette::accent`.
     pub divider_alpha: u8,
@@ -328,24 +346,42 @@ pub struct Settings {
 impl Settings {
     pub const DEFAULT: Settings = Settings {
         header_height: 76,
-        header_pad: 16,
+        heading_height: 48,
+        header_pad: 24,
         header_gap: 8,
         back_width: 40,
         search_width: 336,
         search_height: 40,
         sidebar_width: 224,
         sidebar_top_pad: 8,
+        sidebar_content_pad: 16,
+        sidebar_back_height: 32,
+        sidebar_brand_height: 48,
+        content_pad: 24,
+        group_pad: 16,
+        group_gap: 12,
+        group_heading_height: 44,
+        appearance_group_height: 164,
+        option_gap: 8,
+        theme_option_height: 76,
+        theme_preview_width: 64,
+        theme_preview_height: 44,
+        display_identity_height: 112,
+        display_mode_height: 64,
+        display_control_height: 64,
+        display_control_gap: 8,
         sidebar_row_height: 30,
         sidebar_section_height: 18,
         sidebar_group_gap: 6,
+        sidebar_row_inset: 8,
         selection_inset: 6,
         selection_bar_width: 3,
         divider_size: 1,
         wallpaper_thumbnail_width: 96,
         wallpaper_thumbnail_height: 54,
-        card_alpha: 38,
-        sidebar_alpha: 24,
-        search_alpha: 30,
+        card_alpha: 255,
+        sidebar_alpha: 255,
+        search_alpha: 255,
         divider_alpha: 44,
     };
 }
@@ -469,6 +505,15 @@ mod tests {
             Settings::DEFAULT.sidebar_width,
             Launcher::DEFAULT.sidebar_width
         );
+        assert_eq!(Settings::DEFAULT.sidebar_content_pad, 16);
+        assert_eq!(Settings::DEFAULT.sidebar_back_height, 32);
+        assert_eq!(Settings::DEFAULT.sidebar_brand_height, 48);
+        assert_eq!(Settings::DEFAULT.heading_height, 48);
+        assert_eq!(Settings::DEFAULT.sidebar_row_inset, 8);
+        assert_eq!(Settings::DEFAULT.display_identity_height, 112);
+        assert_eq!(Settings::DEFAULT.display_control_height, 64);
+        assert_eq!(Settings::DEFAULT.card_alpha, 255);
+        assert_eq!(Settings::DEFAULT.sidebar_alpha, 255);
         assert_eq!(
             Settings::DEFAULT.divider_alpha,
             Launcher::DEFAULT.divider_alpha

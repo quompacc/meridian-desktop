@@ -1,5 +1,5 @@
 fn build_printers_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
-    let row_w = ctx.content_w as i32;
+    let row_w = settings_group_inner_width(ctx.content_w);
     let mut rows: Vec<Box<dyn Widget>> = vec![Box::new(PrinterSummaryCard {
         snapshot: ctx.printer_snapshot.clone(),
         row_width: row_w,
@@ -26,12 +26,11 @@ fn build_printers_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
         }
     }
 
-    Box::new(Container::top_viewport(
+    build_settings_group_page(
         ctx.content_w,
         ctx.content_h,
-        14,
-        16,
-        4,
-        vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
-    ))
+        "Drucker",
+        "Druckdienste, Warteschlangen und konfigurierte Geräte.",
+        Box::new(Container::column(4, rows)),
+    )
 }

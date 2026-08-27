@@ -47,8 +47,13 @@ pub(crate) fn draw_settings_launcher(
     let Some(mut pixmap) = Pixmap::new(width, height) else {
         return;
     };
-    let theme = settings_glass_theme_from_config(theme_config);
-    pixmap.fill(tiny_skia::Color::TRANSPARENT);
+    let theme = settings_theme_from_config(theme_config);
+    pixmap.fill(tiny_skia::Color::from_rgba8(
+        theme.palette.surface.r,
+        theme.palette.surface.g,
+        theme.palette.surface.b,
+        theme.palette.surface.a,
+    ));
     let root = build_settings_widget_tree(
         width,
         height,

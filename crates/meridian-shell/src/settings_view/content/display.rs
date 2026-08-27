@@ -1,5 +1,5 @@
 fn build_display_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
-    let row_w = ctx.content_w as i32;
+    let row_w = settings_group_inner_width(ctx.content_w);
     let mut rows: Vec<Box<dyn Widget>> = Vec::new();
     if ctx.output_workspaces.is_empty() {
         rows.push(Box::new(SettingsPlaceholder {
@@ -18,7 +18,7 @@ fn build_display_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
                 .as_deref()
                 .map(str::to_string)
                 .unwrap_or_else(|| format!("Output {}", output.output_id));
-            let row = Box::new(DisplayOutputRow {
+            let identity = Box::new(DisplayOutputRow {
                 output_id: output.output_id,
                 name: name.into(),
                 workspace: output.active_workspace,
@@ -32,7 +32,7 @@ fn build_display_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
                 transform: output.transform.as_deref().map(Into::into),
                 refresh_millihz: output.refresh_millihz,
                 mode_count: output.modes.len(),
-                row_width: (row_w - DISPLAY_PRIMARY_BTN_W - DISPLAY_MODE_COMBO_W - 16).max(180),
+                row_width: row_w,
                 accent: ctx.pal.accent,
             }) as Box<dyn Widget>;
             let combo_label = selected_display_mode(output)
@@ -45,11 +45,13 @@ fn build_display_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
                 expanded,
                 enabled: !output.modes.is_empty(),
                 accent: ctx.pal.accent,
+                width: row_w,
             }) as Box<dyn Widget>;
             let primary_button = Box::new(DisplayPrimaryButton {
                 index: idx,
                 active: output.primary,
                 accent: ctx.pal.accent,
+                width: (row_w - SETTINGS_CHROME.display_control_gap * 2) / 3,
             }) as Box<dyn Widget>;
             // Current scale label, e.g. "1.5×".
             let scale_label = {
@@ -66,6 +68,7 @@ fn build_display_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
                     caption: "Skalierung",
                     value: scale_label.into(),
                     accent: ctx.pal.accent,
+                    width: (row_w - SETTINGS_CHROME.display_control_gap * 2) / 3,
                 }) as Box<dyn Widget>
             });
             // Current rotation label from the transform string.
@@ -81,12 +84,18 @@ fn build_display_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
                     caption: "Drehung",
                     value: rotate_label.into(),
                     accent: ctx.pal.accent,
+                    width: (row_w - SETTINGS_CHROME.display_control_gap * 2) / 3,
                 }) as Box<dyn Widget>
             });
-            let mut row_items: Vec<Box<dyn Widget>> = vec![row, mode_combo, primary_button];
-            row_items.extend(scale_button);
-            row_items.extend(rotate_button);
-            rows.push(Box::new(Container::row(8, row_items)));
+            rows.push(identity);
+            rows.push(mode_combo);
+            let mut control_items: Vec<Box<dyn Widget>> = vec![primary_button];
+            control_items.extend(scale_button);
+            control_items.extend(rotate_button);
+            rows.push(Box::new(Container::row(
+                SETTINGS_CHROME.display_control_gap,
+                control_items,
+            )));
 
             if expanded {
                 for (mode_idx, mode) in output
@@ -107,12 +116,11 @@ fn build_display_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
             }
         }
     }
-    Box::new(Container::top_viewport(
+    build_settings_group_page(
         ctx.content_w,
         ctx.content_h,
-        14,
-        16,
-        4,
-        vec![Box::new(Container::column(4, rows)) as Box<dyn Widget>],
-    ))
+        "Bildschirme",
+        "Auflösung, Skalierung, Ausrichtung und primäre Anzeige.",
+        Box::new(Container::column(4, rows)),
+    )
 }

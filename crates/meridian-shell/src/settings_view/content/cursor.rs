@@ -1,5 +1,5 @@
 fn build_cursor_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
-    let row_w = ctx.content_w as i32;
+    let row_w = settings_group_inner_width(ctx.content_w);
     let mut rows: Vec<Box<dyn Widget>> = Vec::new();
 
     // Size is adjustable: one chip per option, the active size accented.
@@ -49,12 +49,11 @@ fn build_cursor_content(ctx: &SettingsContentContext<'_>) -> Box<dyn Widget> {
             }));
         }
     }
-    Box::new(Container::top_viewport(
+    build_settings_group_page(
         ctx.content_w,
         ctx.content_h,
-        14,
-        16,
-        8,
-        vec![Box::new(Container::column(8, rows)) as Box<dyn Widget>],
-    ))
+        "Mauszeiger",
+        "Größe und Darstellung des Zeigers festlegen.",
+        Box::new(Container::column(8, rows)),
+    )
 }

@@ -4,6 +4,7 @@ struct DisplayModeComboButton {
     expanded: bool,
     enabled: bool,
     accent: Color,
+    width: i32,
 }
 
 impl Widget for DisplayModeComboButton {
@@ -18,8 +19,8 @@ impl Widget for DisplayModeComboButton {
     fn style(&self) -> WidgetStyle {
         WidgetStyle {
             size: UiSize {
-                width: ui_length(DISPLAY_MODE_COMBO_W as f32),
-                height: ui_length(DISPLAY_CARD_H as f32),
+                width: ui_length(self.width as f32),
+                height: ui_length(SETTINGS_CHROME.display_mode_height as f32),
             },
             ..Default::default()
         }
@@ -53,17 +54,17 @@ impl Widget for DisplayModeComboButton {
         };
         paint_text(
             canvas,
-            "Mode",
+            "Auflösung und Bildwiederholrate",
             area.x + 14,
-            area.y + 28,
+            area.y + 22,
             11.0,
             theme.palette.text_dim,
         );
         paint_text(
             canvas,
-            &fit_text(&self.label, 23),
+            &fit_text(&self.label, 58),
             area.x + 14,
-            area.y + 58,
+            area.y + 46,
             11.0,
             color,
         );
@@ -71,7 +72,7 @@ impl Widget for DisplayModeComboButton {
             canvas,
             if self.expanded { "^" } else { "v" },
             area.x + area.width - 22,
-            area.y + 58,
+            area.y + 46,
             13.0,
             if self.enabled {
                 self.accent
@@ -154,6 +155,7 @@ struct DisplayPrimaryButton {
     index: usize,
     active: bool,
     accent: Color,
+    width: i32,
 }
 
 impl Widget for DisplayPrimaryButton {
@@ -168,8 +170,8 @@ impl Widget for DisplayPrimaryButton {
     fn style(&self) -> WidgetStyle {
         WidgetStyle {
             size: UiSize {
-                width: ui_length(DISPLAY_PRIMARY_BTN_W as f32),
-                height: ui_length(DISPLAY_CARD_H as f32),
+                width: ui_length(self.width as f32),
+                height: ui_length(SETTINGS_CHROME.display_control_height as f32),
             },
             ..Default::default()
         }
@@ -196,7 +198,7 @@ impl Widget for DisplayPrimaryButton {
 
         let dot = Rect {
             x: area.x + area.width / 2 - 5,
-            y: area.y + 18,
+            y: area.y + 15,
             width: 10,
             height: 10,
         };
@@ -218,17 +220,9 @@ impl Widget for DisplayPrimaryButton {
         };
         paint_text(
             canvas,
-            if self.active { "Primary" } else { "Make" },
-            area.x + 18,
-            area.y + 55,
-            12.0,
-            color,
-        );
-        paint_text(
-            canvas,
-            if self.active { "active" } else { "Primary" },
-            area.x + 18,
-            area.y + 73,
+            if self.active { "Primäranzeige" } else { "Als primär setzen" },
+            area.x + 14,
+            area.y + 48,
             12.0,
             color,
         );
@@ -243,6 +237,7 @@ struct DisplayCycleButton {
     caption: &'static str,
     value: Box<str>,
     accent: Color,
+    width: i32,
 }
 
 impl Widget for DisplayCycleButton {
@@ -253,8 +248,8 @@ impl Widget for DisplayCycleButton {
     fn style(&self) -> WidgetStyle {
         WidgetStyle {
             size: UiSize {
-                width: ui_length(DISPLAY_PRIMARY_BTN_W as f32),
-                height: ui_length(DISPLAY_CARD_H as f32),
+                width: ui_length(self.width as f32),
+                height: ui_length(SETTINGS_CHROME.display_control_height as f32),
             },
             ..Default::default()
         }
@@ -274,7 +269,7 @@ impl Widget for DisplayCycleButton {
             canvas,
             self.caption,
             area.x + 14,
-            area.y + 40,
+            area.y + 24,
             11.0,
             theme.palette.text_dim,
         );
@@ -282,7 +277,7 @@ impl Widget for DisplayCycleButton {
             canvas,
             &self.value,
             area.x + 14,
-            area.y + 64,
+            area.y + 48,
             14.0,
             self.accent,
         );
@@ -346,28 +341,5 @@ impl Widget for AddAppRow {
             13.0,
             self.accent,
         );
-    }
-}
-
-struct Divider {
-    width: i32,
-    color: Color,
-}
-
-impl Widget for Divider {
-    fn style(&self) -> WidgetStyle {
-        WidgetStyle {
-            size: UiSize {
-                width: ui_length(self.width as f32),
-                height: ui_length(SETTINGS_CHROME.divider_size as f32),
-            },
-            ..Default::default()
-        }
-    }
-
-    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, _theme: &Theme, _state: WidgetState) {
-        if let Some(path) = rounded_rect_path(area, 0) {
-            paint_fill(canvas, &path, self.color);
-        }
     }
 }

@@ -210,6 +210,7 @@ impl MeridianShell {
             let out = std::process::Command::new(picker.program)
                 .args(picker.args)
                 .env("WAYLAND_DISPLAY", &wayland_display)
+                .env("GDK_BACKEND", "wayland")
                 .output();
             match out {
                 Ok(o) if o.status.success() => {

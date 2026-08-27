@@ -30,7 +30,7 @@ impl Widget for DisplayOutputRow {
         WidgetStyle {
             size: UiSize {
                 width: ui_length(self.row_width as f32),
-                height: ui_length(DISPLAY_CARD_H as f32),
+                height: ui_length(SETTINGS_CHROME.display_identity_height as f32),
             },
             ..Default::default()
         }
@@ -172,7 +172,7 @@ impl Widget for DisplayOutputRow {
             canvas,
             &details,
             area.x + 112,
-            area.y + 84,
+            area.y + 86,
             10.0,
             theme.palette.text_dim,
         );
@@ -181,10 +181,10 @@ impl Widget for DisplayOutputRow {
 
 fn display_badge_text(focused: bool, primary: bool) -> String {
     match (focused, primary) {
-        (true, true) => "FOCUSED   PRIMARY".to_string(),
-        (true, false) => "FOCUSED".to_string(),
-        (false, true) => "PRIMARY".to_string(),
-        (false, false) => "AVAILABLE".to_string(),
+        (true, true) => "AKTIV  ·  PRIMÄR".to_string(),
+        (true, false) => "AKTIV".to_string(),
+        (false, true) => "PRIMÄR".to_string(),
+        (false, false) => "VERFÜGBAR".to_string(),
     }
 }
 
