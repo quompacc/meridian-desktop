@@ -14,29 +14,13 @@ fn draw_submit_button(
     alpha: f32,
 ) {
     let path = rounded_rect_path(rect.0, rect.1, rect.2, rect.3, control_radius());
-    let shader = LinearGradient::new(
-        Point::from_xy(rect.0, rect.1),
-        Point::from_xy(rect.0 + rect.2, rect.1 + rect.3),
-        vec![
-            GradientStop::new(
-                0.0,
-                theme_color(alpha, login_theme().colors.accent_alt, 244.0),
-            ),
-            GradientStop::new(1.0, theme_color(alpha, login_theme().colors.accent, 244.0)),
-        ],
-        SpreadMode::Pad,
-        Transform::identity(),
-    )
-    .unwrap_or(Shader::SolidColor(theme_color(
+    let mut paint = Paint::default();
+    paint.set_color(theme_color(
         alpha,
         login_theme().colors.accent,
         244.0,
-    )));
-    let paint = Paint {
-        shader,
-        anti_alias: true,
-        ..Default::default()
-    };
+    ));
+    paint.anti_alias = true;
     pm.fill_path(
         &path,
         &paint,
@@ -284,23 +268,12 @@ fn draw_input_box(
         None,
     );
 
-    let mut stroke_paint = Paint::default();
-    stroke_paint.set_color(outline);
-    stroke_paint.anti_alias = true;
-    let stroke = Stroke {
-        width: 1.0,
-        ..Default::default()
-    };
-    pm.stroke_path(&path, &stroke_paint, &stroke, Transform::identity(), None);
-
-    if focused {
-        let mut underline = PathBuilder::new();
-        underline.move_to(x + INPUT_TEXT_PAD_X, y + h - 0.5);
-        underline.line_to((x + INPUT_TEXT_PAD_X + 86.0).min(x + w - 12.0), y + h - 0.5);
-        if let Some(path) = underline.finish() {
-            draw_card_stroke(pm, &path, metro_accent(alpha), 1.5);
-        }
-    }
+    draw_card_stroke(
+        pm,
+        &path,
+        if focused { metro_accent(alpha) } else { outline },
+        if focused { 1.5 } else { 1.0 },
+    );
 }
 
 fn draw_caret(pm: &mut PixmapMut, x: f32, baseline_y: f32, font_size: f32, color: Color) {

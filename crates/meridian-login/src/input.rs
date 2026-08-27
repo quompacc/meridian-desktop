@@ -7,11 +7,26 @@
 // The render loop is expected to call [`poll_keyboards`] once per frame and
 // apply the returned actions to the UI state.
 
+#[cfg(not(target_os = "openbsd"))]
 use std::path::PathBuf;
 
-use evdev::{AbsoluteAxisCode, Device, EventType, KeyCode, RelativeAxisCode};
-use tracing::{debug, info, warn};
+use evdev::KeyCode;
+#[cfg(not(target_os = "openbsd"))]
+use evdev::{AbsoluteAxisCode, Device, EventType, RelativeAxisCode};
+use tracing::info;
+#[cfg(not(target_os = "openbsd"))]
+use tracing::{debug, warn};
 use xkbcommon::xkb;
+
+#[cfg(target_os = "openbsd")]
+#[path = "input/openbsd.rs"]
+mod openbsd;
+#[cfg(target_os = "openbsd")]
+pub use openbsd::{
+    open_keyboards, open_pointers, poll_keyboards, poll_pointers, KeyboardDevice, PointerDevice,
+};
+#[cfg(not(target_os = "openbsd"))]
+pub type KeyboardDevice = Device;
 
 /// Default keyboard layout when /etc/default/keyboard cannot be read.
 const FALLBACK_LAYOUT: &str = "de";
@@ -53,12 +68,14 @@ pub enum PointerAction {
     LeftPress { x: f32, y: f32 },
 }
 
+#[cfg(not(target_os = "openbsd"))]
 #[derive(Clone, Copy, Debug)]
 struct AxisRange {
     min: i32,
     max: i32,
 }
 
+#[cfg(not(target_os = "openbsd"))]
 impl AxisRange {
     fn normalize(self, value: i32, span: f32) -> f32 {
         let width = (self.max - self.min).max(1) as f32;
@@ -66,6 +83,7 @@ impl AxisRange {
     }
 }
 
+#[cfg(not(target_os = "openbsd"))]
 pub struct PointerDevice {
     device: Device,
     abs_x: Option<AxisRange>,
@@ -97,10 +115,12 @@ impl PointerState {
         self.y = (self.y + dy as f32).clamp(0.0, self.height - 1.0);
     }
 
+    #[cfg(not(target_os = "openbsd"))]
     fn move_absolute_x(&mut self, range: AxisRange, value: i32) {
         self.x = range.normalize(value, self.width - 1.0);
     }
 
+    #[cfg(not(target_os = "openbsd"))]
     fn move_absolute_y(&mut self, range: AxisRange, value: i32) {
         self.y = range.normalize(value, self.height - 1.0);
     }
@@ -201,6 +221,7 @@ impl Keyboard {
     }
 }
 
+#[cfg(not(target_os = "openbsd"))]
 fn is_keyboard_keyset(keys: &evdev::AttributeSetRef<KeyCode>) -> bool {
     keys.contains(KeyCode::KEY_A)
         || keys.contains(KeyCode::KEY_KPENTER)
@@ -237,6 +258,7 @@ fn keypad_digit(raw_code: u16) -> Option<&'static str> {
 }
 
 /// Open all event* nodes under /dev/input that expose keyboard keys.
+#[cfg(not(target_os = "openbsd"))]
 pub fn open_keyboards() -> std::io::Result<Vec<Device>> {
     let mut devs = Vec::new();
     let dir = match std::fs::read_dir("/dev/input") {
@@ -297,6 +319,7 @@ pub fn open_keyboards() -> std::io::Result<Vec<Device>> {
     Ok(devs)
 }
 
+#[cfg(not(target_os = "openbsd"))]
 pub fn open_pointers() -> std::io::Result<Vec<PointerDevice>> {
     let mut devs = Vec::new();
     let dir = match std::fs::read_dir("/dev/input") {
@@ -381,6 +404,7 @@ pub fn open_pointers() -> std::io::Result<Vec<PointerDevice>> {
 /// Drain any pending events on each device and return the [`KeyAction`]s
 /// they produced. Devices that fail to fetch are silently skipped on this
 /// frame and tried again next frame.
+#[cfg(not(target_os = "openbsd"))]
 pub fn poll_keyboards(devs: &mut [Device], kb: &mut Keyboard) -> Vec<KeyAction> {
     let mut actions = Vec::new();
     for dev in devs {
@@ -411,6 +435,7 @@ pub fn poll_keyboards(devs: &mut [Device], kb: &mut Keyboard) -> Vec<KeyAction> 
     actions
 }
 
+#[cfg(not(target_os = "openbsd"))]
 pub fn poll_pointers(devs: &mut [PointerDevice], pointer: &mut PointerState) -> Vec<PointerAction> {
     let mut actions = Vec::new();
     for ptr in devs {

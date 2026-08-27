@@ -73,7 +73,7 @@ fn draw_login_ui(
     painter.render_text_centered(
         pm,
         TextStyle::SansRegular(13.0),
-        "B S D   D E S K T O P",
+        "WILLKOMMEN",
         cx,
         inner_top + SUBTITLE_OFFSET_Y,
         theme_color(alpha, login_theme().colors.accent, 220.0),

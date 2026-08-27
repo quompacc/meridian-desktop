@@ -32,10 +32,7 @@ use drm::Device as DrmDevice;
 
 use meridian_compass_render::{CompassPainter, Fonts, Style, TextStyle};
 use meridian_config::{ThemeConfig, ThemeManager, ThemeSurface};
-use tiny_skia::{
-    Color, FillRule, GradientStop, LinearGradient, Paint, PathBuilder, PixmapMut, Point, Shader,
-    SpreadMode, Stroke, Transform,
-};
+use tiny_skia::{Color, FillRule, Paint, PathBuilder, PixmapMut, Stroke, Transform};
 use tracing::{info, warn};
 use zeroize::Zeroizing;
 
@@ -46,12 +43,11 @@ use input::{
 };
 use meridian_boot_common::{
     cleanup_socket_path, read_appearance, secure_socket_permissions, select_boot_mode, Appearance,
-    SocketIdentity,
+    SocketIdentity, BOOTSPLASH_SOCKET_PATH, LOGIN_SOCKET_PATH,
 };
 use visual::LoginBackdrop;
 
 const BOOTSPLASH_SOCKET_ENV: &str = "BOOTSPLASH_SOCKET";
-const BOOTSPLASH_SOCKET: &str = "/run/bootsplash.sock";
 const LOGIN_DRM_CARD_ENV: &str = "MERIDIAN_LOGIN_DRM_CARD";
 const DEFAULT_DRM_CARD: &str = "/dev/dri/card0";
 // No client-side sleep needed: bootsplash's `handover` ack is now
@@ -62,7 +58,6 @@ const DEFAULT_DRM_CARD: &str = "/dev/dri/card0";
 // Phase 8: IPC server that the spawned compositor uses to hand the screen
 // over and announce its first committed frame. Mirror of the bootsplash IPC
 // model — see `bootsplash_handover` / `bootsplash_exit` in this file.
-const LOGIN_SOCKET: &str = "/run/meridian-login.sock";
 /// Maximum time we wait for the compositor to send `handover` before we
 /// give up and release DRM anyway. Without this fallback a buggy or
 /// pre-Phase-8 compositor would leave the user staring at the frozen
@@ -126,6 +121,36 @@ const FAILED_SHAKE_FREQ_HZ: f32 = 14.0;
 const FAILED_SHAKE_AMPLITUDE: f32 = 14.0;
 
 struct Card(File);
+
+/// Static greeter rendering resources retained while the supervised desktop
+/// session runs. Reusing them lets the next greeter modeset immediately after
+/// compositor exit instead of decoding and filtering the wallpaper again.
+struct GreeterAssets {
+    width: u32,
+    height: u32,
+    painter: CompassPainter<'static>,
+    backdrop: LoginBackdrop,
+}
+
+impl GreeterAssets {
+    fn new(width: u32, height: u32) -> Result<Self, Box<dyn std::error::Error>> {
+        let painter = if light_appearance() {
+            CompassPainter::new(Fonts::quompacc())?.with_style(Style::chart())
+        } else {
+            CompassPainter::new(Fonts::quompacc())?
+        };
+        Ok(Self {
+            width,
+            height,
+            painter,
+            backdrop: LoginBackdrop::new(width, height)?,
+        })
+    }
+
+    fn matches_output(&self, width: u32, height: u32) -> bool {
+        self.width == width && self.height == height
+    }
+}
 
 impl AsFd for Card {
     fn as_fd(&self) -> BorrowedFd<'_> {

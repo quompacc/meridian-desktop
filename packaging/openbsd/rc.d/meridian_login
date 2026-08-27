@@ -1,0 +1,51 @@
+#!/bin/ksh
+#
+# Native OpenBSD greeter service. meridian-login owns DRM/input as root,
+# authenticates through BSD Authentication, then starts the compositor as the
+# selected unprivileged user.
+
+daemon="/usr/local/bin/meridian-login"
+daemon_flags=
+daemon_timeout=10
+graphics_vt=4
+
+. /etc/rc.d/rc.subr
+
+rc_bg=YES
+rc_reload=NO
+
+rc_pre() {
+	[[ -x "${daemon}" ]] || {
+		echo "${daemon} is missing or not executable" >&2
+		return 1
+	}
+	[[ -x /usr/local/bin/meridian ]] || {
+		echo "/usr/local/bin/meridian is missing or not executable" >&2
+		return 1
+	}
+	rm -f /var/run/meridian-login.sock
+}
+
+rc_start() {
+	(
+		echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) meridian-login starting"
+		# Keep graphical credentials away from ttyC0's getty input buffer.
+		# ttyC4 is deliberately configured without a getty; ttyC1 remains a
+		# recovery console. Keep ttyC4 focused across restarts so a stale getty
+		# input buffer is never exposed during the graphical handover.
+		/sbin/wsconsctl display.focus=${graphics_vt} || {
+			echo "failed to switch to graphical ttyC${graphics_vt}"
+			exit 1
+		}
+		/usr/bin/nohup /usr/bin/env \
+			RUST_LOG=info \
+			XKB_DEFAULT_RULES=evdev \
+			XCURSOR_PATH=/usr/local/share/icons:/usr/local/lib/X11/icons \
+			"${daemon}" ${daemon_flags}
+		status=$?
+		echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) meridian-login exited status=${status}"
+		exit ${status}
+	) >>/var/log/meridian-login.log 2>&1 </dev/null &
+}
+
+rc_cmd $1

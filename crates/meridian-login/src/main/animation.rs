@@ -41,7 +41,7 @@ fn run_animation(
     h: u32,
     refresh_hz: u32,
     ui_state: &mut LoginUiState,
-    keyboards: &mut [evdev::Device],
+    keyboards: &mut [input::KeyboardDevice],
     keyboard: &mut Keyboard,
     pointers: &mut [input::PointerDevice],
     pointer: &mut PointerState,

@@ -4,6 +4,16 @@ use std::{
     path::Path,
 };
 
+#[cfg(target_os = "openbsd")]
+pub const BOOTSPLASH_SOCKET_PATH: &str = "/var/run/bootsplash.sock";
+#[cfg(not(target_os = "openbsd"))]
+pub const BOOTSPLASH_SOCKET_PATH: &str = "/run/bootsplash.sock";
+
+#[cfg(target_os = "openbsd")]
+pub const LOGIN_SOCKET_PATH: &str = "/var/run/meridian-login.sock";
+#[cfg(not(target_os = "openbsd"))]
+pub const LOGIN_SOCKET_PATH: &str = "/run/meridian-login.sock";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SocketIdentity {
     dev: u64,
@@ -203,5 +213,24 @@ mod appearance_tests {
         write_appearance_to(&path, Appearance::Light).unwrap();
         assert_eq!(read_appearance_from(&path), Appearance::Light);
         let _ = fs::remove_file(&path);
+    }
+}
+
+#[cfg(test)]
+mod platform_path_tests {
+    use super::{BOOTSPLASH_SOCKET_PATH, LOGIN_SOCKET_PATH};
+
+    #[test]
+    fn boot_sockets_use_the_native_runtime_directory() {
+        #[cfg(target_os = "openbsd")]
+        {
+            assert_eq!(BOOTSPLASH_SOCKET_PATH, "/var/run/bootsplash.sock");
+            assert_eq!(LOGIN_SOCKET_PATH, "/var/run/meridian-login.sock");
+        }
+        #[cfg(not(target_os = "openbsd"))]
+        {
+            assert_eq!(BOOTSPLASH_SOCKET_PATH, "/run/bootsplash.sock");
+            assert_eq!(LOGIN_SOCKET_PATH, "/run/meridian-login.sock");
+        }
     }
 }

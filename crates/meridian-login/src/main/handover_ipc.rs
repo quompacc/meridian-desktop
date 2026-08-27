@@ -7,7 +7,8 @@ fn bootsplash_exit() -> std::io::Result<()> {
 }
 
 fn bootsplash_socket_path() -> String {
-    std::env::var(BOOTSPLASH_SOCKET_ENV).unwrap_or_else(|_| BOOTSPLASH_SOCKET.to_string())
+    std::env::var(BOOTSPLASH_SOCKET_ENV)
+        .unwrap_or_else(|_| BOOTSPLASH_SOCKET_PATH.to_string())
 }
 
 fn send_command(path: &str, cmd: &[u8]) -> std::io::Result<String> {
@@ -43,11 +44,11 @@ enum IpcEvent {
     /// Compositor is ready to take the screen. Login must release DRM
     /// master and close its card fd so the compositor's libseat acquire
     /// succeeds. This is the moment that gates the visible handover.
-    Handover,
+    Handover(mpsc::Sender<()>),
     /// Compositor's first frame is on screen. Informational; lets us log
     /// the handover latency and could later be used to suppress the
     /// fallback timeout.
-    Exit,
+    Exit(mpsc::Sender<()>),
 }
 
 /// Bind the login IPC socket and spawn an accept thread that forwards
@@ -64,7 +65,7 @@ fn spawn_login_ipc_server(
     owner_uid: u32,
     owner_gid: u32,
 ) -> std::io::Result<(PathBuf, SocketIdentity)> {
-    let path = PathBuf::from(LOGIN_SOCKET);
+    let path = PathBuf::from(LOGIN_SOCKET_PATH);
     let _ = fs::remove_file(&path);
     let listener = UnixListener::bind(&path)?;
     // chown FIRST, then chmod: shrinking the access window during the
@@ -111,12 +112,24 @@ fn handle_login_ipc_client(mut stream: UnixStream, tx: mpsc::Sender<IpcEvent>) {
         match cmd.trim() {
             "" => continue,
             "handover" => {
-                let _ = tx.send(IpcEvent::Handover);
-                let _ = writeln!(stream, "ok handover");
+                let (ack_tx, ack_rx) = mpsc::channel();
+                if tx.send(IpcEvent::Handover(ack_tx)).is_ok()
+                    && ack_rx.recv_timeout(HANDOVER_DEADLINE).is_ok()
+                {
+                    let _ = writeln!(stream, "ok handover");
+                } else {
+                    let _ = writeln!(stream, "err handover failed");
+                }
             }
             "exit" => {
-                let _ = tx.send(IpcEvent::Exit);
-                let _ = writeln!(stream, "ok exit");
+                let (ack_tx, ack_rx) = mpsc::channel();
+                if tx.send(IpcEvent::Exit(ack_tx)).is_ok()
+                    && ack_rx.recv_timeout(HANDOVER_DEADLINE).is_ok()
+                {
+                    let _ = writeln!(stream, "ok exit");
+                } else {
+                    let _ = writeln!(stream, "err exit failed");
+                }
             }
             other => {
                 let _ = writeln!(stream, "err unknown command: {}", other);

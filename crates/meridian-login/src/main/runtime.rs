@@ -5,7 +5,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     LIGHT_APPEARANCE.store(appearance.is_light(), std::sync::atomic::Ordering::Relaxed);
     let _ = LOGIN_THEME.set(theme);
     info!("meridian-login starting (Phase 7)");
+    let mut greeter_assets = None;
 
+    loop {
+        if !run_login_cycle(&mut greeter_assets)? {
+            return Ok(());
+        }
+        info!("desktop session ended; reinitializing greeter");
+    }
+}
+
+fn run_login_cycle(
+    greeter_assets: &mut Option<GreeterAssets>,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let reacquire_started_at = Instant::now();
     match bootsplash_handover() {
         Ok(()) => info!("bootsplash handover acked (master released)"),
         Err(e) => warn!(error = %e, "bootsplash handover failed (not running?); proceeding"),
@@ -43,12 +56,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut db = card.create_dumb_buffer((w, h), DrmFourcc::Xrgb8888, 32)?;
     let fb = card.add_framebuffer(&db, 24, 32)?;
 
-    let painter = if light_appearance() {
-        CompassPainter::new(Fonts::quompacc())?.with_style(Style::chart())
-    } else {
-        CompassPainter::new(Fonts::quompacc())?
-    };
-    let backdrop = LoginBackdrop::new(w, h)?;
+    let assets_reused = greeter_assets
+        .as_ref()
+        .is_some_and(|assets| assets.matches_output(w, h));
+    if !assets_reused {
+        *greeter_assets = Some(GreeterAssets::new(w, h)?);
+    }
+    let assets = greeter_assets
+        .as_ref()
+        .expect("greeter assets were initialized");
+    info!(reused = assets_reused, "greeter static assets ready");
 
     // Pre-fill the dumb buffer with the settle frame BEFORE set_crtc so
     // the kernel never scans out a zeroed (black) buffer. Without this,
@@ -57,7 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let mut mapping = card.map_dumb_buffer(&mut db)?;
         let buf = mapping.as_mut();
-        backdrop.copy_rgba_to(buf)?;
+        assets.backdrop.copy_rgba_to(buf)?;
         for px in buf.chunks_exact_mut(4) {
             px.swap(0, 2);
         }
@@ -66,7 +83,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     card.set_crtc(crtc, Some(fb), (0, 0), &[conn_info.handle()], Some(mode))?;
     let clip = ClipRect::new(0, 0, w as u16, h as u16);
     let _ = card.dirty_framebuffer(fb, &[clip]);
-    info!("settle frame committed");
+    info!(
+        reacquire_ms = reacquire_started_at.elapsed().as_millis() as u64,
+        assets_reused, "settle frame committed"
+    );
 
     match bootsplash_exit() {
         Ok(()) => info!("bootsplash exit signalled"),
@@ -85,8 +105,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &card,
         &mut db,
         fb,
-        &painter,
-        &backdrop,
+        &assets.painter,
+        &assets.backdrop,
         w,
         h,
         mode.vrefresh().max(60),
@@ -116,7 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         drop(card);
         run_power_action(exit);
-        return Ok(());
+        return Ok(false);
     }
 
     // On successful auth, spawn the compositor as the authenticated user
@@ -209,6 +229,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Without (1), the compositor's first commit fights us for master.
     // Without (2)-being-deferred-to-exit, the kernel may drop our fb
     // before the compositor's first commit lands → black flash.
+    let restart_greeter = should_restart_greeter(exit, compositor_child.is_some());
     if let Some(mut child) = compositor_child {
         info!(pid = child.id(), "waiting for compositor handover + exit");
         loop {
@@ -232,7 +253,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             match ipc_rx.recv_timeout(Duration::from_millis(50)) {
-                Ok(IpcEvent::Handover) => {
+                Ok(IpcEvent::Handover(ack)) => {
                     if !master_released {
                         if let Some(card) = card_opt.as_ref() {
                             match card.release_master_lock() {
@@ -248,9 +269,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         master_released = true;
                     }
+                    // OpenBSD's DRM master handoff is stricter than Linux's:
+                    // keeping the old primary-node fd alive after DROPMASTER
+                    // can leave the new atomic client without effective KMS
+                    // permission. Close it before acknowledging handover.
+                    #[cfg(target_os = "openbsd")]
+                    if let Some(card) = card_opt.take() {
+                        drop(card);
+                        info!("OpenBSD handover: closed released login DRM fd");
+                    }
                     handover_received_at.get_or_insert_with(Instant::now);
+                    let _ = ack.send(());
                 }
-                Ok(IpcEvent::Exit) => {
+                Ok(IpcEvent::Exit(ack)) => {
                     if !first_frame_seen {
                         info!(
                             spawn_to_first_frame_ms =
@@ -264,6 +295,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(card) = card_opt.take() {
                         drop(card);
                     }
+                    let _ = ack.send(());
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     if spawn_wait_started_at.elapsed() >= HANDOVER_DEADLINE {
@@ -324,6 +356,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         driver.close();
     }
 
-    info!("meridian-login exiting");
-    Ok(())
+    if restart_greeter {
+        info!("returning to greeter after desktop session");
+    } else {
+        info!("meridian-login exiting");
+    }
+    Ok(restart_greeter)
+}
+
+fn should_restart_greeter(exit: ControlFlow, compositor_started: bool) -> bool {
+    compositor_started || exit == ControlFlow::Submit
 }

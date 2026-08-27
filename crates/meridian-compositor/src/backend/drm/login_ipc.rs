@@ -5,8 +5,10 @@
 // aside so our libseat acquire + first KMS commit can take over.
 //
 // Protocol mirrors bootsplash → login:
-//   `handover\n`  →  login releases DRM master but keeps the fd alive so
-//                    the scanout buffer stays referenced (no black flash).
+//   `handover\n`  →  login releases DRM master before acknowledging. Linux
+//                    keeps the fd alive to preserve scanout; OpenBSD closes
+//                    it immediately because its KMS handoff requires the old
+//                    primary-node fd to be gone.
 //   `exit\n`      →  login closes the fd. By the time we send this, our
 //                    first frame is already on screen and owns the
 //                    scanout, so login dropping its fb is safe.
@@ -22,10 +24,11 @@ use std::time::Duration;
 
 use tracing::{debug, warn};
 
-const LOGIN_SOCKET: &str = "/run/meridian-login.sock";
+use meridian_boot_common::LOGIN_SOCKET_PATH;
+
 const IPC_TIMEOUT: Duration = Duration::from_millis(500);
 
-/// Tell meridian-login to release DRM master (but keep its fd open).
+/// Tell meridian-login to complete its platform-native DRM master release.
 /// Call before `LibSeatSession::new()` / any DRM acquire.
 pub fn send_handover() {
     match send_command(b"handover\n") {
@@ -35,7 +38,7 @@ pub fn send_handover() {
         ),
         Err(e) => warn!(
             error = %e,
-            socket = LOGIN_SOCKET,
+            socket = LOGIN_SOCKET_PATH,
             "login ipc: handover send failed (not launched by meridian-login?)"
         ),
     }
@@ -52,14 +55,14 @@ pub fn send_first_frame() {
         ),
         Err(e) => warn!(
             error = %e,
-            socket = LOGIN_SOCKET,
+            socket = LOGIN_SOCKET_PATH,
             "login ipc: first-frame exit send failed"
         ),
     }
 }
 
 fn send_command(cmd: &[u8]) -> std::io::Result<String> {
-    let mut s = UnixStream::connect(LOGIN_SOCKET)?;
+    let mut s = UnixStream::connect(LOGIN_SOCKET_PATH)?;
     s.set_read_timeout(Some(IPC_TIMEOUT))?;
     s.set_write_timeout(Some(IPC_TIMEOUT))?;
     s.write_all(cmd)?;

@@ -369,6 +369,13 @@ fn submit_and_cancel_return_their_control_flow() {
 }
 
 #[test]
+fn greeter_restarts_after_desktop_exit_or_failed_spawn() {
+    assert!(should_restart_greeter(ControlFlow::Submit, true));
+    assert!(should_restart_greeter(ControlFlow::Submit, false));
+    assert!(!should_restart_greeter(ControlFlow::Cancel, false));
+}
+
+#[test]
 fn reject_keeps_username_and_resets_password_focus() {
     let mut s = LoginUiState {
         username: "eduard".into(),
