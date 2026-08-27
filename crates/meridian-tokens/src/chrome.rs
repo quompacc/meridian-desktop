@@ -264,6 +264,36 @@ impl Default for Launcher {
     }
 }
 
+/// Geometry for the persistent power controls in the native greeter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Greeter {
+    pub power_button_width: i32,
+    pub power_button_height: i32,
+    pub power_button_gap: i32,
+    pub power_button_edge_pad: i32,
+    pub power_button_label_size: u32,
+    pub power_button_border_width: u32,
+    pub power_button_emphasis_border_width: u32,
+}
+
+impl Greeter {
+    pub const DEFAULT: Greeter = Greeter {
+        power_button_width: 96,
+        power_button_height: 32,
+        power_button_gap: 10,
+        power_button_edge_pad: 24,
+        power_button_label_size: 13,
+        power_button_border_width: 1,
+        power_button_emphasis_border_width: 2,
+    };
+}
+
+impl Default for Greeter {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 /// Geometry and translucent overlays for the Settings view hosted inside the
 /// launcher surface. Settings shares the launcher's outer dimensions while
 /// keeping its own, denser information hierarchy.
@@ -427,6 +457,10 @@ mod tests {
         assert_eq!(Launcher::DEFAULT.selected_alpha, 56);
         assert_eq!(Launcher::DEFAULT.search_focus_alpha, 52);
         assert_eq!(Launcher::DEFAULT.divider_alpha, 44);
+        assert_eq!(Greeter::DEFAULT.power_button_width, 96);
+        assert_eq!(Greeter::DEFAULT.power_button_height, 32);
+        assert_eq!(Greeter::DEFAULT.power_button_gap, 10);
+        assert_eq!(Greeter::DEFAULT.power_button_edge_pad, 24);
         assert_eq!(
             Settings::DEFAULT.header_height,
             Launcher::DEFAULT.header_height
@@ -450,6 +484,7 @@ mod tests {
         assert_eq!(Scrollbar::default(), Scrollbar::DEFAULT);
         assert_eq!(Calendar::default(), Calendar::DEFAULT);
         assert_eq!(Launcher::default(), Launcher::DEFAULT);
+        assert_eq!(Greeter::default(), Greeter::DEFAULT);
         assert_eq!(Settings::default(), Settings::DEFAULT);
         assert_eq!(Mask::default(), Mask::DEFAULT);
     }

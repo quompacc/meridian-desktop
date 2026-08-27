@@ -1,20 +1,21 @@
-# OpenBSD boot baseline — 2026-08-27
+# OpenBSD graphical boot status — 2026-08-27
 
 Reference host: Acer Aspire F5-573G, OpenBSD 7.9/amd64 `GENERIC.MP#4`.
 
 ## Observed baseline
 
 - `/etc/boot.conf` is absent; the standard five-second loader prompt remains.
-- `/etc/rc.conf.local` enables only `seatd` and `messagebus` as package
-  services. `meridian-login` and `bootsplash` are not installed system-wide.
+- `/etc/rc.conf.local` enables `seatd`, `messagebus`, `meridian_bootsplash`,
+  and `meridian_login`. The splash is ordered first among package services.
 - `sshd` is enabled and reachable. `ttyC1`, `ttyC2`, `ttyC3` and `ttyC5` keep
   local recovery gettys enabled.
 - Boot diagnostics remain in `/var/run/dmesg.boot`, `/var/log/messages` and
   `/var/log/daemon`.
 - OpenBSD uses `/var/run`, not `/run`. The login/compositor handover socket is
   therefore `/var/run/meridian-login.sock` on this target.
-- Intel KMS drives the internal 1920x1080 panel. The development compositor is
-  currently launched manually; this is not evidence for boot-to-greeter.
+- Intel KMS drives the internal 1920x1080 panel. A normal reboot reaches the
+  native greeter; login starts the compositor as the selected unprivileged
+  user, and logout returns to the greeter.
 
 ## Supported controls and recovery
 
@@ -23,38 +24,40 @@ and explicit boot commands, but has no supported native quiet/splash flag.
 Holding either Control key while BOOT starts skips `/etc/boot.conf` and cancels
 automatic boot. `boot -s` remains the explicit single-user recovery path.
 
-The first product step therefore installs and proves the native greeter while
-leaving all console output visible. `scripts/install-openbsd-boot.ksh` gates
-boot enablement behind a running SSH daemon and an enabled `ttyC1` getty, backs
-up `/etc/rc.conf.local`, and never edits `/etc/boot.conf`.
+`scripts/install-openbsd-boot.ksh` gates boot enablement behind a running SSH
+daemon and an enabled `ttyC1` getty, backs up `/etc/rc.conf.local`, and never
+edits `/etc/boot.conf`. With `--bootsplash`, the native splash replaces late
+userspace output after the package-service phase begins; loader, kernel, and
+early `rc(8)` diagnostics remain visible by design. See
+`docs/OPENBSD_QUIET_BOOT.md` for the supported boundary.
 
 ## Test order
 
-1. Build and install without enabling boot:
+1. Build and install both native components without enabling boot:
 
    ```sh
-   scripts/install-openbsd-boot.ksh --build
+   scripts/install-openbsd-boot.ksh --build --bootsplash ../bootsplash
    ```
 
-2. Keep SSH open, stop the development compositor, and start the greeter with
-   rc.d debugging visible:
+2. Keep SSH open, stop the active graphical service, then test the handover:
 
    ```sh
-   doas /etc/rc.d/meridian_login -df start
+   doas rcctl start meridian_bootsplash
+   doas rcctl start meridian_login
    ```
 
 3. Verify keyboard, pointer, BSD Authentication, desktop handover, logout back
    to the greeter, and `doas rcctl stop meridian_login` recovery.
 
-4. Only after that pass, enable the service:
+4. Only after that pass, enable the complete boot chain:
 
    ```sh
-   scripts/install-openbsd-boot.ksh --enable-boot
+   scripts/install-openbsd-boot.ksh --bootsplash ../bootsplash --enable-boot
    ```
 
-5. Record a normal reboot before investigating console redirection or an early
-   userspace splash. Quiet boot must retain the Control-key/single-user and SSH
-   recovery paths and must not hide a failed greeter behind a black screen.
+5. Reboot normally and verify splash, greeter, login, logout, SSH, and `ttyC1`
+   recovery. Do not redirect the OpenBSD system console: the diagnostic and
+   recovery value outweighs hiding its early boot text.
 
 # Graphical console isolation
 

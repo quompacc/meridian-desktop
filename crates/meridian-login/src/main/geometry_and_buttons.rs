@@ -64,31 +64,33 @@ fn smartcard_pin_rect(w: f32, h: f32, shake_dx: f32) -> Rect {
 
 fn power_button_rects(w: f32, h: f32, shake_dx: f32) -> PowerButtonRects {
     let _ = shake_dx;
-    let total_w = POWER_BUTTON_WIDTH * 2.0 + POWER_BUTTON_GAP;
-    let x0 = w - POWER_BUTTON_EDGE_PAD - total_w;
-    let y = h - POWER_BUTTON_EDGE_PAD - POWER_BUTTON_HEIGHT;
+    let tokens = Greeter::DEFAULT;
+    let button_width = tokens.power_button_width as f32;
+    let button_height = tokens.power_button_height as f32;
+    let gap = tokens.power_button_gap as f32;
+    let edge_pad = tokens.power_button_edge_pad as f32;
+    let total_w = button_width * 2.0 + gap;
+    let x0 = w - edge_pad - total_w;
+    let y = h - edge_pad - button_height;
     (
-        (x0, y, POWER_BUTTON_WIDTH, POWER_BUTTON_HEIGHT),
+        (x0, y, button_width, button_height),
         (
-            x0 + POWER_BUTTON_WIDTH + POWER_BUTTON_GAP,
+            x0 + button_width + gap,
             y,
-            POWER_BUTTON_WIDTH,
-            POWER_BUTTON_HEIGHT,
+            button_width,
+            button_height,
         ),
     )
 }
 
-fn run_power_action(action: ControlFlow) {
-    let arg = match action {
-        ControlFlow::PowerOff => "poweroff",
-        ControlFlow::Reboot => "reboot",
-        _ => return,
-    };
-    info!(action = arg, "requesting system power action");
-    match Command::new("systemctl").arg(arg).status() {
-        Ok(status) if status.success() => info!(action = arg, "system power action accepted"),
-        Ok(status) => warn!(action = arg, status = ?status, "system power action failed"),
-        Err(err) => warn!(action = arg, error = %err, "failed to invoke systemctl"),
+fn power_action_at(w: f32, h: f32, x: f32, y: f32) -> Option<PowerAction> {
+    let (restart, poweroff) = power_button_rects(w, h, 0.0);
+    if point_in_rect(x, y, restart.0, restart.1, restart.2, restart.3) {
+        Some(PowerAction::Reboot)
+    } else if point_in_rect(x, y, poweroff.0, poweroff.1, poweroff.2, poweroff.3) {
+        Some(PowerAction::PowerOff)
+    } else {
+        None
     }
 }
 
@@ -219,7 +221,7 @@ fn draw_login_button(
     label: &str,
     accent: Color,
     alpha: f32,
-    selected: bool,
+    emphasized: bool,
 ) {
     let path = rounded_rect_path(rect.0, rect.1, rect.2, rect.3, control_radius());
     let fill = theme_color(alpha, login_theme().colors.background, 176.0);
@@ -237,17 +239,21 @@ fn draw_login_button(
     draw_card_stroke(
         pm,
         &path,
-        if selected {
+        if emphasized {
             color_with_alpha(accent, alpha_byte(alpha, 240.0))
         } else {
             metro_border(alpha)
         },
-        if selected { 2.0 } else { 1.0 },
+        if emphasized {
+            Greeter::DEFAULT.power_button_emphasis_border_width as f32
+        } else {
+            Greeter::DEFAULT.power_button_border_width as f32
+        },
     );
 
     painter.render_text_centered(
         pm,
-        TextStyle::SansRegular(13.0),
+        TextStyle::SansRegular(Greeter::DEFAULT.power_button_label_size as f32),
         label,
         rect.0 + rect.2 / 2.0,
         rect.1 + rect.3 / 2.0,
@@ -263,6 +269,8 @@ fn draw_power_buttons(
     alpha: f32,
     shake_dx: f32,
     pending: Option<PowerAction>,
+    focused: Option<PowerAction>,
+    hovered: Option<PowerAction>,
 ) {
     let (restart, poweroff) = power_button_rects(w, h, shake_dx);
     draw_login_button(
@@ -276,7 +284,9 @@ fn draw_power_buttons(
         },
         metro_accent(1.0),
         alpha,
-        pending == Some(PowerAction::Reboot),
+        pending == Some(PowerAction::Reboot)
+            || focused == Some(PowerAction::Reboot)
+            || hovered == Some(PowerAction::Reboot),
     );
     draw_login_button(
         pm,
@@ -285,11 +295,13 @@ fn draw_power_buttons(
         if pending == Some(PowerAction::PowerOff) {
             "Bestätigen"
         } else {
-            "Aus"
+            "Ausschalten"
         },
         metro_error(1.0),
         alpha,
-        pending == Some(PowerAction::PowerOff),
+        pending == Some(PowerAction::PowerOff)
+            || focused == Some(PowerAction::PowerOff)
+            || hovered == Some(PowerAction::PowerOff),
     );
 }
 

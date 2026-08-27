@@ -32,6 +32,7 @@ use drm::Device as DrmDevice;
 
 use meridian_compass_render::{CompassPainter, Fonts, Style, TextStyle};
 use meridian_config::{ThemeConfig, ThemeManager, ThemeSurface};
+use meridian_tokens::Greeter;
 use tiny_skia::{Color, FillRule, Paint, PathBuilder, PixmapMut, Stroke, Transform};
 use tracing::{info, warn};
 use zeroize::Zeroizing;
@@ -109,10 +110,6 @@ const INPUT_BOX_HEIGHT: f32 = 52.0;
 const INPUT_TEXT_PAD_X: f32 = 50.0;
 const INPUT_BASELINE_PAD_BOTTOM: f32 = 17.0;
 const LOGIN_BUTTON_HEIGHT: f32 = 50.0;
-const POWER_BUTTON_WIDTH: f32 = 96.0;
-const POWER_BUTTON_HEIGHT: f32 = 32.0;
-const POWER_BUTTON_GAP: f32 = 10.0;
-const POWER_BUTTON_EDGE_PAD: f32 = 24.0;
 const HINT_OFFSET_Y: f32 = 24.0;
 
 // Card shake animation on auth failure (classic "wrong password" feedback)
@@ -247,6 +244,7 @@ struct LoginUiState {
     /// inherits XDG_SESSION_ID / XDG_SEAT / XDG_VTNR from pam_systemd.
     pam_env: Vec<(String, String)>,
     pending_power: Option<PendingPowerAction>,
+    power_focus: Option<PowerAction>,
     keyboard_status: KeyboardStatus,
     security_key_present: bool,
     smartcard_user: Option<String>,
@@ -308,6 +306,13 @@ impl PowerAction {
             PowerAction::Reboot => ControlFlow::Reboot,
         }
     }
+
+    fn label(self) -> &'static str {
+        match self {
+            PowerAction::PowerOff => "poweroff",
+            PowerAction::Reboot => "reboot",
+        }
+    }
 }
 
 impl PendingPowerAction {
@@ -320,6 +325,7 @@ include!("main/state.rs");
 include!("main/runtime.rs");
 include!("main/animation.rs");
 include!("main/geometry_and_buttons.rs");
+include!("main/power_actions.rs");
 include!("main/ui.rs");
 include!("main/controls.rs");
 include!("main/handover_ipc.rs");

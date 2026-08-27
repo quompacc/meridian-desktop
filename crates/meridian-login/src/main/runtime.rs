@@ -19,13 +19,8 @@ fn run_login_cycle(
     greeter_assets: &mut Option<GreeterAssets>,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let reacquire_started_at = Instant::now();
-    match bootsplash_handover() {
-        Ok(()) => info!("bootsplash handover acked (master released)"),
-        Err(e) => warn!(error = %e, "bootsplash handover failed (not running?); proceeding"),
-    }
-
-    let (drm_card, card) = open_display_card()?;
-    info!(path = %drm_card, "opening login DRM card (auto-selected display GPU)");
+    let (drm_card, mut card) = open_display_card()?;
+    info!(path = %drm_card, "preparing login DRM card (auto-selected display GPU)");
 
     let res = card.resource_handles()?;
     let conn_info = res
@@ -54,7 +49,7 @@ fn run_login_cycle(
     .ok_or("no CRTC available")?;
 
     let mut db = card.create_dumb_buffer((w, h), DrmFourcc::Xrgb8888, 32)?;
-    let fb = card.add_framebuffer(&db, 24, 32)?;
+    let mut fb = card.add_framebuffer(&db, 24, 32)?;
 
     let assets_reused = greeter_assets
         .as_ref()
@@ -80,12 +75,55 @@ fn run_login_cycle(
         }
     }
 
+    // Prepare the complete greeter frame while the bootsplash is still being
+    // scanned out. Only then request handover, acquire master, and commit. On
+    // OpenBSD the splash closes its released primary-node fd before acking, so
+    // this keeps the unavoidable no-owner interval as short as possible.
+    let handover_started_at = Instant::now();
+    let bootsplash_released = match bootsplash_handover() {
+        Ok(()) => {
+            info!("bootsplash handover acked (master released)");
+            true
+        }
+        Err(e) => {
+            warn!(error = %e, "bootsplash handover failed (not running?); proceeding");
+            false
+        }
+    };
+    if bootsplash_released {
+        #[cfg(target_os = "openbsd")]
+        {
+            // OpenBSD does not grant effective KMS permission to a primary-node
+            // fd that was opened while the previous master was still alive.
+            // Reopen only after the splash has closed its fd, then rebuild the
+            // small kernel-side buffer from the already prepared CPU backdrop.
+            drop(card);
+            let (reopened_path, reopened_card) = open_display_card()?;
+            card = reopened_card;
+            db = card.create_dumb_buffer((w, h), DrmFourcc::Xrgb8888, 32)?;
+            fb = card.add_framebuffer(&db, 24, 32)?;
+            {
+                let mut mapping = card.map_dumb_buffer(&mut db)?;
+                let buf = mapping.as_mut();
+                assets.backdrop.copy_rgba_to(buf)?;
+                for px in buf.chunks_exact_mut(4) {
+                    px.swap(0, 2);
+                }
+            }
+            info!(path = %reopened_path, "reopened login DRM card after OpenBSD handover");
+        }
+        card.acquire_master_lock()?;
+        info!("acquired drm master after bootsplash handover");
+    }
+
     card.set_crtc(crtc, Some(fb), (0, 0), &[conn_info.handle()], Some(mode))?;
     let clip = ClipRect::new(0, 0, w as u16, h as u16);
     let _ = card.dirty_framebuffer(fb, &[clip]);
     info!(
         reacquire_ms = reacquire_started_at.elapsed().as_millis() as u64,
-        assets_reused, "settle frame committed"
+        handover_to_frame_ms = handover_started_at.elapsed().as_millis() as u64,
+        assets_reused,
+        "settle frame committed"
     );
 
     match bootsplash_exit() {
@@ -130,13 +168,18 @@ fn run_login_cycle(
     info!("released input devices");
 
     if matches!(exit, ControlFlow::PowerOff | ControlFlow::Reboot) {
+        let action = match exit {
+            ControlFlow::PowerOff => PowerAction::PowerOff,
+            ControlFlow::Reboot => PowerAction::Reboot,
+            _ => unreachable!(),
+        };
         match card.release_master_lock() {
             Ok(()) => info!("released drm master before power action"),
             Err(e) => warn!(error = %e, "release_master before power action failed"),
         }
         drop(card);
-        run_power_action(exit);
-        return Ok(false);
+        let result = run_power_action(action);
+        return Ok(restore_greeter_after_power_result(action, &result));
     }
 
     // On successful auth, spawn the compositor as the authenticated user

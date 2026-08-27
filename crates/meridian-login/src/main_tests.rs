@@ -326,12 +326,16 @@ fn backspace_removes_last_char_from_pin_field() {
 }
 
 #[test]
-fn cycle_focus_keeps_pin_field() {
+fn smartcard_focus_cycles_through_power_controls() {
     let mut s = smartcard_ready_state();
     s.apply(KeyAction::CycleFocus);
     assert_eq!(s.focus, Field::Password);
+    assert_eq!(s.power_focus, Some(PowerAction::Reboot));
     s.apply(KeyAction::CycleFocus);
     assert_eq!(s.focus, Field::Password);
+    assert_eq!(s.power_focus, Some(PowerAction::PowerOff));
+    s.apply(KeyAction::CycleFocus);
+    assert_eq!(s.power_focus, None);
 }
 
 #[test]
@@ -359,6 +363,70 @@ fn manual_mode_cycles_between_username_and_password() {
     assert_eq!(s.focus, Field::Password);
     s.apply(KeyAction::CycleFocusBack);
     assert_eq!(s.focus, Field::Username);
+}
+
+#[test]
+fn keyboard_can_confirm_reboot_and_escape_cancels_confirmation() {
+    let mut s = LoginUiState::default();
+    s.apply(KeyAction::CycleFocus);
+    s.apply(KeyAction::CycleFocus);
+    assert_eq!(s.power_focus, Some(PowerAction::Reboot));
+    assert_eq!(s.apply(KeyAction::Submit), ControlFlow::Continue);
+    assert_eq!(s.pending_power_action(), Some(PowerAction::Reboot));
+    assert_eq!(s.apply(KeyAction::Cancel), ControlFlow::Continue);
+    assert_eq!(s.pending_power_action(), None);
+    assert_eq!(s.power_focus, None);
+
+    s.apply(KeyAction::CycleFocus);
+    assert_eq!(s.apply(KeyAction::Submit), ControlFlow::Continue);
+    assert_eq!(s.apply(KeyAction::Submit), ControlFlow::Reboot);
+}
+
+#[cfg(any(target_os = "openbsd", target_os = "freebsd"))]
+#[test]
+fn bsd_power_actions_use_absolute_shutdown_commands() {
+    assert_eq!(
+        power_command(PowerAction::Reboot).unwrap(),
+        PowerCommand {
+            program: "/sbin/shutdown",
+            args: &["-r", "now"],
+        }
+    );
+    assert_eq!(
+        power_command(PowerAction::PowerOff).unwrap(),
+        PowerCommand {
+            program: "/sbin/shutdown",
+            args: &["-p", "now"],
+        }
+    );
+}
+
+#[test]
+fn failed_power_action_restores_greeter_but_success_does_not() {
+    let failed = Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "test command missing",
+    ));
+    assert!(restore_greeter_after_power_result(
+        PowerAction::Reboot,
+        &failed
+    ));
+    assert!(!restore_greeter_after_power_result(
+        PowerAction::PowerOff,
+        &Ok(())
+    ));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_power_actions_use_absolute_systemctl_commands() {
+    assert_eq!(
+        power_command(PowerAction::Reboot).unwrap(),
+        PowerCommand {
+            program: "/usr/bin/systemctl",
+            args: &["reboot"],
+        }
+    );
 }
 
 #[test]

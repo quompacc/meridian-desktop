@@ -1,0 +1,41 @@
+#!/bin/ksh
+#
+# Early native Meridian splash. This is a transitional DRM owner: after a
+# successful handover the long-running meridian-login process represents the
+# healthy continuation of the same boot chain.
+
+daemon="/usr/local/bin/meridian-bootsplash"
+daemon_flags=
+daemon_timeout=2
+graphics_vt=4
+splash_socket=/var/run/bootsplash.sock
+action=$1
+
+. /etc/rc.d/rc.subr
+
+rc_bg=YES
+rc_reload=NO
+daemon_logger=daemon.info
+pexp=/usr/local/bin/meridian-bootsplash
+
+rc_pre() {
+	[[ -x "${daemon}" ]] || {
+		echo "${daemon} is missing or not executable" >&2
+		return 1
+	}
+	rm -f "${splash_socket}"
+	/sbin/wsconsctl display.focus=${graphics_vt} || {
+		echo "failed to switch to graphical ttyC${graphics_vt}" >&2
+		return 1
+	}
+}
+
+rc_check() {
+	pgrep -T "${daemon_rtable}" -q -xf "${pexp}" && return 0
+	# Once the splash has handed over and exited, the greeter is the healthy
+	# continuation. During stop, check only the splash itself so rc.subr does
+	# not wait on or signal meridian-login.
+	[[ "${action}" != stop ]] && pgrep -q -xf /usr/local/bin/meridian-login
+}
+
+rc_cmd $1

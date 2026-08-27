@@ -112,7 +112,13 @@ fn run_animation(
                         ui_state.start_auth();
                         break;
                     }
-                    ControlFlow::PowerOff | ControlFlow::Reboot => {}
+                    ControlFlow::PowerOff | ControlFlow::Reboot => {
+                        exit = ui_state
+                            .power_focus
+                            .expect("power control flow requires focused action")
+                            .control_flow();
+                        break;
+                    }
                 }
             }
 
@@ -160,15 +166,18 @@ fn run_animation(
                         ) {
                             Some(ClickTarget::Field(field)) => {
                                 ui_state.focus = field;
+                                ui_state.power_focus = None;
                                 ui_state.pending_power = None;
                                 redraw = true;
                             }
                             Some(ClickTarget::Submit) => {
+                                ui_state.power_focus = None;
                                 ui_state.pending_power = None;
                                 ui_state.start_auth();
                                 redraw = true;
                             }
                             Some(ClickTarget::PowerOff) => {
+                                ui_state.power_focus = Some(PowerAction::PowerOff);
                                 redraw = true;
                                 if let Some(flow) =
                                     ui_state.confirm_power_action(PowerAction::PowerOff)
@@ -178,6 +187,7 @@ fn run_animation(
                                 }
                             }
                             Some(ClickTarget::Reboot) => {
+                                ui_state.power_focus = Some(PowerAction::Reboot);
                                 redraw = true;
                                 if let Some(flow) =
                                     ui_state.confirm_power_action(PowerAction::Reboot)
@@ -235,6 +245,7 @@ fn run_animation(
                     af.ui_alpha,
                     caret_on,
                     shake_dx,
+                    power_action_at(w as f32, h as f32, pointer.x, pointer.y),
                 );
                 draw_pointer_cursor(&mut pm, pointer.x, pointer.y, af.ui_alpha);
             }

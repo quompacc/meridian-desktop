@@ -1,8 +1,9 @@
 impl LoginUiState {
     fn apply(&mut self, action: KeyAction) -> ControlFlow {
-        self.pending_power = None;
         match action {
             KeyAction::Insert(s) => {
+                self.pending_power = None;
+                self.power_focus = None;
                 let target: &mut String =
                     if self.smartcard_login_ready() || self.focus == Field::Password {
                         &mut self.password
@@ -15,6 +16,8 @@ impl LoginUiState {
                 ControlFlow::Continue
             }
             KeyAction::Backspace => {
+                self.pending_power = None;
+                self.power_focus = None;
                 if self.smartcard_login_ready() || self.focus == Field::Password {
                     self.password.pop();
                 } else {
@@ -23,29 +26,62 @@ impl LoginUiState {
                 ControlFlow::Continue
             }
             KeyAction::CycleFocus => {
-                self.focus = if self.smartcard_login_ready() {
-                    Field::Password
-                } else {
-                    match self.focus {
-                        Field::Username => Field::Password,
-                        Field::Password => Field::Username,
-                    }
-                };
+                self.pending_power = None;
+                self.cycle_focus_forward();
                 ControlFlow::Continue
             }
             KeyAction::CycleFocusBack => {
+                self.pending_power = None;
+                self.cycle_focus_backward();
+                ControlFlow::Continue
+            }
+            KeyAction::Submit => {
+                if let Some(action) = self.power_focus {
+                    self.confirm_power_action(action)
+                        .unwrap_or(ControlFlow::Continue)
+                } else {
+                    self.pending_power = None;
+                    ControlFlow::Submit
+                }
+            }
+            KeyAction::Cancel if self.pending_power.is_some() || self.power_focus.is_some() => {
+                self.pending_power = None;
+                self.power_focus = None;
+                ControlFlow::Continue
+            }
+            KeyAction::Cancel => ControlFlow::Cancel,
+        }
+    }
+
+    fn cycle_focus_forward(&mut self) {
+        match self.power_focus {
+            Some(PowerAction::Reboot) => self.power_focus = Some(PowerAction::PowerOff),
+            Some(PowerAction::PowerOff) => {
+                self.power_focus = None;
                 self.focus = if self.smartcard_login_ready() {
                     Field::Password
                 } else {
-                    match self.focus {
-                        Field::Username => Field::Password,
-                        Field::Password => Field::Username,
-                    }
+                    Field::Username
                 };
-                ControlFlow::Continue
             }
-            KeyAction::Submit => ControlFlow::Submit,
-            KeyAction::Cancel => ControlFlow::Cancel,
+            None if self.smartcard_login_ready() || self.focus == Field::Password => {
+                self.power_focus = Some(PowerAction::Reboot);
+            }
+            None => self.focus = Field::Password,
+        }
+    }
+
+    fn cycle_focus_backward(&mut self) {
+        match self.power_focus {
+            Some(PowerAction::PowerOff) => self.power_focus = Some(PowerAction::Reboot),
+            Some(PowerAction::Reboot) => {
+                self.power_focus = None;
+                self.focus = Field::Password;
+            }
+            None if self.smartcard_login_ready() || self.focus == Field::Username => {
+                self.power_focus = Some(PowerAction::PowerOff);
+            }
+            None => self.focus = Field::Username,
         }
     }
 
@@ -131,6 +167,8 @@ impl LoginUiState {
     fn reject(&mut self) {
         self.password.clear();
         self.focus = Field::Password;
+        self.power_focus = None;
+        self.pending_power = None;
         self.phase = InputPhase::Failed(Instant::now());
         // The worker thread already exited (Failed/Error path doesn't
         // open_session); dropping the driver here joins it cleanly so we
@@ -224,6 +262,7 @@ impl LoginUiState {
         if let Some(user) = self.smartcard_user.clone() {
             self.username = user;
             self.focus = Field::Password;
+            self.power_focus = None;
         } else {
             if self.username.trim().is_empty() {
                 self.focus = Field::Username;

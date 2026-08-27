@@ -47,6 +47,7 @@ fn draw_login_ui(
     alpha: f32,
     caret_on: bool,
     shake_dx: f32,
+    hovered_power: Option<PowerAction>,
 ) {
     let (card_left_raw, card_top, cw, ch) = card_rect(w, h);
     let card_left = card_left_raw + shake_dx;
@@ -255,5 +256,7 @@ fn draw_login_ui(
         alpha,
         shake_dx,
         ui.pending_power_action(),
+        ui.power_focus,
+        hovered_power,
     );
 }
