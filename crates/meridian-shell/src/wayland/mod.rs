@@ -16,4 +16,5 @@ pub(crate) use init::initialize;
 pub(crate) use shell::{
     CommitReason, CommitStats, CommitSurfaceKind, MeridianShell, RepaintReason,
 };
+pub(crate) use state::load_wallpaper_thumbnail;
 pub(crate) use types::SurfaceKind;

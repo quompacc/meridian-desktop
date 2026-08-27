@@ -408,7 +408,11 @@ fn hidden_apps_path() -> String {
     format!("{home}/.config/meridian/hidden_apps.txt")
 }
 
-fn load_wallpaper_thumbnail(path: &str, max_w: u32, max_h: u32) -> Option<(u32, u32, Vec<u8>)> {
+pub(crate) fn load_wallpaper_thumbnail(
+    path: &str,
+    max_w: u32,
+    max_h: u32,
+) -> Option<(u32, u32, Vec<u8>)> {
     let img = image::open(path).ok()?;
     let thumb = img.thumbnail(max_w, max_h);
     let rgba = thumb.to_rgba8();

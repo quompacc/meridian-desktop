@@ -1,6 +1,6 @@
 // settings_view.rs — widget-based settings sub-page for the launcher.
 
-use meridian_tokens::Interaction;
+use meridian_tokens::{Interaction, Settings, Typography};
 use meridian_ui::{
     effect::{paint_fill, paint_text, rounded_rect_path},
     style::Color,
@@ -31,12 +31,9 @@ use crate::ui::tokens::glass_theme_from_config;
 const NOT_SET_ERROR_TINT: f32 = 0.15;
 /// Blend of the per-monitor preview colour into the display-preview body.
 const MONITOR_PREVIEW_MIX: f32 = 0.18;
-/// Opacity of the settings section divider (drawn over the accent colour).
-const SETTINGS_DIVIDER_OPACITY: u8 = 140;
-
 // ─── SettingsCategory ────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum SettingsCategory {
     #[default]
     Theme,
@@ -56,24 +53,35 @@ pub enum SettingsCategory {
 }
 
 impl SettingsCategory {
-    pub const DESKTOP: &'static [SettingsCategory] = &[
+    pub const APPEARANCE: &'static [SettingsCategory] = &[
         SettingsCategory::Theme,
-        SettingsCategory::Cursor,
         SettingsCategory::Wallpaper,
-        SettingsCategory::PinnedApps,
-        SettingsCategory::DefaultApps,
+        SettingsCategory::Cursor,
     ];
 
-    pub const SYSTEM: &'static [SettingsCategory] = &[
-        SettingsCategory::SystemOverview,
+    pub const DESKTOP_APPS: &'static [SettingsCategory] =
+        &[SettingsCategory::PinnedApps, SettingsCategory::DefaultApps];
+
+    pub const DEVICES: &'static [SettingsCategory] = &[
         SettingsCategory::Display,
         SettingsCategory::Network,
         SettingsCategory::Bluetooth,
         SettingsCategory::Sound,
         SettingsCategory::Printers,
+    ];
+
+    pub const SYSTEM: &'static [SettingsCategory] = &[
         SettingsCategory::Power,
         SettingsCategory::Users,
         SettingsCategory::Updates,
+        SettingsCategory::SystemOverview,
+    ];
+
+    pub const ALL: &'static [&'static [SettingsCategory]] = &[
+        Self::APPEARANCE,
+        Self::DESKTOP_APPS,
+        Self::DEVICES,
+        Self::SYSTEM,
     ];
 
     pub fn label(&self) -> &'static str {
@@ -259,11 +267,7 @@ impl SettingsCategory {
 
 // ─── Widget-based launcher sub-page ─────────────────────────────────────────
 
-const HEADER_HEIGHT: u32 = 52;
-const SIDEBAR_W: u32 = 160;
-const SIDEBAR_ROW_H: i32 = 44;
-
-const DIVIDER_HEIGHT: u32 = 2;
+const SETTINGS_CHROME: Settings = Settings::DEFAULT;
 const THEME_ROW_H: i32 = 44;
 const THEME_ROW_CORNER: i32 = 4;
 const PINNED_ROW_H: i32 = 44;
@@ -457,3 +461,38 @@ include!("settings_view/display_widgets.rs");
 include!("settings_view/display_controls.rs");
 include!("settings_view/content_builders.rs");
 include!("settings_view/draw.rs");
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_navigation_contains_every_category_once() {
+        let categories: Vec<_> = SettingsCategory::ALL
+            .iter()
+            .flat_map(|group| group.iter().copied())
+            .collect();
+        let unique: std::collections::HashSet<_> = categories.iter().copied().collect();
+
+        assert_eq!(categories.len(), 14);
+        assert_eq!(unique.len(), categories.len());
+    }
+
+    #[test]
+    fn settings_navigation_fits_launcher_height() {
+        let group_count = SettingsCategory::ALL.len() as i32;
+        let category_count = SettingsCategory::ALL
+            .iter()
+            .map(|group| group.len() as i32)
+            .sum::<i32>();
+        let required = SETTINGS_CHROME.sidebar_top_pad
+            + group_count * SETTINGS_CHROME.sidebar_section_height
+            + (group_count - 1) * SETTINGS_CHROME.sidebar_group_gap
+            + category_count * SETTINGS_CHROME.sidebar_row_height;
+        let available = meridian_tokens::Launcher::DEFAULT.height
+            - SETTINGS_CHROME.header_height
+            - SETTINGS_CHROME.divider_size;
+
+        assert!(required <= available, "navigation requires {required}px");
+    }
+}

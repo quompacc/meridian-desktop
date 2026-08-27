@@ -313,5 +313,3 @@ const DISPLAY_MODE_OPTION_IDS: [[&str; DISPLAY_MODE_OPTION_MAX]; 16] = [
         "display-mode-select-15-7",
     ],
 ];
-
-const SETTINGS_BACK_W: i32 = 52;

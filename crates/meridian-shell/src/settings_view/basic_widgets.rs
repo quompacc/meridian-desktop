@@ -5,9 +5,8 @@ fn with_alpha(color: Color, alpha: u8) -> Color {
 fn settings_glass_theme_from_config(config: &ThemeConfig) -> Theme {
     let mut theme = glass_theme_from_config(config);
     theme.palette.background = with_alpha(theme.palette.background, 0);
-    theme.palette.surface = with_alpha(theme.palette.surface, 0);
-    theme.palette.surface_alt = with_alpha(theme.palette.surface_alt, 0);
-    theme.palette.text_dim = theme.palette.text;
+    theme.palette.surface = with_alpha(theme.palette.surface, SETTINGS_CHROME.card_alpha);
+    theme.palette.surface_alt = with_alpha(theme.palette.surface_alt, SETTINGS_CHROME.card_alpha);
     theme
 }
 
@@ -23,9 +22,19 @@ impl Widget for SettingsHeaderBar {
         WidgetStyle {
             flex_direction: FlexDirection::Row,
             align_items: Some(AlignItems::Center),
+            gap: UiSize {
+                width: ui_length(SETTINGS_CHROME.header_gap as f32),
+                height: ui_length(0.0),
+            },
             size: UiSize {
                 width: ui_length(self.width as f32),
-                height: ui_length(HEADER_HEIGHT as f32),
+                height: ui_length(SETTINGS_CHROME.header_height as f32),
+            },
+            padding: TaffyRect {
+                left: ui_length(SETTINGS_CHROME.header_pad as f32),
+                right: ui_length(SETTINGS_CHROME.header_pad as f32),
+                top: ui_length(0.0),
+                bottom: ui_length(0.0),
             },
             ..Default::default()
         }
@@ -54,8 +63,8 @@ impl Widget for SettingsBackButton {
     fn style(&self) -> WidgetStyle {
         WidgetStyle {
             size: UiSize {
-                width: ui_length(SETTINGS_BACK_W as f32),
-                height: ui_length(HEADER_HEIGHT as f32),
+                width: ui_length(SETTINGS_CHROME.back_width as f32),
+                height: ui_length(SETTINGS_CHROME.search_height as f32),
             },
             ..Default::default()
         }
@@ -74,8 +83,43 @@ impl Widget for SettingsBackButton {
         } else {
             theme.palette.accent
         };
-        let baseline = area.y + (area.height + 16) / 2;
-        paint_text(canvas, "\u{2190}", area.x + 18, baseline, 17.0, col);
+        let baseline = area.y + (area.height + Typography::DEFAULT.title_size as i32) / 2;
+        paint_text(
+            canvas,
+            "\u{2190}",
+            area.x + 11,
+            baseline,
+            Typography::DEFAULT.title_size as f32,
+            col,
+        );
+    }
+}
+
+struct SettingsTitle {
+    width: i32,
+}
+
+impl Widget for SettingsTitle {
+    fn style(&self) -> WidgetStyle {
+        WidgetStyle {
+            size: UiSize {
+                width: ui_length(self.width as f32),
+                height: ui_length(SETTINGS_CHROME.search_height as f32),
+            },
+            ..Default::default()
+        }
+    }
+
+    fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
+        let baseline = area.y + (area.height + Typography::DEFAULT.title_size as i32) / 2;
+        paint_text(
+            canvas,
+            "Einstellungen",
+            area.x,
+            baseline,
+            Typography::DEFAULT.title_size as f32,
+            theme.palette.text,
+        );
     }
 }
 
@@ -91,7 +135,7 @@ impl Widget for SettingsSearchField {
         WidgetStyle {
             size: UiSize {
                 width: ui_length(self.width as f32),
-                height: ui_length(HEADER_HEIGHT as f32),
+                height: ui_length(SETTINGS_CHROME.search_height as f32),
             },
             ..Default::default()
         }
@@ -99,19 +143,33 @@ impl Widget for SettingsSearchField {
 
     fn paint(&self, area: Rect, canvas: &mut PixmapMut<'_>, theme: &Theme, _state: WidgetState) {
         let pal = theme.palette;
-        let baseline = area.y + (area.height + 13) / 2;
-        let text_x = area.x + 4;
+        if let Some(path) = rounded_rect_path(area, theme.radius.md) {
+            paint_fill(
+                canvas,
+                &path,
+                with_alpha(pal.surface_alt, SETTINGS_CHROME.search_alpha),
+            );
+        }
+        let baseline = area.y + (area.height + Typography::DEFAULT.body_size as i32) / 2;
+        let text_x = area.x + 14;
         if self.query.is_empty() {
             paint_text(
                 canvas,
                 "Einstellungen durchsuchen…",
                 text_x,
                 baseline,
-                13.0,
-                pal.text,
+                Typography::DEFAULT.body_size as f32,
+                pal.text_dim,
             );
         } else {
-            paint_text(canvas, &self.query, text_x, baseline, 13.0, pal.text);
+            paint_text(
+                canvas,
+                &self.query,
+                text_x,
+                baseline,
+                Typography::DEFAULT.body_size as f32,
+                pal.text,
+            );
         }
     }
 }
@@ -138,7 +196,7 @@ impl Widget for SidebarPanel {
             padding: TaffyRect {
                 left: ui_length(0.0),
                 right: ui_length(0.0),
-                top: ui_length(10.0),
+                top: ui_length(SETTINGS_CHROME.sidebar_top_pad as f32),
                 bottom: ui_length(0.0),
             },
             ..Default::default()
@@ -168,7 +226,9 @@ impl Widget for SidebarSectionLabel {
         WidgetStyle {
             size: UiSize {
                 width: ui_length(self.width as f32),
-                height: ui_length((self.pad_top + 18) as f32),
+                height: ui_length(
+                    (self.pad_top + SETTINGS_CHROME.sidebar_section_height) as f32,
+                ),
             },
             ..Default::default()
         }
@@ -179,9 +239,9 @@ impl Widget for SidebarSectionLabel {
             canvas,
             self.text,
             area.x + 16,
-            area.y + area.height - 6,
-            10.0,
-            theme.palette.text,
+            area.y + area.height - 5,
+            Typography::DEFAULT.caption_size as f32,
+            theme.palette.text_dim,
         );
     }
 }
@@ -202,7 +262,7 @@ impl Widget for SettingsSidebarRow {
         WidgetStyle {
             size: UiSize {
                 width: ui_length(self.row_width as f32),
-                height: ui_length(SIDEBAR_ROW_H as f32),
+                height: ui_length(SETTINGS_CHROME.sidebar_row_height as f32),
             },
             ..Default::default()
         }
@@ -220,17 +280,23 @@ impl Widget for SettingsSidebarRow {
             WidgetState::Hovered => Interaction::DEFAULT.hover(base),
             WidgetState::Pressed => Interaction::DEFAULT.pressed(base),
         };
-        if let Some(path) = rounded_rect_path(area, 0) {
+        let row_area = Rect {
+            x: area.x + 8,
+            y: area.y,
+            width: area.width - 16,
+            height: area.height,
+        };
+        if let Some(path) = rounded_rect_path(row_area, theme.radius.sm) {
             paint_fill(canvas, &path, bg);
         }
         if self.is_selected {
             let strip = Rect {
-                x: area.x,
-                y: area.y + 8,
-                width: 3,
-                height: area.height - 16,
+                x: row_area.x,
+                y: row_area.y + SETTINGS_CHROME.selection_inset,
+                width: SETTINGS_CHROME.selection_bar_width,
+                height: row_area.height - SETTINGS_CHROME.selection_inset * 2,
             };
-            if let Some(path) = rounded_rect_path(strip, 1) {
+            if let Some(path) = rounded_rect_path(strip, theme.radius.sm) {
                 paint_fill(canvas, &path, self.accent);
             }
         }
@@ -242,9 +308,9 @@ impl Widget for SettingsSidebarRow {
         paint_text(
             canvas,
             self.cat.label(),
-            area.x + 14,
-            area.y + area.height - 14,
-            12.5,
+            row_area.x + 14,
+            row_area.y + row_area.height - 9,
+            Typography::DEFAULT.caption_size as f32,
             text_color,
         );
     }
@@ -410,5 +476,5 @@ impl Widget for CursorThemeRow {
 
 const WALLPAPER_MODE_BAR_H: u32 = 52;
 const WALLPAPER_ROW_H: i32 = 64;
-const WALLPAPER_THUMB_W: u32 = 96;
-const WALLPAPER_THUMB_H: u32 = 54;
+const WALLPAPER_THUMB_W: u32 = SETTINGS_CHROME.wallpaper_thumbnail_width;
+const WALLPAPER_THUMB_H: u32 = SETTINGS_CHROME.wallpaper_thumbnail_height;

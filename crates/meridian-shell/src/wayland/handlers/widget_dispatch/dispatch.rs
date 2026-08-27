@@ -131,36 +131,14 @@ impl MeridianShell {
             WidgetAction::SetSettingsCategory(cat) => {
                 self.settings_category = cat;
                 self.display_mode_dropdown_open = None;
-                if cat == crate::settings_view::SettingsCategory::Wallpaper
-                    && self.wallpaper_thumbnails.is_empty()
-                {
-                    self.load_wallpaper_thumbnails();
-                }
-                if cat == crate::settings_view::SettingsCategory::Printers {
-                    self.printer_snapshot = crate::printers::PrinterSnapshot::poll();
-                }
-                if cat == crate::settings_view::SettingsCategory::Sound {
-                    self.audio_snapshot = crate::audio::AudioSnapshot::poll();
-                }
                 if cat == crate::settings_view::SettingsCategory::Network {
-                    // Read-only listings; safe on the event loop (fast nmcli
-                    // queries: saved-connection list + cached wifi scan).
-                    self.network_profiles = crate::network::list_saved_connections();
-                    self.wifi_networks = crate::network::scan_wifi_networks();
                     self.wifi_password_prompt = None;
                     self.wifi_password_input.clear();
                 }
                 if cat == crate::settings_view::SettingsCategory::DefaultApps {
                     self.default_apps_picker_open = None;
-                    // Reload every visit so a default set outside the
-                    // shell (terminal xdg-mime, package post-inst) shows
-                    // up immediately.
-                    self.refresh_default_apps_snapshot();
                 }
-                if cat == crate::settings_view::SettingsCategory::Bluetooth {
-                    // Read-only bluetoothctl snapshot; cheap, safe on the loop.
-                    self.bluetooth_snapshot = crate::bluetooth::BluetoothSnapshot::poll();
-                }
+                self.request_settings_refresh(cat);
                 self.draw_launcher(qh, RepaintReason::Pointer);
             }
             WidgetAction::ApplyThemeByIndex(idx) => {

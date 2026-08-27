@@ -264,6 +264,68 @@ impl Default for Launcher {
     }
 }
 
+/// Geometry and translucent overlays for the Settings view hosted inside the
+/// launcher surface. Settings shares the launcher's outer dimensions while
+/// keeping its own, denser information hierarchy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Settings {
+    pub header_height: i32,
+    pub header_pad: i32,
+    pub header_gap: i32,
+    pub back_width: i32,
+    pub search_width: i32,
+    pub search_height: i32,
+    pub sidebar_width: i32,
+    pub sidebar_top_pad: i32,
+    pub sidebar_row_height: i32,
+    pub sidebar_section_height: i32,
+    pub sidebar_group_gap: i32,
+    pub selection_inset: i32,
+    pub selection_bar_width: i32,
+    pub divider_size: i32,
+    pub wallpaper_thumbnail_width: u32,
+    pub wallpaper_thumbnail_height: u32,
+    /// Quiet internal card fill over the compositor-owned launcher glass.
+    pub card_alpha: u8,
+    /// Navigation-band fill over the compositor-owned launcher glass.
+    pub sidebar_alpha: u8,
+    /// Search-field fill over the compositor-owned launcher glass.
+    pub search_alpha: u8,
+    /// Hairline separator over `Palette::accent`.
+    pub divider_alpha: u8,
+}
+
+impl Settings {
+    pub const DEFAULT: Settings = Settings {
+        header_height: 76,
+        header_pad: 16,
+        header_gap: 8,
+        back_width: 40,
+        search_width: 336,
+        search_height: 40,
+        sidebar_width: 224,
+        sidebar_top_pad: 8,
+        sidebar_row_height: 30,
+        sidebar_section_height: 18,
+        sidebar_group_gap: 6,
+        selection_inset: 6,
+        selection_bar_width: 3,
+        divider_size: 1,
+        wallpaper_thumbnail_width: 96,
+        wallpaper_thumbnail_height: 54,
+        card_alpha: 38,
+        sidebar_alpha: 24,
+        search_alpha: 30,
+        divider_alpha: 44,
+    };
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 /// Geometry for the compact system-controls popover.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QuickSettings {
@@ -365,6 +427,18 @@ mod tests {
         assert_eq!(Launcher::DEFAULT.selected_alpha, 56);
         assert_eq!(Launcher::DEFAULT.search_focus_alpha, 52);
         assert_eq!(Launcher::DEFAULT.divider_alpha, 44);
+        assert_eq!(
+            Settings::DEFAULT.header_height,
+            Launcher::DEFAULT.header_height
+        );
+        assert_eq!(
+            Settings::DEFAULT.sidebar_width,
+            Launcher::DEFAULT.sidebar_width
+        );
+        assert_eq!(
+            Settings::DEFAULT.divider_alpha,
+            Launcher::DEFAULT.divider_alpha
+        );
         assert_eq!(Mask::DEFAULT.dim_alpha, 160);
         assert_eq!(QuickSettings::DEFAULT.width, 384);
         assert_eq!(QuickSettings::DEFAULT.height, 468);
@@ -376,6 +450,7 @@ mod tests {
         assert_eq!(Scrollbar::default(), Scrollbar::DEFAULT);
         assert_eq!(Calendar::default(), Calendar::DEFAULT);
         assert_eq!(Launcher::default(), Launcher::DEFAULT);
+        assert_eq!(Settings::default(), Settings::DEFAULT);
         assert_eq!(Mask::default(), Mask::DEFAULT);
     }
 }

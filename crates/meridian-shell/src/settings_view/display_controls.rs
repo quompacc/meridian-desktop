@@ -359,7 +359,7 @@ impl Widget for Divider {
         WidgetStyle {
             size: UiSize {
                 width: ui_length(self.width as f32),
-                height: ui_length(DIVIDER_HEIGHT as f32),
+                height: ui_length(SETTINGS_CHROME.divider_size as f32),
             },
             ..Default::default()
         }

@@ -197,18 +197,6 @@ impl MeridianShell {
         let _ = std::fs::write(&dir, content);
     }
 
-    pub(crate) fn load_wallpaper_thumbnails(&mut self) {
-        self.wallpaper_thumbnails = self
-            .available_wallpapers
-            .iter()
-            .map(|entry| load_wallpaper_thumbnail(&entry.thumbnail_path, 96, 54))
-            .collect();
-        tracing::debug!(
-            "loaded {} wallpaper thumbnails",
-            self.wallpaper_thumbnails.len()
-        );
-    }
-
     pub(crate) fn spawn_file_picker(&mut self) {
         if self.wallpaper_picker_rx.is_some() {
             return;

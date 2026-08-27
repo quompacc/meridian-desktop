@@ -363,6 +363,13 @@ pub(crate) struct MeridianShell {
     pub(crate) status_notifier_menu_entries: Vec<crate::status_notifier::DbusMenuEntry>,
     pub(crate) settings_category: crate::settings_view::SettingsCategory,
     pub(crate) settings_pinned_adding: bool,
+    pub(crate) system_info: crate::sysinfo::SystemInfo,
+    pub(crate) settings_refresh_tx:
+        std::sync::mpsc::Sender<crate::settings_refresh::SettingsRefreshResult>,
+    pub(crate) settings_refresh_rx:
+        std::sync::mpsc::Receiver<crate::settings_refresh::SettingsRefreshResult>,
+    pub(crate) settings_refresh_inflight:
+        std::collections::HashSet<crate::settings_view::SettingsCategory>,
     pub(crate) printer_snapshot: crate::printers::PrinterSnapshot,
     pub(crate) audio_snapshot: crate::audio::AudioSnapshot,
     /// Once true, the audio stack has settled (running + default sink) and the

@@ -18,7 +18,8 @@ pub mod radius;
 pub mod typography;
 
 pub use chrome::{
-    Calendar, Launcher, Mask, Panel, QuickSettings, Scrollbar, WindowChrome, WorkspaceSwitcher,
+    Calendar, Launcher, Mask, Panel, QuickSettings, Scrollbar, Settings, WindowChrome,
+    WorkspaceSwitcher,
 };
 pub use color::{contrast_text, relative_luminance, Color, Palette};
 pub use elevation::Elevation;

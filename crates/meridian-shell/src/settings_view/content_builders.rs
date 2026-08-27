@@ -87,12 +87,19 @@ pub(crate) fn build_settings_widget_tree(
 ) -> Box<dyn Widget> {
     let pal = theme.palette;
 
+    let title_width = width as i32
+        - SETTINGS_CHROME.header_pad * 2
+        - SETTINGS_CHROME.back_width
+        - SETTINGS_CHROME.search_width
+        - SETTINGS_CHROME.header_gap * 2;
+
     let header = Box::new(SettingsHeaderBar {
         width: width as i32,
         children: vec![
             Box::new(SettingsBackButton) as Box<dyn Widget>,
+            Box::new(SettingsTitle { width: title_width }) as Box<dyn Widget>,
             Box::new(SettingsSearchField {
-                width: width as i32 - SETTINGS_BACK_W,
+                width: SETTINGS_CHROME.search_width,
                 query: search.into(),
             }) as Box<dyn Widget>,
         ],
@@ -102,12 +109,16 @@ pub(crate) fn build_settings_widget_tree(
         pal.accent.r,
         pal.accent.g,
         pal.accent.b,
-        SETTINGS_DIVIDER_OPACITY,
+        SETTINGS_CHROME.divider_alpha,
     );
     // No root tabs anymore — the two groups live as labelled sections inside
     // one full-height sidebar.
-    let content_h = height.saturating_sub(HEADER_HEIGHT + DIVIDER_HEIGHT);
-    let content_w = width.saturating_sub(SIDEBAR_W + 1);
+    let content_h = height.saturating_sub(
+        (SETTINGS_CHROME.header_height + SETTINGS_CHROME.divider_size) as u32,
+    );
+    let content_w = width.saturating_sub(
+        (SETTINGS_CHROME.sidebar_width + SETTINGS_CHROME.divider_size) as u32,
+    );
 
     // Left sidebar — grouped sections (Darstellung / System), all categories
     // listed, anchored to the top.
@@ -143,17 +154,31 @@ pub(crate) fn build_settings_widget_tree(
     let effective_selected = if query.is_empty() || cat_matches(&selected) {
         selected
     } else {
-        SettingsCategory::DESKTOP
+        SettingsCategory::ALL
             .iter()
-            .chain(SettingsCategory::SYSTEM.iter())
+            .flat_map(|categories| categories.iter())
             .copied()
             .find(|cat| cat_matches(cat))
             .unwrap_or(selected)
     };
     let mut sidebar_children: Vec<Box<dyn Widget>> = Vec::new();
-    let groups: [(&str, &[SettingsCategory], i32); 2] = [
-        ("DARSTELLUNG", SettingsCategory::DESKTOP, 0),
-        ("SYSTEM", SettingsCategory::SYSTEM, 14),
+    let groups: [(&str, &[SettingsCategory], i32); 4] = [
+        ("ERSCHEINUNGSBILD", SettingsCategory::APPEARANCE, 0),
+        (
+            "DESKTOP & APPS",
+            SettingsCategory::DESKTOP_APPS,
+            SETTINGS_CHROME.sidebar_group_gap,
+        ),
+        (
+            "GERÄTE",
+            SettingsCategory::DEVICES,
+            SETTINGS_CHROME.sidebar_group_gap,
+        ),
+        (
+            "SYSTEM",
+            SettingsCategory::SYSTEM,
+            SETTINGS_CHROME.sidebar_group_gap,
+        ),
     ];
     let mut any_match = false;
     for (title, cats, pad_top) in groups {
@@ -164,7 +189,7 @@ pub(crate) fn build_settings_widget_tree(
         any_match = true;
         sidebar_children.push(Box::new(SidebarSectionLabel {
             text: title,
-            width: SIDEBAR_W as i32,
+            width: SETTINGS_CHROME.sidebar_width,
             pad_top,
         }) as Box<dyn Widget>);
         for cat in matching {
@@ -172,21 +197,21 @@ pub(crate) fn build_settings_widget_tree(
                 cat: *cat,
                 is_selected: *cat == effective_selected,
                 accent: pal.accent,
-                row_width: SIDEBAR_W as i32,
+                row_width: SETTINGS_CHROME.sidebar_width,
             }) as Box<dyn Widget>);
         }
     }
     if !any_match {
         sidebar_children.push(Box::new(SidebarSectionLabel {
             text: "KEINE TREFFER",
-            width: SIDEBAR_W as i32,
+            width: SETTINGS_CHROME.sidebar_width,
             pad_top: 8,
         }) as Box<dyn Widget>);
     }
     let sidebar = Box::new(SidebarPanel {
-        width: SIDEBAR_W as i32,
+        width: SETTINGS_CHROME.sidebar_width,
         height: content_h as i32,
-        bg: pal.surface_alt,
+        bg: with_alpha(pal.surface_alt, SETTINGS_CHROME.sidebar_alpha),
         children: sidebar_children,
     }) as Box<dyn Widget>;
 

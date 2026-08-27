@@ -79,6 +79,9 @@ impl MeridianShell {
         self.poll_launcher_apps_refresh(qh);
         // Apply a finished off-thread icon warm (LAUNCH-3). Cheap try_recv.
         self.poll_launcher_icons_warm(qh);
+        // Settings pages render cached state immediately. Any slower platform
+        // query or image decode completes here without blocking input.
+        self.poll_settings_refresh(qh);
 
         self.maybe_log_repaint_stats(now);
         self.maybe_log_commit_stats(now);
@@ -153,6 +156,67 @@ impl MeridianShell {
         }
     }
 
+    pub(crate) fn request_settings_refresh(
+        &mut self,
+        category: crate::settings_view::SettingsCategory,
+    ) {
+        if !crate::settings_refresh::supports(category) {
+            return;
+        }
+        if category == crate::settings_view::SettingsCategory::Wallpaper
+            && !self.wallpaper_thumbnails.is_empty()
+        {
+            return;
+        }
+        if !self.settings_refresh_inflight.insert(category) {
+            return;
+        }
+        crate::settings_refresh::spawn(
+            category,
+            self.available_wallpapers.clone(),
+            self.settings_refresh_tx.clone(),
+        );
+    }
+
+    fn poll_settings_refresh(&mut self, qh: &QueueHandle<Self>) {
+        while let Ok(result) = self.settings_refresh_rx.try_recv() {
+            self.settings_refresh_inflight.remove(&result.category);
+            match result.data {
+                crate::settings_refresh::SettingsData::SystemInfo(value) => {
+                    self.system_info = value;
+                }
+                crate::settings_refresh::SettingsData::Printers(value) => {
+                    self.printer_snapshot = value;
+                }
+                crate::settings_refresh::SettingsData::Audio(value) => {
+                    self.audio_settled = value.is_settled();
+                    self.audio_snapshot = value;
+                }
+                crate::settings_refresh::SettingsData::Network { profiles, wifi } => {
+                    self.network_profiles = profiles;
+                    self.wifi_networks = wifi;
+                }
+                crate::settings_refresh::SettingsData::Bluetooth(value) => {
+                    self.bluetooth_snapshot = value;
+                }
+                crate::settings_refresh::SettingsData::DefaultApps { index, current } => {
+                    self.default_apps_index = Some(index);
+                    self.default_apps_current = current;
+                    self.default_apps_loaded = true;
+                }
+                crate::settings_refresh::SettingsData::WallpaperThumbnails(value) => {
+                    self.wallpaper_thumbnails = value;
+                }
+            }
+            if self.launcher_state.open
+                && self.launcher_settings_open
+                && self.settings_category == result.category
+            {
+                self.draw_launcher(qh, RepaintReason::Ipc);
+            }
+        }
+    }
+
     pub(crate) fn poll_ipc(&mut self) -> bool {
         let mut changed = false;
         for event in self.ipc.poll() {
@@ -195,10 +259,8 @@ impl MeridianShell {
             .set_size(self.desktop_menu_width, self.desktop_menu_height);
     }
 
-    /// Load (or reload) the Standard-Apps page snapshot: scans installed
-    /// .desktop files for MIME handlers and queries xdg-mime for the
-    /// current default per category. Synchronous — kept off the render
-    /// path; called from SetSettingsCategory and after any write.
+    /// Refresh after a deliberate default-app write. Page entry itself uses
+    /// the non-blocking Settings worker above.
     pub(crate) fn refresh_default_apps_snapshot(&mut self) {
         self.default_apps_index = Some(crate::default_apps::MimeAppIndex::load_system());
         self.default_apps_current = crate::default_apps::snapshot_current_defaults();

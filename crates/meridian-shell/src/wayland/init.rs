@@ -350,18 +350,16 @@ pub(crate) fn initialize(
     let icon_cache = assets::build_icon_cache(&theme, &pinned_apps);
     let mut network_controller = NetworkController::new();
     network_controller.poll();
-    // These were extracted from the state literal so each runs (and could be
-    // profiled) explicitly; all are sub-100ms in practice. The launcher grid
-    // icons are warmed lazily on first open (see warm_launcher_icons) to keep
-    // startup fast.
+    // Startup snapshots are cached; later Settings refreshes run off-thread.
     let printer_snapshot = crate::printers::PrinterSnapshot::poll();
-    // Single startup audio poll. On a fast login PipeWire/WirePlumber may not be
-    // up yet, so this can be Unavailable; `tick()` re-polls until it settles.
+    // The tick retries audio briefly when the session stack starts late.
     let audio_snapshot = crate::audio::AudioSnapshot::poll();
     let audio_settled = audio_snapshot.is_settled();
     let power_profile_init = crate::power_profile::current();
     let available_wallpapers = meridian_config::MeridianConfig::scan_wallpaper_dirs();
     let network_profiles = crate::network::list_saved_connections();
+    let system_info = crate::sysinfo::SystemInfo::gather();
+    let (settings_refresh_tx, settings_refresh_rx) = std::sync::mpsc::channel();
     let ipc_client = IpcClient::connect();
 
     let commit_stats_enabled = flags::enabled("MERIDIAN_SHELL_COMMIT_STATS");
@@ -479,6 +477,10 @@ pub(crate) fn initialize(
         status_notifier_menu_entries: Vec::new(),
         settings_category: crate::settings_view::SettingsCategory::default(),
         settings_pinned_adding: false,
+        system_info,
+        settings_refresh_tx,
+        settings_refresh_rx,
+        settings_refresh_inflight: std::collections::HashSet::new(),
         printer_snapshot,
         audio_snapshot,
         audio_settled,

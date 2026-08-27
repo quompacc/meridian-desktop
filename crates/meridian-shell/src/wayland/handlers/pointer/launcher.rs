@@ -182,7 +182,6 @@ macro_rules! handle_launcher_pointer {
                     }
                     // Fall through to widget tree for settings right-click
                     let tree = if $shell.launcher_settings_open {
-                        let system_info = crate::sysinfo::SystemInfo::gather();
                         crate::settings_view::build_settings_widget_tree(
                             crate::LAUNCHER_WIDTH,
                             crate::LAUNCHER_HEIGHT,
@@ -203,7 +202,7 @@ macro_rules! handle_launcher_pointer {
                             $shell.display_mode_dropdown_open,
                             &$shell.printer_snapshot,
                             &$shell.audio_snapshot,
-                            &system_info,
+                            &$shell.system_info,
                             $shell.network_controller.state(),
                             $shell.network_profiles.as_slice(),
                             &$shell.bluetooth_snapshot,
@@ -400,7 +399,6 @@ macro_rules! handle_launcher_pointer {
                 if $shell.launcher_settings_open {
                     if let Some(ev) = translate_pointer_event(&$event.kind, local_pos) {
                         let tree = {
-                            let system_info = crate::sysinfo::SystemInfo::gather();
                             crate::settings_view::build_settings_widget_tree(
                                 crate::LAUNCHER_WIDTH,
                                 crate::LAUNCHER_HEIGHT,
@@ -421,7 +419,7 @@ macro_rules! handle_launcher_pointer {
                                 $shell.display_mode_dropdown_open,
                                 &$shell.printer_snapshot,
                                 &$shell.audio_snapshot,
-                                &system_info,
+                                &$shell.system_info,
                                 $shell.network_controller.state(),
                                 $shell.network_profiles.as_slice(),
                                 &$shell.bluetooth_snapshot,

@@ -5,6 +5,7 @@ impl MeridianShell {
         }
         self.launcher_settings_open = true;
         self.settings_category = crate::settings_view::SettingsCategory::SystemOverview;
+        self.request_settings_refresh(crate::settings_view::SettingsCategory::SystemOverview);
         self.launcher_dirty = true;
         self.panel_dirty = true;
     }
@@ -100,17 +101,7 @@ impl MeridianShell {
         self.launcher_settings_open = true;
         self.settings_category = category;
         self.display_mode_dropdown_open = None;
-        if category == crate::settings_view::SettingsCategory::Wallpaper
-            && self.wallpaper_thumbnails.is_empty()
-        {
-            self.load_wallpaper_thumbnails();
-        }
-        if category == crate::settings_view::SettingsCategory::Printers {
-            self.printer_snapshot = crate::printers::PrinterSnapshot::poll();
-        }
-        if category == crate::settings_view::SettingsCategory::Sound {
-            self.audio_snapshot = crate::audio::AudioSnapshot::poll();
-        }
+        self.request_settings_refresh(category);
         self.launcher_dirty = true;
         self.panel_dirty = true;
         self.draw_panel(qh, RepaintReason::Pointer);
@@ -135,7 +126,7 @@ impl MeridianShell {
         }
         self.launcher_settings_open = true;
         self.settings_category = crate::settings_view::SettingsCategory::Sound;
-        self.audio_snapshot = crate::audio::AudioSnapshot::poll();
+        self.request_settings_refresh(crate::settings_view::SettingsCategory::Sound);
         self.launcher_dirty = true;
         self.panel_dirty = true;
     }
@@ -158,6 +149,7 @@ impl MeridianShell {
         }
         self.launcher_settings_open = true;
         self.settings_category = crate::settings_view::SettingsCategory::Network;
+        self.request_settings_refresh(crate::settings_view::SettingsCategory::Network);
         self.launcher_dirty = true;
         self.panel_dirty = true;
     }

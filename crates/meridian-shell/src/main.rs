@@ -35,6 +35,7 @@ mod process;
 mod quick_settings_popup;
 mod region_picker;
 mod screenshot_consent;
+mod settings_refresh;
 mod settings_view;
 mod soft_shadow;
 mod status_notifier;

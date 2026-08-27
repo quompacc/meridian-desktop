@@ -86,7 +86,6 @@ impl MeridianShell {
                 (id.as_str(), p)
             });
             if self.launcher_settings_open {
-                let system_info = crate::sysinfo::SystemInfo::gather();
                 crate::settings_view::draw_settings_launcher(
                     &mut content,
                     LAUNCHER_WIDTH,
@@ -108,7 +107,7 @@ impl MeridianShell {
                     self.display_mode_dropdown_open,
                     &self.printer_snapshot,
                     &self.audio_snapshot,
-                    &system_info,
+                    &self.system_info,
                     self.network_controller.state(),
                     self.network_profiles.as_slice(),
                     &self.bluetooth_snapshot,
